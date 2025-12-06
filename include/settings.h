@@ -12,7 +12,7 @@ constexpr const char *BLE_DEVICE_NAME = "Quarzlampe";
 constexpr const char *BLE_SERVICE_UUID = "d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b";
 constexpr const char *BLE_COMMAND_CHAR_UUID = "4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7";
 constexpr const char *BLE_STATUS_CHAR_UUID = "c5ad78b6-9b77-4a96-9a42-8e6e9a40c123"; ///< Read/Notify current status snapshot
-constexpr const char *BT_SERIAL_NAME = "Quarzlampe";
+constexpr const char *BT_SERIAL_NAME = "Quarzlampe-SPP";
 
 // ---- Defaults ----
 constexpr float DEFAULT_BRIGHTNESS = 0.7f;     ///< Used on first boot if no NVS value

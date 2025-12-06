@@ -93,6 +93,8 @@ bool lampOffPending = false;
 float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
 float briMinUser = Settings::BRI_MIN_DEFAULT;
 float briMaxUser = Settings::BRI_MAX_DEFAULT;
+float ambientScale = 1.0f;
+float outputScale = 1.0f;
 
 bool switchRawState = false;
 bool switchDebouncedState = false;
@@ -117,6 +119,7 @@ bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
 uint32_t presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
 uint32_t presenceGraceDeadline = 0;
+bool presencePrevConnected = false;
 String presenceAddr;
 String lastBleAddr;
 String lastBtAddr;
@@ -136,6 +139,8 @@ bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 #endif
+bool bleWasConnected = false;
+bool btWasConnected = false;
 
 // Custom pattern editor
 static const size_t CUSTOM_MAX = 32;
@@ -174,6 +179,7 @@ float rampStartLevel = 0.0f;
 float rampTargetLevel = 0.0f;
 uint32_t rampStartMs = 0;
 uint32_t rampDurationActive = 0;
+bool rampAffectsMaster = true;
 
 // ---------- Hilfsfunktionen ----------
 /**
@@ -277,9 +283,13 @@ void exportConfig()
 /**
  * @brief Start a smooth ramp towards target brightness over durationMs.
  */
-void startBrightnessRamp(float target, uint32_t durationMs)
+void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true)
 {
-  rampStartLevel = masterBrightness;
+  rampAffectsMaster = affectMaster;
+  if (affectMaster)
+    rampStartLevel = masterBrightness;
+  else
+    rampStartLevel = outputScale;
   rampTargetLevel = clamp01(target);
   rampStartMs = millis();
   uint32_t dur = (durationMs > 0 ? durationMs : rampDurationMs);
@@ -287,8 +297,15 @@ void startBrightnessRamp(float target, uint32_t durationMs)
   rampActive = (dur > 0 && rampStartLevel != rampTargetLevel);
   if (!rampActive)
   {
-    masterBrightness = rampTargetLevel;
-    logBrightnessChange("instant");
+    if (rampAffectsMaster)
+    {
+      masterBrightness = rampTargetLevel;
+      logBrightnessChange("instant");
+    }
+    else
+    {
+      outputScale = rampTargetLevel;
+    }
   }
 }
 
@@ -303,18 +320,25 @@ void updateBrightnessRamp()
   lastActivityMs = now;
   float t = rampDurationActive > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationActive) : 1.0f;
   float eased = t * t * (3.0f - 2.0f * t);
-  masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
+  if (rampAffectsMaster)
+    masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
+  else
+    outputScale = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
   if (t >= 1.0f)
   {
-    masterBrightness = rampTargetLevel;
+    if (rampAffectsMaster)
+      masterBrightness = rampTargetLevel;
+    else
+      outputScale = rampTargetLevel;
     rampActive = false;
-    if (lampOffPending && masterBrightness <= 0.0f)
+    if (lampOffPending && rampTargetLevel <= 0.0f)
     {
       lampEnabled = false;
       lampOffPending = false;
       ledcWrite(LEDC_CH, 0);
     }
-    logBrightnessChange("ramp");
+    if (rampAffectsMaster)
+      logBrightnessChange("ramp");
   }
 }
 
@@ -439,13 +463,17 @@ void setLampEnabled(bool enable, const char *reason = nullptr)
   lastActivityMs = millis();
   if (enable)
   {
+    outputScale = 0.0f;
     lampEnabled = true;
     lampOffPending = false;
     float fallback = (lastOnBrightness > briMinUser) ? lastOnBrightness : Settings::DEFAULT_BRIGHTNESS;
     float target = (masterBrightness > briMinUser) ? masterBrightness : fallback;
     if (target < briMinUser)
       target = briMinUser;
-    startBrightnessRamp(target, rampDurationMs);
+    if (target > briMaxUser)
+      target = briMaxUser;
+    masterBrightness = target;
+    startBrightnessRamp(1.0f, rampDurationMs, false);
     lastOnBrightness = target;
     logLampState(reason);
   }
@@ -456,7 +484,7 @@ void setLampEnabled(bool enable, const char *reason = nullptr)
       lastOnBrightness = masterBrightness;
     else if (lastOnBrightness < briMinUser)
       lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
-    startBrightnessRamp(0.0f, rampDurationMs);
+    startBrightnessRamp(0.0f, rampDurationMs, false);
     cancelWakeFade(false);
     logLampState(reason);
     // if (reason && strstr(reason, "switch") == nullptr)
@@ -566,83 +594,9 @@ void updateSwitchLogic()
   }
 }
 
-/**
- * @brief Handle presence events from BLE connections (auto-off when device leaves).
- */
-void blePresenceUpdate(bool connected, const String &addr)
-{
-  if (connected)
-  {
-    presenceGraceDeadline = 0;
-    if (addr.length() > 0)
-      lastBleAddr = addr;
-    // if (presenceAddr.isEmpty() && addr.length() > 0)
-    if (addr.length() > 0)
-    {
-      presenceAddr = addr;
-      saveSettings();
-      sendFeedback(String(F("[Presence] Registered ")) + presenceAddr);
-    }
-    if (presenceEnabled)
-    {
-      if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
-      {
-        if (switchDebouncedState)
-        {
-          setLampEnabled(true, "presence connect");
-          sendFeedback(F("[Presence] Device connected -> Lamp ON"));
-        }
-      }
-    }
-    return;
-  }
-  // disconnect
-  if (!presenceEnabled)
-    return;
-  if (!presenceAddr.isEmpty())
-  {
-    if (addr.length() == 0 || addr == presenceAddr)
-    {
-      presenceGraceDeadline = millis() + presenceGraceMs;
-      sendFeedback(String(F("[Presence] Device left: ")) + presenceAddr + F(" -> pending OFF"));
-    }
-  }
-}
-
-/**
- * @brief Handle Classic BT SPP events for presence tracking.
- */
-void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
-{
-  if (event == ESP_SPP_SRV_OPEN_EVT)
-  {
-    presenceGraceDeadline = 0;
-    presenceGraceDeadline = 0;
-    char buf[18];
-    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-             param->srv_open.rem_bda[0], param->srv_open.rem_bda[1], param->srv_open.rem_bda[2],
-             param->srv_open.rem_bda[3], param->srv_open.rem_bda[4], param->srv_open.rem_bda[5]);
-    lastBtAddr = String(buf);
-    presenceAddr = lastBtAddr;
-    saveSettings();
-    sendFeedback(String(F("[Presence] Registered via BT: ")) + presenceAddr);
-    if (presenceEnabled && switchDebouncedState)
-    {
-      setLampEnabled(true, "BT presence connect");
-      sendFeedback(F("[Presence] BT connect -> Lamp ON"));
-    }
-  }
-  else if (event == ESP_SPP_CLOSE_EVT)
-  {
-    if (!presenceEnabled)
-      return;
-    if (!presenceAddr.isEmpty() && (lastBtAddr.isEmpty() || lastBtAddr == presenceAddr))
-    {
-      presenceGraceDeadline = millis() + presenceGraceMs;
-      sendFeedback(String(F("[Presence] BT disconnect: ")) + presenceAddr + F(" -> pending OFF"));
-    }
-  }
-}
+// Presence is handled via polling in loop()
+void blePresenceUpdate(bool, const String &) {}
+void sppCallback(esp_spp_cb_event_t, esp_spp_cb_param_t *) {}
 
 /**
  * @brief Measure and store a fresh baseline value for the touch electrode.
@@ -1624,12 +1578,53 @@ void updatePatternEngine()
     return;
   }
 
+  // Presence polling
+  bool anyClient = btHasClient();
+  if (bleActive())
+  {
+    anyClient = true;
+    if (lastBleAddr.length() == 0)
+      lastBleAddr = getLastBleAddr();
+  }
+  if (presenceEnabled)
+  {
+    if (anyClient)
+    {
+      presenceGraceDeadline = 0;
+      if (presenceAddr.isEmpty())
+      {
+        if (lastBleAddr.length() > 0)
+          presenceAddr = lastBleAddr;
+        else if (lastBtAddr.length() > 0)
+          presenceAddr = lastBtAddr;
+      }
+      if (presenceAddr.isEmpty() || lastBleAddr == presenceAddr || lastBtAddr == presenceAddr)
+      {
+        if (switchDebouncedState && !lampEnabled)
+        {
+          setLampEnabled(true, "presence connect");
+          sendFeedback(F("[Presence] Client detected -> Lamp ON"));
+        }
+      }
+    }
+    else if (presencePrevConnected && lampEnabled && presenceGraceDeadline == 0 && !presenceAddr.isEmpty())
+    {
+      presenceGraceDeadline = now + presenceGraceMs;
+      sendFeedback(String(F("[Presence] No client -> pending OFF in ")) + String(presenceGraceMs) + F("ms"));
+    }
+  }
+
+  presencePrevConnected = anyClient;
+
   if (presenceGraceDeadline > 0 && now >= presenceGraceDeadline)
   {
     presenceGraceDeadline = 0;
-    setLampEnabled(false, "presence grace");
-    sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
-    return;
+    if (lampEnabled)
+    {
+      setLampEnabled(false, "presence grace");
+      sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
+      return;
+    }
   }
 
   // idle-off timer
@@ -1661,7 +1656,7 @@ void updatePatternEngine()
   const Pattern &p = PATTERNS[currentPattern];
   uint32_t elapsed = now - patternStartMs;
   float relative = clamp01(p.evaluate(elapsed));
-  float combined = lampEnabled ? relative * masterBrightness : 0.0f;
+  float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
   applyPwmLevel(combined);
 
   if (autoCycle && p.durationMs > 0 && elapsed >= p.durationMs)
@@ -1674,7 +1669,10 @@ void updateLightSensor()
 {
 #if ENABLE_LIGHT_SENSOR
   if (!lightSensorEnabled)
+  {
+    ambientScale = 1.0f;
     return;
+  }
   uint32_t now = millis();
   if (now - lastLightSampleMs < Settings::LIGHT_SAMPLE_MS)
     return;
@@ -1694,7 +1692,7 @@ void updateLightSensor()
   float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
   norm = clamp01(norm);
   float target = clamp01((0.2f + 0.8f * norm) * lightGain);
-  startBrightnessRamp(target, rampDurationMs);
+  ambientScale = 0.85f * ambientScale + 0.15f * target;
 #endif
 }
 

@@ -27,6 +27,12 @@ void sendFeedback(const String &line);
  */
 bool bleActive();
 
+/** Return true if a BT Serial client is connected (if enabled). */
+bool btHasClient();
+
+/** Return last known BLE address (if any). */
+String getLastBleAddr();
+
 // Presence hooks
 void blePresenceUpdate(bool connected, const String &addr);
 

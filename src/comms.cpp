@@ -58,6 +58,7 @@ BLEServer *bleServer = nullptr;
 BLECharacteristic *bleCommandCharacteristic = nullptr;
 BLECharacteristic *bleStatusCharacteristic = nullptr;
 bool bleClientConnected = false;
+String bleLastAddr;
 
 /**
  * @brief Handles BLE server connection events.
@@ -75,13 +76,14 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   {
     bleClientConnected = true;
     Serial.println(F("[BLE] Verbunden."));
-    blePresenceUpdate(true, String());
+    blePresenceUpdate(true, bleLastAddr);
   }
 
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
     bleClientConnected = true;
     String addr = formatAddr(param->connect.remote_bda);
+    bleLastAddr = addr;
     Serial.print(F("[BLE] Verbunden: "));
     Serial.println(addr);
     blePresenceUpdate(true, addr);
@@ -91,7 +93,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   {
     bleClientConnected = false;
     Serial.println(F("[BLE] Getrennt."));
-    blePresenceUpdate(false, String());
+    blePresenceUpdate(false, bleLastAddr);
     BLEDevice::startAdvertising();
   }
 
@@ -101,6 +103,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     String addr = formatAddr(param->disconnect.remote_bda);
     Serial.print(F("[BLE] Getrennt: "));
     Serial.println(addr);
+    bleLastAddr = addr;
     blePresenceUpdate(false, addr);
     BLEDevice::startAdvertising();
   }
@@ -183,8 +186,8 @@ void startBtSerial()
     Serial.print(F("[BT] Classic Serial aktiv als '"));
     Serial.print(Settings::BT_SERIAL_NAME);
     Serial.println(F("'"));
-    esp_spp_register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
-                              { sppCallback(event, param); });
+    // esp_spp_register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+    //                           { sppCallback(event, param); });
   }
 }
 } // namespace
@@ -259,5 +262,23 @@ bool bleActive()
   return bleClientConnected;
 #else
   return false;
+#endif
+}
+
+bool btHasClient()
+{
+#if ENABLE_BT_SERIAL
+  return serialBt.hasClient();
+#else
+  return false;
+#endif
+}
+
+String getLastBleAddr()
+{
+#if ENABLE_BLE
+  return bleLastAddr;
+#else
+  return String();
 #endif
 }
