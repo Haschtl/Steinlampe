@@ -1450,7 +1450,38 @@ void handleCommand(String line)
   sendFeedback(F("Unbekanntes Kommando. 'help' tippen."));
 }
 
-// Active scanning disabled: rely on explicit connections/pings
+// Active presence scan for target MAC (returns true if found)
+bool presenceScanOnce()
+{
+#if ENABLE_BLE
+  if (presenceAddr.isEmpty())
+    return false;
+  BLEScan *scan = BLEDevice::getScan();
+  if (!scan)
+    return false;
+  const uint32_t SCAN_TIME_S = 3;
+  scan->setActiveScan(true);
+  scan->setInterval(320);
+  scan->setWindow(80);
+  BLEScanResults res = scan->start(SCAN_TIME_S, false);
+  bool found = false;
+  for (int i = 0; i < res.getCount(); ++i)
+  {
+    BLEAdvertisedDevice d = res.getDevice(i);
+    String addr = d.getAddress().toString().c_str();
+    if (addr == presenceAddr)
+    {
+      found = true;
+      break;
+    }
+  }
+  sendFeedback(String(F("[Presence] Scan target=")) + presenceAddr + F(" -> ") + (found ? F("found") : F("not found")));
+  return found;
+#else
+  return false;
+#endif
+}
+
 /**
  * @brief Drive the active animation (wake fade or pattern) and auto-cycle.
  */
@@ -1479,7 +1510,7 @@ void updatePatternEngine()
     return;
   }
 
-  // Presence polling (no active scan)
+  // Presence polling with occasional scan
   bool anyClient = btHasClient();
   if (bleActive())
   {
@@ -1497,6 +1528,18 @@ void updatePatternEngine()
         presenceAddr = lastBleAddr;
       else if (lastBtAddr.length() > 0)
         presenceAddr = lastBtAddr;
+    }
+
+    // occasionally try to spot the target via scan
+    const uint32_t SCAN_INTERVAL_MS = 25000;
+    if (presenceAddr.length() > 0 && millis() - lastPresenceScanMs >= SCAN_INTERVAL_MS)
+    {
+      lastPresenceScanMs = millis();
+      if (presenceScanOnce())
+      {
+        detected = true;
+        lastPresenceSeenMs = millis();
+      }
     }
 
     if (lastPresenceSeenMs > 0 && (millis() - lastPresenceSeenMs) <= presenceGraceMs)
