@@ -44,9 +44,9 @@ static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
 static const int TOUCH_DELTA_OFF_DEFAULT = 6; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
-static const float DIM_RAMP_STEP = 0.01f;
+static const float DIM_RAMP_STEP = 0.005f;
 static const uint32_t DIM_RAMP_DT_MS = 80;
-static const float DIM_MIN = 0.10f;
+static const float DIM_MIN = 0.02f;
 static const float DIM_MAX = 0.95f;
 
 // Vorwärtsdeklarationen
@@ -79,6 +79,7 @@ static const char *PREF_KEY_BRI_MIN = "bri_min";
 static const char *PREF_KEY_BRI_MAX = "bri_max";
 static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
+static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -86,6 +87,7 @@ size_t currentPattern = 0;
 uint32_t patternStartMs = 0;
 // General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
+float patternSpeedScale = 1.0f;
 
 // Switch handling
 bool switchRawState = false;
@@ -195,6 +197,8 @@ void exportConfig()
   cfg += String(masterBrightness, 3);
   cfg += F(" auto=");
   cfg += autoCycle ? F("on") : F("off");
+  cfg += F(" pat_scale=");
+  cfg += String(patternSpeedScale, 2);
   cfg += F(" touch_on=");
   cfg += touchDeltaOn;
   cfg += F(" touch_off=");
@@ -232,9 +236,11 @@ void saveSettings()
   prefs.putUShort(PREF_KEY_B1000, b);
   prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
   prefs.putBool(PREF_KEY_AUTO, autoCycle);
+  prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
   prefs.putShort(PREF_KEY_THR_ON, (int16_t)touchDeltaOn);
   prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
   prefs.putUInt(PREF_KEY_TOUCH_HOLD, touchHoldStartMs);
+  prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
@@ -271,12 +277,22 @@ void loadSettings()
     idx = 0;
   currentPattern = idx;
   autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
+  patternSpeedScale = prefs.getFloat(PREF_KEY_PAT_SCALE, 1.0f);
+  if (patternSpeedScale < 0.1f)
+    patternSpeedScale = 0.1f;
+  else if (patternSpeedScale > 5.0f)
+    patternSpeedScale = 5.0f;
   touchDeltaOn = prefs.getShort(PREF_KEY_THR_ON, TOUCH_DELTA_ON_DEFAULT);
   touchDeltaOff = prefs.getShort(PREF_KEY_THR_OFF, TOUCH_DELTA_OFF_DEFAULT);
   if (touchDeltaOn < 1)
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
   if (touchDeltaOff < 1 || touchDeltaOff >= touchDeltaOn)
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+  patternSpeedScale = prefs.getFloat(PREF_KEY_PAT_SCALE, 1.0f);
+  if (patternSpeedScale < 0.1f)
+    patternSpeedScale = 0.1f;
+  else if (patternSpeedScale > 5.0f)
+    patternSpeedScale = 5.0f;
   touchHoldStartMs = prefs.getUInt(PREF_KEY_TOUCH_HOLD, Settings::TOUCH_HOLD_MS_DEFAULT);
   if (touchHoldStartMs < 500)
     touchHoldStartMs = 500;
@@ -666,7 +682,8 @@ void printStatus()
 {
   String payload;
   String line1 = String(F("Pattern ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" '") +
-                 PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF"));
+                 PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF")) +
+                 F(" | Speed=") + String(patternSpeedScale, 2);
   if (wakeFadeActive)
     line1 += F(" | Wake");
   if (sleepFadeActive)
@@ -820,11 +837,17 @@ void importConfig(const String &args)
       if (v > 0)
         touchDeltaOff = v;
     }
-    else if (key == "touch_hold")
+  else if (key == "touch_hold")
+  {
+    uint32_t v = val.toInt();
+    if (v >= 500 && v <= 5000)
+      touchHoldStartMs = v;
+  }
+    else if (key == "pat_scale")
     {
-      uint32_t v = val.toInt();
-      if (v >= 500 && v <= 5000)
-        touchHoldStartMs = v;
+      float v = val.toFloat();
+      if (v >= 0.1f && v <= 5.0f)
+        patternSpeedScale = v;
     }
     else if (key == "bri")
     {
@@ -906,6 +929,7 @@ void printHelp()
       "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
+      "  pat scale <0.1-5> - Pattern-Geschwindigkeit",
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  presence on|off   - Auto-Off wenn Gerät weg",
@@ -1126,6 +1150,22 @@ void handleCommand(String line)
     else
     {
       sendFeedback(F("Ungültiger Mode."));
+    }
+    return;
+  }
+  if (lower.startsWith("pat scale") || lower.startsWith("pattern scale"))
+  {
+    int pos = lower.indexOf("scale");
+    float v = line.substring(pos + 5).toFloat();
+    if (v >= 0.1f && v <= 5.0f)
+    {
+      patternSpeedScale = v;
+      saveSettings();
+      sendFeedback(String(F("[Pattern] speed scale=")) + String(v, 2));
+    }
+    else
+    {
+      sendFeedback(F("Usage: pat scale 0.1-5"));
     }
     return;
   }
@@ -1416,6 +1456,7 @@ void handleCommand(String line)
     // reset runtime defaults
     masterBrightness = Settings::DEFAULT_BRIGHTNESS;
     autoCycle = Settings::DEFAULT_AUTOCYCLE;
+    patternSpeedScale = 1.0f;
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
     touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
@@ -1612,11 +1653,13 @@ void updatePatternEngine()
 
   const Pattern &p = PATTERNS[currentPattern];
   uint32_t elapsed = now - patternStartMs;
-  float relative = clamp01(p.evaluate(elapsed));
+  uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
+  float relative = clamp01(p.evaluate(scaledElapsed));
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
   applyPwmLevel(combined);
 
-  if (autoCycle && p.durationMs > 0 && elapsed >= p.durationMs)
+  uint32_t durEff = p.durationMs > 0 ? (uint32_t)((float)p.durationMs / patternSpeedScale) : 0;
+  if (autoCycle && durEff > 0 && elapsed >= durEff)
   {
     setPattern((currentPattern + 1) % PATTERN_COUNT, true, false);
   }

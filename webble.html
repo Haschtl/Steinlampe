@@ -66,6 +66,10 @@
           <input type="checkbox" id="autoToggle" style="margin-right:0.35rem;" />AutoCycle
         </label>
       </div>
+      <div class="row">
+        <label>Pattern Speed: <span id="patSpeedVal">1.0</span>x</label>
+        <input id="patSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+      </div>
       <label>Brightness: <span id="briVal">--</span>%</label>
       <input id="bri" type="range" min="1" max="100" value="70" />
     </div>
@@ -152,8 +156,8 @@
     const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
     const MODE_NAMES = [
-      'Konstant', 'Atmung', 'Pulsierend', 'Funkeln', 'Kerze',
-      'Lagerfeuer', 'Stufen', 'Zwinkern', 'Custom', 'Musik'
+      'Konstant', 'Atmung', 'Pulsierend', 'Funkeln', 'Kerze Soft',
+      'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Custom', 'Musik'
     ];
 
     let cmdChar = null;
@@ -350,6 +354,16 @@
       if (line.startsWith('Pattern ')) {
         const autoChk = document.getElementById('autoToggle');
         if (autoChk) autoChk.checked = line.includes('AutoCycle=ON');
+        const speedMatch = line.match(/Speed=([0-9.]+)/);
+        if (speedMatch) {
+          const v = parseFloat(speedMatch[1]);
+          const inp = document.getElementById('patSpeed');
+          if (inp && !Number.isNaN(v)) {
+            inp.value = v;
+            const valEl = document.getElementById('patSpeedVal');
+            if (valEl) valEl.textContent = v.toFixed(1);
+          }
+        }
       }
       // Presence address hint
       if (line.startsWith('Presence=')) {
@@ -436,6 +450,14 @@
     document.getElementById('autoToggle').onchange = (e) => {
       sendCmd(e.target.checked ? 'auto on' : 'auto off');
     };
+    const patSpeedEl = document.getElementById('patSpeed');
+    const patSpeedVal = document.getElementById('patSpeedVal');
+    function updatePatSpeedLabel(v) {
+      patSpeedVal.textContent = Number(v).toFixed(1);
+    }
+    patSpeedEl.oninput = (e) => updatePatSpeedLabel(e.target.value);
+    patSpeedEl.onchange = (e) => sendCmd('pat scale ' + e.target.value);
+    updatePatSpeedLabel(patSpeedEl.value);
 
     populateModes();
     document.getElementById('btnTouchHold').onclick = () => {
