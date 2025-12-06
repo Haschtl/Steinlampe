@@ -22,8 +22,9 @@
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
 void blePresenceUpdate(bool connected, const String &addr);
+void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
-namespace
+    namespace
 {
 /**
  * @brief Append a character to the line buffer and dispatch full commands.
@@ -163,12 +164,12 @@ void startBle()
 }
 #endif
 
+#if ENABLE_BT_SERIAL
 /**
  * @brief Initialize the optional Bluetooth SPP serial port.
  */
 void startBtSerial()
 {
-#if ENABLE_BT_SERIAL
   if (!serialBt.begin(Settings::BT_SERIAL_NAME))
   {
     Serial.println(F("[BT] Classic Serial konnte nicht gestartet werden."));
@@ -178,14 +179,18 @@ void startBtSerial()
     Serial.print(F("[BT] Classic Serial aktiv als '"));
     Serial.print(Settings::BT_SERIAL_NAME);
     Serial.println(F("'"));
+    esp_spp_register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+                              { sppCallback(event, param); });
   }
-#endif
 }
 } // namespace
+#endif
 
 void setupCommunications()
 {
+  #if ENABLE_BT_SERIAL
   startBtSerial();
+  #endif
 #if ENABLE_BLE
   startBle();
 #else

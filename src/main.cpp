@@ -20,6 +20,8 @@
 #include "utils.h"
 
 #include <esp_sleep.h>
+#include <esp_spp_api.h>
+#include <esp_spp_api.h>
 
 // ---------- Pins ----------
 static const int PIN_PWM = 23;       // MOSFET-Gate
@@ -37,13 +39,15 @@ static const float GAMMA = 2.2f;
 static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
-static const uint32_t DOUBLE_TAP_MS = 600;    // schneller Doppel-Tipp -> Wake-Kick
+static const uint32_t DOUBLE_TAP_MS = 600;   // schneller Doppel-Tipp -> Wake-Kick
+static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
 
 // Touch-Schwellwerte-Defaults
 static const int TOUCH_DELTA_ON_DEFAULT = 6;  // Counts relativ zur Baseline
 static const int TOUCH_DELTA_OFF_DEFAULT = 4; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_HOLD_START_MS = 500;
+static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
 static const float DIM_RAMP_STEP = 0.02f;
 static const uint32_t DIM_RAMP_DT_MS = 80;
 static const float DIM_MIN = 0.10f;
@@ -74,6 +78,7 @@ float masterBrightness = Settings::DEFAULT_BRIGHTNESS; // 0..1
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 bool lampEnabled = false;
 bool lampOffPending = false;
+float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
 
 bool switchRawState = false;
 bool switchDebouncedState = false;
@@ -87,6 +92,8 @@ bool touchActive = false;
 uint32_t touchLastSampleMs = 0;
 uint32_t touchStartMs = 0;
 uint32_t touchLastRampMs = 0;
+uint32_t lastTouchReleaseMs = 0;
+uint32_t lastTouchChangeMs = 0;
 bool dimRampUp = true;
 bool brightnessChangedByTouch = false;
 int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
@@ -95,6 +102,7 @@ int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
 String presenceAddr;
 String lastBleAddr;
+String lastBtAddr;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 uint32_t lastActivityMs = 0;
@@ -141,6 +149,143 @@ void applyPwmLevel(float normalized)
 }
 
 /**
+ * @brief Log current brightness if changed since last log.
+ */
+void logBrightnessChange(const char *reason)
+{
+  if (fabs(masterBrightness - lastLoggedBrightness) < 0.001f)
+    return;
+  lastLoggedBrightness = masterBrightness;
+  float perc = clamp01(masterBrightness) * 100.0f;
+  String msg = String(F("[Brightness] ")) + String(perc, 1) + F(" %");
+  if (reason && reason[0] != '\0')
+  {
+    msg += F(" (");
+    msg += reason;
+    msg += F(")");
+  }
+  sendFeedback(msg);
+}
+
+bool parseBool(const String &s, bool &out)
+{
+  if (s.equalsIgnoreCase(F("on")) || s.equalsIgnoreCase(F("true")) || s == "1")
+  {
+    out = true;
+    return true;
+  }
+  if (s.equalsIgnoreCase(F("off")) || s.equalsIgnoreCase(F("false")) || s == "0")
+  {
+    out = false;
+    return true;
+  }
+  return false;
+}
+
+void exportConfig()
+{
+  String cfg = F("cfg import ");
+  cfg += F("bri=");
+  cfg += String(masterBrightness, 3);
+  cfg += F(" auto=");
+  cfg += autoCycle ? F("on") : F("off");
+  cfg += F(" touch_on=");
+  cfg += touchDeltaOn;
+  cfg += F(" touch_off=");
+  cfg += touchDeltaOff;
+  cfg += F(" ramp=");
+  cfg += rampDurationMs;
+  cfg += F(" idle=");
+  cfg += idleOffMs / 60000;
+  cfg += F(" presence_en=");
+  cfg += presenceEnabled ? F("on") : F("off");
+  cfg += F(" presence_addr=");
+  cfg += presenceAddr;
+  sendFeedback(cfg);
+}
+
+void importConfig(const String &args)
+{
+  // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_en=on)
+  int idx = 0;
+  String rest = args;
+  rest.trim();
+  while (rest.length() > 0)
+  {
+    int spacePos = rest.indexOf(' ');
+    String token;
+    if (spacePos >= 0)
+    {
+      token = rest.substring(0, spacePos);
+      rest = rest.substring(spacePos + 1);
+      rest.trim();
+    }
+    else
+    {
+      token = rest;
+      rest = "";
+    }
+    int eqPos = token.indexOf('=');
+    if (eqPos <= 0)
+      continue;
+    String key = token.substring(0, eqPos);
+    String val = token.substring(eqPos + 1);
+    key.toLowerCase();
+    val.trim();
+    if (key == "ramp")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampDurationMs = v;
+    }
+    else if (key == "idle")
+    {
+      int minutes = val.toInt();
+      if (minutes < 0)
+        minutes = 0;
+      idleOffMs = minutes == 0 ? 0 : (uint32_t)minutes * 60000U;
+    }
+    else if (key == "touch_on")
+    {
+      int v = val.toInt();
+      if (v > 0)
+        touchDeltaOn = v;
+    }
+    else if (key == "touch_off")
+    {
+      int v = val.toInt();
+      if (v > 0)
+        touchDeltaOff = v;
+    }
+    else if (key == "bri")
+    {
+      float v = val.toFloat();
+      masterBrightness = clamp01(v);
+      lastLoggedBrightness = masterBrightness;
+    }
+    else if (key == "auto")
+    {
+      bool v;
+      if (parseBool(val, v))
+        autoCycle = v;
+    }
+    else if (key == "presence_en")
+    {
+      bool v;
+      if (parseBool(val, v))
+        presenceEnabled = v;
+    }
+    else if (key == "presence_addr")
+    {
+      presenceAddr = val;
+    }
+  }
+  saveSettings();
+  sendFeedback(F("[Config] Imported"));
+  printStatus();
+}
+
+/**
  * @brief Start a smooth ramp towards target brightness over durationMs.
  */
 void startBrightnessRamp(float target, uint32_t durationMs)
@@ -154,6 +299,7 @@ void startBrightnessRamp(float target, uint32_t durationMs)
   if (!rampActive)
   {
     masterBrightness = rampTargetLevel;
+    logBrightnessChange("instant");
   }
 }
 
@@ -179,6 +325,7 @@ void updateBrightnessRamp()
       lampOffPending = false;
       ledcWrite(LEDC_CH, 0);
     }
+    logBrightnessChange("ramp");
   }
 }
 
@@ -197,6 +344,7 @@ void saveSettings()
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
+  lastLoggedBrightness = masterBrightness;
 }
 
 /**
@@ -224,6 +372,7 @@ void loadSettings()
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
+  lastLoggedBrightness = masterBrightness;
 }
 
 /**
@@ -237,7 +386,19 @@ bool readSwitchRaw()
 /**
  * @brief Enable or disable the lamp output (keeps brightness state).
  */
-void setLampEnabled(bool enable)
+void logLampState(const char *reason)
+{
+  String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : F("OFF"));
+  if (reason && reason[0] != '\0')
+  {
+    msg += F(" (");
+    msg += reason;
+    msg += F(")");
+  }
+  sendFeedback(msg);
+}
+
+void setLampEnabled(bool enable, const char *reason = nullptr)
 {
   if (lampEnabled == enable)
     return;
@@ -247,12 +408,14 @@ void setLampEnabled(bool enable)
     lampEnabled = true;
     lampOffPending = false;
     startBrightnessRamp(masterBrightness <= 0.0f ? Settings::DEFAULT_BRIGHTNESS : masterBrightness, rampDurationMs);
+    logLampState(reason);
   }
   else
   {
     lampOffPending = true;
     startBrightnessRamp(0.0f, rampDurationMs);
     cancelWakeFade(false);
+    logLampState(reason);
   }
 }
 
@@ -343,13 +506,13 @@ void updateSwitchLogic()
         setPattern((currentPattern + 1) % PATTERN_COUNT, true, true);
       }
       modeTapArmed = false;
-      setLampEnabled(true);
+      setLampEnabled(true, "switch on");
     }
     else
     {
       modeTapArmed = lampEnabled;
       lastSwitchOffMs = now;
-      setLampEnabled(false);
+      setLampEnabled(false, "switch off");
     }
     saveSettings();
     lastActivityMs = now;
@@ -365,23 +528,24 @@ void blePresenceUpdate(bool connected, const String &addr)
   {
     if (addr.length() > 0)
       lastBleAddr = addr;
-    if (presenceAddr.isEmpty() && addr.length() > 0)
+    // if (presenceAddr.isEmpty() && addr.length() > 0)
+    if (addr.length() > 0)
     {
       presenceAddr = addr;
       saveSettings();
       sendFeedback(String(F("[Presence] Registered ")) + presenceAddr);
     }
-    if (presenceEnabled)
-    {
-      if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
+      if (presenceEnabled)
       {
-        if (switchDebouncedState)
+        if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
         {
-          setLampEnabled(true);
-          sendFeedback(F("[Presence] Device connected -> Lamp ON"));
+          if (switchDebouncedState)
+          {
+            setLampEnabled(true, "presence connect");
+            sendFeedback(F("[Presence] Device connected -> Lamp ON"));
+          }
         }
       }
-    }
     return;
   }
   // disconnect
@@ -391,8 +555,41 @@ void blePresenceUpdate(bool connected, const String &addr)
   {
     if (addr.length() == 0 || addr == presenceAddr)
     {
-      setLampEnabled(false);
+      setLampEnabled(false, "presence disconnect");
       sendFeedback(String(F("[Presence] Device left: ")) + presenceAddr + F(" -> Lamp OFF"));
+    }
+  }
+}
+
+/**
+ * @brief Handle Classic BT SPP events for presence tracking.
+ */
+void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+{
+  if (event == ESP_SPP_SRV_OPEN_EVT)
+  {
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+             param->srv_open.rem_bda[0], param->srv_open.rem_bda[1], param->srv_open.rem_bda[2],
+             param->srv_open.rem_bda[3], param->srv_open.rem_bda[4], param->srv_open.rem_bda[5]);
+    lastBtAddr = String(buf);
+    presenceAddr = lastBtAddr;
+    saveSettings();
+    sendFeedback(String(F("[Presence] Registered via BT: ")) + presenceAddr);
+    if (presenceEnabled && switchDebouncedState)
+    {
+      setLampEnabled(true, "BT presence connect");
+      sendFeedback(F("[Presence] BT connect -> Lamp ON"));
+    }
+  }
+  else if (event == ESP_SPP_CLOSE_EVT)
+  {
+    if (!presenceEnabled)
+      return;
+    if (!presenceAddr.isEmpty() && (lastBtAddr.isEmpty() || lastBtAddr == presenceAddr))
+    {
+      setLampEnabled(false, "BT presence disconnect");
+      sendFeedback(String(F("[Presence] BT disconnect: ")) + presenceAddr + F(" -> Lamp OFF"));
     }
   }
 }
@@ -428,7 +625,7 @@ void updateTouchBrightness()
   if (!touchActive)
   {
     touchBaseline = (touchBaseline * 15 + raw) / 16;
-    if (delta > touchDeltaOn)
+    if (delta > touchDeltaOn && (now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
     {
       touchActive = true;
       touchStartMs = now;
@@ -436,6 +633,12 @@ void updateTouchBrightness()
       brightnessChangedByTouch = false;
       dimRampUp = (masterBrightness < 0.5f);
       lastActivityMs = now;
+      sendFeedback(F("[Touch] detected"));
+      if (lastTouchReleaseMs > 0 && (now - lastTouchReleaseMs) <= TOUCH_DOUBLE_MS)
+      {
+        sendFeedback(F("[Touch] double-tap"));
+      }
+      lastTouchChangeMs = now;
     }
     return;
   }
@@ -446,9 +649,15 @@ void updateTouchBrightness()
     touchBaseline = (touchBaseline * 7 + raw) / 8;
     if (brightnessChangedByTouch)
     {
-      sendFeedback(String(F("[Brightness] ")) + String(masterBrightness * 100.0f, 1) + F(" %"));
+      logBrightnessChange("touch");
       saveSettings();
       brightnessChangedByTouch = false;
+    }
+    if ((now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
+    {
+      sendFeedback(F("[Touch] release"));
+      lastTouchReleaseMs = now;
+      lastTouchChangeMs = now;
     }
     return;
   }
@@ -473,6 +682,7 @@ void updateTouchBrightness()
     }
     masterBrightness = clamp01(newLevel);
     brightnessChangedByTouch = true;
+    logBrightnessChange("touch hold");
   }
 }
 /**
@@ -530,7 +740,6 @@ void cancelSleepFade()
   sleepFadeActive = false;
 }
 
-
 /**
  * @brief Set the master brightness in percent, optionally persisting/announcing.
  */
@@ -539,7 +748,7 @@ void setBrightnessPercent(float percent, bool persist = false, bool announce = t
   startBrightnessRamp(clamp01(percent / 100.0f), rampDurationMs);
   if (announce)
   {
-    sendFeedback(String(F("[Brightness] ")) + String(percent, 1) + F(" %"));
+    logBrightnessChange("cmd bri");
   }
   if (persist)
     saveSettings();
@@ -563,7 +772,22 @@ void printStatus()
     line += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
     line += F(")");
   }
+  line += F("  Ramp=");
+  line += String(rampDurationMs);
+  line += F("ms");
+  line += F("  IdleOff=");
+  if (idleOffMs == 0)
+    line += F("off");
+  else
+    line += String(idleOffMs / 60000);
   sendFeedback(line);
+
+  int raw = touchRead(PIN_TOUCH_DIM);
+  int delta = raw - touchBaseline;
+  String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
+                     F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) +
+                     F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
+  sendFeedback(touchLine);
 }
 
 /**
@@ -639,21 +863,21 @@ void handleCommand(String line)
   }
   if (lower == "on")
   {
-    setLampEnabled(true);
+    setLampEnabled(true, "cmd on");
     saveSettings();
     printStatus();
     return;
   }
   if (lower == "off")
   {
-    setLampEnabled(false);
+    setLampEnabled(false, "cmd off");
     saveSettings();
     printStatus();
     return;
   }
   if (lower == "toggle")
   {
-    setLampEnabled(!lampEnabled);
+    setLampEnabled(!lampEnabled, "cmd toggle");
     saveSettings();
     printStatus();
     return;
@@ -866,6 +1090,25 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("cfg"))
+  {
+    String arg = line.substring(3);
+    arg.trim();
+    if (arg.startsWith("export"))
+    {
+      exportConfig();
+    }
+    else if (arg.startsWith("import"))
+    {
+      String payload = line.substring(line.indexOf("import") + 6);
+      importConfig(payload);
+    }
+    else
+    {
+      sendFeedback(F("cfg export | cfg import key=val ..."));
+    }
+    return;
+  }
   if (lower == "calibrate")
   {
     calibrateTouchBaseline();
@@ -890,7 +1133,7 @@ void updatePatternEngine()
       wakeFadeActive = false;
       return;
     }
-  uint32_t elapsedWake = now - wakeStartMs;
+    uint32_t elapsedWake = now - wakeStartMs;
     float progress = (wakeDurationMs > 0) ? clamp01((float)elapsedWake / (float)wakeDurationMs) : 1.0f;
     float eased = progress * progress * (3.0f - 2.0f * progress);
     float level = clamp01(Settings::WAKE_START_LEVEL + (wakeTargetLevel - Settings::WAKE_START_LEVEL) * eased);
@@ -904,6 +1147,16 @@ void updatePatternEngine()
     return;
   }
 
+  // idle-off timer
+  if (idleOffMs > 0 && lampEnabled && !rampActive)
+  {
+    if (now - lastActivityMs >= idleOffMs)
+    {
+      setLampEnabled(false, "idleoff");
+      sendFeedback(F("[IdleOff] Timer -> Lamp OFF"));
+    }
+  }
+
   if (sleepFadeActive)
   {
     lastActivityMs = now;
@@ -914,32 +1167,7 @@ void updatePatternEngine()
     if (progress >= 1.0f)
     {
       sleepFadeActive = false;
-      setLampEnabled(false);
-      sendFeedback(F("[Sleep] Fade abgeschlossen."));
-    }
-    return;
-  }
-
-  // idle-off timer
-  if (idleOffMs > 0 && lampEnabled && !rampActive)
-  {
-    if (now - lastActivityMs >= idleOffMs)
-    {
-      setLampEnabled(false);
-      sendFeedback(F("[IdleOff] Timer -> Lamp OFF"));
-    }
-  }
-
-  if (sleepFadeActive)
-  {
-    uint32_t elapsedSleep = now - sleepStartMs;
-    float progress = sleepDurationMs > 0 ? clamp01((float)elapsedSleep / (float)sleepDurationMs) : 1.0f;
-    float level = sleepStartLevel * (1.0f - progress);
-    applyPwmLevel(level);
-    if (progress >= 1.0f)
-    {
-      sleepFadeActive = false;
-      setLampEnabled(false);
+      setLampEnabled(false, "sleep done");
       sendFeedback(F("[Sleep] Fade abgeschlossen."));
     }
     return;
