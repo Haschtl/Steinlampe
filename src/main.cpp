@@ -648,52 +648,53 @@ void setBrightnessPercent(float percent, bool persist = false, bool announce = t
 void printStatus()
 {
   String payload;
-  String line1 = String(F("Pattern: ")) + String(currentPattern + 1) + F(" '") + PATTERNS[currentPattern].name +
-                 F("'  Brightness ") + String(masterBrightness * 100.0f, 1) + F("%  Lamp ") +
-                 (lampEnabled ? F("ON") : F("OFF"));
+  String line1 = String(F("Pattern ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" '") +
+                 PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF"));
+  if (wakeFadeActive)
+    line1 += F(" | Wake");
+  if (sleepFadeActive)
+    line1 += F(" | Sleep");
   sendFeedback(line1);
   payload += line1 + '\n';
 
-  String line2 = String(F("AutoCycle ")) + (autoCycle ? F("ON") : F("OFF"));
-  if (wakeFadeActive)
-    line2 += F("  Wake ACTIVE");
-  if (sleepFadeActive)
-    line2 += F("  Sleep ACTIVE");
+  String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Switch=") +
+                 (switchDebouncedState ? F("ON") : F("OFF")) + F(" | Brightness=") +
+                 String(masterBrightness * 100.0f, 1) + F("%");
   sendFeedback(line2);
   payload += line2 + '\n';
 
-  String line3 = F("Presence=");
-  if (presenceEnabled)
-  {
-    line3 += F("ON (");
-    line3 += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
-    line3 += F(")");
-  }
+  String line3 = F("Ramp=");
+  line3 += String(rampDurationMs);
+  line3 += F("ms | IdleOff=");
+  if (idleOffMs == 0)
+    line3 += F("off");
   else
   {
-    line3 += F("OFF");
+    line3 += String(idleOffMs / 60000);
+    line3 += F("m");
   }
-  line3 += F("  Ramp=");
-  line3 += String(rampDurationMs);
-  line3 += F("ms  IdleOff=");
-  line3 += (idleOffMs == 0 ? F("off") : String(idleOffMs / 60000));
+  line3 += F(" | TouchDim=");
+  line3 += touchDimEnabled ? F("ON") : F("OFF");
   sendFeedback(line3);
   payload += line3 + '\n';
 
-  String line4 = F("Light=");
-#if ENABLE_LIGHT_SENSOR
-  line4 += lightSensorEnabled ? F("ON") : F("OFF");
-#else
-  line4 += F("N/A");
-#endif
-#if ENABLE_MUSIC_MODE
-  line4 += F("  Music=");
-  line4 += musicEnabled ? F("ON") : F("OFF");
-#endif
-  line4 += F("  Switch=");
-  line4 += switchDebouncedState ? F("ON") : F("OFF");
+  String line4 = F("Presence=");
+  if (presenceEnabled)
+  {
+    line4 += F("ON (");
+    line4 += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
+    line4 += F(")");
+  }
+  else
+  {
+    line4 += F("OFF");
+  }
   sendFeedback(line4);
   payload += line4 + '\n';
+
+  String customLine = String(F("[Custom] len=")) + String(customLen) + F(" stepMs=") + String(customStepMs);
+  sendFeedback(customLine);
+  payload += customLine + '\n';
 
   int raw = touchRead(PIN_TOUCH_DIM);
   int delta = raw - touchBaseline;
@@ -701,15 +702,34 @@ void printStatus()
                      F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) +
                      F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
   sendFeedback(touchLine);
-  payload += touchLine;
-  updateBleStatus(payload);
+  payload += touchLine + '\n';
+
 #if ENABLE_LIGHT_SENSOR
+  String lightLine = F("[Light] ");
   if (lightSensorEnabled)
   {
-    sendFeedback(String(F("[Light] raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
-                 F(" max=") + String((int)lightMaxRaw));
+    lightLine += String(F("raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
+                 F(" max=") + String((int)lightMaxRaw);
   }
+  else
+  {
+    lightLine += F("N/A");
+  }
+  sendFeedback(lightLine);
+  payload += lightLine + '\n';
 #endif
+
+#if ENABLE_MUSIC_MODE
+  String musicLine = String(F("[Music] ")) + (musicEnabled ? F("ON") : F("OFF"));
+  sendFeedback(musicLine);
+  payload += musicLine + '\n';
+#else
+  String musicLine = F("[Music] N/A");
+  sendFeedback(musicLine);
+  payload += musicLine + '\n';
+#endif
+
+  updateBleStatus(payload);
 }
 
 void importConfig(const String &args)
