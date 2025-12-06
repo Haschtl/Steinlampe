@@ -14,12 +14,12 @@ flowchart LR
     MU36[GPIO36\nMusic ADC]
   end
 
-  PWM23 -->|PWM| MOSFET_GATE[MOSFET Gate]
-  MOSFET_GATE --> LED_DRIVER[LED Driver 24V]
+  PWM23 -->|PWM| MOSFET_GATE["MOSFET Gate"]
+  MOSFET_GATE --> LED_DRIVER["LED Driver 24V"]
   SW32 -->|toggle to GND| GND1((GND))
   T27 -->|1MΩ + optional 2-5MΩ to GND| Lever[Metal lever]
-  LS35 --> LUX_SENSOR[Ambient Light Sensor (opt.)]
-  MU36 --> MIC_SENSOR[Audio/Mic (opt.)]
+  LS35 --> LUX_SENSOR["Ambient Light Sensor (opt.)"]
+  MU36 --> MIC_SENSOR["Audio/Mic (opt.)"]
   VIN5V[VIN/USB 5V] --> ESP32_Devkit
   GND2((GND)) --> ESP32_Devkit
   GND2 --> MOSFET_GATE
