@@ -121,7 +121,7 @@ void startBle()
   BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
   bleCommandCharacteristic = service->createCharacteristic(
       Settings::BLE_COMMAND_CHAR_UUID,
-      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
@@ -181,5 +181,32 @@ void pollCommunications()
       processInputChar(bufferBt, c);
     }
   }
+#endif
+}
+
+void sendFeedback(const String &line)
+{
+  Serial.println(line);
+#if ENABLE_BT_SERIAL
+  if (serialBt.hasClient())
+  {
+    serialBt.println(line);
+  }
+#endif
+#if ENABLE_BLE
+  if (bleClientConnected && bleCommandCharacteristic)
+  {
+    bleCommandCharacteristic->setValue(line.c_str());
+    bleCommandCharacteristic->notify();
+  }
+#endif
+}
+
+bool bleActive()
+{
+#if ENABLE_BLE
+  return bleClientConnected;
+#else
+  return false;
 #endif
 }

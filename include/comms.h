@@ -16,3 +16,13 @@ void setupCommunications();
  * @brief Poll and process incoming data on active communication channels.
  */
 void pollCommunications();
+
+/**
+ * @brief Send a single-line feedback message to Serial/BT and BLE notify (if connected).
+ */
+void sendFeedback(const String &line);
+
+/**
+ * @brief Returns true if a BLE client is currently connected (if BLE is enabled).
+ */
+bool bleActive();

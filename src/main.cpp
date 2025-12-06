@@ -16,7 +16,10 @@
 
 #include "comms.h"
 #include "patterns.h"
+#include "settings.h"
 #include "utils.h"
+
+#include <esp_sleep.h>
 
 // ---------- Pins ----------
 static const int PIN_PWM = 23;       // MOSFET-Gate
@@ -34,6 +37,7 @@ static const float GAMMA = 2.2f;
 static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
+static const uint32_t DOUBLE_TAP_MS = 600;    // schneller Doppel-Tipp -> Wake-Kick
 
 // Touch-Schwellwerte: bei schwachem Signal reduziert
 static const int TOUCH_DELTA_ON = 6;  // Counts unterhalb Baseline => "Touch aktiv"
@@ -44,9 +48,6 @@ static const float DIM_RAMP_STEP = 0.02f;
 static const uint32_t DIM_RAMP_DT_MS = 80;
 static const float DIM_MIN = 0.10f;
 static const float DIM_MAX = 0.95f;
-
-// ---------- Wake ----------
-#include "settings.h"
 
 // Vorwärtsdeklarationen
 void handleCommand(String line);
@@ -66,11 +67,13 @@ uint32_t patternStartMs = 0;
 float masterBrightness = Settings::DEFAULT_BRIGHTNESS; // 0..1
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 bool lampEnabled = false;
+bool lampOffPending = false;
 
 bool switchRawState = false;
 bool switchDebouncedState = false;
 uint32_t switchLastDebounceMs = 0;
 uint32_t lastSwitchOffMs = 0;
+uint32_t lastSwitchOnMs = 0;
 bool modeTapArmed = false;
 
 int touchBaseline = 0;
@@ -85,6 +88,17 @@ bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
 uint32_t wakeDurationMs = 0;
 float wakeTargetLevel = 0.8f;
+
+bool sleepFadeActive = false;
+uint32_t sleepStartMs = 0;
+uint32_t sleepDurationMs = 0;
+float sleepStartLevel = 0.0f;
+
+bool rampActive = false;
+float rampStartLevel = 0.0f;
+float rampTargetLevel = 0.0f;
+uint32_t rampStartMs = 0;
+uint32_t rampDurationMs = 0;
 
 // ---------- Hilfsfunktionen ----------
 /**
@@ -109,6 +123,46 @@ void applyPwmLevel(float normalized)
   if (pwmValue > (uint32_t)PWM_MAX)
     pwmValue = (uint32_t)PWM_MAX;
   ledcWrite(LEDC_CH, pwmValue);
+}
+
+/**
+ * @brief Start a smooth ramp towards target brightness over durationMs.
+ */
+void startBrightnessRamp(float target, uint32_t durationMs)
+{
+  rampStartLevel = masterBrightness;
+  rampTargetLevel = clamp01(target);
+  rampStartMs = millis();
+  rampDurationMs = durationMs;
+  rampActive = (durationMs > 0 && rampStartLevel != rampTargetLevel);
+  if (!rampActive)
+  {
+    masterBrightness = rampTargetLevel;
+  }
+}
+
+/**
+ * @brief Update brightness ramp progress; should be called regularly.
+ */
+void updateBrightnessRamp()
+{
+  if (!rampActive)
+    return;
+  uint32_t now = millis();
+  float t = rampDurationMs > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationMs) : 1.0f;
+  float eased = t * t * (3.0f - 2.0f * t);
+  masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
+  if (t >= 1.0f)
+  {
+    masterBrightness = rampTargetLevel;
+    rampActive = false;
+    if (lampOffPending && masterBrightness <= 0.0f)
+    {
+      lampEnabled = false;
+      lampOffPending = false;
+      ledcWrite(LEDC_CH, 0);
+    }
+  }
 }
 
 /**
@@ -152,11 +206,17 @@ void setLampEnabled(bool enable)
 {
   if (lampEnabled == enable)
     return;
-  lampEnabled = enable;
-  if (!lampEnabled)
+  if (enable)
   {
+    lampEnabled = true;
+    lampOffPending = false;
+    startBrightnessRamp(masterBrightness <= 0.0f ? Settings::DEFAULT_BRIGHTNESS : masterBrightness, 400);
+  }
+  else
+  {
+    lampOffPending = true;
+    startBrightnessRamp(0.0f, 250);
     cancelWakeFade(false);
-    ledcWrite(LEDC_CH, 0);
   }
 }
 
@@ -174,16 +234,8 @@ void printTouchDebug()
   }
   int raw = (int)(acc / samples);
   int delta = touchBaseline - raw;
-  Serial.print(F("[Touch] raw="));
-  Serial.print(raw);
-  Serial.print(F(" baseline="));
-  Serial.print(touchBaseline);
-  Serial.print(F(" delta="));
-  Serial.print(delta);
-  Serial.print(F(" thrOn="));
-  Serial.print(TOUCH_DELTA_ON);
-  Serial.print(F(" thrOff="));
-  Serial.println(TOUCH_DELTA_OFF);
+  sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
+               F(" delta=") + String(delta) + F(" thrOn=") + String(TOUCH_DELTA_ON) + F(" thrOff=") + String(TOUCH_DELTA_OFF));
 }
 
 /**
@@ -197,6 +249,7 @@ void initSwitchState()
   if (!lampEnabled)
     ledcWrite(LEDC_CH, 0);
   lastSwitchOffMs = millis();
+  lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
   modeTapArmed = false;
 }
 
@@ -205,12 +258,7 @@ void initSwitchState()
  */
 void announcePattern()
 {
-  Serial.print(F("[Mode] "));
-  Serial.print(currentPattern + 1);
-  Serial.print(F("/"));
-  Serial.print(PATTERN_COUNT);
-  Serial.print(F(" - "));
-  Serial.println(PATTERNS[currentPattern].name);
+  sendFeedback(String(F("[Mode] ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" - ") + PATTERNS[currentPattern].name);
 }
 
 /**
@@ -248,6 +296,12 @@ void updateSwitchLogic()
     switchDebouncedState = switchRawState;
     if (switchDebouncedState)
     {
+      uint32_t nowOn = now;
+      if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
+      {
+        startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
+      }
+      lastSwitchOnMs = nowOn;
       if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
       {
         setPattern((currentPattern + 1) % PATTERN_COUNT, true, true);
@@ -312,9 +366,7 @@ void updateTouchBrightness()
     touchBaseline = (touchBaseline * 7 + raw) / 8;
     if (brightnessChangedByTouch)
     {
-      Serial.print(F("[Brightness] "));
-      Serial.print(masterBrightness * 100.0f, 1);
-      Serial.println(F(" %"));
+      sendFeedback(String(F("[Brightness] ")) + String(masterBrightness * 100.0f, 1) + F(" %"));
       saveSettings();
       brightnessChangedByTouch = false;
     }
@@ -356,9 +408,7 @@ void startWakeFade(uint32_t durationMs, bool announce)
   wakeFadeActive = true;
   if (announce)
   {
-    Serial.print(F("[Wake] Starte Fade über "));
-    Serial.print(durationMs / 1000.0f, 1);
-    Serial.println(F(" Sekunden."));
+    sendFeedback(String(F("[Wake] Starte Fade über ")) + String(durationMs / 1000.0f, 1) + F(" Sekunden."));
   }
 }
 
@@ -372,8 +422,31 @@ void cancelWakeFade(bool announce)
   wakeFadeActive = false;
   if (announce)
   {
-    Serial.println(F("[Wake] Abgebrochen."));
+    sendFeedback(F("[Wake] Abgebrochen."));
   }
+}
+
+/**
+ * @brief Start a sleep fade down to zero over the given duration.
+ */
+void startSleepFade(uint32_t durationMs)
+{
+  if (durationMs < 5000)
+    durationMs = 5000;
+  sleepStartLevel = masterBrightness;
+  sleepDurationMs = durationMs;
+  sleepStartMs = millis();
+  sleepFadeActive = true;
+  setLampEnabled(true);
+  sendFeedback(String(F("[Sleep] Fade ueber ")) + String(durationMs / 1000) + F("s"));
+}
+
+/**
+ * @brief Cancel an active sleep fade.
+ */
+void cancelSleepFade()
+{
+  sleepFadeActive = false;
 }
 
 
@@ -382,12 +455,10 @@ void cancelWakeFade(bool announce)
  */
 void setBrightnessPercent(float percent, bool persist = false, bool announce = true)
 {
-  masterBrightness = clamp01(percent / 100.0f);
+  startBrightnessRamp(clamp01(percent / 100.0f), 400);
   if (announce)
   {
-    Serial.print(F("[Brightness] "));
-    Serial.print(percent, 1);
-    Serial.println(F(" %"));
+    sendFeedback(String(F("[Brightness] ")) + String(percent, 1) + F(" %"));
   }
   if (persist)
     saveSettings();
@@ -398,24 +469,14 @@ void setBrightnessPercent(float percent, bool persist = false, bool announce = t
  */
 void printStatus()
 {
-  Serial.print(F("Pattern: "));
-  Serial.print(currentPattern + 1);
-  Serial.print(F(" '"));
-  Serial.print(PATTERNS[currentPattern].name);
-  Serial.print(F("'  Brightness "));
-  Serial.print(masterBrightness * 100.0f, 1);
-  Serial.print(F("%  AutoCycle "));
-  Serial.print(autoCycle ? F("ON") : F("OFF"));
-  Serial.print(F("  Lamp "));
-  Serial.print(lampEnabled ? F("ON") : F("OFF"));
+  String line = String(F("Pattern: ")) + String(currentPattern + 1) + F(" '") + PATTERNS[currentPattern].name +
+                F("'  Brightness ") + String(masterBrightness * 100.0f, 1) + F("%  AutoCycle ") +
+                (autoCycle ? F("ON") : F("OFF")) + F("  Lamp ") + (lampEnabled ? F("ON") : F("OFF"));
   if (wakeFadeActive)
-  {
-    Serial.println(F("  Wake ACTIVE"));
-  }
-  else
-  {
-    Serial.println();
-  }
+    line += F("  Wake ACTIVE");
+  if (sleepFadeActive)
+    line += F("  Sleep ACTIVE");
+  sendFeedback(line);
 }
 
 /**
@@ -423,17 +484,24 @@ void printStatus()
  */
 void printHelp()
 {
-  Serial.println(F("Serien-Kommandos:"));
-  Serial.println(F("  list              - verfügbare Muster"));
-  Serial.println(F("  mode <1..N>       - bestimmtes Muster wählen"));
-  Serial.println(F("  next / prev       - weiter oder zurück"));
-  Serial.println(F("  auto on|off       - automatisches Durchschalten"));
-  Serial.println(F("  bri <0..100>      - globale Helligkeit in %"));
-  Serial.println(F("  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)"));
-  Serial.println(F("  wake stop         - Weckfade abbrechen"));
-  Serial.println(F("  touch             - aktuellen Touch-Rohwert anzeigen"));
-  Serial.println(F("  status            - aktuellen Zustand anzeigen"));
-  Serial.println(F("  help              - diese Übersicht"));
+  const char *lines[] = {
+      "Serien-Kommandos:",
+      "  list              - verfügbare Muster",
+      "  mode <1..N>       - bestimmtes Muster wählen",
+      "  next / prev       - weiter oder zurück",
+      "  auto on|off       - automatisches Durchschalten",
+      "  bri <0..100>      - globale Helligkeit in %",
+      "  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)",
+      "  wake stop         - Weckfade abbrechen",
+      "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
+      "  sleep stop        - Sleep-Fade abbrechen",
+      "  calibrate         - Touch-Baseline neu messen",
+      "  touch             - aktuellen Touch-Rohwert anzeigen",
+      "  status            - aktuellen Zustand anzeigen",
+      "  help              - diese Übersicht",
+  };
+  for (auto l : lines)
+    sendFeedback(String(l));
 }
 
 /**
@@ -443,9 +511,7 @@ void listPatterns()
 {
   for (size_t i = 0; i < PATTERN_COUNT; ++i)
   {
-    Serial.print(i + 1);
-    Serial.print(F(": "));
-    Serial.println(PATTERNS[i].name);
+    sendFeedback(String(i + 1) + F(": ") + PATTERNS[i].name);
   }
 }
 
@@ -502,7 +568,7 @@ void handleCommand(String line)
     }
     else
     {
-      Serial.println(F("Ungültiger Mode."));
+      sendFeedback(F("Ungültiger Mode."));
     }
     return;
   }
@@ -526,7 +592,7 @@ void handleCommand(String line)
     else if (arg == "off")
       autoCycle = false;
     else
-      Serial.println(F("auto on|off"));
+      sendFeedback(F("auto on|off"));
     saveSettings();
     printStatus();
     return;
@@ -553,8 +619,37 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("sleep"))
+  {
+    String arg = line.substring(5);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "stop" || arg == "cancel")
+    {
+      cancelSleepFade();
+      sendFeedback(F("[Sleep] Abgebrochen."));
+    }
+    else
+    {
+      uint32_t durMs = Settings::DEFAULT_SLEEP_MS;
+      if (arg.length() > 0)
+      {
+        float minutes = line.substring(5).toFloat();
+        if (minutes > 0.0f)
+          durMs = (uint32_t)(minutes * 60000.0f);
+      }
+      startSleepFade(durMs);
+    }
+    return;
+  }
+  if (lower == "calibrate")
+  {
+    calibrateTouchBaseline();
+    sendFeedback(F("[Touch] Baseline neu kalibriert."));
+    return;
+  }
 
-  Serial.println(F("Unbekanntes Kommando. 'help' tippen."));
+  sendFeedback(F("Unbekanntes Kommando. 'help' tippen."));
 }
 
 /**
@@ -579,7 +674,22 @@ void updatePatternEngine()
     {
       wakeFadeActive = false;
       patternStartMs = now;
-      Serial.println(F("[Wake] Fade abgeschlossen."));
+      sendFeedback(F("[Wake] Fade abgeschlossen."));
+    }
+    return;
+  }
+
+  if (sleepFadeActive)
+  {
+    uint32_t elapsedSleep = now - sleepStartMs;
+    float progress = sleepDurationMs > 0 ? clamp01((float)elapsedSleep / (float)sleepDurationMs) : 1.0f;
+    float level = sleepStartLevel * (1.0f - progress);
+    applyPwmLevel(level);
+    if (progress >= 1.0f)
+    {
+      sleepFadeActive = false;
+      setLampEnabled(false);
+      sendFeedback(F("[Sleep] Fade abgeschlossen."));
     }
     return;
   }
@@ -594,6 +704,22 @@ void updatePatternEngine()
   {
     setPattern((currentPattern + 1) % PATTERN_COUNT, true, false);
   }
+}
+
+/**
+ * @brief Enter light sleep briefly when lamp is idle to save power.
+ */
+void maybeLightSleep()
+{
+#if !ENABLE_BLE
+  if (lampEnabled || wakeFadeActive || sleepFadeActive || rampActive)
+    return;
+  esp_sleep_enable_timer_wakeup(200000); // 200 ms
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_SWITCH, SWITCH_ACTIVE_LEVEL == LOW ? 0 : 1);
+  esp_light_sleep_start();
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+#endif
 }
 
 // ---------- Setup / Loop ----------
@@ -631,6 +757,8 @@ void loop()
   pollCommunications();
   updateSwitchLogic();
   updateTouchBrightness();
+  updateBrightnessRamp();
   updatePatternEngine();
+  maybeLightSleep();
   delay(10);
 }
