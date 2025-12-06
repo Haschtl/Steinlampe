@@ -34,6 +34,13 @@ Touch: lever isolated from switch contact, wired via 1MΩ to GPIO27; optional 2-
 - Compile-time flags live in `include/lamp_config.h` (`ENABLE_BLE`, `ENABLE_BT_SERIAL`).
 - User-facing defaults (names, wake duration, brightness) are centralized in `include/settings.h`.
 
+### BLE / BT Interface
+- BLE Service UUID: `d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b`
+  - Command Characteristic UUID: `4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7` (Write/WriteNR/Notify) — send the text commands below, notifications carry feedback.
+  - Status Characteristic UUID: `c5ad78b6-9b77-4a96-9a42-8e6e9a40c123` (Read/Notify) — read/subscribe for snapshots (same content as `status`).
+- Classic BT (SPP): Device name from `Settings::BT_SERIAL_NAME` (default `Quarzlampe-SPP`); identical Text-Kommandos wie bei USB/BLE.
+- Presence: BLE- oder SPP-Connect registriert die Peer-MAC und kann Auto-Off/On steuern (`presence`-Kommandos).
+
 ## Command Reference
 
 All commands can be sent via USB serial, BLE, or classic BT serial:

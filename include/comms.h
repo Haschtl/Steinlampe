@@ -29,3 +29,8 @@ bool bleActive();
 
 // Presence hooks
 void blePresenceUpdate(bool connected, const String &addr);
+
+/**
+ * @brief Update the BLE status characteristic (read/notify) with a snapshot string.
+ */
+void updateBleStatus(const String &statusPayload);

@@ -56,6 +56,7 @@ String bufferBt;
 #if ENABLE_BLE
 BLEServer *bleServer = nullptr;
 BLECharacteristic *bleCommandCharacteristic = nullptr;
+BLECharacteristic *bleStatusCharacteristic = nullptr;
 bool bleClientConnected = false;
 
 /**
@@ -153,6 +154,9 @@ void startBle()
       Settings::BLE_COMMAND_CHAR_UUID,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
+  bleStatusCharacteristic = service->createCharacteristic(
+      Settings::BLE_STATUS_CHAR_UUID,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
@@ -233,6 +237,19 @@ void sendFeedback(const String &line)
     bleCommandCharacteristic->setValue(line.c_str());
     bleCommandCharacteristic->notify();
   }
+#endif
+}
+
+void updateBleStatus(const String &statusPayload)
+{
+#if ENABLE_BLE
+  if (!bleStatusCharacteristic)
+    return;
+  bleStatusCharacteristic->setValue(statusPayload.c_str());
+  if (bleClientConnected)
+    bleStatusCharacteristic->notify();
+#else
+  (void)statusPayload;
 #endif
 }
 

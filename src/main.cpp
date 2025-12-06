@@ -204,86 +204,6 @@ void exportConfig()
   sendFeedback(cfg);
 }
 
-void importConfig(const String &args)
-{
-  // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_en=on)
-  int idx = 0;
-  String rest = args;
-  rest.trim();
-  while (rest.length() > 0)
-  {
-    int spacePos = rest.indexOf(' ');
-    String token;
-    if (spacePos >= 0)
-    {
-      token = rest.substring(0, spacePos);
-      rest = rest.substring(spacePos + 1);
-      rest.trim();
-    }
-    else
-    {
-      token = rest;
-      rest = "";
-    }
-    int eqPos = token.indexOf('=');
-    if (eqPos <= 0)
-      continue;
-    String key = token.substring(0, eqPos);
-    String val = token.substring(eqPos + 1);
-    key.toLowerCase();
-    val.trim();
-    if (key == "ramp")
-    {
-      uint32_t v = val.toInt();
-      if (v >= 50 && v <= 10000)
-        rampDurationMs = v;
-    }
-    else if (key == "idle")
-    {
-      int minutes = val.toInt();
-      if (minutes < 0)
-        minutes = 0;
-      idleOffMs = minutes == 0 ? 0 : (uint32_t)minutes * 60000U;
-    }
-    else if (key == "touch_on")
-    {
-      int v = val.toInt();
-      if (v > 0)
-        touchDeltaOn = v;
-    }
-    else if (key == "touch_off")
-    {
-      int v = val.toInt();
-      if (v > 0)
-        touchDeltaOff = v;
-    }
-    else if (key == "bri")
-    {
-      float v = val.toFloat();
-      masterBrightness = clamp01(v);
-      lastLoggedBrightness = masterBrightness;
-    }
-    else if (key == "auto")
-    {
-      bool v;
-      if (parseBool(val, v))
-        autoCycle = v;
-    }
-    else if (key == "presence_en")
-    {
-      bool v;
-      if (parseBool(val, v))
-        presenceEnabled = v;
-    }
-    else if (key == "presence_addr")
-    {
-      presenceAddr = val;
-    }
-  }
-  saveSettings();
-  sendFeedback(F("[Config] Imported"));
-  printStatus();
-}
 
 /**
  * @brief Start a smooth ramp towards target brightness over durationMs.
@@ -788,6 +708,88 @@ void printStatus()
                      F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) +
                      F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
   sendFeedback(touchLine);
+  updateBleStatus(line);
+}
+
+void importConfig(const String &args)
+{
+  // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_en=on)
+  int idx = 0;
+  String rest = args;
+  rest.trim();
+  while (rest.length() > 0)
+  {
+    int spacePos = rest.indexOf(' ');
+    String token;
+    if (spacePos >= 0)
+    {
+      token = rest.substring(0, spacePos);
+      rest = rest.substring(spacePos + 1);
+      rest.trim();
+    }
+    else
+    {
+      token = rest;
+      rest = "";
+    }
+    int eqPos = token.indexOf('=');
+    if (eqPos <= 0)
+      continue;
+    String key = token.substring(0, eqPos);
+    String val = token.substring(eqPos + 1);
+    key.toLowerCase();
+    val.trim();
+    if (key == "ramp")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampDurationMs = v;
+    }
+    else if (key == "idle")
+    {
+      int minutes = val.toInt();
+      if (minutes < 0)
+        minutes = 0;
+      idleOffMs = minutes == 0 ? 0 : (uint32_t)minutes * 60000U;
+    }
+    else if (key == "touch_on")
+    {
+      int v = val.toInt();
+      if (v > 0)
+        touchDeltaOn = v;
+    }
+    else if (key == "touch_off")
+    {
+      int v = val.toInt();
+      if (v > 0)
+        touchDeltaOff = v;
+    }
+    else if (key == "bri")
+    {
+      float v = val.toFloat();
+      masterBrightness = clamp01(v);
+      lastLoggedBrightness = masterBrightness;
+    }
+    else if (key == "auto")
+    {
+      bool v;
+      if (parseBool(val, v))
+        autoCycle = v;
+    }
+    else if (key == "presence_en")
+    {
+      bool v;
+      if (parseBool(val, v))
+        presenceEnabled = v;
+    }
+    else if (key == "presence_addr")
+    {
+      presenceAddr = val;
+    }
+  }
+  saveSettings();
+  sendFeedback(F("[Config] Imported"));
+  printStatus();
 }
 
 /**
