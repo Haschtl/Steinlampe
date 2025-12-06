@@ -49,9 +49,10 @@ static const float DIM_MAX = 0.95f;
 void handleCommand(String line);
 void startWakeFade(uint32_t durationMs, bool announce = true);
 void cancelWakeFade(bool announce = true);
+String getBLEAddress();
 
-// ---------- Persistenz ----------
-Preferences prefs;
+    // ---------- Persistenz ----------
+    Preferences prefs;
 static const char *PREF_NS = "lamp";
 static const char *PREF_KEY_B1000 = "b1000";
 static const char *PREF_KEY_MODE = "mode";
@@ -425,7 +426,6 @@ void updateSwitchLogic()
 
 // Presence is handled via polling in loop()
 void blePresenceUpdate(bool, const String &) {}
-void sppCallback(esp_spp_cb_event_t, esp_spp_cb_param_t *) {}
 
 /**
  * @brief Measure and store a fresh baseline value for the touch electrode.
@@ -700,6 +700,19 @@ void printStatus()
   }
   sendFeedback(line4);
   payload += line4 + '\n';
+
+#if ENABLE_BLE
+  String line4b = F("Device=");
+  line4b += getBLEAddress();
+  line4b += F(" | Service=");
+  line4b += Settings::BLE_SERVICE_UUID;
+  line4b += F(" | Cmd=");
+  line4b += Settings::BLE_COMMAND_CHAR_UUID;
+  line4b += F(" | Status=");
+  line4b += Settings::BLE_STATUS_CHAR_UUID;
+  sendFeedback(line4b);
+  payload += line4b + '\n';
+#endif
 
   String customLine = String(F("[Custom] len=")) + String(customLen) + F(" stepMs=") + String(customStepMs);
   sendFeedback(customLine);

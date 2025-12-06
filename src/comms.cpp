@@ -5,6 +5,7 @@
 
 #if ENABLE_BT_SERIAL
 #include <BluetoothSerial.h>
+#include <esp_spp_api.h>
 #endif
 
 #if ENABLE_BLE
@@ -22,7 +23,6 @@
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
 void blePresenceUpdate(bool connected, const String &addr);
-void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
     namespace
 {
@@ -53,6 +53,49 @@ String bufferUsb;
 BluetoothSerial serialBt;
 // Line buffer for BT serial input
 String bufferBt;
+String lastSppAddr;
+
+String formatMac(const uint8_t bda[6])
+{
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+  return String(buf);
+}
+
+void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+{
+  switch (event)
+  {
+  case ESP_SPP_SRV_OPEN_EVT:
+    if (param)
+    {
+      lastSppAddr = formatMac(param->srv_open.rem_bda);
+      Serial.print(F("[BT] Client connected: "));
+      Serial.println(lastSppAddr);
+      sendFeedback(String(F("[BT] Client connected ")) + lastSppAddr);
+    }
+    else
+    {
+      Serial.println(F("[BT] Client connected"));
+    }
+    break;
+  case ESP_SPP_CLOSE_EVT:
+    if (param)
+    {
+      String addr = lastSppAddr;
+      Serial.print(F("[BT] Client disconnected: "));
+      Serial.println(addr);
+      sendFeedback(String(F("[BT] Client disconnected ")) + addr);
+    }
+    else
+    {
+      Serial.println(F("[BT] Client disconnected"));
+    }
+    break;
+  default:
+    break;
+  }
+}
 #endif
 
 #if ENABLE_BLE
@@ -189,8 +232,8 @@ void startBtSerial()
     Serial.print(F("[BT] Classic Serial aktiv als '"));
     Serial.print(Settings::BT_SERIAL_NAME);
     Serial.println(F("'"));
-    // esp_spp_register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
-    //                           { sppCallback(event, param); });
+    serialBt.register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+                              { sppCallbackLocal(event, param); });
   }
 }
 } // namespace
@@ -302,4 +345,11 @@ String getLastBleAddr()
 #else
   return String();
 #endif
+}
+
+String getBLEAddress(){
+  if (BLEDevice::getInitialized())
+    return BLEDevice::getAddress().toString().c_str();
+  else
+    return F("N/A");
 }
