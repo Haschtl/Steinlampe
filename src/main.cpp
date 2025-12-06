@@ -15,6 +15,7 @@
 #include <math.h>
 
 #include "comms.h"
+#include "lamp_state.h"
 #include "patterns.h"
 #include "settings.h"
 #include "utils.h"
@@ -27,13 +28,6 @@
 static const int PIN_PWM = 23;       // MOSFET-Gate
 static const int PIN_SWITCH = 32;    // Kippschalter (digital)
 static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO27)
-
-// ---------- LEDC ----------
-static const int LEDC_CH = 0;
-static const int LEDC_FREQ = 2000;
-static const int LEDC_RES = 12;
-static const int PWM_MAX = (1 << LEDC_RES) - 1;
-static const float GAMMA = 2.2f;
 
 // ---------- Schalter / Touch ----------
 static const int SWITCH_ACTIVE_LEVEL = LOW;
@@ -86,21 +80,8 @@ static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 // Active pattern state (index and start time)
 size_t currentPattern = 0;
 uint32_t patternStartMs = 0;
-// User-facing brightness (0..1) and last non-zero remembered level
-float masterBrightness = Settings::DEFAULT_BRIGHTNESS;
-float lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
 // General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
-bool lampEnabled = false;
-bool lampOffPending = false;
-// Logging helper to avoid spamming identical values
-float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
-// User clamp for min/max brightness
-float briMinUser = Settings::BRI_MIN_DEFAULT;
-float briMaxUser = Settings::BRI_MAX_DEFAULT;
-// Multipliers for output: ambientScale from light sensor, outputScale for on/off ramps
-float ambientScale = 1.0f;
-float outputScale = 1.0f;
 
 // Switch handling
 bool switchRawState = false;
@@ -133,9 +114,7 @@ String presenceAddr;
 String lastBleAddr;
 String lastBtAddr;
 // Ramping and timers
-uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
-uint32_t lastActivityMs = 0;
 #if ENABLE_LIGHT_SENSOR
 bool lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
 float lightFiltered = 0.0f;
@@ -184,65 +163,7 @@ uint32_t sleepStartMs = 0;
 uint32_t sleepDurationMs = 0;
 float sleepStartLevel = 0.0f;
 
-bool rampActive = false;
-float rampStartLevel = 0.0f;
-float rampTargetLevel = 0.0f;
-uint32_t rampStartMs = 0;
-uint32_t rampDurationActive = 0;
-bool rampAffectsMaster = true;
-
 // ---------- Hilfsfunktionen ----------
-/**
- * @brief Write a gamma-corrected PWM value to the LED driver.
- *
- * @param normalized Desired brightness in the range [0,1].
- */
-void applyPwmLevel(float normalized)
-{
-  float level = clamp01(normalized);
-  // Respect user min/max before gamma
-  if (briMaxUser < briMinUser)
-    briMaxUser = briMinUser;
-  float levelEff = briMinUser + (briMaxUser - briMinUser) * level;
-  if (level <= 0.0f)
-  {
-    ledcWrite(LEDC_CH, 0);
-    return;
-  }
-  float pwm = powf(levelEff, GAMMA) * PWM_MAX;
-  if (pwm < 0.0f)
-    pwm = 0.0f;
-  if (pwm > PWM_MAX)
-    pwm = (float)PWM_MAX;
-  uint32_t pwmValue = (uint32_t)(pwm + 0.5f);
-  if (pwmValue > (uint32_t)PWM_MAX)
-    pwmValue = (uint32_t)PWM_MAX;
-  ledcWrite(LEDC_CH, pwmValue);
-}
-
-/**
- * @brief Log current brightness if changed since last log.
- */
-void logBrightnessChange(const char *reason)
-{
-  if (fabs(masterBrightness - lastLoggedBrightness) < 0.001f)
-    return;
-  lastLoggedBrightness = masterBrightness;
-  float perc = clamp01(masterBrightness) * 100.0f;
-  String msg = String(F("[Brightness] ")) + String(perc, 1) + F(" %");
-  if (reason && reason[0] != '\0')
-  {
-    msg += F(" (");
-    msg += reason;
-    msg += F(")");
-  }
-  sendFeedback(msg);
-#if DEBUG_BRIGHTNESS_LOG
-  Serial.print(F("[DBG] masterBrightness="));
-  Serial.println(masterBrightness, 4);
-#endif
-}
-
 bool parseBool(const String &s, bool &out)
 {
   if (s.equalsIgnoreCase(F("on")) || s.equalsIgnoreCase(F("true")) || s == "1")
@@ -290,69 +211,6 @@ void exportConfig()
   sendFeedback(cfg);
 }
 
-
-/**
- * @brief Start a smooth ramp towards target brightness over durationMs.
- */
-void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true)
-{
-  rampAffectsMaster = affectMaster;
-  // Decide whether we ramp the stored brightness or only the live output
-  if (affectMaster)
-    rampStartLevel = masterBrightness;
-  else
-    rampStartLevel = outputScale;
-  rampTargetLevel = clamp01(target);
-  rampStartMs = millis();
-  uint32_t dur = (durationMs > 0 ? durationMs : rampDurationMs);
-  rampDurationActive = dur;
-  rampActive = (dur > 0 && rampStartLevel != rampTargetLevel);
-  if (!rampActive)
-  {
-    if (rampAffectsMaster)
-    {
-      masterBrightness = rampTargetLevel;
-      logBrightnessChange("instant");
-    }
-    else
-    {
-      outputScale = rampTargetLevel;
-    }
-  }
-}
-
-/**
- * @brief Update brightness ramp progress; should be called regularly.
- */
-void updateBrightnessRamp()
-{
-  if (!rampActive)
-    return;
-  uint32_t now = millis();
-  lastActivityMs = now;
-  float t = rampDurationActive > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationActive) : 1.0f;
-  float eased = t * t * (3.0f - 2.0f * t);
-  if (rampAffectsMaster)
-    masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
-  else
-    outputScale = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
-  if (t >= 1.0f)
-  {
-    if (rampAffectsMaster)
-      masterBrightness = rampTargetLevel;
-    else
-      outputScale = rampTargetLevel;
-    rampActive = false;
-    if (lampOffPending && rampTargetLevel <= 0.0f)
-    {
-      lampEnabled = false;
-      lampOffPending = false;
-      ledcWrite(LEDC_CH, 0);
-    }
-    if (rampAffectsMaster)
-      logBrightnessChange("ramp");
-  }
-}
 
 /**
  * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
@@ -451,59 +309,6 @@ void loadSettings()
 bool readSwitchRaw()
 {
   return digitalRead(PIN_SWITCH) == SWITCH_ACTIVE_LEVEL;
-}
-
-/**
- * @brief Enable or disable the lamp output (keeps brightness state).
- */
-void logLampState(const char *reason)
-{
-  String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : F("OFF"));
-  if (reason && reason[0] != '\0')
-  {
-    msg += F(" (");
-    msg += reason;
-    msg += F(")");
-  }
-  sendFeedback(msg);
-}
-
-void setLampEnabled(bool enable, const char *reason = nullptr)
-{
-  if (lampEnabled == enable && !(enable && lampOffPending))
-    return;
-  lastActivityMs = millis();
-  if (enable)
-  {
-    // Fade in: keep stored brightness, ramp output from 0→1
-    outputScale = 0.0f;
-    lampEnabled = true;
-    lampOffPending = false;
-    float fallback = (lastOnBrightness > briMinUser) ? lastOnBrightness : Settings::DEFAULT_BRIGHTNESS;
-    float target = (masterBrightness > briMinUser) ? masterBrightness : fallback;
-    if (target < briMinUser)
-      target = briMinUser;
-    if (target > briMaxUser)
-      target = briMaxUser;
-    masterBrightness = target;
-    startBrightnessRamp(1.0f, rampDurationMs, false); // ramp output only
-    lastOnBrightness = target;
-    logLampState(reason);
-  }
-  else
-  {
-    // Fade out output to 0, keep master for next ON
-    lampOffPending = true;
-    if (masterBrightness > briMinUser)
-      lastOnBrightness = masterBrightness;
-    else if (lastOnBrightness < briMinUser)
-      lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
-    startBrightnessRamp(0.0f, rampDurationMs, false);
-    cancelWakeFade(false);
-    logLampState(reason);
-    // if (reason && strstr(reason, "switch") == nullptr)
-    //   sendFeedback(F("[Switch] OFF"));
-  }
 }
 
 /**
