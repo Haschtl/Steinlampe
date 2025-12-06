@@ -4,22 +4,30 @@ This firmware drives a stone-lamp via ESP32 PWM patterns. It offers switch contr
 
 ## Hardware Overview
 
-```
-                +------------------------+
-                |        ESP32 Devkit    |
-                |                        |
-                |   (GPIO23) PWM  ----> MOSFET Gate -> LED Driver 24V
-                |   (GPIO32) Switch ----> old toggle (to GND)
-                |   (GPIO27/T7) Touch --> metal lever (via 1MΩ)   
-                |                        |
-                |   VIN/USB / GND ------> supply + reference
-                +------------------------+
+```mermaid
+flowchart LR
+  subgraph ESP32 Devkit
+    PWM23[GPIO23\nPWM out]
+    SW32[GPIO32\nSwitch in]
+    T27[GPIO27/T7\nTouch]
+    LS35((GPIO35\nLight ADC))
+    MU36((GPIO36\nMusic ADC))
+  end
 
-Old toggle switch: one pole to GPIO32, other pole to GND (internal pull-up).
-Touch: lever isolated from switch contact, wired via 1MΩ to GPIO27; optional 2-5MΩ bleeder to GND.
-.
-
+  PWM23 -->|PWM| MOSFET[Gate] --> LED[LED Driver 24V]
+  SW32 -->|toggle to GND| GND1((GND))
+  T27 -->|via 1MΩ + optional 2-5MΩ to GND| Lever[Metal lever]
+  LS35 --> LUX[Ambient Light Sensor (optional)]
+  MU36 --> MIC[Audio envelope/Mic (optional)]
+  VIN5V[VIN/USB 5V] --> ESP32 Devkit
+  GND2((GND)) --> ESP32 Devkit
+  GND2 --> MOSFET
+  GND2 --> LED
 ```
+
+- Old toggle switch: one pole to GPIO32, other pole to GND (internal pull-up).
+- Touch: lever isolated from switch contact, wired via 1 MΩ to GPIO27; optional 2–5 MΩ bleeder to GND.
+- Optional sensors: GPIO35 for ambient light, GPIO36 for music/audio (only if built with `ENABLE_LIGHT_SENSOR` / `ENABLE_MUSIC_MODE`).
 
 ## Features
 

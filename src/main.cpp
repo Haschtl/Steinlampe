@@ -822,11 +822,16 @@ void printStatus()
     line += F("  Wake ACTIVE");
   if (sleepFadeActive)
     line += F("  Sleep ACTIVE");
+  line += F("  Presence=");
   if (presenceEnabled)
   {
-    line += F("  Presence ON (");
+    line += F("ON (");
     line += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
     line += F(")");
+  }
+  else
+  {
+    line += F("OFF");
   }
   line += F("  Ramp=");
   line += String(rampDurationMs);
@@ -836,6 +841,16 @@ void printStatus()
     line += F("off");
   else
     line += String(idleOffMs / 60000);
+  line += F("  Light=");
+#if ENABLE_LIGHT_SENSOR
+  line += lightSensorEnabled ? F("ON") : F("OFF");
+#else
+  line += F("N/A");
+#endif
+#if ENABLE_MUSIC_MODE
+  line += F("  Music=");
+  line += musicEnabled ? F("ON") : F("OFF");
+#endif
   sendFeedback(line);
 
   int raw = touchRead(PIN_TOUCH_DIM);
