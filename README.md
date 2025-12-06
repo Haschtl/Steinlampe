@@ -29,6 +29,11 @@ Touch: lever isolated from switch contact, wired via 1MΩ to GPIO27; optional 2-
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
 
+### Configuration
+
+- Compile-time flags live in `include/lamp_config.h` (`ENABLE_BLE`, `ENABLE_BT_SERIAL`).
+- User-facing defaults (names, wake duration, brightness) are centralized in `include/settings.h`.
+
 ## Command Reference
 
 All commands can be sent via USB serial, BLE, or classic BT serial:

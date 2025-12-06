@@ -1,6 +1,7 @@
 #include "comms.h"
 
 #include "lamp_config.h"
+#include "settings.h"
 
 #if ENABLE_BT_SERIAL
 #include <BluetoothSerial.h>
@@ -51,10 +52,6 @@ String bufferBt;
 #endif
 
 #if ENABLE_BLE
-static const char *BLE_DEVICE_NAME = "Quarzlampe";
-static const char *BLE_SERVICE_UUID = "d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b";
-static const char *BLE_COMMAND_CHAR_UUID = "4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7";
-
 BLEServer *bleServer = nullptr;
 BLECharacteristic *bleCommandCharacteristic = nullptr;
 bool bleClientConnected = false;
@@ -118,17 +115,17 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
  */
 void startBle()
 {
-  BLEDevice::init(BLE_DEVICE_NAME);
+  BLEDevice::init(Settings::BLE_DEVICE_NAME);
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new LampBleServerCallbacks());
-  BLEService *service = bleServer->createService(BLE_SERVICE_UUID);
+  BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
   bleCommandCharacteristic = service->createCharacteristic(
-      BLE_COMMAND_CHAR_UUID,
+      Settings::BLE_COMMAND_CHAR_UUID,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(BLE_SERVICE_UUID);
+  advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
@@ -143,15 +140,14 @@ void startBle()
 void startBtSerial()
 {
 #if ENABLE_BT_SERIAL
-  static const char *BT_SERIAL_NAME = "Quarzlampe-SPP";
-  if (!serialBt.begin(BT_SERIAL_NAME))
+  if (!serialBt.begin(Settings::BT_SERIAL_NAME))
   {
     Serial.println(F("[BT] Classic Serial konnte nicht gestartet werden."));
   }
   else
   {
     Serial.print(F("[BT] Classic Serial aktiv als '"));
-    Serial.print(BT_SERIAL_NAME);
+    Serial.print(Settings::BT_SERIAL_NAME);
     Serial.println(F("'"));
   }
 #endif

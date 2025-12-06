@@ -45,9 +45,7 @@ static const float DIM_MIN = 0.10f;
 static const float DIM_MAX = 0.95f;
 
 // ---------- Wake ----------
-static const uint32_t WAKE_DEFAULT_MS = 180000; // 3 Minuten
-static const float WAKE_START_LEVEL = 0.02f;
-static const float WAKE_MIN_TARGET = 0.65f;
+#include "settings.h"
 
 // Vorwärtsdeklarationen
 void handleCommand(String line);
@@ -64,8 +62,8 @@ static const char *PREF_KEY_AUTO = "auto";
 // ---------- Zustand ----------
 size_t currentPattern = 0;
 uint32_t patternStartMs = 0;
-float masterBrightness = 0.7f; // 0..1
-bool autoCycle = false;
+float masterBrightness = Settings::DEFAULT_BRIGHTNESS; // 0..1
+bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 bool lampEnabled = false;
 
 bool switchRawState = false;
@@ -129,13 +127,13 @@ void saveSettings()
 void loadSettings()
 {
   prefs.begin(PREF_NS, false);
-  uint16_t b = prefs.getUShort(PREF_KEY_B1000, 700);
+  uint16_t b = prefs.getUShort(PREF_KEY_B1000, (uint16_t)(Settings::DEFAULT_BRIGHTNESS * 1000.0f));
   masterBrightness = clamp01(b / 1000.0f);
   uint16_t idx = prefs.getUShort(PREF_KEY_MODE, 0);
   if (idx >= PATTERN_COUNT)
     idx = 0;
   currentPattern = idx;
-  autoCycle = prefs.getBool(PREF_KEY_AUTO, true);
+  autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
 }
 
 /**
@@ -352,7 +350,7 @@ void startWakeFade(uint32_t durationMs, bool announce)
     durationMs = 5000;
   wakeDurationMs = durationMs;
   wakeStartMs = millis();
-  wakeTargetLevel = clamp01(fmax(masterBrightness, WAKE_MIN_TARGET));
+  wakeTargetLevel = clamp01(fmax(masterBrightness, Settings::WAKE_MIN_TARGET));
   setLampEnabled(true);
   wakeFadeActive = true;
   if (announce)
@@ -543,7 +541,7 @@ void handleCommand(String line)
     }
     else
     {
-      uint32_t durationMs = WAKE_DEFAULT_MS;
+      uint32_t durationMs = Settings::DEFAULT_WAKE_MS;
       if (arg.length() > 0)
       {
         float seconds = line.substring(4).toFloat();
@@ -571,10 +569,10 @@ void updatePatternEngine()
       wakeFadeActive = false;
       return;
     }
-    uint32_t elapsedWake = now - wakeStartMs;
+  uint32_t elapsedWake = now - wakeStartMs;
     float progress = (wakeDurationMs > 0) ? clamp01((float)elapsedWake / (float)wakeDurationMs) : 1.0f;
     float eased = progress * progress * (3.0f - 2.0f * progress);
-    float level = clamp01(WAKE_START_LEVEL + (wakeTargetLevel - WAKE_START_LEVEL) * eased);
+    float level = clamp01(Settings::WAKE_START_LEVEL + (wakeTargetLevel - Settings::WAKE_START_LEVEL) * eased);
     applyPwmLevel(level);
     if (progress >= 1.0f)
     {
