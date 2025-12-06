@@ -41,6 +41,11 @@
     #quickList { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:0.45rem; align-items:start; width:100%; }
     .quick-label { display:flex; align-items:center; gap:0.35rem; padding:0.38rem 0.55rem; border:1px solid var(--border); border-radius:8px; background:#0d1322; color:var(--text); width:100%; }
     .quick-label input { accent-color: var(--accent); }
+    table.info-table { width:100%; border-collapse: collapse; margin-top:0.5rem; }
+    table.info-table th, table.info-table td { border:1px solid var(--border); padding:0.45rem 0.55rem; text-align:left; }
+    table.info-table th { background:#10172a; color:var(--accent); }
+    table.info-table tbody tr:nth-child(even) { background:#0d1322; }
+    .copy-btn { padding:0.3rem 0.5rem; border-radius:6px; border:1px solid var(--border); background:#0f1525; color:var(--text); cursor:pointer; }
   </style>
 </head>
 <body>
@@ -165,6 +170,42 @@
     <div class="row log-row" style="margin:0;">
       <input id="cmdInput" type="text" placeholder="type command" style="flex:1; min-width:200px;" />
       <button id="btnSend">Send</button>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:1rem;">
+    <div class="card">
+      <h3>BLE GUIDs</h3>
+      <table class="info-table">
+        <thead><tr><th>Label</th><th>Value</th><th>Copy</th></tr></thead>
+        <tbody id="guidTable"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Command Reference & Links</h3>
+      <table class="info-table">
+        <thead><tr><th>Command</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>on / off / toggle</td><td>Switch lamp power</td></tr>
+          <tr><td>mode N / next / prev</td><td>Select pattern</td></tr>
+          <tr><td>auto on|off</td><td>Auto-cycle patterns</td></tr>
+          <tr><td>bri X</td><td>Brightness 0..100%</td></tr>
+          <tr><td>quick 1,2,...</td><td>Set fast-switch cycle list</td></tr>
+          <tr><td>pat scale 0.1-5</td><td>Pattern speed factor</td></tr>
+          <tr><td>touchdim on|off</td><td>Enable touch dimming</td></tr>
+          <tr><td>touch tune on off</td><td>Set touch thresholds</td></tr>
+          <tr><td>ramp MS / idle MIN</td><td>Ramp and auto-off</td></tr>
+          <tr><td>presence on|off|set|clear</td><td>Presence control</td></tr>
+          <tr><td>wake [s] / sleep [m]</td><td>Start fades</td></tr>
+          <tr><td>custom ...</td><td>Custom pattern CSV</td></tr>
+          <tr><td>cfg export / import</td><td>Backup/restore settings</td></tr>
+          <tr><td>status / help</td><td>Show status or commands</td></tr>
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:0.6rem;">
+        <a class="pill" href="https://play.google.com/store/apps/details?id=net.dinglisch.android.taskerm" target="_blank" rel="noopener">Tasker (Play Store)</a>
+        <a class="pill" href="https://github.com/Haschtl/Tasker-Ble-Writer/actions" target="_blank" rel="noopener">Tasker-BLE-Writer Actions</a>
+      </div>
     </div>
   </div>
 
@@ -422,6 +463,29 @@
       });
     }
 
+    function populateGuids() {
+      const rows = [
+        { label: 'Service UUID', value: SERVICE },
+        { label: 'Command Char', value: CMD_CHAR },
+        { label: 'Status Char', value: STATUS_CHAR },
+      ];
+      const body = document.getElementById('guidTable');
+      body.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td'); td1.textContent = r.label;
+        const td2 = document.createElement('td'); td2.textContent = r.value;
+        const td3 = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'Copy';
+        btn.dataset.copy = r.value;
+        td3.appendChild(btn);
+        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+        body.appendChild(tr);
+      });
+    }
+
     function defaultQuickIndices() {
       const out = [];
       MODE_NAMES.forEach((name, idx) => {
@@ -527,6 +591,7 @@
 
     populateModes();
     renderQuickModes();
+    populateGuids();
     const tdToggle = document.getElementById('touchDimToggle');
     if (tdToggle) {
       tdToggle.onchange = (e) => sendCmd(e.target.checked ? 'touchdim on' : 'touchdim off');
@@ -576,6 +641,18 @@
         }).catch((e) => log('SW register failed: ' + e));
       });
     }
+    // Copy GUIDs
+    document.body.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target && target.dataset && target.dataset.copy) {
+        const txt = target.dataset.copy;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(() => log('Copied: ' + txt)).catch(() => log('Copy failed'));
+        } else {
+          log('Clipboard not available');
+        }
+      }
+    });
   </script>
 </body>
 </html>
