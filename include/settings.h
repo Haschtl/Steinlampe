@@ -26,6 +26,7 @@ constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness fo
 constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state
 constexpr uint32_t PRESENCE_GRACE_MS_DEFAULT = 3000; ///< Wait before presence-off triggers
 constexpr bool TOUCH_DIM_DEFAULT_ENABLED = true;
+constexpr uint32_t TOUCH_HOLD_MS_DEFAULT = 1000; ///< Default touch hold start (ms)
 constexpr float LIGHT_GAIN_DEFAULT = 1.0f;
 constexpr float BRI_MIN_DEFAULT = 0.05f;
 constexpr float BRI_MAX_DEFAULT = 0.95f;

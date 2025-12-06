@@ -39,7 +39,6 @@ static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
 static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
 static const int TOUCH_DELTA_OFF_DEFAULT = 6; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
-static const uint32_t TOUCH_HOLD_START_MS = 1000;
 static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
 static const float DIM_RAMP_STEP = 0.01f;
 static const uint32_t DIM_RAMP_DT_MS = 80;
@@ -74,6 +73,7 @@ static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
 static const char *PREF_KEY_BRI_MIN = "bri_min";
 static const char *PREF_KEY_BRI_MAX = "bri_max";
 static const char *PREF_KEY_PRES_GRACE = "pres_grace";
+static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -103,6 +103,7 @@ bool brightnessChangedByTouch = false;
 int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
+uint32_t touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
 
 // Presence tracking
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
@@ -199,6 +200,8 @@ void exportConfig()
   cfg += presenceAddr;
   cfg += F(" touch_dim=");
   cfg += touchDimEnabled ? F("on") : F("off");
+  cfg += F(" touch_hold=");
+  cfg += touchHoldStartMs;
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
   cfg += F(" bri_min=");
@@ -222,6 +225,7 @@ void saveSettings()
   prefs.putBool(PREF_KEY_AUTO, autoCycle);
   prefs.putShort(PREF_KEY_THR_ON, (int16_t)touchDeltaOn);
   prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
+  prefs.putUInt(PREF_KEY_TOUCH_HOLD, touchHoldStartMs);
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
@@ -264,6 +268,11 @@ void loadSettings()
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
   if (touchDeltaOff < 1 || touchDeltaOff >= touchDeltaOn)
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+  touchHoldStartMs = prefs.getUInt(PREF_KEY_TOUCH_HOLD, Settings::TOUCH_HOLD_MS_DEFAULT);
+  if (touchHoldStartMs < 500)
+    touchHoldStartMs = 500;
+  else if (touchHoldStartMs > 5000)
+    touchHoldStartMs = 5000;
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
   rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
@@ -553,7 +562,7 @@ void updateTouchBrightness()
     return;
 
   // Long hold: ramp brightness up/down between DIM_MIN..DIM_MAX
-  if ((now - touchStartMs) >= TOUCH_HOLD_START_MS && (now - touchLastRampMs) >= DIM_RAMP_DT_MS)
+  if ((now - touchStartMs) >= touchHoldStartMs && (now - touchLastRampMs) >= DIM_RAMP_DT_MS)
   {
     touchLastRampMs = now;
     lastActivityMs = now;
@@ -790,6 +799,12 @@ void importConfig(const String &args)
       if (v > 0)
         touchDeltaOff = v;
     }
+    else if (key == "touch_hold")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 500 && v <= 5000)
+        touchHoldStartMs = v;
+    }
     else if (key == "bri")
     {
       float v = val.toFloat();
@@ -870,6 +885,7 @@ void printHelp()
       "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
+      "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
@@ -975,6 +991,21 @@ void handleCommand(String line)
     else
     {
       sendFeedback(F("Usage: touch tune <on> <off> (on>off>0)"));
+    }
+    return;
+  }
+  if (lower.startsWith("touch hold"))
+  {
+    uint32_t v = line.substring(line.indexOf("hold") + 4).toInt();
+    if (v >= 500 && v <= 5000)
+    {
+      touchHoldStartMs = v;
+      saveSettings();
+      sendFeedback(String(F("[Touch] hold ms=")) + String(v));
+    }
+    else
+    {
+      sendFeedback(F("Usage: touch hold <500-5000>"));
     }
     return;
   }
@@ -1367,6 +1398,7 @@ void handleCommand(String line)
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
     touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
+    touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
     presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
     presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
     presenceAddr = "";
