@@ -73,6 +73,9 @@ static const char *PREF_KEY_IDLE_OFF = "idle_off";
 static const char *PREF_KEY_LS_EN = "ls_en";
 static const char *PREF_KEY_CUSTOM = "cust";
 static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
+#if ENABLE_MUSIC_MODE
+static const char *PREF_KEY_MUSIC_EN = "music_en";
+#endif
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
@@ -114,6 +117,11 @@ float lightFiltered = 0.0f;
 uint32_t lastLightSampleMs = 0;
 uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
+#if ENABLE_MUSIC_MODE
+bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
+float musicFiltered = 0.0f;
+uint32_t lastMusicSampleMs = 0;
+#endif
 
 // Custom pattern editor
 static const size_t CUSTOM_MAX = 32;
@@ -128,6 +136,14 @@ float patternCustom(uint32_t ms)
   uint32_t idx = (ms / customStepMs) % customLen;
   return clamp01(customPattern[idx]);
 }
+
+#if ENABLE_MUSIC_MODE
+float patternMusic(uint32_t)
+{
+  // musicFiltered is normalized in updateMusicSensor to 0..1
+  return clamp01(musicFiltered);
+}
+#endif
 
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
@@ -289,6 +305,9 @@ void saveSettings()
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
+#if ENABLE_MUSIC_MODE
+  prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
+#endif
   lastLoggedBrightness = masterBrightness;
   lightMinRaw = 4095;
   lightMaxRaw = 0;
@@ -334,6 +353,9 @@ void loadSettings()
   {
     customLen = 0;
   }
+#if ENABLE_MUSIC_MODE
+  musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
+#endif
   lastLoggedBrightness = masterBrightness;
   lightMinRaw = 4095;
   lightMaxRaw = 0;
@@ -927,6 +949,7 @@ void printHelp()
       "  presence set <addr>/clear - Gerät binden oder löschen",
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
+      "  music on|off       - Music-Mode (ADC) aktivieren",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
@@ -1203,6 +1226,31 @@ void handleCommand(String line)
 #endif
     return;
   }
+#if ENABLE_MUSIC_MODE
+  if (lower.startsWith("music"))
+  {
+    String arg = line.substring(5);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      musicEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Music] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      musicEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Music] Disabled"));
+    }
+    else
+    {
+      sendFeedback(String(F("[Music] level=")) + String(musicFiltered, 3) + F(" en=") + (musicEnabled ? F("1") : F("0")));
+    }
+    return;
+  }
+#endif
   if (lower.startsWith("wake"))
   {
     String arg = line.substring(4);
@@ -1429,6 +1477,24 @@ void updateLightSensor()
 #endif
 }
 
+#if ENABLE_MUSIC_MODE
+void updateMusicSensor()
+{
+  if (!musicEnabled)
+    return;
+  uint32_t now = millis();
+  if (now - lastMusicSampleMs < Settings::MUSIC_SAMPLE_MS)
+    return;
+  lastMusicSampleMs = now;
+  int raw = analogRead(Settings::MUSIC_PIN);
+  // crude envelope: high-pass-ish by subtracting filtered baseline
+  static float env = 0.0f;
+  float val = (float)raw / 4095.0f;
+  env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
+  musicFiltered = clamp01(env);
+}
+#endif
+
 /**
  * @brief Enter light sleep briefly when lamp is idle to save power.
  */
@@ -1489,6 +1555,9 @@ void loop()
   updateBrightnessRamp();
   updatePatternEngine();
   updateLightSensor();
+#if ENABLE_MUSIC_MODE
+  updateMusicSensor();
+#endif
   maybeLightSleep();
   delay(10);
 }

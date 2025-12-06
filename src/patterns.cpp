@@ -90,6 +90,9 @@ float patternTwinkle(uint32_t ms)
 
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
+#if ENABLE_MUSIC_MODE
+extern float patternMusic(uint32_t ms);
+#endif
 
 /// Exported pattern table consumed by the main firmware
 const Pattern PATTERNS[] = {
@@ -102,6 +105,9 @@ const Pattern PATTERNS[] = {
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
     {"Custom", patternCustom, 0},
+#if ENABLE_MUSIC_MODE
+    {"Musik", patternMusic, 0},
+#endif
 };
 
 const size_t PATTERN_COUNT = sizeof(PATTERNS) / sizeof(PATTERNS[0]);
