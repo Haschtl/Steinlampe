@@ -53,6 +53,8 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate`         | Re-measure touch baseline                                  |
+| `presence on|off`   | Enable/disable auto-off when registered device disconnects |
+| `presence set <MAC>`/`presence set me`/`presence clear` | Bind connected device or explicit MAC / clear |
 | `status`            | Show current pattern, brightness and wake/auto state       |
 | `help`              | Display the quick command overview                         |
 

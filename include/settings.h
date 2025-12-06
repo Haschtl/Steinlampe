@@ -20,4 +20,5 @@ constexpr uint32_t DEFAULT_WAKE_MS = 180000;    ///< Default wake fade duration 
 constexpr uint32_t DEFAULT_SLEEP_MS = 900000;   ///< Default sleep fade duration (15 min)
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake
+constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state
 } // namespace Settings

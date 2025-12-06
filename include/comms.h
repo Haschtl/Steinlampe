@@ -26,3 +26,6 @@ void sendFeedback(const String &line);
  * @brief Returns true if a BLE client is currently connected (if BLE is enabled).
  */
 bool bleActive();
+
+// Presence hooks
+void blePresenceUpdate(bool connected, const String &addr);

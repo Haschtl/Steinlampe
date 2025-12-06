@@ -21,6 +21,7 @@
 
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
+void blePresenceUpdate(bool connected, const String &addr);
 
 namespace
 {
@@ -61,16 +62,44 @@ bool bleClientConnected = false;
  */
 class LampBleServerCallbacks : public BLEServerCallbacks
 {
-  void onConnect(BLEServer *) override
+  String formatAddr(const uint8_t bda[6])
+  {
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+    return String(buf);
+  }
+
+  void onConnect(BLEServer *server) override
   {
     bleClientConnected = true;
     Serial.println(F("[BLE] Verbunden."));
+    blePresenceUpdate(true, String());
   }
 
-  void onDisconnect(BLEServer *) override
+  void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
+  {
+    bleClientConnected = true;
+    String addr = formatAddr(param->connect.remote_bda);
+    Serial.print(F("[BLE] Verbunden: "));
+    Serial.println(addr);
+    blePresenceUpdate(true, addr);
+  }
+
+  void onDisconnect(BLEServer *server) override
   {
     bleClientConnected = false;
     Serial.println(F("[BLE] Getrennt."));
+    blePresenceUpdate(false, String());
+    BLEDevice::startAdvertising();
+  }
+
+  void onDisconnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
+  {
+    bleClientConnected = false;
+    String addr = formatAddr(param->disconnect.remote_bda);
+    Serial.print(F("[BLE] Getrennt: "));
+    Serial.println(addr);
+    blePresenceUpdate(false, addr);
     BLEDevice::startAdvertising();
   }
 };

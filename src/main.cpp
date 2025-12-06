@@ -62,6 +62,8 @@ static const char *PREF_KEY_MODE = "mode";
 static const char *PREF_KEY_AUTO = "auto";
 static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
+static const char *PREF_KEY_PRESENCE_EN = "pres_en";
+static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
@@ -87,6 +89,10 @@ bool dimRampUp = true;
 bool brightnessChangedByTouch = false;
 int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+
+bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
+String presenceAddr;
+String lastBleAddr;
 
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
@@ -180,6 +186,8 @@ void saveSettings()
   prefs.putBool(PREF_KEY_AUTO, autoCycle);
   prefs.putShort(PREF_KEY_THR_ON, (int16_t)touchDeltaOn);
   prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
+  prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
+  prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
 }
 
 /**
@@ -201,6 +209,8 @@ void loadSettings()
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
   if (touchDeltaOff < 1 || touchDeltaOff >= touchDeltaOn)
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+  presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
+  presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
 }
 
 /**
@@ -328,6 +338,47 @@ void updateSwitchLogic()
       setLampEnabled(false);
     }
     saveSettings();
+  }
+}
+
+/**
+ * @brief Handle presence events from BLE connections (auto-off when device leaves).
+ */
+void blePresenceUpdate(bool connected, const String &addr)
+{
+  if (connected)
+  {
+    if (addr.length() > 0)
+      lastBleAddr = addr;
+    if (presenceAddr.isEmpty() && addr.length() > 0)
+    {
+      presenceAddr = addr;
+      saveSettings();
+      sendFeedback(String(F("[Presence] Registered ")) + presenceAddr);
+    }
+    if (presenceEnabled)
+    {
+      if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
+      {
+        if (switchDebouncedState)
+        {
+          setLampEnabled(true);
+          sendFeedback(F("[Presence] Device connected -> Lamp ON"));
+        }
+      }
+    }
+    return;
+  }
+  // disconnect
+  if (!presenceEnabled)
+    return;
+  if (!presenceAddr.isEmpty())
+  {
+    if (addr.length() == 0 || addr == presenceAddr)
+    {
+      setLampEnabled(false);
+      sendFeedback(String(F("[Presence] Device left: ")) + presenceAddr + F(" -> Lamp OFF"));
+    }
   }
 }
 
@@ -489,6 +540,12 @@ void printStatus()
     line += F("  Wake ACTIVE");
   if (sleepFadeActive)
     line += F("  Sleep ACTIVE");
+  if (presenceEnabled)
+  {
+    line += F("  Presence ON (");
+    line += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
+    line += F(")");
+  }
   sendFeedback(line);
 }
 
@@ -510,6 +567,8 @@ void printHelp()
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
+      "  presence on|off   - Auto-Off wenn Gerät weg",
+      "  presence set <addr>/clear - Gerät binden oder löschen",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
       "  status            - aktuellen Zustand anzeigen",
@@ -693,6 +752,64 @@ void handleCommand(String line)
           durMs = (uint32_t)(minutes * 60000.0f);
       }
       startSleepFade(durMs);
+    }
+    return;
+  }
+  if (lower.startsWith("presence"))
+  {
+    String arg = line.substring(8);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      presenceEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Presence] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      presenceEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Presence] Disabled"));
+    }
+    else if (arg.startsWith("set"))
+    {
+      String addr = line.substring(12);
+      addr.trim();
+      if (addr.isEmpty() || addr == "me")
+      {
+        if (lastBleAddr.length() > 0)
+        {
+          presenceAddr = lastBleAddr;
+          saveSettings();
+          sendFeedback(String(F("[Presence] Set to connected device ")) + presenceAddr);
+        }
+        else
+        {
+          sendFeedback(F("[Presence] Kein aktives BLE-Geraet gefunden."));
+        }
+      }
+      else if (addr.length() >= 11)
+      {
+        presenceAddr = addr;
+        saveSettings();
+        sendFeedback(String(F("[Presence] Set to ")) + presenceAddr);
+      }
+      else
+      {
+        sendFeedback(F("Usage: presence set <MAC>"));
+      }
+    }
+    else if (arg == "clear")
+    {
+      presenceAddr = "";
+      saveSettings();
+      sendFeedback(F("[Presence] Cleared"));
+    }
+    else
+    {
+      sendFeedback(String(F("[Presence] ")) + (presenceEnabled ? F("ON ") : F("OFF ")) +
+                   F("dev=") + (presenceAddr.isEmpty() ? F("none") : presenceAddr));
     }
     return;
   }
