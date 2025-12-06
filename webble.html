@@ -30,7 +30,8 @@
     label { display:block; margin-top:0.35rem; font-size: 0.9rem; color: var(--muted); }
     .row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; }
     .pill { padding: 0.35rem 0.6rem; border-radius: 999px; background: #10172a; border:1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
-    .header { display:flex; gap:0.75rem; align-items:center; margin-bottom: 0.75rem; }
+    .header { display:flex; gap:0.75rem; align-items:center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .header .pill, .header button { flex-shrink: 0; }
     #status { color: var(--accent2); }
     textarea { resize: vertical; }
   </style>
@@ -40,8 +41,6 @@
     <h1>Quarzlampe Web BLE</h1>
     <button id="btnConnect">Connect</button>
     <button id="btnSerial">Connect Serial</button>
-    <button id="btnStatus">Status</button>
-    <button id="btnCfgExport">cfg export</button>
     <label class="pill" style="cursor:pointer;">
       <input type="checkbox" id="autoReconnect" style="margin-right:0.35rem;" checked />Auto-reconnect
     </label>
@@ -92,6 +91,13 @@
         <button id="btnTouchHold">Set</button>
       </div>
       <div class="row">
+        <label>Touch On</label>
+        <input id="touchOn" type="number" min="1" max="200" step="1" value="10" />
+        <label>Touch Off</label>
+        <input id="touchOff" type="number" min="1" max="200" step="1" value="6" />
+        <button id="btnTouchTune">Set Tune</button>
+      </div>
+      <div class="row">
         <label>Ramp (ms)</label>
         <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
         <button id="btnRamp">Set</button>
@@ -100,6 +106,10 @@
         <label>IdleOff (min, 0=off)</label>
         <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
         <button id="btnIdle">Set</button>
+      </div>
+      <div class="row">
+        <button id="btnCalibTouch">calibrate touch</button>
+        <button id="btnCalib">calibrate baseline</button>
       </div>
     </div>
 
@@ -128,7 +138,13 @@
     </div>
   </div>
 
-  <h3>Log</h3>
+  <div class="row" style="align-items:center; justify-content:space-between;">
+    <h3 style="margin:0;">Log</h3>
+    <div class="row" style="gap:0.4rem;">
+      <button id="btnStatus">Status</button>
+      <button id="btnCfgExport">cfg export</button>
+    </div>
+  </div>
   <pre id="log"></pre>
 
   <script>
@@ -447,6 +463,14 @@
       const cfg = document.getElementById('importArea').value.trim();
       if (cfg) sendCmd(cfg.startsWith('cfg import') ? cfg : ('cfg import ' + cfg));
     };
+
+    document.getElementById('btnTouchTune').onclick = () => {
+      const on = document.getElementById('touchOn').value;
+      const off = document.getElementById('touchOff').value;
+      sendCmd(`touch tune ${on} ${off}`);
+    };
+    document.getElementById('btnCalibTouch').onclick = () => sendCmd('calibrate touch');
+    document.getElementById('btnCalib').onclick = () => sendCmd('calibrate');
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
