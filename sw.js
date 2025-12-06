@@ -1,14 +1,19 @@
 const CACHE = 'quarzlampe-v1';
-const ASSETS = [
-  './',
-  './webble.html',
-  './manifest.json',
-  './icon-lamp.svg'
-];
+const ASSETS = ['/', '/webble.html', '/manifest.json', '/icon-lamp.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS))
+    (async () => {
+      const cache = await caches.open(CACHE);
+      for (const url of ASSETS) {
+        try {
+          await cache.add(url);
+        } catch (e) {
+          // ignore missing assets so install doesn't fail
+          console.warn('SW: cache miss', url, e);
+        }
+      }
+    })()
   );
 });
 
