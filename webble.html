@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quarzlampe Web BLE</title>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --panel: #11182a;
+      --border: #1f2b44;
+      --accent: #5be6ff;
+      --accent2: #8cf59b;
+      --text: #eef2ff;
+      --muted: #9fb2cc;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; margin: 0; background: radial-gradient(circle at 20% 20%, #111a2d, #0b0f1a 50%), #0b0f1a; color: var(--text); padding: 1.2rem; }
+    h1 { margin: 0 0 0.6rem; letter-spacing: 0.02em; }
+    h3 { margin-top: 0; color: var(--accent); }
+    button, input, textarea { margin: 0.15rem; padding: 0.45rem 0.65rem; border-radius: 6px; border: 1px solid var(--border); background: #0f1525; color: var(--text); }
+    button { cursor: pointer; transition: all 0.15s ease; }
+    button:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px #1a2438; }
+    input, textarea { background: #0d1322; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+    .card { border: 1px solid var(--border); padding: 0.85rem; border-radius: 10px; background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2)); box-shadow: 0 5px 25px rgba(0,0,0,0.35); }
+    #log { width: 100%; height: 220px; background:#0b0f1a; color: #8ce5ff; padding: 0.6rem; overflow-y: auto; font-family: 'SFMono-Regular', Menlo, monospace; border:1px solid var(--border); border-radius:8px; }
+    label { display:block; margin-top:0.35rem; font-size: 0.9rem; color: var(--muted); }
+    .row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; }
+    .pill { padding: 0.35rem 0.6rem; border-radius: 999px; background: #10172a; border:1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
+    .header { display:flex; gap:0.75rem; align-items:center; margin-bottom: 0.75rem; }
+    #status { color: var(--accent2); }
+    textarea { resize: vertical; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Quarzlampe Web BLE</h1>
+    <button id="btnConnect">Connect</button>
+    <span class="pill" id="status">Not connected</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Lamp</h3>
+      <div class="row">
+        <button data-cmd="on">On</button>
+        <button data-cmd="off">Off</button>
+        <button data-cmd="toggle">Toggle</button>
+      </div>
+      <div class="row">
+        <button data-cmd="prev">Prev</button>
+        <button data-cmd="next">Next</button>
+        <button data-cmd="auto on">Auto On</button>
+        <button data-cmd="auto off">Auto Off</button>
+      </div>
+      <label>Brightness: <span id="briVal">--</span>%</label>
+      <input id="bri" type="range" min="1" max="100" value="70" />
+    </div>
+
+    <div class="card">
+      <h3>Presence</h3>
+      <div class="row">
+        <input id="presenceMac" type="text" placeholder="AA:BB:CC:DD:EE:FF" size="20" />
+        <button id="btnPresenceSet">Set</button>
+        <button data-cmd="presence clear">Clear</button>
+      </div>
+      <div class="row">
+        <button data-cmd="presence on">Presence On</button>
+        <button data-cmd="presence off">Presence Off</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Touch / Ramps</h3>
+      <div class="row">
+        <label>Touch hold (ms)</label>
+        <input id="touchHold" type="number" min="500" max="5000" step="100" value="1000" />
+        <button id="btnTouchHold">Set</button>
+      </div>
+      <div class="row">
+        <label>Ramp (ms)</label>
+        <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
+        <button id="btnRamp">Set</button>
+      </div>
+      <div class="row">
+        <label>IdleOff (min, 0=off)</label>
+        <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
+        <button id="btnIdle">Set</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Custom</h3>
+      <div class="row">
+        <input id="customStep" type="number" min="100" max="5000" step="50" value="800" />
+        <button id="btnCustomStep">Set Step</button>
+      </div>
+      <label>CSV values (0..1)</label>
+      <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
+      <button id="btnCustomSend">Send Custom</button>
+    </div>
+
+    <div class="card">
+      <h3>Raw Command</h3>
+      <div class="row">
+        <input id="cmdInput" type="text" placeholder="type command" size="28" />
+        <button id="btnSend">Send</button>
+        <button id="btnExport">cfg export</button>
+      </div>
+      <div class="row">
+        <textarea id="importArea" rows="3" style="width:100%;" placeholder="paste cfg export here"></textarea>
+        <button id="btnImport">Import cfg</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>Log</h3>
+  <pre id="log"></pre>
+
+  <script>
+    const SERVICE = 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b';
+    const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
+    const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
+
+    let cmdChar = null;
+    let statusChar = null;
+    let device = null;
+
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      logEl.textContent += line;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function connect() {
+      if (!navigator.bluetooth) {
+        log('Web Bluetooth not supported or not available (needs Chrome/Edge over HTTPS/localhost).');
+        return;
+      }
+      try {
+        device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE] }] });
+        const server = await device.gatt.connect();
+        device.addEventListener('gattserverdisconnected', () => {
+          log('Disconnected');
+          document.getElementById('status').textContent = 'Disconnected';
+        });
+        const service = await server.getPrimaryService(SERVICE);
+        cmdChar = await service.getCharacteristic(CMD_CHAR);
+        statusChar = await service.getCharacteristic(STATUS_CHAR);
+        await statusChar.startNotifications();
+        statusChar.addEventListener('characteristicvaluechanged', onNotify);
+        document.getElementById('status').textContent = 'Connected to ' + device.name;
+        log('Connected to ' + device.name);
+      } catch (e) {
+        log('Connect error: ' + e);
+      }
+    }
+
+    function onNotify(e) {
+      const txt = new TextDecoder().decode(e.target.value || new DataView());
+      txt.split(/\r?\n/).forEach(line => {
+        if (line.trim()) log(line.trim());
+      });
+    }
+
+    async function sendCmd(text) {
+      if (!cmdChar) {
+        log('Not connected');
+        return;
+      }
+      try {
+        const payload = new TextEncoder().encode(text + '\n');
+        await cmdChar.writeValueWithoutResponse(payload);
+        log('> ' + text);
+      } catch (e) {
+        log('Send error: ' + e);
+      }
+    }
+
+    document.getElementById('btnConnect').onclick = connect;
+    document.querySelectorAll('button[data-cmd]').forEach(btn => {
+      btn.onclick = () => sendCmd(btn.dataset.cmd);
+    });
+    document.getElementById('btnSend').onclick = () => {
+      const txt = document.getElementById('cmdInput').value.trim();
+      if (txt) sendCmd(txt);
+    };
+    document.getElementById('bri').oninput = e => {
+      document.getElementById('briVal').textContent = e.target.value;
+    };
+    document.getElementById('bri').onchange = e => sendCmd('bri ' + e.target.value);
+
+    document.getElementById('btnPresenceSet').onclick = () => {
+      const mac = document.getElementById('presenceMac').value.trim();
+      if (mac) sendCmd('presence set ' + mac);
+    };
+    document.getElementById('btnTouchHold').onclick = () => {
+      const v = document.getElementById('touchHold').value;
+      sendCmd('touch hold ' + v);
+    };
+    document.getElementById('btnRamp').onclick = () => {
+      const v = document.getElementById('rampMs').value;
+      sendCmd('ramp ' + v);
+    };
+    document.getElementById('btnIdle').onclick = () => {
+      const v = document.getElementById('idleMin').value;
+      sendCmd('idle ' + v);
+    };
+    document.getElementById('btnCustomStep').onclick = () => {
+      const v = document.getElementById('customStep').value;
+      sendCmd('custom step ' + v);
+    };
+    document.getElementById('btnCustomSend').onclick = () => {
+      const csv = document.getElementById('customCsv').value.trim();
+      if (csv) sendCmd('custom ' + csv);
+    };
+    document.getElementById('btnExport').onclick = () => sendCmd('cfg export');
+    document.getElementById('btnImport').onclick = () => {
+      const cfg = document.getElementById('importArea').value.trim();
+      if (cfg) sendCmd(cfg.startsWith('cfg import') ? cfg : ('cfg import ' + cfg));
+    };
+  </script>
+</body>
+</html>

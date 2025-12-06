@@ -99,6 +99,12 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 
 Tasks or mobile workflows (e.g., Tasker) can simply send these ASCII commands.
 
+## Web BLE UI & GitHub Pages
+
+- A static Web BLE UI is provided in `webble.html` (no build step required).
+- To host via GitHub Pages: enable Pages in repo settings and set the source to the `main` branch, root (`/`). The UI will be available at `https://haschtl.github.io/<repo>/webble.html` (replace `<repo>` with this repo name). Example: [https://haschtl.github.io/Steinlampe/webble.html](https://haschtl.github.io/Steinlampe/webble.html).
+- Open the page in a Web-Bluetooth-capable browser (Chrome/Edge/Android) over HTTPS or `localhost`, click **Connect**, and control the lamp.
+
 ## Build
 
 ```sh
