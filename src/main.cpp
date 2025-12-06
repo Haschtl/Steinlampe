@@ -33,16 +33,15 @@ static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO2
 static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
-static const uint32_t DOUBLE_TAP_MS = 600;   // schneller Doppel-Tipp -> Wake-Kick
 static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
 
 // Touch-Schwellwerte-Defaults
 static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
 static const int TOUCH_DELTA_OFF_DEFAULT = 6; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
-static const uint32_t TOUCH_HOLD_START_MS = 500;
+static const uint32_t TOUCH_HOLD_START_MS = 1000;
 static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
-static const float DIM_RAMP_STEP = 0.02f;
+static const float DIM_RAMP_STEP = 0.01f;
 static const uint32_t DIM_RAMP_DT_MS = 80;
 static const float DIM_MIN = 0.10f;
 static const float DIM_MAX = 0.95f;
@@ -508,11 +507,12 @@ void updateTouchBrightness()
 
   int raw = touchRead(PIN_TOUCH_DIM);
   int delta = touchBaseline - raw;
+  int mag = abs(delta);
 
   if (!touchActive)
   {
-    touchBaseline = (touchBaseline * 15 + raw) / 16;
-    if (delta > touchDeltaOn && (now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
+    // touchBaseline = (touchBaseline * 15 + raw) / 16;
+    if (mag > touchDeltaOn && (now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
     {
       touchActive = true;
       touchStartMs = now;
@@ -530,10 +530,10 @@ void updateTouchBrightness()
     return;
   }
 
-  if (delta < touchDeltaOff)
+  if (mag < touchDeltaOff)
   {
     touchActive = false;
-    touchBaseline = (touchBaseline * 7 + raw) / 8;
+    // touchBaseline = (touchBaseline * 7 + raw) / 8;
     if (brightnessChangedByTouch)
     {
       logBrightnessChange("touch");
@@ -698,8 +698,9 @@ void printStatus()
 
   int raw = touchRead(PIN_TOUCH_DIM);
   int delta = raw - touchBaseline;
+  int mag = abs(delta);
   String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
-                     F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) +
+                     F(" delta=") + String(delta) + F(" |mag=") + String(mag) + F(" thrOn=") + String(touchDeltaOn) +
                      F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
   sendFeedback(touchLine);
   payload += touchLine + '\n';
