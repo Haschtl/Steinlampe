@@ -43,12 +43,14 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `list`              | Print all available patterns                               |
 | `mode <n>`          | Immediately switch to pattern number `n`                   |
 | `next` / `prev`     | Cycle to the next or previous pattern                      |
+| `on` / `off` / `toggle` | Switch lamp on/off like the hardware toggle               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
 | `wake <seconds>`    | Start a sunrise fade over the specified duration           |
 | `wake stop`         | Abort an active wake fade                                  |
 | `sleep [minutes]`   | Fade down to off over given minutes (default 15)           |
 | `sleep stop`        | Abort an active sleep fade                                 |
+| `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate`         | Re-measure touch baseline                                  |
 | `status`            | Show current pattern, brightness and wake/auto state       |

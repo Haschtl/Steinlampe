@@ -39,9 +39,9 @@ static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 static const uint32_t DOUBLE_TAP_MS = 600;    // schneller Doppel-Tipp -> Wake-Kick
 
-// Touch-Schwellwerte: bei schwachem Signal reduziert
-static const int TOUCH_DELTA_ON = 6;  // Counts unterhalb Baseline => "Touch aktiv"
-static const int TOUCH_DELTA_OFF = 4; // Hysterese
+// Touch-Schwellwerte-Defaults
+static const int TOUCH_DELTA_ON_DEFAULT = 6;  // Counts relativ zur Baseline
+static const int TOUCH_DELTA_OFF_DEFAULT = 4; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_HOLD_START_MS = 500;
 static const float DIM_RAMP_STEP = 0.02f;
@@ -60,6 +60,8 @@ static const char *PREF_NS = "lamp";
 static const char *PREF_KEY_B1000 = "b1000";
 static const char *PREF_KEY_MODE = "mode";
 static const char *PREF_KEY_AUTO = "auto";
+static const char *PREF_KEY_THR_ON = "thr_on";
+static const char *PREF_KEY_THR_OFF = "thr_off";
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
@@ -83,6 +85,8 @@ uint32_t touchStartMs = 0;
 uint32_t touchLastRampMs = 0;
 bool dimRampUp = true;
 bool brightnessChangedByTouch = false;
+int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
+int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
@@ -173,7 +177,9 @@ void saveSettings()
   uint16_t b = (uint16_t)(clamp01(masterBrightness) * 1000.0f + 0.5f);
   prefs.putUShort(PREF_KEY_B1000, b);
   prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
-  // prefs.putBool(PREF_KEY_AUTO, autoCycle);
+  prefs.putBool(PREF_KEY_AUTO, autoCycle);
+  prefs.putShort(PREF_KEY_THR_ON, (int16_t)touchDeltaOn);
+  prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
 }
 
 /**
@@ -188,7 +194,13 @@ void loadSettings()
   if (idx >= PATTERN_COUNT)
     idx = 0;
   currentPattern = idx;
-  // autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
+  autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
+  touchDeltaOn = prefs.getShort(PREF_KEY_THR_ON, TOUCH_DELTA_ON_DEFAULT);
+  touchDeltaOff = prefs.getShort(PREF_KEY_THR_OFF, TOUCH_DELTA_OFF_DEFAULT);
+  if (touchDeltaOn < 1)
+    touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
+  if (touchDeltaOff < 1 || touchDeltaOff >= touchDeltaOn)
+    touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 }
 
 /**
@@ -233,9 +245,9 @@ void printTouchDebug()
     delay(5);
   }
   int raw = (int)(acc / samples);
-  int delta = touchBaseline - raw;
+  int delta = raw - touchBaseline;
   sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
-               F(" delta=") + String(delta) + F(" thrOn=") + String(TOUCH_DELTA_ON) + F(" thrOff=") + String(TOUCH_DELTA_OFF));
+               F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff));
 }
 
 /**
@@ -315,6 +327,7 @@ void updateSwitchLogic()
       lastSwitchOffMs = now;
       setLampEnabled(false);
     }
+    saveSettings();
   }
 }
 
@@ -344,12 +357,12 @@ void updateTouchBrightness()
   touchLastSampleMs = now;
 
   int raw = touchRead(PIN_TOUCH_DIM);
-  int delta = touchBaseline - raw;
+  int delta = raw - touchBaseline;
 
   if (!touchActive)
   {
     touchBaseline = (touchBaseline * 15 + raw) / 16;
-    if (delta > TOUCH_DELTA_ON)
+    if (delta > touchDeltaOn)
     {
       touchActive = true;
       touchStartMs = now;
@@ -360,7 +373,7 @@ void updateTouchBrightness()
     return;
   }
 
-  if (delta < TOUCH_DELTA_OFF)
+  if (delta < touchDeltaOff)
   {
     touchActive = false;
     touchBaseline = (touchBaseline * 7 + raw) / 8;
@@ -489,12 +502,14 @@ void printHelp()
       "  list              - verfügbare Muster",
       "  mode <1..N>       - bestimmtes Muster wählen",
       "  next / prev       - weiter oder zurück",
+      "  on / off / toggle - Lampe schalten",
       "  auto on|off       - automatisches Durchschalten",
       "  bri <0..100>      - globale Helligkeit in %",
       "  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)",
       "  wake stop         - Weckfade abbrechen",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
+      "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
       "  status            - aktuellen Zustand anzeigen",
@@ -542,9 +557,48 @@ void handleCommand(String line)
     printStatus();
     return;
   }
+  if (lower == "on")
+  {
+    setLampEnabled(true);
+    saveSettings();
+    printStatus();
+    return;
+  }
+  if (lower == "off")
+  {
+    setLampEnabled(false);
+    saveSettings();
+    printStatus();
+    return;
+  }
+  if (lower == "toggle")
+  {
+    setLampEnabled(!lampEnabled);
+    saveSettings();
+    printStatus();
+    return;
+  }
   if (lower == "touch")
   {
     printTouchDebug();
+    return;
+  }
+  if (lower.startsWith("touch tune"))
+  {
+    String args = line.substring(10);
+    args.trim();
+    int on = 0, off = 0;
+    if (sscanf(args.c_str(), "%d %d", &on, &off) == 2 && on > 0 && off > 0 && off < on)
+    {
+      touchDeltaOn = on;
+      touchDeltaOff = off;
+      saveSettings();
+      sendFeedback(String(F("[Touch] tune on=")) + String(on) + F(" off=") + String(off));
+    }
+    else
+    {
+      sendFeedback(F("Usage: touch tune <on> <off> (on>off>0)"));
+    }
     return;
   }
   if (lower == "next")
