@@ -817,43 +817,53 @@ void setBrightnessPercent(float percent, bool persist = false, bool announce = t
  */
 void printStatus()
 {
-  String line = String(F("Pattern: ")) + String(currentPattern + 1) + F(" '") + PATTERNS[currentPattern].name +
-                F("'  Brightness ") + String(masterBrightness * 100.0f, 1) + F("%  AutoCycle ") +
-                (autoCycle ? F("ON") : F("OFF")) + F("  Lamp ") + (lampEnabled ? F("ON") : F("OFF"));
+  String payload;
+  String line1 = String(F("Pattern: ")) + String(currentPattern + 1) + F(" '") + PATTERNS[currentPattern].name +
+                 F("'  Brightness ") + String(masterBrightness * 100.0f, 1) + F("%  Lamp ") +
+                 (lampEnabled ? F("ON") : F("OFF"));
+  sendFeedback(line1);
+  payload += line1 + '\n';
+
+  String line2 = String(F("AutoCycle ")) + (autoCycle ? F("ON") : F("OFF"));
   if (wakeFadeActive)
-    line += F("  Wake ACTIVE");
+    line2 += F("  Wake ACTIVE");
   if (sleepFadeActive)
-    line += F("  Sleep ACTIVE");
-  line += F("  Presence=");
+    line2 += F("  Sleep ACTIVE");
+  sendFeedback(line2);
+  payload += line2 + '\n';
+
+  String line3 = F("Presence=");
   if (presenceEnabled)
   {
-    line += F("ON (");
-    line += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
-    line += F(")");
+    line3 += F("ON (");
+    line3 += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
+    line3 += F(")");
   }
   else
   {
-    line += F("OFF");
+    line3 += F("OFF");
   }
-  line += F("  Ramp=");
-  line += String(rampDurationMs);
-  line += F("ms");
-  line += F("  IdleOff=");
-  if (idleOffMs == 0)
-    line += F("off");
-  else
-    line += String(idleOffMs / 60000);
-  line += F("  Light=");
+  line3 += F("  Ramp=");
+  line3 += String(rampDurationMs);
+  line3 += F("ms  IdleOff=");
+  line3 += (idleOffMs == 0 ? F("off") : String(idleOffMs / 60000));
+  sendFeedback(line3);
+  payload += line3 + '\n';
+
+  String line4 = F("Light=");
 #if ENABLE_LIGHT_SENSOR
-  line += lightSensorEnabled ? F("ON") : F("OFF");
+  line4 += lightSensorEnabled ? F("ON") : F("OFF");
 #else
-  line += F("N/A");
+  line4 += F("N/A");
 #endif
 #if ENABLE_MUSIC_MODE
-  line += F("  Music=");
-  line += musicEnabled ? F("ON") : F("OFF");
+  line4 += F("  Music=");
+  line4 += musicEnabled ? F("ON") : F("OFF");
 #endif
-  sendFeedback(line);
+  line4 += F("  Switch=");
+  line4 += switchDebouncedState ? F("ON") : F("OFF");
+  sendFeedback(line4);
+  payload += line4 + '\n';
 
   int raw = touchRead(PIN_TOUCH_DIM);
   int delta = raw - touchBaseline;
@@ -861,7 +871,8 @@ void printStatus()
                      F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) +
                      F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
   sendFeedback(touchLine);
-  updateBleStatus(line);
+  payload += touchLine;
+  updateBleStatus(payload);
 #if ENABLE_LIGHT_SENSOR
   if (lightSensorEnabled)
   {
