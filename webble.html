@@ -24,9 +24,13 @@
     button { cursor: pointer; transition: all 0.15s ease; }
     button:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px #1a2438; }
     input, textarea { background: #0d1322; }
+    select { background:#0f1525; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:0.45rem 0.75rem; min-width:170px; appearance:none; -moz-appearance:none; -webkit-appearance:none; background-image: linear-gradient(45deg, transparent 50%, var(--accent) 50%), linear-gradient(135deg, var(--accent) 50%, transparent 50%); background-position: right 12px top 55%, right 6px top 55%; background-size: 10px 10px, 10px 10px; background-repeat: no-repeat; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
     .card { border: 1px solid var(--border); padding: 0.85rem; border-radius: 10px; background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2)); box-shadow: 0 5px 25px rgba(0,0,0,0.35); }
     #log { width: 100%; height: 220px; background:#0b0f1a; color: #8ce5ff; padding: 0.6rem; overflow-y: auto; font-family: 'SFMono-Regular', Menlo, monospace; border:1px solid var(--border); border-radius:8px; }
+    .log-block { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#0b0f1a; box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+    .log-block #log { border:none; border-bottom:1px solid var(--border); border-radius:0; margin:0; }
+    .log-row { background:#0d1322; padding:0.5rem; }
     label { display:block; margin-top:0.35rem; font-size: 0.9rem; color: var(--muted); }
     .row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; }
     .pill { padding: 0.35rem 0.6rem; border-radius: 999px; background: #10172a; border:1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
@@ -34,6 +38,9 @@
     .header .pill, .header button { flex-shrink: 0; }
     #status { color: var(--accent2); }
     textarea { resize: vertical; }
+    #quickList { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:0.45rem; align-items:start; width:100%; }
+    .quick-label { display:flex; align-items:center; gap:0.35rem; padding:0.38rem 0.55rem; border:1px solid var(--border); border-radius:8px; background:#0d1322; color:var(--text); width:100%; }
+    .quick-label input { accent-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -88,7 +95,30 @@
     </div>
 
     <div class="card">
-      <h3>Touch / Ramps</h3>
+      <h3>Settings</h3>
+      <div class="row" style="align-items:flex-start;">
+        <label style="min-width:120px;">Quick tap modes:</label>
+        <div id="quickList" class="row" style="flex:1; gap:0.35rem;"></div>
+        <button id="btnQuickApply" title="Applies selection for fast switch tap cycling">Apply</button>
+      </div>
+      <div class="row">
+        <label>Ramp (ms)</label>
+        <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
+        <button id="btnRamp">Set</button>
+      </div>
+      <div class="row">
+        <label>IdleOff (min, 0=off)</label>
+        <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
+        <button id="btnIdle">Set</button>
+      </div>
+      <div class="row" style="align-items:flex-start;">
+        <textarea id="importArea" rows="2" style="flex:1; min-width:180px;" placeholder="paste cfg export here"></textarea>
+        <button id="btnImport">Import cfg</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Touch</h3>
       <div class="row">
         <label>Touch hold (ms)</label>
         <input id="touchHold" type="number" min="500" max="5000" step="100" value="1000" />
@@ -102,18 +132,11 @@
         <button id="btnTouchTune">Set Tune</button>
       </div>
       <div class="row">
-        <label>Ramp (ms)</label>
-        <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
-        <button id="btnRamp">Set</button>
-      </div>
-      <div class="row">
-        <label>IdleOff (min, 0=off)</label>
-        <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
-        <button id="btnIdle">Set</button>
-      </div>
-      <div class="row">
         <button id="btnCalibTouch">calibrate touch</button>
         <button id="btnCalib">calibrate baseline</button>
+        <label class="pill" style="cursor:pointer;">
+          <input type="checkbox" id="touchDimToggle" style="margin-right:0.35rem;" />TouchDim
+        </label>
       </div>
     </div>
 
@@ -128,18 +151,6 @@
       <button id="btnCustomSend">Send Custom</button>
     </div>
 
-    <div class="card">
-      <h3>Raw Command</h3>
-      <div class="row">
-        <input id="cmdInput" type="text" placeholder="type command" size="28" />
-        <button id="btnSend">Send</button>
-        <button id="btnExport">cfg export</button>
-      </div>
-      <div class="row">
-        <textarea id="importArea" rows="3" style="width:100%;" placeholder="paste cfg export here"></textarea>
-        <button id="btnImport">Import cfg</button>
-      </div>
-    </div>
   </div>
 
   <div class="row" style="align-items:center; justify-content:space-between;">
@@ -149,7 +160,13 @@
       <button id="btnCfgExport">cfg export</button>
     </div>
   </div>
-  <pre id="log"></pre>
+  <div class="log-block">
+    <pre id="log"></pre>
+    <div class="row log-row" style="margin:0;">
+      <input id="cmdInput" type="text" placeholder="type command" style="flex:1; min-width:200px;" />
+      <button id="btnSend">Send</button>
+    </div>
+  </div>
 
   <script>
     const SERVICE = 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b';
@@ -365,6 +382,13 @@
           }
         }
       }
+      if (line.startsWith('[Quick]')) {
+        const csv = line.replace('[Quick]', '').trim();
+        if (csv) {
+          const parts = csv.toLowerCase() === 'none' ? [] : csv.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !Number.isNaN(n));
+          setQuickSelection(parts);
+        }
+      }
       // Presence address hint
       if (line.startsWith('Presence=')) {
         const addrMatch = line.match(/\(([^)]+)\)/);
@@ -382,9 +406,8 @@
           const v = i[0].includes('off') ? 0 : parseInt(i[1]);
           document.getElementById('idleMin').value = v;
         }
-        if (line.includes('TouchDim=ON')) {
-          // nothing to toggle here, but could reflect state visually later
-        }
+        const td = document.getElementById('touchDimToggle');
+        if (td) td.checked = line.includes('TouchDim=ON');
       }
     }
 
@@ -396,6 +419,49 @@
         opt.value = (idx + 1).toString();
         opt.textContent = `${idx + 1} - ${name}`;
         sel.appendChild(opt);
+      });
+    }
+
+    function defaultQuickIndices() {
+      const out = [];
+      MODE_NAMES.forEach((name, idx) => {
+        if (idx < 3) out.push(idx + 1);
+        if (name.toLowerCase().includes('musik'))
+          out.push(idx + 1);
+      });
+      return Array.from(new Set(out));
+    }
+
+    function renderQuickModes(selected = defaultQuickIndices()) {
+      const wrap = document.getElementById('quickList');
+      wrap.innerHTML = '';
+      MODE_NAMES.forEach((name, idx) => {
+        const lbl = document.createElement('label');
+        lbl.className = 'quick-label';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'quickCb';
+        cb.value = (idx + 1).toString();
+        if (selected.includes(idx + 1)) cb.checked = true;
+        lbl.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.textContent = name;
+        lbl.appendChild(txt);
+        wrap.appendChild(lbl);
+      });
+    }
+
+    function getQuickSelection() {
+      return Array.from(document.querySelectorAll('.quickCb'))
+        .filter(cb => cb.checked)
+        .map(cb => parseInt(cb.value, 10))
+        .filter(n => !Number.isNaN(n));
+    }
+
+    function setQuickSelection(indices) {
+      const idxSet = new Set(indices);
+      document.querySelectorAll('.quickCb').forEach(cb => {
+        cb.checked = idxSet.size === 0 ? defaultQuickIndices().includes(parseInt(cb.value, 10)) : idxSet.has(parseInt(cb.value, 10));
       });
     }
 
@@ -460,6 +526,15 @@
     updatePatSpeedLabel(patSpeedEl.value);
 
     populateModes();
+    renderQuickModes();
+    const tdToggle = document.getElementById('touchDimToggle');
+    if (tdToggle) {
+      tdToggle.onchange = (e) => sendCmd(e.target.checked ? 'touchdim on' : 'touchdim off');
+    }
+    document.getElementById('btnQuickApply').onclick = () => {
+      const sel = getQuickSelection();
+      sendCmd(sel.length ? ('quick ' + sel.join(',')) : 'quick default');
+    };
     document.getElementById('btnTouchHold').onclick = () => {
       const v = document.getElementById('touchHold').value;
       sendCmd('touch hold ' + v);

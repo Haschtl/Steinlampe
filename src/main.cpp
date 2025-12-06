@@ -13,6 +13,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <math.h>
+#include <ctype.h>
 
 #include "comms.h"
 #include "lamp_state.h"
@@ -80,6 +81,7 @@ static const char *PREF_KEY_BRI_MAX = "bri_max";
 static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
+static const char *PREF_KEY_QUICK_MASK = "qmask";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -88,6 +90,7 @@ uint32_t patternStartMs = 0;
 // General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 float patternSpeedScale = 1.0f;
+uint32_t quickMask = 0; // bitmask of modes used for quick switch tap cycling
 
 // Switch handling
 bool switchRawState = false;
@@ -190,6 +193,105 @@ bool parseBool(const String &s, bool &out)
   return false;
 }
 
+/**
+ * @brief Build default quick-cycle mask: first 3 patterns + music (if present).
+ */
+uint32_t computeDefaultQuickMask()
+{
+  uint32_t mask = 0;
+  size_t base = (PATTERN_COUNT < 3) ? PATTERN_COUNT : 3;
+  for (size_t i = 0; i < base; ++i)
+  {
+    if (i < 32)
+      mask |= (1u << i);
+  }
+#if ENABLE_MUSIC_MODE
+  for (size_t i = 0; i < PATTERN_COUNT; ++i)
+  {
+    if (strcmp(PATTERNS[i].name, "Musik") == 0)
+    {
+      if (i < 32)
+        mask |= (1u << i);
+      break;
+    }
+  }
+#endif
+  if (mask == 0 && PATTERN_COUNT > 0)
+    mask = 1u; // always allow pattern 1 as fallback
+  return mask;
+}
+
+/**
+ * @brief Clamp the quick-mode mask to available patterns and ensure non-empty.
+ */
+void sanitizeQuickMask()
+{
+  uint32_t limitMask = (PATTERN_COUNT >= 32) ? 0xFFFFFFFFu : ((1u << PATTERN_COUNT) - 1u);
+  quickMask &= limitMask;
+  if (quickMask == 0)
+    quickMask = computeDefaultQuickMask() & limitMask;
+}
+
+bool isQuickEnabled(size_t idx)
+{
+  return idx < PATTERN_COUNT && (quickMask & (1u << idx));
+}
+
+size_t nextQuickPattern(size_t from)
+{
+  if (PATTERN_COUNT == 0)
+    return 0;
+  for (size_t step = 1; step <= PATTERN_COUNT; ++step)
+  {
+    size_t idx = (from + step) % PATTERN_COUNT;
+    if (isQuickEnabled(idx))
+      return idx;
+  }
+  return from;
+}
+
+/**
+ * @brief Convert quick-mask to comma-separated 1-based indices.
+ */
+String quickMaskToCsv()
+{
+  String out;
+  for (size_t i = 0; i < PATTERN_COUNT; ++i)
+  {
+    if (isQuickEnabled(i))
+    {
+      if (!out.isEmpty())
+        out += ',';
+      out += String(i + 1);
+    }
+  }
+  return out.isEmpty() ? String(F("none")) : out;
+}
+
+bool parseQuickCsv(const String &csv, uint32_t &outMask)
+{
+  String tmp = csv;
+  tmp.replace(',', ' ');
+  outMask = 0;
+  int start = 0;
+  while (start < tmp.length())
+  {
+    while (start < tmp.length() && isspace(tmp[start]))
+      start++;
+    if (start >= tmp.length())
+      break;
+    int end = start;
+    while (end < tmp.length() && !isspace(tmp[end]))
+      end++;
+    String tok = tmp.substring(start, end);
+    int idx = tok.toInt();
+    if (idx >= 1 && idx <= (int)PATTERN_COUNT)
+      outMask |= (1u << (idx - 1));
+    start = end + 1;
+  }
+  return outMask != 0;
+}
+
 void exportConfig()
 {
   String cfg = F("cfg import ");
@@ -223,6 +325,8 @@ void exportConfig()
   cfg += String(briMaxUser, 3);
   cfg += F(" pres_grace=");
   cfg += presenceGraceMs;
+  cfg += F(" quick=");
+  cfg += quickMaskToCsv();
   sendFeedback(cfg);
 }
 
@@ -260,6 +364,7 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
   prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
   prefs.putUInt(PREF_KEY_PRES_GRACE, presenceGraceMs);
+  prefs.putUInt(PREF_KEY_QUICK_MASK, quickMask);
   lastLoggedBrightness = masterBrightness;
   
 }
@@ -298,6 +403,8 @@ void loadSettings()
     touchHoldStartMs = 500;
   else if (touchHoldStartMs > 5000)
     touchHoldStartMs = 5000;
+  quickMask = prefs.getUInt(PREF_KEY_QUICK_MASK, computeDefaultQuickMask());
+  sanitizeQuickMask();
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
   rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
@@ -429,7 +536,8 @@ void updateSwitchLogic()
       // Short off→on within MODE_TAP_MAX_MS: advance pattern
       if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
       {
-        setPattern((currentPattern + 1) % PATTERN_COUNT, true, true);
+        size_t next = nextQuickPattern(currentPattern);
+        setPattern(next, true, true);
       }
       modeTapArmed = false;
       setLampEnabled(true, "switch on");
@@ -691,6 +799,10 @@ void printStatus()
   sendFeedback(line1);
   payload += line1 + '\n';
 
+  String quickLine = String(F("[Quick] ")) + quickMaskToCsv();
+  sendFeedback(quickLine);
+  payload += quickLine + '\n';
+
   String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Switch=") +
                  (switchDebouncedState ? F("ON") : F("OFF")) + F(" | Brightness=") +
                  String(masterBrightness * 100.0f, 1) + F("%");
@@ -900,6 +1012,23 @@ void importConfig(const String &args)
         v = 0;
       presenceGraceMs = v;
     }
+    else if (key == "quick")
+    {
+      uint32_t mask = 0;
+      if (val.equalsIgnoreCase(F("default")) || val.equalsIgnoreCase(F("none")))
+      {
+        mask = computeDefaultQuickMask();
+      }
+      else
+      {
+        parseQuickCsv(val, mask);
+      }
+      if (mask != 0)
+      {
+        quickMask = mask;
+        sanitizeQuickMask();
+      }
+    }
   }
   saveSettings();
   sendFeedback(F("[Config] Imported"));
@@ -918,6 +1047,7 @@ void printHelp()
       "  list              - verfügbare Muster",
       "  mode <1..N>       - bestimmtes Muster wählen",
       "  next / prev       - weiter oder zurück",
+      "  quick <CSV|default>- Modi für schnellen Schalter-Tap",
       "  on / off / toggle - Lampe schalten",
       "  auto on|off       - automatisches Durchschalten",
       "  bri <0..100>      - globale Helligkeit in %",
@@ -983,6 +1113,32 @@ void handleCommand(String line)
   if (lower == "list")
   {
     listPatterns();
+    return;
+  }
+  if (lower.startsWith("quick"))
+  {
+    String args = line.substring(5);
+    args.trim();
+    if (args.isEmpty() || args.equalsIgnoreCase(F("default")))
+    {
+      quickMask = computeDefaultQuickMask();
+      sanitizeQuickMask();
+      saveSettings();
+      sendFeedback(String(F("[Quick] default -> ")) + quickMaskToCsv());
+      return;
+    }
+    uint32_t mask = 0;
+    if (parseQuickCsv(args, mask))
+    {
+      quickMask = mask;
+      sanitizeQuickMask();
+      saveSettings();
+      sendFeedback(String(F("[Quick] set -> ")) + quickMaskToCsv());
+    }
+    else
+    {
+      sendFeedback(F("Usage: quick <idx,idx,...> or quick default"));
+    }
     return;
   }
   if (lower == "status")
@@ -1461,6 +1617,7 @@ void handleCommand(String line)
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
     touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
     touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
+    quickMask = computeDefaultQuickMask();
     presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
     presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
     presenceAddr = "";
