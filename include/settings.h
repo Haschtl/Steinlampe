@@ -15,7 +15,7 @@ constexpr const char *BT_SERIAL_NAME = "Quarzlampe-SPP";
 
 // ---- Defaults ----
 constexpr float DEFAULT_BRIGHTNESS = 0.7f;     ///< Used on first boot if no NVS value
-constexpr bool DEFAULT_AUTOCYCLE = true;       ///< Auto pattern cycling on first boot
+constexpr bool DEFAULT_AUTOCYCLE = false;       ///< Auto pattern cycling on first boot
 constexpr uint32_t DEFAULT_WAKE_MS = 180000;   ///< Default wake fade duration (3 min)
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake

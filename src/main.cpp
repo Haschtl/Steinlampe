@@ -35,8 +35,9 @@ static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 
-static const int TOUCH_DELTA_ON = 22;  // Counts unterhalb Baseline => "Touch aktiv"
-static const int TOUCH_DELTA_OFF = 15; // Hysterese
+// Touch-Schwellwerte: bei schwachem Signal reduziert
+static const int TOUCH_DELTA_ON = 6;  // Counts unterhalb Baseline => "Touch aktiv"
+static const int TOUCH_DELTA_OFF = 4; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_HOLD_START_MS = 500;
 static const float DIM_RAMP_STEP = 0.02f;
@@ -118,7 +119,7 @@ void saveSettings()
   uint16_t b = (uint16_t)(clamp01(masterBrightness) * 1000.0f + 0.5f);
   prefs.putUShort(PREF_KEY_B1000, b);
   prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
-  prefs.putBool(PREF_KEY_AUTO, autoCycle);
+  // prefs.putBool(PREF_KEY_AUTO, autoCycle);
 }
 
 /**
@@ -133,7 +134,7 @@ void loadSettings()
   if (idx >= PATTERN_COUNT)
     idx = 0;
   currentPattern = idx;
-  autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
+  // autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
 }
 
 /**
