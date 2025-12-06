@@ -83,19 +83,26 @@ static const char *PREF_KEY_BRI_MAX = "bri_max";
 static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 
 // ---------- Zustand ----------
+// Active pattern state (index and start time)
 size_t currentPattern = 0;
 uint32_t patternStartMs = 0;
-float masterBrightness = Settings::DEFAULT_BRIGHTNESS; // 0..1
+// User-facing brightness (0..1) and last non-zero remembered level
+float masterBrightness = Settings::DEFAULT_BRIGHTNESS;
 float lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
+// General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 bool lampEnabled = false;
 bool lampOffPending = false;
+// Logging helper to avoid spamming identical values
 float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
+// User clamp for min/max brightness
 float briMinUser = Settings::BRI_MIN_DEFAULT;
 float briMaxUser = Settings::BRI_MAX_DEFAULT;
+// Multipliers for output: ambientScale from light sensor, outputScale for on/off ramps
 float ambientScale = 1.0f;
 float outputScale = 1.0f;
 
+// Switch handling
 bool switchRawState = false;
 bool switchDebouncedState = false;
 uint32_t switchLastDebounceMs = 0;
@@ -103,6 +110,7 @@ uint32_t lastSwitchOffMs = 0;
 uint32_t lastSwitchOnMs = 0;
 bool modeTapArmed = false;
 
+// Touch sensing state
 int touchBaseline = 0;
 bool touchActive = false;
 uint32_t touchLastSampleMs = 0;
@@ -116,6 +124,7 @@ int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 
+// Presence tracking
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
 uint32_t presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
 uint32_t presenceGraceDeadline = 0;
@@ -123,6 +132,7 @@ bool presencePrevConnected = false;
 String presenceAddr;
 String lastBleAddr;
 String lastBtAddr;
+// Ramping and timers
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 uint32_t lastActivityMs = 0;
@@ -142,7 +152,7 @@ uint32_t lastMusicSampleMs = 0;
 bool bleWasConnected = false;
 bool btWasConnected = false;
 
-// Custom pattern editor
+// Custom pattern editor storage
 static const size_t CUSTOM_MAX = 32;
 float customPattern[CUSTOM_MAX];
 size_t customLen = 0;
@@ -190,6 +200,7 @@ bool rampAffectsMaster = true;
 void applyPwmLevel(float normalized)
 {
   float level = clamp01(normalized);
+  // Respect user min/max before gamma
   if (briMaxUser < briMinUser)
     briMaxUser = briMinUser;
   float levelEff = briMinUser + (briMaxUser - briMinUser) * level;
@@ -286,6 +297,7 @@ void exportConfig()
 void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true)
 {
   rampAffectsMaster = affectMaster;
+  // Decide whether we ramp the stored brightness or only the live output
   if (affectMaster)
     rampStartLevel = masterBrightness;
   else
@@ -463,6 +475,7 @@ void setLampEnabled(bool enable, const char *reason = nullptr)
   lastActivityMs = millis();
   if (enable)
   {
+    // Fade in: keep stored brightness, ramp output from 0→1
     outputScale = 0.0f;
     lampEnabled = true;
     lampOffPending = false;
@@ -473,12 +486,13 @@ void setLampEnabled(bool enable, const char *reason = nullptr)
     if (target > briMaxUser)
       target = briMaxUser;
     masterBrightness = target;
-    startBrightnessRamp(1.0f, rampDurationMs, false);
+    startBrightnessRamp(1.0f, rampDurationMs, false); // ramp output only
     lastOnBrightness = target;
     logLampState(reason);
   }
   else
   {
+    // Fade out output to 0, keep master for next ON
     lampOffPending = true;
     if (masterBrightness > briMinUser)
       lastOnBrightness = masterBrightness;
@@ -574,6 +588,7 @@ void updateSwitchLogic()
       //   startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
       // }
       lastSwitchOnMs = nowOn;
+      // Short off→on within MODE_TAP_MAX_MS: advance pattern
       if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
       {
         setPattern((currentPattern + 1) % PATTERN_COUNT, true, true);
@@ -584,6 +599,7 @@ void updateSwitchLogic()
     }
     else
     {
+      // Arm mode change if lamp was on before this off edge
       modeTapArmed = lampEnabled;
       lastSwitchOffMs = now;
       setLampEnabled(false, "switch off");
@@ -731,6 +747,7 @@ void updateTouchBrightness()
   if (!lampEnabled)
     return;
 
+  // Long hold: ramp brightness up/down between DIM_MIN..DIM_MAX
   if ((now - touchStartMs) >= TOUCH_HOLD_START_MS && (now - touchLastRampMs) >= DIM_RAMP_DT_MS)
   {
     touchLastRampMs = now;
@@ -1598,6 +1615,7 @@ void updatePatternEngine()
         else if (lastBtAddr.length() > 0)
           presenceAddr = lastBtAddr;
       }
+      // Only turn on when switch is ON and the client matches (or none bound yet)
       if (presenceAddr.isEmpty() || lastBleAddr == presenceAddr || lastBtAddr == presenceAddr)
       {
         if (switchDebouncedState && !lampEnabled)
@@ -1607,6 +1625,7 @@ void updatePatternEngine()
         }
       }
     }
+    // First missing-client edge while lamp is on starts grace timer
     else if (presencePrevConnected && lampEnabled && presenceGraceDeadline == 0 && !presenceAddr.isEmpty())
     {
       presenceGraceDeadline = now + presenceGraceMs;
@@ -1691,6 +1710,7 @@ void updateLightSensor()
     return;
   float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
   norm = clamp01(norm);
+  // Map ambient reading to a dimming factor; smooth via low-pass
   float target = clamp01((0.2f + 0.8f * norm) * lightGain);
   ambientScale = 0.85f * ambientScale + 0.15f * target;
 #endif

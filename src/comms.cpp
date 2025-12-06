@@ -46,10 +46,12 @@ void processInputChar(String &buffer, char c)
   }
 }
 
+// Line buffer for USB serial input
 String bufferUsb;
 
 #if ENABLE_BT_SERIAL
 BluetoothSerial serialBt;
+// Line buffer for BT serial input
 String bufferBt;
 #endif
 
@@ -58,6 +60,7 @@ BLEServer *bleServer = nullptr;
 BLECharacteristic *bleCommandCharacteristic = nullptr;
 BLECharacteristic *bleStatusCharacteristic = nullptr;
 bool bleClientConnected = false;
+// Most recent BLE client address
 String bleLastAddr;
 
 /**
@@ -205,6 +208,9 @@ void setupCommunications()
 #endif
 }
 
+/**
+ * @brief Poll all enabled transports for incoming bytes and feed line parser.
+ */
 void pollCommunications()
 {
   while (Serial.available())
@@ -225,6 +231,9 @@ void pollCommunications()
 #endif
 }
 
+/**
+ * @brief Broadcast a single text line to Serial, BT Serial (if connected) and BLE notify.
+ */
 void sendFeedback(const String &line)
 {
   Serial.println(line);
@@ -243,6 +252,9 @@ void sendFeedback(const String &line)
 #endif
 }
 
+/**
+ * @brief Update BLE status characteristic (read + notify if connected).
+ */
 void updateBleStatus(const String &statusPayload)
 {
 #if ENABLE_BLE
@@ -256,6 +268,9 @@ void updateBleStatus(const String &statusPayload)
 #endif
 }
 
+/**
+ * @return True if a BLE client is connected.
+ */
 bool bleActive()
 {
 #if ENABLE_BLE
@@ -265,6 +280,9 @@ bool bleActive()
 #endif
 }
 
+/**
+ * @return True if a BT Serial client is connected.
+ */
 bool btHasClient()
 {
 #if ENABLE_BT_SERIAL
@@ -274,6 +292,9 @@ bool btHasClient()
 #endif
 }
 
+/**
+ * @return Last known BLE client MAC address (empty if none).
+ */
 String getLastBleAddr()
 {
 #if ENABLE_BLE
