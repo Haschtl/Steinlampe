@@ -64,6 +64,8 @@ static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
 static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
+static const char *PREF_KEY_RAMP_MS = "ramp_ms";
+static const char *PREF_KEY_IDLE_OFF = "idle_off";
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
@@ -93,6 +95,9 @@ int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
 String presenceAddr;
 String lastBleAddr;
+uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
+uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
+uint32_t lastActivityMs = 0;
 
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
@@ -108,7 +113,7 @@ bool rampActive = false;
 float rampStartLevel = 0.0f;
 float rampTargetLevel = 0.0f;
 uint32_t rampStartMs = 0;
-uint32_t rampDurationMs = 0;
+uint32_t rampDurationActive = 0;
 
 // ---------- Hilfsfunktionen ----------
 /**
@@ -143,8 +148,9 @@ void startBrightnessRamp(float target, uint32_t durationMs)
   rampStartLevel = masterBrightness;
   rampTargetLevel = clamp01(target);
   rampStartMs = millis();
-  rampDurationMs = durationMs;
-  rampActive = (durationMs > 0 && rampStartLevel != rampTargetLevel);
+  uint32_t dur = (durationMs > 0 ? durationMs : rampDurationMs);
+  rampDurationActive = dur;
+  rampActive = (dur > 0 && rampStartLevel != rampTargetLevel);
   if (!rampActive)
   {
     masterBrightness = rampTargetLevel;
@@ -159,7 +165,8 @@ void updateBrightnessRamp()
   if (!rampActive)
     return;
   uint32_t now = millis();
-  float t = rampDurationMs > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationMs) : 1.0f;
+  lastActivityMs = now;
+  float t = rampDurationActive > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationActive) : 1.0f;
   float eased = t * t * (3.0f - 2.0f * t);
   masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
   if (t >= 1.0f)
@@ -188,6 +195,8 @@ void saveSettings()
   prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
+  prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
+  prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
 }
 
 /**
@@ -211,6 +220,10 @@ void loadSettings()
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
+  rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
+  if (rampDurationMs < 50)
+    rampDurationMs = Settings::DEFAULT_RAMP_MS;
+  idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
 }
 
 /**
@@ -228,16 +241,17 @@ void setLampEnabled(bool enable)
 {
   if (lampEnabled == enable)
     return;
+  lastActivityMs = millis();
   if (enable)
   {
     lampEnabled = true;
     lampOffPending = false;
-    startBrightnessRamp(masterBrightness <= 0.0f ? Settings::DEFAULT_BRIGHTNESS : masterBrightness, 400);
+    startBrightnessRamp(masterBrightness <= 0.0f ? Settings::DEFAULT_BRIGHTNESS : masterBrightness, rampDurationMs);
   }
   else
   {
     lampOffPending = true;
-    startBrightnessRamp(0.0f, 250);
+    startBrightnessRamp(0.0f, rampDurationMs);
     cancelWakeFade(false);
   }
 }
@@ -338,6 +352,7 @@ void updateSwitchLogic()
       setLampEnabled(false);
     }
     saveSettings();
+    lastActivityMs = now;
   }
 }
 
@@ -420,6 +435,7 @@ void updateTouchBrightness()
       touchLastRampMs = now;
       brightnessChangedByTouch = false;
       dimRampUp = (masterBrightness < 0.5f);
+      lastActivityMs = now;
     }
     return;
   }
@@ -443,6 +459,7 @@ void updateTouchBrightness()
   if ((now - touchStartMs) >= TOUCH_HOLD_START_MS && (now - touchLastRampMs) >= DIM_RAMP_DT_MS)
   {
     touchLastRampMs = now;
+    lastActivityMs = now;
     float newLevel = masterBrightness + (dimRampUp ? DIM_RAMP_STEP : -DIM_RAMP_STEP);
     if (newLevel >= DIM_MAX)
     {
@@ -519,7 +536,7 @@ void cancelSleepFade()
  */
 void setBrightnessPercent(float percent, bool persist = false, bool announce = true)
 {
-  startBrightnessRamp(clamp01(percent / 100.0f), 400);
+  startBrightnessRamp(clamp01(percent / 100.0f), rampDurationMs);
   if (announce)
   {
     sendFeedback(String(F("[Brightness] ")) + String(percent, 1) + F(" %"));
@@ -566,6 +583,8 @@ void printHelp()
       "  wake stop         - Weckfade abbrechen",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
+      "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
+      "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
@@ -597,6 +616,8 @@ void handleCommand(String line)
   line.trim();
   if (line.isEmpty())
     return;
+
+  lastActivityMs = millis();
 
   String lower = line;
   lower.toLowerCase();
@@ -708,6 +729,38 @@ void handleCommand(String line)
       sendFeedback(F("auto on|off"));
     saveSettings();
     printStatus();
+    return;
+  }
+  if (lower.startsWith("ramp"))
+  {
+    String arg = line.substring(4);
+    arg.trim();
+    uint32_t val = arg.toInt();
+    if (val >= 50 && val <= 10000)
+    {
+      rampDurationMs = val;
+      saveSettings();
+      sendFeedback(String(F("[Ramp] Duration set to ")) + String(val) + F(" ms"));
+    }
+    else
+    {
+      sendFeedback(F("Usage: ramp <50-10000 ms>"));
+    }
+    return;
+  }
+  if (lower.startsWith("idleoff"))
+  {
+    String arg = line.substring(7);
+    arg.trim();
+    int minutes = arg.toInt();
+    if (minutes < 0)
+      minutes = 0;
+    idleOffMs = (minutes == 0) ? 0 : (uint32_t)minutes * 60000U;
+    saveSettings();
+    if (idleOffMs == 0)
+      sendFeedback(F("[IdleOff] Disabled"));
+    else
+      sendFeedback(String(F("[IdleOff] ")) + String(minutes) + F(" min"));
     return;
   }
   if (lower.startsWith("wake"))
@@ -831,6 +884,7 @@ void updatePatternEngine()
   uint32_t now = millis();
   if (wakeFadeActive)
   {
+    lastActivityMs = now;
     if (!lampEnabled)
     {
       wakeFadeActive = false;
@@ -848,6 +902,32 @@ void updatePatternEngine()
       sendFeedback(F("[Wake] Fade abgeschlossen."));
     }
     return;
+  }
+
+  if (sleepFadeActive)
+  {
+    lastActivityMs = now;
+    uint32_t elapsedSleep = now - sleepStartMs;
+    float progress = sleepDurationMs > 0 ? clamp01((float)elapsedSleep / (float)sleepDurationMs) : 1.0f;
+    float level = sleepStartLevel * (1.0f - progress);
+    applyPwmLevel(level);
+    if (progress >= 1.0f)
+    {
+      sleepFadeActive = false;
+      setLampEnabled(false);
+      sendFeedback(F("[Sleep] Fade abgeschlossen."));
+    }
+    return;
+  }
+
+  // idle-off timer
+  if (idleOffMs > 0 && lampEnabled && !rampActive)
+  {
+    if (now - lastActivityMs >= idleOffMs)
+    {
+      setLampEnabled(false);
+      sendFeedback(F("[IdleOff] Timer -> Lamp OFF"));
+    }
   }
 
   if (sleepFadeActive)

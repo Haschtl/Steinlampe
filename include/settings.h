@@ -18,6 +18,8 @@ constexpr float DEFAULT_BRIGHTNESS = 0.7f;     ///< Used on first boot if no NVS
 constexpr bool DEFAULT_AUTOCYCLE = false;       ///< Auto pattern cycling on first boot
 constexpr uint32_t DEFAULT_WAKE_MS = 180000;    ///< Default wake fade duration (3 min)
 constexpr uint32_t DEFAULT_SLEEP_MS = 900000;   ///< Default sleep fade duration (15 min)
+constexpr uint32_t DEFAULT_RAMP_MS = 400;       ///< Default ramp duration for brightness changes
+constexpr uint32_t DEFAULT_IDLE_OFF_MS = 0;     ///< 0 = disabled
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake
 constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state

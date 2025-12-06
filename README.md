@@ -50,6 +50,8 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `wake stop`         | Abort an active wake fade                                  |
 | `sleep [minutes]`   | Fade down to off over given minutes (default 15)           |
 | `sleep stop`        | Abort an active sleep fade                                 |
+| `ramp <ms>`         | Set brightness ramp duration (50–10000 ms)                 |
+| `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate`         | Re-measure touch baseline                                  |
