@@ -37,6 +37,12 @@
   <div class="header">
     <h1>Quarzlampe Web BLE</h1>
     <button id="btnConnect">Connect</button>
+    <button id="btnSerial">Connect Serial</button>
+    <button id="btnStatus">Status</button>
+    <button id="btnCfgExport">cfg export</button>
+    <label class="pill" style="cursor:pointer;">
+      <input type="checkbox" id="autoReconnect" style="margin-right:0.35rem;" checked />Auto-reconnect
+    </label>
     <span class="pill" id="status">Not connected</span>
     <a class="pill" href="https://github.com/Haschtl/Steinlampe/actions/workflows/ci.yml" target="_blank" rel="noopener">Firmware Build (Actions)</a>
   </div>
@@ -51,9 +57,13 @@
       </div>
       <div class="row">
         <button data-cmd="prev">Prev</button>
+        <select id="modeSelect" style="min-width:170px;"></select>
         <button data-cmd="next">Next</button>
-        <button data-cmd="auto on">Auto On</button>
-        <button data-cmd="auto off">Auto Off</button>
+      </div>
+      <div class="row">
+        <label class="pill" style="cursor:pointer;">
+          <input type="checkbox" id="autoToggle" style="margin-right:0.35rem;" />AutoCycle
+        </label>
       </div>
       <label>Brightness: <span id="briVal">--</span>%</label>
       <input id="bri" type="range" min="1" max="100" value="70" />
@@ -123,10 +133,18 @@
     const SERVICE = 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b';
     const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
+    const MODE_NAMES = [
+      'Konstant', 'Atmung', 'Pulsierend', 'Funkeln', 'Kerze',
+      'Lagerfeuer', 'Stufen', 'Zwinkern', 'Custom', 'Musik'
+    ];
 
     let cmdChar = null;
     let statusChar = null;
     let device = null;
+    let reconnecting = false;
+    let serialPort = null;
+    let serialWriter = null;
+    let serialReader = null;
 
     const logEl = document.getElementById('log');
     function log(msg) {
@@ -151,9 +169,22 @@
 
         log('Connecting...');
         const server = await device.gatt.connect();
-        device.addEventListener('gattserverdisconnected', () => {
+        device.addEventListener('gattserverdisconnected', async () => {
           log('Disconnected');
           document.getElementById('status').textContent = 'Disconnected';
+          if (document.getElementById('autoReconnect').checked && device) {
+            reconnecting = true;
+            try {
+              log('Reconnecting...');
+              await device.gatt.connect();
+              log('Reconnected');
+              document.getElementById('status').textContent = 'Connected to ' + device.name;
+            } catch (e) {
+              log('Reconnect failed: ' + e);
+            } finally {
+              reconnecting = false;
+            }
+          }
         });
         log('Discover service');
         const service = await server.getPrimaryService(SERVICE);
@@ -180,23 +211,38 @@
           throw e;
         }
 
-        if (statusChar) {
-          if (statusChar.properties && statusChar.properties.notify) {
-            try {
-              await statusChar.startNotifications();
-              statusChar.addEventListener('characteristicvaluechanged', onNotify);
-              log('Status notify enabled');
-            } catch (e) {
-              log('Status notify failed: ' + e + ' (will try read fallback)');
-              try {
-                const val = await statusChar.readValue();
-                onNotify({ target: { value: val } });
-              } catch (e2) {
-                log('Status read fallback failed: ' + e2);
-              }
-            }
-          } else {
-            log('Status characteristic has no notify property');
+        let notified = false;
+        // Attach notifications on cmdChar (firmware sends feedback here)
+        if (cmdChar && cmdChar.properties && cmdChar.properties.notify) {
+          try {
+            await cmdChar.startNotifications();
+            cmdChar.addEventListener('characteristicvaluechanged', onNotify);
+            log('Cmd notify enabled');
+          } catch (e) {
+            log('Cmd notify not available: ' + e);
+          }
+        }
+
+        // Attach notifications on statusChar
+        if (statusChar && statusChar.properties && statusChar.properties.notify) {
+          try {
+            await statusChar.startNotifications();
+            statusChar.addEventListener('characteristicvaluechanged', onNotify);
+            log('Status notify enabled');
+            notified = true;
+          } catch (e) {
+            log('Status notify not available; using read fallback');
+          }
+        } else {
+          log('Status notify not supported by firmware');
+        }
+
+        if (statusChar && !notified) {
+          try {
+            const val = await statusChar.readValue();
+            onNotify({ target: { value: val } });
+          } catch (e2) {
+            log('Status read failed: ' + e2);
           }
         }
         document.getElementById('status').textContent = 'Connected to ' + device.name;
@@ -206,14 +252,132 @@
       }
     }
 
+    async function connectSerial() {
+      if (!('serial' in navigator)) {
+        log('Web Serial not supported (needs Chrome/Edge over HTTPS/localhost)');
+        return;
+      }
+      try {
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 115200 });
+        const encoder = new TextEncoderStream();
+        serialWriter = encoder.writable.getWriter();
+        encoder.readable.pipeTo(serialPort.writable);
+
+        const reader = serialPort.readable.getReader();
+        const decoder = new TextDecoder();
+        serialReader = reader;
+        let buffer = '';
+        log('Serial connected');
+        document.getElementById('status').textContent = 'Serial connected';
+        (async () => {
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              let idx;
+              while ((idx = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, idx).trim();
+                buffer = buffer.slice(idx + 1);
+                if (line) {
+                  log(line);
+                  onNotify({ target: { value: new TextEncoder().encode(line) } });
+                }
+              }
+            }
+          } catch (e) {
+            log('Serial read error: ' + e);
+          } finally {
+            reader.releaseLock();
+            serialReader = null;
+            serialWriter = null;
+            if (serialPort) await serialPort.close();
+            serialPort = null;
+            document.getElementById('status').textContent = 'Disconnected';
+          }
+        })();
+      } catch (e) {
+        log('Serial connect error: ' + e);
+      }
+    }
+
     function onNotify(e) {
       const txt = new TextDecoder().decode(e.target.value || new DataView());
       txt.split(/\r?\n/).forEach(line => {
         if (line.trim()) log(line.trim());
+        updateUIFromStatus(line.trim());
+      });
+    }
+
+    function updateUIFromStatus(line) {
+      if (!line) return;
+      // Lamp state + brightness
+      if (line.includes('Lamp=')) {
+        const m = line.match(/Brightness=([0-9.]+)/);
+        if (m) {
+          const val = Math.round(parseFloat(m[1]));
+          const bri = document.getElementById('bri');
+          const briVal = document.getElementById('briVal');
+          if (!Number.isNaN(val)) {
+            bri.value = val;
+            briVal.textContent = val;
+          }
+        }
+        const lampState = line.match(/Lamp=([A-Z]+)/);
+        const statusEl = document.getElementById('status');
+        if (lampState && statusEl) statusEl.textContent = `Lamp ${lampState[1]}`;
+      }
+      // AutoCycle toggle from pattern line
+      if (line.startsWith('Pattern ')) {
+        const autoChk = document.getElementById('autoToggle');
+        if (autoChk) autoChk.checked = line.includes('AutoCycle=ON');
+      }
+      // Presence address hint
+      if (line.startsWith('Presence=')) {
+        const addrMatch = line.match(/\(([^)]+)\)/);
+        const input = document.getElementById('presenceMac');
+        if (addrMatch && addrMatch[1] && input && !input.value) {
+          input.value = addrMatch[1];
+        }
+      }
+      // Ramp/Idle/TouchDim
+      if (line.startsWith('Ramp=')) {
+        const r = line.match(/Ramp=([0-9]+)/);
+        if (r) document.getElementById('rampMs').value = r[1];
+        const i = line.match(/IdleOff=([0-9]+)m|IdleOff=off/);
+        if (i) {
+          const v = i[0].includes('off') ? 0 : parseInt(i[1]);
+          document.getElementById('idleMin').value = v;
+        }
+        if (line.includes('TouchDim=ON')) {
+          // nothing to toggle here, but could reflect state visually later
+        }
+      }
+    }
+
+    function populateModes() {
+      const sel = document.getElementById('modeSelect');
+      sel.innerHTML = '';
+      MODE_NAMES.forEach((name, idx) => {
+        const opt = document.createElement('option');
+        opt.value = (idx + 1).toString();
+        opt.textContent = `${idx + 1} - ${name}`;
+        sel.appendChild(opt);
       });
     }
 
     async function sendCmd(text) {
+      if (serialWriter) {
+        try {
+          await serialWriter.write(text + "\n");
+          log('> ' + text + ' (serial)');
+          return;
+        } catch (e) {
+          log('Serial send error: ' + e);
+        }
+      }
+
       if (!cmdChar) {
         log('Not connected');
         return;
@@ -231,6 +395,7 @@
     document.querySelectorAll('button[data-cmd]').forEach(btn => {
       btn.onclick = () => sendCmd(btn.dataset.cmd);
     });
+    document.getElementById('btnSerial').onclick = connectSerial;
     document.getElementById('btnSend').onclick = () => {
       const txt = document.getElementById('cmdInput').value.trim();
       if (txt) sendCmd(txt);
@@ -244,6 +409,17 @@
       const mac = document.getElementById('presenceMac').value.trim();
       if (mac) sendCmd('presence set ' + mac);
     };
+    document.getElementById('btnStatus').onclick = () => sendCmd('status');
+    document.getElementById('btnCfgExport').onclick = () => sendCmd('cfg export');
+    document.getElementById('modeSelect').onchange = (e) => {
+      const val = e.target.value;
+      if (val) sendCmd('mode ' + val);
+    };
+    document.getElementById('autoToggle').onchange = (e) => {
+      sendCmd(e.target.checked ? 'auto on' : 'auto off');
+    };
+
+    populateModes();
     document.getElementById('btnTouchHold').onclick = () => {
       const v = document.getElementById('touchHold').value;
       sendCmd('touch hold ' + v);
