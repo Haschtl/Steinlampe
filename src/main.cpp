@@ -717,6 +717,10 @@ void printStatus()
   }
   sendFeedback(lightLine);
   payload += lightLine + '\n';
+#else
+  String lightLine = F("[Light] N/A");
+  sendFeedback(lightLine);
+  payload += lightLine + '\n';
 #endif
 
 #if ENABLE_MUSIC_MODE
