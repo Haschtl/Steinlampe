@@ -574,6 +574,66 @@ void calibrateTouchBaseline()
 }
 
 /**
+ * @brief Guided calibration: measure baseline and touched delta to derive thresholds.
+ */
+void calibrateTouchGuided()
+{
+  sendFeedback(F("[Calib] Release electrode for 2s"));
+  delay(200);
+  uint32_t t0 = millis();
+  long accBase = 0;
+  int nBase = 0;
+  while (millis() - t0 < 2000)
+  {
+    accBase += touchRead(PIN_TOUCH_DIM);
+    nBase++;
+    delay(40);
+  }
+  int baseAvg = (nBase > 0) ? (int)(accBase / nBase) : touchBaseline;
+
+  sendFeedback(F("[Calib] Touch and hold for 2s"));
+  delay(200);
+  t0 = millis();
+  long accTouch = 0;
+  int nTouch = 0;
+  int minTouch = 4095;
+  int maxTouch = 0;
+  while (millis() - t0 < 2000)
+  {
+    int raw = touchRead(PIN_TOUCH_DIM);
+    accTouch += raw;
+    nTouch++;
+    if (raw < minTouch)
+      minTouch = raw;
+    if (raw > maxTouch)
+      maxTouch = raw;
+    delay(40);
+  }
+  int touchAvg = (nTouch > 0) ? (int)(accTouch / nTouch) : baseAvg;
+
+  int delta = touchAvg - baseAvg;
+  if (delta < 3)
+    delta = 3;
+  int newOn = delta * 6 / 10;  // ~60% of observed delta
+  if (newOn < 4)
+    newOn = 4;
+  if (newOn > 60)
+    newOn = 60;
+  int newOff = newOn * 6 / 10;
+  if (newOff < 2)
+    newOff = 2;
+  if (newOff >= newOn)
+    newOff = newOn - 1;
+
+  touchBaseline = baseAvg;
+  touchDeltaOn = newOn;
+  touchDeltaOff = newOff;
+  saveSettings();
+  sendFeedback(String(F("[Calib] base=")) + String(baseAvg) + F(" touch=") + String(touchAvg) +
+               F(" delta=") + String(delta) + F(" thrOn=") + String(newOn) + F(" thrOff=") + String(newOff));
+}
+
+/**
  * @brief Periodically sample the touch sensor to control long-press dimming.
  */
 void updateTouchBrightness()
@@ -867,6 +927,7 @@ void printHelp()
       "  presence set <addr>/clear - Gerät binden oder löschen",
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
+      "  calibrate touch    - Geführte Touch-Kalibrierung",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
       "  status            - aktuellen Zustand anzeigen",
@@ -940,6 +1001,11 @@ void handleCommand(String line)
   if (lower == "touch")
   {
     printTouchDebug();
+    return;
+  }
+  if (lower == "calibrate touch")
+  {
+    calibrateTouchGuided();
     return;
   }
   if (lower.startsWith("touch tune"))
