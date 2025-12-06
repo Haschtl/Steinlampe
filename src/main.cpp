@@ -503,12 +503,14 @@ void updateSwitchLogic()
       }
       modeTapArmed = false;
       setLampEnabled(true, "switch on");
+      sendFeedback(F("[Switch] ON"));
     }
     else
     {
       modeTapArmed = lampEnabled;
       lastSwitchOffMs = now;
       setLampEnabled(false, "switch off");
+      sendFeedback(F("[Switch] OFF"));
     }
     saveSettings();
     lastActivityMs = now;
