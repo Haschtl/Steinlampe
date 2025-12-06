@@ -20,6 +20,10 @@
 #include "settings.h"
 #include "utils.h"
 
+#if ENABLE_BLE
+#include <BLEDevice.h>
+#endif
+
 #include <esp_sleep.h>
 #include <esp_spp_api.h>
 #include <esp_spp_api.h>
@@ -51,8 +55,8 @@ void startWakeFade(uint32_t durationMs, bool announce = true);
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
 
-    // ---------- Persistenz ----------
-    Preferences prefs;
+// ---------- Persistenz ----------
+Preferences prefs;
 static const char *PREF_NS = "lamp";
 static const char *PREF_KEY_B1000 = "b1000";
 static const char *PREF_KEY_MODE = "mode";
@@ -111,9 +115,13 @@ bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
 uint32_t presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
 uint32_t presenceGraceDeadline = 0;
 bool presencePrevConnected = false;
+bool presenceDetected = false;
 String presenceAddr;
 String lastBleAddr;
 String lastBtAddr;
+uint32_t lastPresenceSeenMs = 0;
+uint32_t lastPresenceScanMs = 0;
+
 // Ramping and timers
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 #if ENABLE_LIGHT_SENSOR
@@ -1442,6 +1450,7 @@ void handleCommand(String line)
   sendFeedback(F("Unbekanntes Kommando. 'help' tippen."));
 }
 
+// Active scanning disabled: rely on explicit connections/pings
 /**
  * @brief Drive the active animation (wake fade or pattern) and auto-cycle.
  */
@@ -1470,7 +1479,7 @@ void updatePatternEngine()
     return;
   }
 
-  // Presence polling
+  // Presence polling (no active scan)
   bool anyClient = btHasClient();
   if (bleActive())
   {
@@ -1480,37 +1489,48 @@ void updatePatternEngine()
   }
   if (presenceEnabled)
   {
-    if (anyClient)
+    bool wasDetected = presenceDetected;
+    bool detected = anyClient;
+    if (presenceAddr.isEmpty())
+    {
+      if (lastBleAddr.length() > 0)
+        presenceAddr = lastBleAddr;
+      else if (lastBtAddr.length() > 0)
+        presenceAddr = lastBtAddr;
+    }
+
+    if (lastPresenceSeenMs > 0 && (millis() - lastPresenceSeenMs) <= presenceGraceMs)
+      detected = true;
+
+    if (detected)
     {
       presenceGraceDeadline = 0;
-      if (presenceAddr.isEmpty())
+      presencePrevConnected = true;
+      if (!presenceDetected)
+        sendFeedback(F("[Presence] detected (client match)"));
+      presenceDetected = true;
+      lastPresenceSeenMs = millis();
+      if (switchDebouncedState && !lampEnabled)
       {
-        if (lastBleAddr.length() > 0)
-          presenceAddr = lastBleAddr;
-        else if (lastBtAddr.length() > 0)
-          presenceAddr = lastBtAddr;
-      }
-      // Only turn on when switch is ON and the client matches (or none bound yet)
-      if (presenceAddr.isEmpty() || lastBleAddr == presenceAddr || lastBtAddr == presenceAddr)
-      {
-        if (switchDebouncedState && !lampEnabled)
-        {
-          setLampEnabled(true, "presence connect");
-          sendFeedback(F("[Presence] Client detected -> Lamp ON"));
-        }
+        setLampEnabled(true, "presence connect");
+        sendFeedback(F("[Presence] Detected -> Lamp ON"));
       }
     }
-    // First missing-client edge while lamp is on starts grace timer
-    else if (presencePrevConnected && lampEnabled && presenceGraceDeadline == 0 && !presenceAddr.isEmpty())
+    else if (presenceGraceDeadline == 0 && presenceAddr.length() > 0 &&
+             (presencePrevConnected || lastPresenceSeenMs > 0))
     {
-      presenceGraceDeadline = now + presenceGraceMs;
+      presenceGraceDeadline = millis() + presenceGraceMs;
       sendFeedback(String(F("[Presence] No client -> pending OFF in ")) + String(presenceGraceMs) + F("ms"));
+      presenceDetected = false;
+    }
+    else if (!detected && wasDetected)
+    {
+      presenceDetected = false;
+      sendFeedback(F("[Presence] no client detected"));
     }
   }
 
-  presencePrevConnected = anyClient;
-
-  if (presenceGraceDeadline > 0 && now >= presenceGraceDeadline)
+  if (presenceGraceDeadline > 0 && millis() >= presenceGraceDeadline)
   {
     presenceGraceDeadline = 0;
     if (lampEnabled)

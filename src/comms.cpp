@@ -15,6 +15,17 @@
 #include <BLEUtils.h>
 #endif
 
+// Presence tracking
+// String presenceAddr;
+// bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
+// uint32_t presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
+// uint32_t presenceGraceDeadline = 0;
+// bool presencePrevConnected = false;
+// String lastBleAddr;
+// String lastBtAddr;
+// uint32_t lastPresenceSeenMs = 0;
+// uint32_t lastPresenceScanMs = 0;
+
 /**
  * @file comms.cpp
  * @brief Implements USB, Bluetooth Serial, and BLE command handling.
@@ -118,12 +129,12 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     return String(buf);
   }
 
-  void onConnect(BLEServer *server) override
-  {
-    bleClientConnected = true;
-    Serial.println(F("[BLE] Verbunden."));
-    blePresenceUpdate(true, bleLastAddr);
-  }
+  // void onConnect(BLEServer *server) override
+  // {
+  //   bleClientConnected = true;
+  //   // Serial.println(F("[BLE] Verbunden."));
+  //   blePresenceUpdate(true, bleLastAddr);
+  // }
 
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
@@ -135,13 +146,13 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     blePresenceUpdate(true, addr);
   }
 
-  void onDisconnect(BLEServer *server) override
-  {
-    bleClientConnected = false;
-    Serial.println(F("[BLE] Getrennt."));
-    blePresenceUpdate(false, bleLastAddr);
-    BLEDevice::startAdvertising();
-  }
+  // void onDisconnect(BLEServer *server) override
+  // {
+  //   bleClientConnected = false;
+  //   // Serial.println(F("[BLE] Getrennt."));
+  //   blePresenceUpdate(false, bleLastAddr);
+  //   BLEDevice::startAdvertising();
+  // }
 
   void onDisconnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {

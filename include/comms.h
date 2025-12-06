@@ -40,3 +40,18 @@ void blePresenceUpdate(bool connected, const String &addr);
  * @brief Update the BLE status characteristic (read/notify) with a snapshot string.
  */
 void updateBleStatus(const String &statusPayload);
+
+String getBLEAddress();
+
+bool presenceScanOnce();
+
+// Presence tracking (defined in main.cpp)
+// extern String presenceAddr;
+// extern bool presenceEnabled;
+// extern uint32_t presenceGraceMs;
+// extern uint32_t presenceGraceDeadline;
+// extern bool presencePrevConnected;
+// extern String lastBleAddr;
+// extern String lastBtAddr;
+// extern uint32_t lastPresenceSeenMs;
+// extern uint32_t lastPresenceScanMs;
