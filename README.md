@@ -6,23 +6,24 @@ This firmware drives a stone-lamp via ESP32 PWM patterns. It offers switch contr
 
 ```mermaid
 flowchart LR
-  subgraph ESP32 Devkit
+  subgraph ESP32_Devkit
     PWM23[GPIO23\nPWM out]
     SW32[GPIO32\nSwitch in]
     T27[GPIO27/T7\nTouch]
-    LS35((GPIO35\nLight ADC))
-    MU36((GPIO36\nMusic ADC))
+    LS35[GPIO35\nLight ADC]
+    MU36[GPIO36\nMusic ADC]
   end
 
-  PWM23 -->|PWM| MOSFET[Gate] --> LED[LED Driver 24V]
+  PWM23 -->|PWM| MOSFET_GATE[MOSFET Gate]
+  MOSFET_GATE --> LED_DRIVER[LED Driver 24V]
   SW32 -->|toggle to GND| GND1((GND))
-  T27 -->|via 1MΩ + optional 2-5MΩ to GND| Lever[Metal lever]
-  LS35 --> LUX[Ambient Light Sensor (optional)]
-  MU36 --> MIC[Audio envelope/Mic (optional)]
-  VIN5V[VIN/USB 5V] --> ESP32 Devkit
-  GND2((GND)) --> ESP32 Devkit
-  GND2 --> MOSFET
-  GND2 --> LED
+  T27 -->|1MΩ + optional 2-5MΩ to GND| Lever[Metal lever]
+  LS35 --> LUX_SENSOR[Ambient Light Sensor (opt.)]
+  MU36 --> MIC_SENSOR[Audio/Mic (opt.)]
+  VIN5V[VIN/USB 5V] --> ESP32_Devkit
+  GND2((GND)) --> ESP32_Devkit
+  GND2 --> MOSFET_GATE
+  GND2 --> LED_DRIVER
 ```
 
 - Old toggle switch: one pole to GPIO32, other pole to GND (internal pull-up).
