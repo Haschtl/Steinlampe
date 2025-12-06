@@ -38,6 +38,7 @@
     <h1>Quarzlampe Web BLE</h1>
     <button id="btnConnect">Connect</button>
     <span class="pill" id="status">Not connected</span>
+    <a class="pill" href="https://github.com/Haschtl/Steinlampe/actions/workflows/ci.yml" target="_blank" rel="noopener">Firmware Build (Actions)</a>
   </div>
 
   <div class="grid">
@@ -136,21 +137,68 @@
 
     async function connect() {
       if (!navigator.bluetooth) {
-        log('Web Bluetooth not supported or not available (needs Chrome/Edge over HTTPS/localhost).');
+        log('Web Bluetooth not supported or not available (needs Chrome/Edge over HTTPS/localhost; enable chrome://flags/#enable-experimental-web-platform-features on some platforms).');
         return;
       }
       try {
-        device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE] }] });
+        let reqOpts = { filters: [{ services: [SERVICE] }], optionalServices: [SERVICE] };
+        try {
+          device = await navigator.bluetooth.requestDevice(reqOpts);
+        } catch (e1) {
+          log('Filter request failed, trying acceptAllDevices...');
+          device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE] });
+        }
+
+        log('Connecting...');
         const server = await device.gatt.connect();
         device.addEventListener('gattserverdisconnected', () => {
           log('Disconnected');
           document.getElementById('status').textContent = 'Disconnected';
         });
+        log('Discover service');
         const service = await server.getPrimaryService(SERVICE);
-        cmdChar = await service.getCharacteristic(CMD_CHAR);
-        statusChar = await service.getCharacteristic(STATUS_CHAR);
-        await statusChar.startNotifications();
-        statusChar.addEventListener('characteristicvaluechanged', onNotify);
+
+        // List available characteristics for debugging
+        try {
+          const chars = await service.getCharacteristics();
+          log('Found chars: ' + chars.map(c => c.uuid).join(', '));
+        } catch (e) {
+          log('Could not list characteristics: ' + e);
+        }
+
+        log('Discover cmd/status chars');
+        try {
+          cmdChar = await service.getCharacteristic(CMD_CHAR);
+        } catch (e) {
+          log('Cmd char not found: ' + e);
+          throw e;
+        }
+        try {
+          statusChar = await service.getCharacteristic(STATUS_CHAR);
+        } catch (e) {
+          log('Status char not found: ' + e);
+          throw e;
+        }
+
+        if (statusChar) {
+          if (statusChar.properties && statusChar.properties.notify) {
+            try {
+              await statusChar.startNotifications();
+              statusChar.addEventListener('characteristicvaluechanged', onNotify);
+              log('Status notify enabled');
+            } catch (e) {
+              log('Status notify failed: ' + e + ' (will try read fallback)');
+              try {
+                const val = await statusChar.readValue();
+                onNotify({ target: { value: val } });
+              } catch (e2) {
+                log('Status read fallback failed: ' + e2);
+              }
+            }
+          } else {
+            log('Status characteristic has no notify property');
+          }
+        }
         document.getElementById('status').textContent = 'Connected to ' + device.name;
         log('Connected to ' + device.name);
       } catch (e) {
