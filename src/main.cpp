@@ -112,11 +112,13 @@ String lastBtAddr;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 uint32_t lastActivityMs = 0;
+#if ENABLE_LIGHT_SENSOR
 bool lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
 float lightFiltered = 0.0f;
 uint32_t lastLightSampleMs = 0;
 uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
+#endif
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
@@ -302,15 +304,19 @@ void saveSettings()
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
+#if ENABLE_LIGHT_SENSOR
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
+#endif
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
 #endif
+#if ENABLE_LIGHT_SENSOR
   lastLoggedBrightness = masterBrightness;
   lightMinRaw = 4095;
   lightMaxRaw = 0;
+#endif
 }
 
 /**
@@ -338,7 +344,9 @@ void loadSettings()
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
+#if ENABLE_LIGHT_SENSOR
   lightSensorEnabled = prefs.getBool(PREF_KEY_LS_EN, Settings::LIGHT_SENSOR_DEFAULT_ENABLED);
+#endif
   customStepMs = prefs.getUInt(PREF_KEY_CUSTOM_MS, Settings::CUSTOM_STEP_MS_DEFAULT);
   if (customStepMs < 100)
     customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
@@ -356,9 +364,11 @@ void loadSettings()
 #if ENABLE_MUSIC_MODE
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
 #endif
+#if ENABLE_LIGHT_SENSOR
   lastLoggedBrightness = masterBrightness;
   lightMinRaw = 4095;
   lightMaxRaw = 0;
+#endif
 }
 
 /**
