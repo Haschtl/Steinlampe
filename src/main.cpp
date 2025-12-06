@@ -70,6 +70,9 @@ static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
 static const char *PREF_KEY_IDLE_OFF = "idle_off";
+static const char *PREF_KEY_LS_EN = "ls_en";
+static const char *PREF_KEY_CUSTOM = "cust";
+static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
@@ -106,6 +109,25 @@ String lastBtAddr;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 uint32_t lastActivityMs = 0;
+bool lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
+float lightFiltered = 0.0f;
+uint32_t lastLightSampleMs = 0;
+uint16_t lightMinRaw = 4095;
+uint16_t lightMaxRaw = 0;
+
+// Custom pattern editor
+static const size_t CUSTOM_MAX = 32;
+float customPattern[CUSTOM_MAX];
+size_t customLen = 0;
+uint32_t customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+
+float patternCustom(uint32_t ms)
+{
+  if (customLen == 0)
+    return 0.8f;
+  uint32_t idx = (ms / customStepMs) % customLen;
+  return clamp01(customPattern[idx]);
+}
 
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
@@ -264,7 +286,12 @@ void saveSettings()
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
+  prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
+  prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
+  prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
   lastLoggedBrightness = masterBrightness;
+  lightMinRaw = 4095;
+  lightMaxRaw = 0;
 }
 
 /**
@@ -292,7 +319,24 @@ void loadSettings()
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
+  lightSensorEnabled = prefs.getBool(PREF_KEY_LS_EN, Settings::LIGHT_SENSOR_DEFAULT_ENABLED);
+  customStepMs = prefs.getUInt(PREF_KEY_CUSTOM_MS, Settings::CUSTOM_STEP_MS_DEFAULT);
+  if (customStepMs < 100)
+    customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+  size_t maxFloats = CUSTOM_MAX;
+  size_t readBytes = prefs.getBytesLength(PREF_KEY_CUSTOM);
+  if (readBytes > 0 && readBytes <= sizeof(float) * CUSTOM_MAX)
+  {
+    customLen = readBytes / sizeof(float);
+    prefs.getBytes(PREF_KEY_CUSTOM, customPattern, readBytes);
+  }
+  else
+  {
+    customLen = 0;
+  }
   lastLoggedBrightness = masterBrightness;
+  lightMinRaw = 4095;
+  lightMaxRaw = 0;
 }
 
 /**
@@ -709,6 +753,13 @@ void printStatus()
                      F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
   sendFeedback(touchLine);
   updateBleStatus(line);
+#if ENABLE_LIGHT_SENSOR
+  if (lightSensorEnabled)
+  {
+    sendFeedback(String(F("[Light] raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
+                 F(" max=") + String((int)lightMaxRaw));
+  }
+#endif
 }
 
 void importConfig(const String &args)
@@ -814,6 +865,8 @@ void printHelp()
       "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
+      "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
+      "  custom step <ms>   - Schrittzeit Custom-Pattern",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
       "  status            - aktuellen Zustand anzeigen",
@@ -907,6 +960,66 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("custom"))
+  {
+    String args = line.substring(6);
+    args.trim();
+    if (args.startsWith("step"))
+    {
+      uint32_t v = args.substring(4).toInt();
+      if (v >= 100 && v <= 5000)
+      {
+        customStepMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Custom] step ms=")) + String(v));
+      }
+      else
+      {
+        sendFeedback(F("Usage: custom step <100-5000>"));
+      }
+      return;
+    }
+    // parse CSV of floats 0..1
+    size_t count = 0;
+    float vals[CUSTOM_MAX];
+    while (args.length() > 0 && count < CUSTOM_MAX)
+    {
+      int comma = args.indexOf(',');
+      String token;
+      if (comma >= 0)
+      {
+        token = args.substring(0, comma);
+        args = args.substring(comma + 1);
+      }
+      else
+      {
+        token = args;
+        args = "";
+      }
+      token.trim();
+      if (token.length() == 0)
+        continue;
+      float v = token.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      vals[count++] = v;
+    }
+    if (count > 0)
+    {
+      customLen = count;
+      for (size_t i = 0; i < count; ++i)
+        customPattern[i] = vals[i];
+      saveSettings();
+      sendFeedback(String(F("[Custom] Stored " )) + String(count) + F(" values"));
+    }
+    else
+    {
+      sendFeedback(F("Usage: custom v1,v2,... or custom step <ms>"));
+    }
+    return;
+  }
   if (lower == "next")
   {
     size_t next = (currentPattern + 1) % PATTERN_COUNT;
@@ -987,6 +1100,41 @@ void handleCommand(String line)
       sendFeedback(F("[IdleOff] Disabled"));
     else
       sendFeedback(String(F("[IdleOff] ")) + String(minutes) + F(" min"));
+    return;
+  }
+  if (lower.startsWith("light"))
+  {
+#if ENABLE_LIGHT_SENSOR
+    String arg = line.substring(5);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      lightSensorEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Light] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      lightSensorEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Light] Disabled"));
+    }
+    else if (arg == "calib")
+    {
+      int raw = analogRead(Settings::LIGHT_PIN);
+      lightFiltered = raw;
+      lightMinRaw = raw;
+      lightMaxRaw = raw;
+      sendFeedback(String(F("[Light] Calibrated raw=")) + String(raw));
+    }
+    else
+    {
+      sendFeedback(String(F("[Light] raw=")) + String((int)lightFiltered) + F(" en=") + (lightSensorEnabled ? F("1") : F("0")));
+    }
+#else
+    sendFeedback(F("[Light] Sensor disabled at build (ENABLE_LIGHT_SENSOR=0)"));
+#endif
     return;
   }
   if (lower.startsWith("wake"))
@@ -1187,6 +1335,34 @@ void updatePatternEngine()
   }
 }
 
+void updateLightSensor()
+{
+#if ENABLE_LIGHT_SENSOR
+  if (!lightSensorEnabled)
+    return;
+  uint32_t now = millis();
+  if (now - lastLightSampleMs < Settings::LIGHT_SAMPLE_MS)
+    return;
+  lastLightSampleMs = now;
+  int raw = analogRead(Settings::LIGHT_PIN);
+  lightFiltered = (1.0f - Settings::LIGHT_ALPHA) * lightFiltered + Settings::LIGHT_ALPHA * (float)raw;
+  if (raw < (int)lightMinRaw)
+    lightMinRaw = raw;
+  if (raw > (int)lightMaxRaw)
+    lightMaxRaw = raw;
+
+  if (!lampEnabled || touchActive || wakeFadeActive || sleepFadeActive)
+    return;
+  int range = (int)lightMaxRaw - (int)lightMinRaw;
+  if (range < 20)
+    return;
+  float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
+  norm = clamp01(norm);
+  float target = clamp01(0.2f + 0.8f * norm);
+  startBrightnessRamp(target, rampDurationMs);
+#endif
+}
+
 /**
  * @brief Enter light sleep briefly when lamp is idle to save power.
  */
@@ -1218,6 +1394,12 @@ void setup()
   initSwitchState();
   calibrateTouchBaseline();
 
+#if ENABLE_LIGHT_SENSOR
+  analogReadResolution(12);
+  analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
+  pinMode(Settings::LIGHT_PIN, INPUT);
+#endif
+
   loadSettings();
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
   ledcAttachPin(PIN_PWM, LEDC_CH);
@@ -1240,6 +1422,7 @@ void loop()
   updateTouchBrightness();
   updateBrightnessRamp();
   updatePatternEngine();
+  updateLightSensor();
   maybeLightSleep();
   delay(10);
 }

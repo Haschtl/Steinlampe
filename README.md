@@ -64,6 +64,9 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `calibrate`         | Re-measure touch baseline                                  |
 | `presence on|off`   | Enable/disable auto-off when registered device disconnects |
 | `presence set <MAC>`/`presence set me`/`presence clear` | Bind connected device or explicit MAC / clear |
+| `custom v1,v2,...`  | Set custom pattern values (0..1)                           |
+| `custom step <ms>`  | Set custom pattern step duration                           |
+| `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |
 | `cfg import key=val ...` | Import settings (ramp, idle, touch_on/off, bri, auto, presence) |
 | `status`            | Show current pattern, brightness and wake/auto state       |

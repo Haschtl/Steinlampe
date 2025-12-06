@@ -24,4 +24,12 @@ constexpr uint32_t DEFAULT_IDLE_OFF_MS = 0;     ///< 0 = disabled
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake
 constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state
+
+#ifdef ENABLE_LIGHT_SENSOR
+constexpr bool LIGHT_SENSOR_DEFAULT_ENABLED = false;
+constexpr uint32_t LIGHT_SAMPLE_MS = 1000;      ///< light sensor sample interval
+constexpr float LIGHT_ALPHA = 0.1f;             ///< low-pass filter factor
+constexpr int LIGHT_PIN = 35;                   ///< default ADC pin for ambient light
+constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
+#endif
 } // namespace Settings

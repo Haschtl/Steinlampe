@@ -88,6 +88,9 @@ float patternTwinkle(uint32_t ms)
   return clamp01(slow + wave + flicker);
 }
 
+// Custom pattern is provided by main.cpp (patternCustom)
+extern float patternCustom(uint32_t ms);
+
 /// Exported pattern table consumed by the main firmware
 const Pattern PATTERNS[] = {
     {"Konstant", patternConstant, 8000},
@@ -98,6 +101,7 @@ const Pattern PATTERNS[] = {
     {"Lagerfeuer", patternCampfire, 18000},
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
+    {"Custom", patternCustom, 0},
 };
 
 const size_t PATTERN_COUNT = sizeof(PATTERNS) / sizeof(PATTERNS[0]);

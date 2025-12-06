@@ -12,3 +12,7 @@
 #ifndef ENABLE_BT_SERIAL
 #define ENABLE_BT_SERIAL 1
 #endif
+
+#ifndef ENABLE_LIGHT_SENSOR
+#define ENABLE_LIGHT_SENSOR 0
+#endif
