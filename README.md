@@ -69,6 +69,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `mode <n>`          | Immediately switch to pattern number `n`                   |
 | `next` / `prev`     | Cycle to the next or previous pattern                      |
 | `on` / `off` / `toggle` | Switch lamp on/off like the hardware toggle               |
+| `bri min/max <0..1>` | Set min/max brightness clamp                               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
 | `wake <seconds>`    | Start a sunrise fade over the specified duration           |
@@ -78,17 +79,21 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `ramp <ms>`         | Set brightness ramp duration (50–10000 ms)                 |
 | `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
+| `touchdim on/off`   | Enable/disable touch dimming                               |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |
 | `calibrate`         | Re-measure touch baseline                                  |
 | `presence on|off`   | Enable/disable auto-off when registered device disconnects |
 | `presence set <MAC>`/`presence set me`/`presence clear` | Bind connected device or explicit MAC / clear |
+| `presence grace <ms>` | Set grace timeout before presence-off                      |
 | `custom v1,v2,...`  | Set custom pattern values (0..1)                           |
 | `custom step <ms>`  | Set custom pattern step duration                           |
 | `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
+| `light gain <f>`    | Adjust light sensor gain (if built with ENABLE_LIGHT_SENSOR) |
 | `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |
 | `cfg import key=val ...` | Import settings (ramp, idle, touch_on/off, bri, auto, presence) |
+| `factory`           | Reset all settings to defaults                             |
 | `status`            | Show current pattern, brightness and wake/auto state       |
 | `help`              | Display the quick command overview                         |
 

@@ -43,8 +43,8 @@ static const uint32_t DOUBLE_TAP_MS = 600;   // schneller Doppel-Tipp -> Wake-Ki
 static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
 
 // Touch-Schwellwerte-Defaults
-static const int TOUCH_DELTA_ON_DEFAULT = 6;  // Counts relativ zur Baseline
-static const int TOUCH_DELTA_OFF_DEFAULT = 4; // Hysterese
+static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
+static const int TOUCH_DELTA_OFF_DEFAULT = 6; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_HOLD_START_MS = 500;
 static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
@@ -76,15 +76,23 @@ static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
 #if ENABLE_MUSIC_MODE
 static const char *PREF_KEY_MUSIC_EN = "music_en";
 #endif
+static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
+static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
+static const char *PREF_KEY_BRI_MIN = "bri_min";
+static const char *PREF_KEY_BRI_MAX = "bri_max";
+static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 
 // ---------- Zustand ----------
 size_t currentPattern = 0;
 uint32_t patternStartMs = 0;
 float masterBrightness = Settings::DEFAULT_BRIGHTNESS; // 0..1
+float lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 bool lampEnabled = false;
 bool lampOffPending = false;
 float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
+float briMinUser = Settings::BRI_MIN_DEFAULT;
+float briMaxUser = Settings::BRI_MAX_DEFAULT;
 
 bool switchRawState = false;
 bool switchDebouncedState = false;
@@ -104,8 +112,11 @@ bool dimRampUp = true;
 bool brightnessChangedByTouch = false;
 int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
+uint32_t presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
+uint32_t presenceGraceDeadline = 0;
 String presenceAddr;
 String lastBleAddr;
 String lastBtAddr;
@@ -119,6 +130,7 @@ uint32_t lastLightSampleMs = 0;
 uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
 #endif
+float lightGain = Settings::LIGHT_GAIN_DEFAULT;
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
@@ -172,12 +184,15 @@ uint32_t rampDurationActive = 0;
 void applyPwmLevel(float normalized)
 {
   float level = clamp01(normalized);
+  if (briMaxUser < briMinUser)
+    briMaxUser = briMinUser;
+  float levelEff = briMinUser + (briMaxUser - briMinUser) * level;
   if (level <= 0.0f)
   {
     ledcWrite(LEDC_CH, 0);
     return;
   }
-  float pwm = powf(level, GAMMA) * PWM_MAX;
+  float pwm = powf(levelEff, GAMMA) * PWM_MAX;
   if (pwm < 0.0f)
     pwm = 0.0f;
   if (pwm > PWM_MAX)
@@ -205,6 +220,10 @@ void logBrightnessChange(const char *reason)
     msg += F(")");
   }
   sendFeedback(msg);
+#if DEBUG_BRIGHTNESS_LOG
+  Serial.print(F("[DBG] masterBrightness="));
+  Serial.println(masterBrightness, 4);
+#endif
 }
 
 bool parseBool(const String &s, bool &out)
@@ -241,6 +260,16 @@ void exportConfig()
   cfg += presenceEnabled ? F("on") : F("off");
   cfg += F(" presence_addr=");
   cfg += presenceAddr;
+  cfg += F(" touch_dim=");
+  cfg += touchDimEnabled ? F("on") : F("off");
+  cfg += F(" light_gain=");
+  cfg += String(lightGain, 2);
+  cfg += F(" bri_min=");
+  cfg += String(briMinUser, 3);
+  cfg += F(" bri_max=");
+  cfg += String(briMaxUser, 3);
+  cfg += F(" pres_grace=");
+  cfg += presenceGraceMs;
   sendFeedback(cfg);
 }
 
@@ -306,17 +335,21 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
 #if ENABLE_LIGHT_SENSOR
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
+  lightMinRaw = 4095;
+  lightMaxRaw = 0;
 #endif
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
 #endif
-#if ENABLE_LIGHT_SENSOR
+  prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
+  prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
+  prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
+  prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
+  prefs.putUInt(PREF_KEY_PRES_GRACE, presenceGraceMs);
   lastLoggedBrightness = masterBrightness;
-  lightMinRaw = 4095;
-  lightMaxRaw = 0;
-#endif
+  
 }
 
 /**
@@ -364,6 +397,11 @@ void loadSettings()
 #if ENABLE_MUSIC_MODE
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
 #endif
+  touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
+  lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
+  briMinUser = prefs.getFloat(PREF_KEY_BRI_MIN, Settings::BRI_MIN_DEFAULT);
+  briMaxUser = prefs.getFloat(PREF_KEY_BRI_MAX, Settings::BRI_MAX_DEFAULT);
+  presenceGraceMs = prefs.getUInt(PREF_KEY_PRES_GRACE, Settings::PRESENCE_GRACE_MS_DEFAULT);
 #if ENABLE_LIGHT_SENSOR
   lastLoggedBrightness = masterBrightness;
   lightMinRaw = 4095;
@@ -396,22 +434,33 @@ void logLampState(const char *reason)
 
 void setLampEnabled(bool enable, const char *reason = nullptr)
 {
-  if (lampEnabled == enable)
+  if (lampEnabled == enable && !(enable && lampOffPending))
     return;
   lastActivityMs = millis();
   if (enable)
   {
     lampEnabled = true;
     lampOffPending = false;
-    startBrightnessRamp(masterBrightness <= 0.0f ? Settings::DEFAULT_BRIGHTNESS : masterBrightness, rampDurationMs);
+    float fallback = (lastOnBrightness > briMinUser) ? lastOnBrightness : Settings::DEFAULT_BRIGHTNESS;
+    float target = (masterBrightness > briMinUser) ? masterBrightness : fallback;
+    if (target < briMinUser)
+      target = briMinUser;
+    startBrightnessRamp(target, rampDurationMs);
+    lastOnBrightness = target;
     logLampState(reason);
   }
   else
   {
     lampOffPending = true;
+    if (masterBrightness > briMinUser)
+      lastOnBrightness = masterBrightness;
+    else if (lastOnBrightness < briMinUser)
+      lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
     startBrightnessRamp(0.0f, rampDurationMs);
     cancelWakeFade(false);
     logLampState(reason);
+    // if (reason && strstr(reason, "switch") == nullptr)
+    //   sendFeedback(F("[Switch] OFF"));
   }
 }
 
@@ -428,7 +477,7 @@ void printTouchDebug()
     delay(5);
   }
   int raw = (int)(acc / samples);
-  int delta = raw - touchBaseline;
+  int delta = touchBaseline - raw;
   sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
                F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff));
 }
@@ -492,10 +541,10 @@ void updateSwitchLogic()
     if (switchDebouncedState)
     {
       uint32_t nowOn = now;
-      if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
-      {
-        startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
-      }
+      // if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
+      // {
+      //   startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
+      // }
       lastSwitchOnMs = nowOn;
       if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
       {
@@ -524,6 +573,7 @@ void blePresenceUpdate(bool connected, const String &addr)
 {
   if (connected)
   {
+    presenceGraceDeadline = 0;
     if (addr.length() > 0)
       lastBleAddr = addr;
     // if (presenceAddr.isEmpty() && addr.length() > 0)
@@ -533,17 +583,17 @@ void blePresenceUpdate(bool connected, const String &addr)
       saveSettings();
       sendFeedback(String(F("[Presence] Registered ")) + presenceAddr);
     }
-      if (presenceEnabled)
+    if (presenceEnabled)
+    {
+      if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
       {
-        if (presenceAddr.isEmpty() || addr.isEmpty() || addr == presenceAddr)
+        if (switchDebouncedState)
         {
-          if (switchDebouncedState)
-          {
-            setLampEnabled(true, "presence connect");
-            sendFeedback(F("[Presence] Device connected -> Lamp ON"));
-          }
+          setLampEnabled(true, "presence connect");
+          sendFeedback(F("[Presence] Device connected -> Lamp ON"));
         }
       }
+    }
     return;
   }
   // disconnect
@@ -553,8 +603,8 @@ void blePresenceUpdate(bool connected, const String &addr)
   {
     if (addr.length() == 0 || addr == presenceAddr)
     {
-      setLampEnabled(false, "presence disconnect");
-      sendFeedback(String(F("[Presence] Device left: ")) + presenceAddr + F(" -> Lamp OFF"));
+      presenceGraceDeadline = millis() + presenceGraceMs;
+      sendFeedback(String(F("[Presence] Device left: ")) + presenceAddr + F(" -> pending OFF"));
     }
   }
 }
@@ -566,6 +616,8 @@ void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
   if (event == ESP_SPP_SRV_OPEN_EVT)
   {
+    presenceGraceDeadline = 0;
+    presenceGraceDeadline = 0;
     char buf[18];
     snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
              param->srv_open.rem_bda[0], param->srv_open.rem_bda[1], param->srv_open.rem_bda[2],
@@ -586,8 +638,8 @@ void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
       return;
     if (!presenceAddr.isEmpty() && (lastBtAddr.isEmpty() || lastBtAddr == presenceAddr))
     {
-      setLampEnabled(false, "BT presence disconnect");
-      sendFeedback(String(F("[Presence] BT disconnect: ")) + presenceAddr + F(" -> Lamp OFF"));
+      presenceGraceDeadline = millis() + presenceGraceMs;
+      sendFeedback(String(F("[Presence] BT disconnect: ")) + presenceAddr + F(" -> pending OFF"));
     }
   }
 }
@@ -675,10 +727,12 @@ void updateTouchBrightness()
   uint32_t now = millis();
   if (now - touchLastSampleMs < TOUCH_SAMPLE_DT_MS)
     return;
+  if (!touchDimEnabled)
+    return;
   touchLastSampleMs = now;
 
   int raw = touchRead(PIN_TOUCH_DIM);
-  int delta = raw - touchBaseline;
+  int delta = touchBaseline - raw;
 
   if (!touchActive)
   {
@@ -957,9 +1011,40 @@ void importConfig(const String &args)
     {
       presenceAddr = val;
     }
+    else if (key == "touch_dim")
+    {
+      bool v;
+      if (parseBool(val, v))
+        touchDimEnabled = v;
+    }
+    else if (key == "light_gain")
+    {
+      lightGain = val.toFloat();
+      if (lightGain < 0.1f)
+        lightGain = 0.1f;
+      if (lightGain > 5.0f)
+        lightGain = 5.0f;
+    }
+    else if (key == "bri_min")
+    {
+      briMinUser = clamp01(val.toFloat());
+    }
+    else if (key == "bri_max")
+    {
+      briMaxUser = clamp01(val.toFloat());
+    }
+    else if (key == "pres_grace")
+    {
+      uint32_t v = val.toInt();
+      if (v < 0)
+        v = 0;
+      presenceGraceMs = v;
+    }
   }
   saveSettings();
   sendFeedback(F("[Config] Imported"));
+  if (briMaxUser < briMinUser)
+    briMaxUser = briMinUser;
   printStatus();
 }
 
@@ -976,6 +1061,7 @@ void printHelp()
       "  on / off / toggle - Lampe schalten",
       "  auto on|off       - automatisches Durchschalten",
       "  bri <0..100>      - globale Helligkeit in %",
+      "  bri min/max <0..1>- Min/Max-Level setzen",
       "  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)",
       "  wake stop         - Weckfade abbrechen",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
@@ -983,15 +1069,19 @@ void printHelp()
       "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
+      "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
+      "  presence grace <ms> - Verzögerung vor Auto-Off",
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
+      "  light gain <f>     - Verstärkung Lichtsensor",
       "  music on|off       - Music-Mode (ADC) aktivieren",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
       "  status            - aktuellen Zustand anzeigen",
+      "  factory           - Reset aller Settings",
       "  help              - diese Übersicht",
   };
   for (auto l : lines)
@@ -1087,6 +1177,20 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower == "touchdim on")
+  {
+    touchDimEnabled = true;
+    saveSettings();
+    sendFeedback(F("[TouchDim] Enabled"));
+    return;
+  }
+  if (lower == "touchdim off")
+  {
+    touchDimEnabled = false;
+    saveSettings();
+    sendFeedback(F("[TouchDim] Disabled"));
+    return;
+  }
   if (lower.startsWith("custom"))
   {
     String args = line.substring(6);
@@ -1172,6 +1276,28 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("bri min"))
+  {
+    float v = line.substring(7).toFloat();
+    v = clamp01(v);
+    briMinUser = v;
+    if (briMaxUser < briMinUser)
+      briMaxUser = briMinUser;
+    saveSettings();
+    sendFeedback(String(F("[Bri] min=")) + String(v, 3));
+    return;
+  }
+  if (lower.startsWith("bri max"))
+  {
+    float v = line.substring(7).toFloat();
+    v = clamp01(v);
+    if (v < briMinUser)
+      v = briMinUser;
+    briMaxUser = v;
+    saveSettings();
+    sendFeedback(String(F("[Bri] max=")) + String(v, 3));
+    return;
+  }
   if (lower.startsWith("bri"))
   {
     float value = line.substring(3).toFloat();
@@ -1254,6 +1380,17 @@ void handleCommand(String line)
       lightMinRaw = raw;
       lightMaxRaw = raw;
       sendFeedback(String(F("[Light] Calibrated raw=")) + String(raw));
+    }
+    else if (arg.startsWith("gain"))
+    {
+      float g = arg.substring(4).toFloat();
+      if (g < 0.1f)
+        g = 0.1f;
+      if (g > 5.0f)
+        g = 5.0f;
+      lightGain = g;
+      saveSettings();
+      sendFeedback(String(F("[Light] gain=")) + String(g, 2));
     }
     else
     {
@@ -1385,6 +1522,13 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(F("[Presence] Cleared"));
     }
+    else if (arg.startsWith("grace"))
+    {
+      uint32_t v = line.substring(line.indexOf("grace") + 5).toInt();
+      presenceGraceMs = v;
+      saveSettings();
+      sendFeedback(String(F("[Presence] Grace ")) + String(v) + F(" ms"));
+    }
     else
     {
       sendFeedback(String(F("[Presence] ")) + (presenceEnabled ? F("ON ") : F("OFF ")) +
@@ -1409,6 +1553,37 @@ void handleCommand(String line)
     {
       sendFeedback(F("cfg export | cfg import key=val ..."));
     }
+    return;
+  }
+  if (lower == "factory")
+  {
+    prefs.begin(PREF_NS, false);
+    prefs.clear();
+    prefs.end();
+    // reset runtime defaults
+    masterBrightness = Settings::DEFAULT_BRIGHTNESS;
+    autoCycle = Settings::DEFAULT_AUTOCYCLE;
+    touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
+    touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+    touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
+    presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
+    presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
+    presenceAddr = "";
+    rampDurationMs = Settings::DEFAULT_RAMP_MS;
+    idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
+    briMinUser = Settings::BRI_MIN_DEFAULT;
+    briMaxUser = Settings::BRI_MAX_DEFAULT;
+    customLen = 0;
+    customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+#if ENABLE_LIGHT_SENSOR
+    lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
+#endif
+    lightGain = Settings::LIGHT_GAIN_DEFAULT;
+#if ENABLE_MUSIC_MODE
+    musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
+#endif
+    saveSettings();
+    sendFeedback(F("[Factory] Settings cleared"));
     return;
   }
   if (lower == "calibrate")
@@ -1446,6 +1621,14 @@ void updatePatternEngine()
       patternStartMs = now;
       sendFeedback(F("[Wake] Fade abgeschlossen."));
     }
+    return;
+  }
+
+  if (presenceGraceDeadline > 0 && now >= presenceGraceDeadline)
+  {
+    presenceGraceDeadline = 0;
+    setLampEnabled(false, "presence grace");
+    sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
     return;
   }
 
@@ -1510,7 +1693,7 @@ void updateLightSensor()
     return;
   float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
   norm = clamp01(norm);
-  float target = clamp01(0.2f + 0.8f * norm);
+  float target = clamp01((0.2f + 0.8f * norm) * lightGain);
   startBrightnessRamp(target, rampDurationMs);
 #endif
 }

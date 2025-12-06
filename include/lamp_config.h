@@ -20,3 +20,7 @@
 #ifndef ENABLE_MUSIC_MODE
 #define ENABLE_MUSIC_MODE 0
 #endif
+
+#ifndef DEBUG_BRIGHTNESS_LOG
+#define DEBUG_BRIGHTNESS_LOG 0
+#endif

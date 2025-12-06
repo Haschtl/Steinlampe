@@ -24,6 +24,11 @@ constexpr uint32_t DEFAULT_IDLE_OFF_MS = 0;     ///< 0 = disabled
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake
 constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state
+constexpr uint32_t PRESENCE_GRACE_MS_DEFAULT = 3000; ///< Wait before presence-off triggers
+constexpr bool TOUCH_DIM_DEFAULT_ENABLED = true;
+constexpr float LIGHT_GAIN_DEFAULT = 1.0f;
+constexpr float BRI_MIN_DEFAULT = 0.05f;
+constexpr float BRI_MAX_DEFAULT = 0.95f;
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
 
 #if ENABLE_LIGHT_SENSOR
