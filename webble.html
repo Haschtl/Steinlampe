@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0f1a" />
+  <link rel="manifest" href="manifest.json" />
   <title>Quarzlampe Web BLE</title>
   <style>
     :root {
@@ -445,6 +447,14 @@
       const cfg = document.getElementById('importArea').value.trim();
       if (cfg) sendCmd(cfg.startsWith('cfg import') ? cfg : ('cfg import ' + cfg));
     };
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(() => {
+          log('Service worker registered');
+        }).catch((e) => log('SW register failed: ' + e));
+      });
+    }
   </script>
 </body>
 </html>
