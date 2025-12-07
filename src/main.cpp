@@ -39,6 +39,10 @@ static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO2
 #if ENABLE_POTI
 static const int PIN_POTI = Settings::POTI_PIN;
 #endif
+#if ENABLE_PUSH_BUTTON
+static const int PIN_PUSHBTN = Settings::PUSH_BUTTON_PIN;
+static const int PUSH_ACTIVE_LEVEL = LOW;
+#endif
 
 // ---------- Schalter / Touch ----------
 static const int SWITCH_ACTIVE_LEVEL = LOW;
@@ -161,6 +165,17 @@ int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 uint32_t touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
+
+#if ENABLE_PUSH_BUTTON
+bool pushRawState = false;
+bool pushDebouncedState = false;
+uint32_t pushLastDebounceMs = 0;
+uint32_t pushPressMs = 0;
+uint32_t pushLastReleaseMs = 0;
+bool pushAwaitDouble = false;
+bool pushHoldActive = false;
+uint32_t pushHoldLastStepMs = 0;
+#endif
 
 // Presence tracking
 bool presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
@@ -3240,6 +3255,83 @@ void updateMusicSensor()
 }
 #endif
 
+#if ENABLE_PUSH_BUTTON
+void updatePushButton()
+{
+  uint32_t now = millis();
+  bool raw = digitalRead(PIN_PUSHBTN) == PUSH_ACTIVE_LEVEL;
+  if (raw != pushRawState)
+  {
+    pushRawState = raw;
+    pushLastDebounceMs = now;
+  }
+  if ((now - pushLastDebounceMs) >= Settings::PUSH_DEBOUNCE_MS && pushDebouncedState != pushRawState)
+  {
+    pushDebouncedState = pushRawState;
+    if (pushDebouncedState)
+    {
+      pushPressMs = now;
+      pushHoldActive = false;
+    }
+    else
+    {
+      if (pushHoldActive)
+      {
+        pushHoldActive = false;
+      }
+      else
+      {
+        if (pushAwaitDouble && (now - pushLastReleaseMs) <= Settings::PUSH_DOUBLE_MS)
+        {
+          pushAwaitDouble = false;
+          size_t from = currentModeIndex;
+          if (from >= quickModeCount())
+            from = 0;
+          size_t next = nextQuickMode(from);
+          applyQuickMode(next);
+        }
+        else
+        {
+          pushAwaitDouble = true;
+          pushLastReleaseMs = now;
+        }
+      }
+    }
+  }
+
+  // finalize single click if waiting too long
+  if (pushAwaitDouble && (now - pushLastReleaseMs) > Settings::PUSH_DOUBLE_MS)
+  {
+    pushAwaitDouble = false;
+    setLampEnabled(!lampEnabled, "pushbtn");
+  }
+
+  // hold brightness adjustment
+  if (pushDebouncedState && !pushHoldActive && (now - pushPressMs) >= Settings::PUSH_HOLD_MS)
+  {
+    pushHoldActive = true;
+    pushHoldLastStepMs = now;
+    pushAwaitDouble = false;
+  }
+
+  if (pushHoldActive && pushDebouncedState)
+  {
+    if (now - pushHoldLastStepMs >= Settings::PUSH_BRI_STEP_MS)
+    {
+      pushHoldLastStepMs = now;
+      float pct = masterBrightness * 100.0f + Settings::PUSH_BRI_STEP * 100.0f;
+      if (pct > 100.0f)
+        pct = briMinUser * 100.0f;
+      setBrightnessPercent(pct, true);
+    }
+  }
+  if (!pushDebouncedState && pushHoldActive)
+  {
+    pushHoldActive = false;
+  }
+}
+#endif
+
 #if ENABLE_POTI
 void updatePoti()
 {
@@ -3327,6 +3419,9 @@ void setup()
   analogSetPinAttenuation(PIN_POTI, ADC_11db);
   pinMode(PIN_POTI, INPUT);
 #endif
+#if ENABLE_PUSH_BUTTON
+  pinMode(PIN_PUSHBTN, INPUT_PULLUP);
+#endif
 
   loadSettings();
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
@@ -3356,6 +3451,9 @@ void loop()
   updateLightSensor();
 #if ENABLE_POTI
   updatePoti();
+#endif
+#if ENABLE_PUSH_BUTTON
+  updatePushButton();
 #endif
 #if ENABLE_MUSIC_MODE
   updateMusicSensor();

@@ -45,6 +45,15 @@ constexpr float POTI_DELTA_MIN = 0.025f;
 constexpr float POTI_OFF_THRESHOLD = 0.02f;
 #endif
 
+#if ENABLE_PUSH_BUTTON
+constexpr int PUSH_BUTTON_PIN = 34;            ///< GPIO for optional momentary push button
+constexpr uint32_t PUSH_DEBOUNCE_MS = 25;
+constexpr uint32_t PUSH_DOUBLE_MS = 450;
+constexpr uint32_t PUSH_HOLD_MS = 700;
+constexpr uint32_t PUSH_BRI_STEP_MS = 180;
+constexpr float PUSH_BRI_STEP = 0.05f;         ///< step in normalized brightness while holding
+#endif
+
 #if ENABLE_LIGHT_SENSOR
 constexpr bool LIGHT_SENSOR_DEFAULT_ENABLED = false;
 constexpr uint32_t LIGHT_SAMPLE_MS = 1000;      ///< light sensor sample interval

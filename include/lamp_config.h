@@ -36,6 +36,10 @@
 #ifndef ENABLE_POTI
 #define ENABLE_POTI 0
 #endif
+
+#ifndef ENABLE_PUSH_BUTTON
+#define ENABLE_PUSH_BUTTON 0
+#endif
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 0
 #endif
