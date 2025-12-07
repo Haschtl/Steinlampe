@@ -98,6 +98,7 @@ export function useSerial(): SerialApi {
   const refreshStatus = useCallback(async () => {
     try {
       await sendCmd('status');
+      await sendCmd('custom export');
     } catch (e) {
       pushLog('Status error: ' + e);
     }

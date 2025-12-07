@@ -128,6 +128,7 @@ export function useBle(): BleApi {
   const refreshStatus = useCallback(async () => {
     try {
       await sendCmd('status');
+      await sendCmd('custom export');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       pushLog('Status error: ' + msg);
