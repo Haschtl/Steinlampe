@@ -171,6 +171,15 @@
               <button id="btnRamp">Set</button>
             </div>
           </div>
+          <div class="slider-group">
+            <div class="slider-top">
+              <span>PWM Curve</span>
+              <input id="pwmCurveNum" class="slider-number" type="number" min="0.5" max="4" step="0.05" value="2.20" />
+            </div>
+            <div class="slider-row">
+              <input id="pwmCurve" type="range" min="0.5" max="4" step="0.05" value="2.20" />
+            </div>
+          </div>
           <div class="row" style="flex-wrap:wrap; gap:0.6rem;">
             <div>
               <label>Ramp On</label>
@@ -970,6 +979,14 @@
           if (selOff) selOff.value = reOff[1].toLowerCase();
           if (powOff) powOff.value = parseFloat(reOff[2]).toFixed(2);
         }
+        const pwmMatch = line.match(/PWM=([0-9.]+)/);
+        const pwm = pwmMatch ? parseFloat(pwmMatch[1]) : null;
+        const pc = document.getElementById('pwmCurve');
+        const pcNum = document.getElementById('pwmCurveNum');
+        if (pwm !== null && !Number.isNaN(pwm)) {
+          if (pc) pc.value = pwm.toFixed(2);
+          if (pcNum) pcNum.value = pwm.toFixed(2);
+        }
       }
     }
 
@@ -1354,6 +1371,21 @@
     if (rampPowOff) rampPowOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff.value}`); };
     drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn);
     drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff);
+    const pwmCurve = document.getElementById('pwmCurve');
+    const pwmCurveNum = document.getElementById('pwmCurveNum');
+    const syncPwm = (v, send = false) => {
+      if (pwmCurve) pwmCurve.value = v;
+      if (pwmCurveNum) pwmCurveNum.value = v;
+      if (send) sendCmd('pwm curve ' + v);
+    };
+    if (pwmCurve) {
+      pwmCurve.oninput = (e) => syncPwm(e.target.value);
+      pwmCurve.onchange = (e) => syncPwm(e.target.value, true);
+    }
+    if (pwmCurveNum) {
+      pwmCurveNum.oninput = (e) => syncPwm(e.target.value);
+      pwmCurveNum.onchange = (e) => syncPwm(e.target.value, true);
+    }
     document.getElementById('btnQuickApply').onclick = () => {
       const sel = getQuickSelection();
       sendCmd(sel.length ? ('quick ' + sel.join(',')) : 'quick default');

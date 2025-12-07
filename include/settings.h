@@ -51,4 +51,7 @@ constexpr bool CLAP_DEFAULT_ENABLED = false;
 constexpr float CLAP_THRESHOLD_DEFAULT = 0.35f; ///< normalized 0..1
 constexpr uint32_t CLAP_COOLDOWN_MS_DEFAULT = 800;
 #endif
+
+// PWM curve
+constexpr float PWM_GAMMA_DEFAULT = 2.2f; ///< Gamma/curve to linearize perceived brightness
 } // namespace Settings

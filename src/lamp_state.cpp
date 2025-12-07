@@ -11,7 +11,7 @@ const int LEDC_CH = 0;
 const int LEDC_FREQ = 2000;
 const int LEDC_RES = 12;
 const int PWM_MAX = (1 << LEDC_RES) - 1;
-const float GAMMA = 2.2f;
+float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 
 // ---------- Brightness State ----------
 float masterBrightness = Settings::DEFAULT_BRIGHTNESS;
@@ -54,7 +54,12 @@ void applyPwmLevel(float normalized)
     ledcWrite(LEDC_CH, 0);
     return;
   }
-  float pwm = powf(levelEff, GAMMA) * PWM_MAX;
+  float gamma = outputGamma;
+  if (gamma < 0.5f)
+    gamma = 0.5f;
+  if (gamma > 4.0f)
+    gamma = 4.0f;
+  float pwm = powf(levelEff, gamma) * PWM_MAX;
   if (pwm < 0.0f)
     pwm = 0.0f;
   if (pwm > PWM_MAX)

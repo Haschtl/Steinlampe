@@ -9,7 +9,7 @@ extern const int LEDC_CH;
 extern const int LEDC_FREQ;
 extern const int LEDC_RES;
 extern const int PWM_MAX;
-extern const float GAMMA;
+extern float outputGamma;
 
 // Brightness state
 extern float masterBrightness;   // user-facing brightness 0..1

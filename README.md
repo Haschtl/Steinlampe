@@ -82,6 +82,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touchdim on/off`   | Enable/disable touch dimming                               |
+| `pwm curve 0.5-4`  | Adjust PWM gamma/curve (linearization)                      |
 | `clap on/off` / `clap thr <0..1>` / `clap cool <ms>` | Audio clap toggle/threshold/cooldown (requires music build) |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |

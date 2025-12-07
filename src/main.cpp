@@ -102,6 +102,7 @@ static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
 static const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
 static const uint8_t PROFILE_SLOTS = 3;
+static const char *PREF_KEY_PWM_GAMMA = "pwm_g";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -309,6 +310,8 @@ String buildProfileString()
   cfg += String(briMinUser, 3);
   cfg += F(" bri_max=");
   cfg += String(briMaxUser, 3);
+  cfg += F(" pwm_gamma=");
+  cfg += String(outputGamma, 2);
 #if ENABLE_LIGHT_SENSOR
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
@@ -637,6 +640,7 @@ void saveSettings()
   prefs.putBool(PREF_KEY_PAT_FADE, patternFadeEnabled);
   prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
   prefs.putUInt(PREF_KEY_QUICK_MASK, quickMask);
+  prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
   lastLoggedBrightness = masterBrightness;
   
 }
@@ -734,6 +738,9 @@ void loadSettings()
   if (clapThreshold > 1.5f) clapThreshold = 1.5f;
   if (clapCooldownMs < 200) clapCooldownMs = 200;
 #endif
+  outputGamma = prefs.getFloat(PREF_KEY_PWM_GAMMA, Settings::PWM_GAMMA_DEFAULT);
+  if (outputGamma < 0.5f || outputGamma > 4.0f)
+    outputGamma = Settings::PWM_GAMMA_DEFAULT;
   touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
   lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
   lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
@@ -1189,6 +1196,8 @@ void printStatus()
   line3 += F("(");
   line3 += String(rampEaseOffPower, 2);
   line3 += F(")");
+  line3 += F(" | PWM=");
+  line3 += String(outputGamma, 2);
   sendFeedback(line3);
   payload += line3 + '\n';
 
@@ -1450,6 +1459,12 @@ void importConfig(const String &args)
       if (v >= 0.01f && v <= 10.0f)
         rampEaseOffPower = v;
     }
+    else if (key == "pwm_gamma")
+    {
+      float v = val.toFloat();
+      if (v >= 0.5f && v <= 4.0f)
+        outputGamma = v;
+    }
     else if (key == "quick")
     {
       uint32_t mask = 0;
@@ -1518,6 +1533,7 @@ void printHelp()
       "  pat scale <0.1-5> - Pattern-Geschwindigkeit",
       "  pat fade on|off   - Pattern-Ausgabe glätten",
       "  pat fade amt <0.01-10> - Stärke der Glättung (größer = langsamer)",
+      "  pwm curve <0.5-4> - PWM-Gamma/Linearität anpassen",
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  clap on|off/thr <0..1>/cool <ms> - Klatschsteuerung (Audio)",
@@ -1842,6 +1858,24 @@ void handleCommand(String line)
       {
         sendFeedback(F("Usage: pat fade on|off|amt"));
       }
+    }
+    return;
+  }
+  if (lower.startsWith("pwm curve") || lower.startsWith("pwm gamma"))
+  {
+    int pos = lower.indexOf("curve");
+    if (pos < 0)
+      pos = lower.indexOf("gamma");
+    float v = line.substring(pos + 5).toFloat();
+    if (v >= 0.5f && v <= 4.0f)
+    {
+      outputGamma = v;
+      saveSettings();
+      sendFeedback(String(F("[PWM] gamma=")) + String(v, 2));
+    }
+    else
+    {
+      sendFeedback(F("Usage: pwm curve 0.5-4.0"));
     }
     return;
   }
