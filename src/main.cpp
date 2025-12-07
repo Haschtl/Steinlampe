@@ -57,6 +57,10 @@ void startWakeFade(uint32_t durationMs, bool announce = true);
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
 void syncLampToSwitch();
+void saveSettings();
+void importConfig(const String &args);
+void setPattern(size_t index, bool announce = true, bool persist = false);
+void printStatus();
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -90,6 +94,8 @@ static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
 static const char *PREF_KEY_RAMP_EASE_OFF = "ramp_e_off";
 static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
 static const char *PREF_KEY_RAMP_POW_OFF = "ramp_p_off";
+static const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
+static const uint8_t PROFILE_SLOTS = 3;
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -99,6 +105,7 @@ uint32_t patternStartMs = 0;
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 float patternSpeedScale = 1.0f;
 uint32_t quickMask = 0; // bitmask of modes used for quick switch tap cycling
+size_t currentModeIndex = 0; // tracks current mode (patterns + profile slots)
 bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
 float patternFilteredLevel = 0.0f;
@@ -250,6 +257,98 @@ String easeToString(uint8_t t)
 }
 
 /**
+ * @brief Build a profile string (cfg import style) without presence/touch/quick.
+ */
+String buildProfileString()
+{
+  String cfg;
+  cfg += F("mode=");
+  cfg += String(currentPattern + 1);
+  cfg += F(" bri=");
+  cfg += String(masterBrightness, 3);
+  cfg += F(" auto=");
+  cfg += autoCycle ? F("on") : F("off");
+  cfg += F(" pat_scale=");
+  cfg += String(patternSpeedScale, 2);
+  cfg += F(" ramp=");
+  cfg += rampDurationMs;
+  cfg += F(" pat_fade=");
+  cfg += patternFadeEnabled ? F("on") : F("off");
+  cfg += F(" pat_fade_amt=");
+  cfg += String(patternFadeStrength, 2);
+  cfg += F(" ramp_on_ease=");
+  cfg += easeToString(rampEaseOnType);
+  cfg += F(" ramp_off_ease=");
+  cfg += easeToString(rampEaseOffType);
+  cfg += F(" ramp_on_pow=");
+  cfg += String(rampEaseOnPower, 2);
+  cfg += F(" ramp_off_pow=");
+  cfg += String(rampEaseOffPower, 2);
+  cfg += F(" bri_min=");
+  cfg += String(briMinUser, 3);
+  cfg += F(" bri_max=");
+  cfg += String(briMaxUser, 3);
+#if ENABLE_LIGHT_SENSOR
+  cfg += F(" light_gain=");
+  cfg += String(lightGain, 2);
+  cfg += F(" light=");
+  cfg += lightSensorEnabled ? F("on") : F("off");
+#endif
+#if ENABLE_MUSIC_MODE
+  cfg += F(" music=");
+  cfg += musicEnabled ? F("on") : F("off");
+#endif
+  return cfg;
+}
+
+size_t quickModeCount()
+{
+  return PATTERN_COUNT + PROFILE_SLOTS;
+}
+
+/**
+ * @brief Apply a profile string (same keys as buildProfileString).
+ */
+void applyProfileString(const String &cfg)
+{
+  // reuse import parser but limited keys
+  importConfig(cfg);
+  // set pattern if present
+  int mpos = cfg.indexOf("mode=");
+  if (mpos >= 0)
+  {
+    int end = cfg.indexOf(' ', mpos);
+    String v = (end >= 0) ? cfg.substring(mpos + 5, end) : cfg.substring(mpos + 5);
+    int idx = v.toInt();
+    if (idx >= 1 && (size_t)idx <= PATTERN_COUNT)
+      setPattern((size_t)idx - 1, false, true);
+  }
+  saveSettings();
+}
+
+bool loadProfileSlot(uint8_t slot, bool announce = true)
+{
+  if (slot < 1 || slot > PROFILE_SLOTS)
+    return false;
+  String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
+  String cfg = prefs.getString(key.c_str(), "");
+  if (cfg.length() == 0)
+  {
+    if (announce)
+      sendFeedback(F("[Profile] Slot empty"));
+    return false;
+  }
+  applyProfileString(cfg);
+  currentModeIndex = PATTERN_COUNT + (slot - 1);
+  if (announce)
+  {
+    sendFeedback(String(F("[Profile] Loaded slot ")) + String(slot));
+    printStatus();
+  }
+  return true;
+}
+
+/**
  * @brief Build default quick-cycle mask: first 3 patterns + music (if present).
  */
 uint32_t computeDefaultQuickMask()
@@ -282,7 +381,8 @@ uint32_t computeDefaultQuickMask()
  */
 void sanitizeQuickMask()
 {
-  uint32_t limitMask = (PATTERN_COUNT >= 32) ? 0xFFFFFFFFu : ((1u << PATTERN_COUNT) - 1u);
+  size_t total = quickModeCount();
+  uint32_t limitMask = (total >= 32) ? 0xFFFFFFFFu : ((1u << total) - 1u);
   quickMask &= limitMask;
   if (quickMask == 0)
     quickMask = computeDefaultQuickMask() & limitMask;
@@ -290,20 +390,38 @@ void sanitizeQuickMask()
 
 bool isQuickEnabled(size_t idx)
 {
-  return idx < PATTERN_COUNT && (quickMask & (1u << idx));
+  size_t total = quickModeCount();
+  return idx < total && idx < 32 && (quickMask & (1u << idx));
 }
 
-size_t nextQuickPattern(size_t from)
+size_t nextQuickMode(size_t from)
 {
-  if (PATTERN_COUNT == 0)
+  size_t total = quickModeCount();
+  if (total == 0)
     return 0;
-  for (size_t step = 1; step <= PATTERN_COUNT; ++step)
+  for (size_t step = 1; step <= total; ++step)
   {
-    size_t idx = (from + step) % PATTERN_COUNT;
+    size_t idx = (from + step) % total;
     if (isQuickEnabled(idx))
       return idx;
   }
   return from;
+}
+
+void applyQuickMode(size_t idx)
+{
+  if (idx < PATTERN_COUNT)
+  {
+    setPattern(idx, true, true);
+  }
+  else
+  {
+    uint8_t slot = (uint8_t)(idx - PATTERN_COUNT + 1);
+    if (!loadProfileSlot(slot, true))
+    {
+      sendFeedback(F("[Quick] Profile slot empty"));
+    }
+  }
 }
 
 /**
@@ -312,7 +430,8 @@ size_t nextQuickPattern(size_t from)
 String quickMaskToCsv()
 {
   String out;
-  for (size_t i = 0; i < PATTERN_COUNT; ++i)
+  size_t total = quickModeCount();
+  for (size_t i = 0; i < total; ++i)
   {
     if (isQuickEnabled(i))
     {
@@ -329,6 +448,7 @@ bool parseQuickCsv(const String &csv, uint32_t &outMask)
   String tmp = csv;
   tmp.replace(',', ' ');
   outMask = 0;
+  size_t total = quickModeCount();
   int start = 0;
   while (start < tmp.length())
   {
@@ -341,7 +461,7 @@ bool parseQuickCsv(const String &csv, uint32_t &outMask)
       end++;
     String tok = tmp.substring(start, end);
     int idx = tok.toInt();
-    if (idx >= 1 && idx <= (int)PATTERN_COUNT)
+    if (idx >= 1 && idx <= (int)total && idx <= 32)
       outMask |= (1u << (idx - 1));
     start = end + 1;
   }
@@ -494,9 +614,9 @@ void loadSettings()
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
   rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, 1);
-  rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, 1);
+  rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, 2);
   rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, 2.0f);
-  rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, 2.0f);
+  rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, 5.0f);
   if (rampEaseOnType > 4)
     rampEaseOnType = 1;
   if (rampEaseOffType > 4)
@@ -539,6 +659,7 @@ void loadSettings()
   lightMinRaw = 4095;
   lightMaxRaw = 0;
 #endif
+  currentModeIndex = currentPattern;
 }
 
 /**
@@ -593,13 +714,14 @@ void announcePattern()
 /**
  * @brief Change the active pattern and optionally announce/persist it.
  */
-void setPattern(size_t index, bool announce = true, bool persist = false)
+void setPattern(size_t index, bool announce, bool persist)
 {
   if (index >= PATTERN_COUNT)
   {
     index = 0;
   }
   currentPattern = index;
+  currentModeIndex = index;
   patternStartMs = millis();
   if (announce)
     announcePattern();
@@ -634,8 +756,11 @@ void updateSwitchLogic()
       // Short off→on within MODE_TAP_MAX_MS: advance pattern
       if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
       {
-        size_t next = nextQuickPattern(currentPattern);
-        setPattern(next, true, true);
+        size_t from = currentModeIndex;
+        if (from >= quickModeCount())
+          from = 0;
+        size_t next = nextQuickMode(from);
+        applyQuickMode(next);
       }
       modeTapArmed = false;
       setLampEnabled(true, "switch on");
@@ -1221,6 +1346,7 @@ void printHelp()
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
       "  notify [on1 off1 on2 off2] - Blinksignal (ms)",
+      "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/Presence/Quick",
       "  light gain <f>     - Verstärkung Lichtsensor",
       "  music on|off       - Music-Mode (ADC) aktivieren",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
@@ -1243,6 +1369,9 @@ void listPatterns()
   {
     sendFeedback(String(i + 1) + F(": ") + PATTERNS[i].name);
   }
+  // Reserve virtual slots for profiles after patterns
+  for (uint8_t p = 1; p <= PROFILE_SLOTS; ++p)
+    sendFeedback(String(PATTERN_COUNT + p) + F(": Profile ") + String(p));
 }
 
 /**
@@ -1472,6 +1601,11 @@ void handleCommand(String line)
     if (idx >= 1 && (size_t)idx <= PATTERN_COUNT)
     {
       setPattern((size_t)idx - 1, true, true);
+    }
+    else if (idx > (long)PATTERN_COUNT && idx <= (long)PATTERN_COUNT + PROFILE_SLOTS)
+    {
+      int slot = idx - (long)PATTERN_COUNT;
+      loadProfileSlot((uint8_t)slot, true);
     }
     else
     {
@@ -1936,8 +2070,10 @@ void handleCommand(String line)
     presenceAddr = "";
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
-    rampEaseOnType = rampEaseOffType = 1;
-    rampEaseOnPower = rampEaseOffPower = 2.0f;
+    rampEaseOnType = 1;
+    rampEaseOffType = 2;
+    rampEaseOnPower = 2.0f;
+    rampEaseOffPower = 5.0f;
     briMinUser = Settings::BRI_MIN_DEFAULT;
     briMaxUser = Settings::BRI_MAX_DEFAULT;
     customLen = 0;
@@ -1955,6 +2091,43 @@ void handleCommand(String line)
     patternFilterLastMs = 0;
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));
+    return;
+  }
+  if (lower.startsWith("profile"))
+  {
+    String arg = line.substring(7);
+    arg.trim();
+    if (arg.startsWith("save"))
+    {
+      int slot = arg.substring(4).toInt();
+      if (slot >= 1 && slot <= PROFILE_SLOTS)
+      {
+        String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
+        String cfg = buildProfileString();
+        prefs.putString(key.c_str(), cfg);
+        sendFeedback(String(F("[Profile] Saved slot ")) + String(slot));
+      }
+      else
+      {
+        sendFeedback(F("Usage: profile save <1-3>"));
+      }
+    }
+    else if (arg.startsWith("load"))
+    {
+      int slot = arg.substring(4).toInt();
+      if (slot >= 1 && slot <= PROFILE_SLOTS)
+      {
+        loadProfileSlot((uint8_t)slot, true);
+      }
+      else
+      {
+        sendFeedback(F("Usage: profile load <1-3>"));
+      }
+    }
+    else
+    {
+      sendFeedback(F("profile save <1-3> | profile load <1-3>"));
+    }
     return;
   }
   if (lower == "calibrate")

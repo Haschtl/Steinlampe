@@ -34,9 +34,9 @@ bool rampAffectsMaster = true;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t lastActivityMs = 0;
 uint8_t rampEaseOnType = 1;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
-uint8_t rampEaseOffType = 1;
+uint8_t rampEaseOffType = 2;
 float rampEaseOnPower = 2.0f;
-float rampEaseOffPower = 2.0f;
+float rampEaseOffPower = 5.0f;
 static uint8_t rampEaseActiveType = 1;
 static float rampEaseActivePower = 2.0f;
 

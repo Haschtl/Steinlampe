@@ -76,6 +76,7 @@
       <input type="checkbox" id="autoReconnect" style="margin-right:0.35rem;" checked />Auto-reconnect
     </label>
     <span class="pill" id="status">Not connected</span>
+    <span class="pill" id="lastStatus">Last status: --</span>
   </div>
 
   <div class="grid">
@@ -103,6 +104,8 @@
       <div class="row">
         <span class="status-chip">Switch: <span id="switchState">--</span></span>
         <span class="status-chip">Touch: <span id="touchState">--</span></span>
+        <span class="status-chip">Light: <span id="lightState">--</span></span>
+        <span class="status-chip">Music: <span id="musicState">--</span></span>
         <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
       <div class="input-group" style="max-width: 100%;">
@@ -180,6 +183,105 @@
         </div>
       </div>
     </div>
+
+    <div class="card">
+      <h3>Notify</h3>
+      <div class="row">
+        <div class="input-group">
+          <input id="notifySeq" type="text" placeholder="80 40 80 120" />
+          <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
+          <button id="btnNotify">Notify</button>
+          <button id="btnNotifyStop">Stop</button>
+        </div>
+      </div>
+      <div class="row" style="gap:0.35rem; flex-wrap:wrap;">
+        <button class="notifyPreset" data-seq="80 40 80 120" data-fade="0">Short blink</button>
+        <button class="notifyPreset" data-seq="200 100" data-fade="100">Soft alert</button>
+        <button class="notifyPreset" data-seq="120 80 120 80 120 200" data-fade="40">Triple pulse</button>
+      </div>
+      <div class="row" style="gap:0.5rem; align-items:center;">
+        <div class="input-group" style="max-width:220px;">
+          <input id="wakeSec" type="number" min="5" max="600" step="5" value="180" />
+          <button id="btnWake">Wake</button>
+        </div>
+        <div class="input-group" style="max-width:220px;">
+          <input id="sleepMin" type="number" min="1" max="240" step="1" value="15" />
+          <button id="btnSleep">Sleep</button>
+        </div>
+        <button id="btnWakeStop">Wake stop</button>
+        <button id="btnSleepStop">Sleep stop</button>
+      </div>
+      <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
+    </div>
+
+    <div class="card">
+      <h3>Custom</h3>
+      <div class="row">
+        <div class="input-group">
+          <input id="customStep" type="number" min="100" max="5000" step="50" value="800" />
+          <button id="btnCustomStep">Set Step</button>
+        </div>
+      </div>
+      <h4 style="margin-bottom:0.3rem;">Pattern Editor</h4>
+      <div id="customEditor"></div>
+      <div class="row" style="gap:0.5rem;">
+        <button id="btnCustomAdd">Add Point</button>
+        <button id="btnCustomClear">Clear</button>
+        <button id="btnCustomSend">Send Custom</button>
+      </div>
+      <label>CSV values (0..1)</label>
+      <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
+    </div>
+
+
+
+    <div class="card">
+      <h3>Settings</h3>
+      <div class="row" style="align-items:flex-start; flex-direction: column;">
+        <label style="min-width:120px;">Quick tap modes:</label>
+        <div id="quickList" class="row" style="flex:1; gap:0.05rem;"></div>
+        <div class="row" style="gap:0.4rem; align-items:center; margin-top:0.3rem; flex-wrap:wrap;">
+          <button id="btnQuickAll">All</button>
+          <button id="btnQuickNone">None</button>
+          <button id="btnQuickDefault">Default</button>
+          <button id="btnQuickApply" title="Applies selection for fast switch tap cycling">Apply</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>IdleOff (min, 0=off)</label>
+        <div class="input-group">
+          <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
+          <button id="btnIdle">Set</button>
+        </div>
+      </div>
+      <div class="row" style="align-items:flex-start;">
+        <div class="input-group" style="flex:1;">
+          <textarea id="importArea" rows="2" style="flex:1; min-width:180px;" placeholder="paste cfg export here"></textarea>
+          <button id="btnImport">Import cfg</button>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnFactory" style="background:#2b0d0d; border-color:#a33; color:#fdd;">Factory Reset</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Profiles</h3>
+      <div class="row" style="gap:0.5rem; align-items:center; flex-wrap:wrap;">
+        <label>Slot</label>
+        <select id="profileSlot">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+        <button id="btnProfileSave">Save</button>
+        <button id="btnProfileLoad">Load</button>
+        <button id="btnProfileExport">Export</button>
+        <button id="btnProfileImport">Import</button>
+      </div>
+      <label>Profile blob (cfg import ...)</label>
+      <textarea id="profileBlob" rows="3" style="width:100%;" placeholder="cfg import bri=..."></textarea>
+      <p style="color:var(--muted); margin:0.35rem 0 0;">Export loads the slot, then captures cfg export; Import applies blob and saves to slot.</p>
+    </div>
     <div class="card">
       <h3 style="display:flex; align-items:center; gap:0.6rem; justify-content:space-between;">
         <span>Presence</span>
@@ -201,44 +303,6 @@
           <button id="btnPresenceSet">Set</button>
           <button id="btnPresenceClear" data-cmd="presence clear" style="border-radius:0 6px 6px 0;">Clear</button>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Notify</h3>
-      <div class="row">
-        <div class="input-group">
-          <input id="notifySeq" type="text" placeholder="120 60 120 200" />
-          <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
-          <button id="btnNotify">Notify</button>
-          <button id="btnNotifyStop">Stop</button>
-        </div>
-      </div>
-      <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
-    </div>
-
-    <div class="card">
-      <h3>Settings</h3>
-      <div class="row" style="align-items:flex-start; flex-direction: column;">
-        <label style="min-width:120px;">Quick tap modes:</label>
-        <div id="quickList" class="row" style="flex:1; gap:0.05rem;"></div>
-        <button id="btnQuickApply" title="Applies selection for fast switch tap cycling">Apply</button>
-      </div>
-      <div class="row">
-        <label>IdleOff (min, 0=off)</label>
-        <div class="input-group">
-          <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
-          <button id="btnIdle">Set</button>
-        </div>
-      </div>
-      <div class="row" style="align-items:flex-start;">
-        <div class="input-group" style="flex:1;">
-          <textarea id="importArea" rows="2" style="flex:1; min-width:180px;" placeholder="paste cfg export here"></textarea>
-          <button id="btnImport">Import cfg</button>
-        </div>
-      </div>
-      <div class="row">
-        <button id="btnFactory" style="background:#2b0d0d; border-color:#a33; color:#fdd;">Factory Reset</button>
       </div>
     </div>
 
@@ -276,26 +340,6 @@
         <button id="btnCalib">calibrate baseline</button>
       </div>
     </div>
-
-    <div class="card">
-      <h3>Custom</h3>
-      <div class="row">
-        <div class="input-group">
-          <input id="customStep" type="number" min="100" max="5000" step="50" value="800" />
-          <button id="btnCustomStep">Set Step</button>
-        </div>
-      </div>
-      <h4 style="margin-bottom:0.3rem;">Pattern Editor</h4>
-      <div id="customEditor"></div>
-      <div class="row" style="gap:0.5rem;">
-        <button id="btnCustomAdd">Add Point</button>
-        <button id="btnCustomClear">Clear</button>
-        <button id="btnCustomSend">Send Custom</button>
-      </div>
-      <label>CSV values (0..1)</label>
-      <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
-    </div>
-
   </div>
 
   <div class="row" style="align-items:center; justify-content:space-between;">
@@ -336,6 +380,7 @@
           <tr><td>touchdim on|off</td><td>Enable touch dimming</td></tr>
           <tr><td>touch tune on off</td><td>Set touch thresholds</td></tr>
           <tr><td>ramp MS / idle MIN</td><td>Ramp and auto-off</td></tr>
+          <tr><td>profile save/load</td><td>Store/recall profiles (no touch/presence/quick)</td></tr>
           <tr><td>presence on|off|set|clear</td><td>Presence control</td></tr>
           <tr><td>wake [s] / sleep [m]</td><td>Start fades</td></tr>
           <tr><td>custom ...</td><td>Custom pattern CSV</td></tr>
@@ -355,10 +400,11 @@
     const SERVICE = 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b';
     const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
-    const MODE_NAMES = [
+    const PATTERN_LABELS = [
       'Konstant', 'Atmung', 'Pulsierend', 'Funkeln', 'Kerze Soft',
       'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Custom', 'Musik'
     ];
+    const PROFILE_SLOTS = 3;
 
     let cmdChar = null;
     let statusChar = null;
@@ -371,6 +417,9 @@
     let lastCmdTime = 0;
     let lastPresenceTs = 0;
     const presenceHistory = new Set();
+    let pendingProfileExport = null;
+    let lastCfgExport = '';
+    let patternCount = PATTERN_LABELS.length;
 
     const logEl = document.getElementById('log');
     let lastLogLine = '';
@@ -551,6 +600,8 @@
 
     function updateUIFromStatus(line) {
       if (!line) return;
+      const lastStatusEl = document.getElementById('lastStatus');
+      if (lastStatusEl) lastStatusEl.textContent = 'Last status: ' + new Date().toLocaleTimeString();
       // Lamp state + brightness
     if (line.includes('Lamp=')) {
       const m = line.match(/Brightness=([0-9.]+)/);
@@ -591,10 +642,16 @@
         const modeMatch = line.match(/Pattern\s+(\d+)\/(\d+)/);
         if (modeMatch) {
           const idx = parseInt(modeMatch[1], 10);
+          const total = parseInt(modeMatch[2], 10);
+          if (!Number.isNaN(total) && total > 0) {
+            patternCount = total;
+            populateModes();
+            renderQuickModes(getQuickSelection());
+          }
           const sel = document.getElementById('modeSelect');
           if (sel && !Number.isNaN(idx)) sel.value = String(idx);
           window.currentPatternIndex = idx;
-          window.patternCount = parseInt(modeMatch[2], 10);
+          window.patternCount = patternCount;
         }
       }
       if (line.startsWith('[Quick]')) {
@@ -602,6 +659,31 @@
         if (csv) {
           const parts = csv.toLowerCase() === 'none' ? [] : csv.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !Number.isNaN(n));
           setQuickSelection(parts);
+        }
+      }
+      if (line.startsWith('[Light]')) {
+        const chip = document.getElementById('lightState');
+        if (chip) {
+          if (line.includes('N/A')) {
+            chip.textContent = 'N/A';
+            chip.style.color = 'var(--muted)';
+          } else {
+            const raw = line.match(/raw=([0-9]+)/);
+            chip.textContent = 'ON' + (raw ? ` (${raw[1]})` : '');
+            chip.style.color = '#8cf59b';
+          }
+        }
+      }
+      if (line.startsWith('[Music]')) {
+        const chip = document.getElementById('musicState');
+        if (chip) {
+          if (line.includes('N/A')) {
+            chip.textContent = 'N/A';
+            chip.style.color = 'var(--muted)';
+          } else {
+            chip.textContent = line.includes('ON') ? 'ON' : 'OFF';
+            chip.style.color = line.includes('ON') ? '#8cf59b' : 'var(--muted)';
+          }
         }
       }
       // Presence address hint
@@ -639,6 +721,16 @@
         const touchDetail = document.getElementById('touchDetail');
         if (touchDetail) {
           touchDetail.textContent = `base ${baseMatch ? baseMatch[1] : '--'} | raw ${rawMatch ? rawMatch[1] : '--'} | delta ${deltaMatch ? deltaMatch[1] : '--'} | thr ${thrOn ? thrOn[1] : '--'}/${thrOff ? thrOff[1] : '--'}`;
+        }
+      }
+      // cfg export capture (for profile export helper)
+      if (line.startsWith('cfg import')) {
+        lastCfgExport = line.trim();
+        const blob = document.getElementById('profileBlob');
+        if (pendingProfileExport && blob) {
+          blob.value = lastCfgExport;
+          log('Captured profile export: ' + lastCfgExport);
+          pendingProfileExport = null;
         }
       }
       // Ramp/Idle/TouchDim
@@ -683,16 +775,25 @@
       }
     }
 
-  function populateModes() {
-    const sel = document.getElementById('modeSelect');
-    sel.innerHTML = '';
-    MODE_NAMES.forEach((name, idx) => {
-      const opt = document.createElement('option');
-      opt.value = (idx + 1).toString();
-      opt.textContent = `${idx + 1} - ${name}`;
-      sel.appendChild(opt);
-    });
-  }
+    function currentModeNames() {
+      const names = PATTERN_LABELS.slice(0, patternCount);
+      for (let i = 1; i <= PROFILE_SLOTS; i++) {
+        names.push(`Profile ${i}`);
+      }
+      return names;
+    }
+
+    function populateModes() {
+      const sel = document.getElementById('modeSelect');
+      sel.innerHTML = '';
+      const names = currentModeNames();
+      names.forEach((name, idx) => {
+        const opt = document.createElement('option');
+        opt.value = (idx + 1).toString();
+        opt.textContent = `${idx + 1} - ${name}`;
+        sel.appendChild(opt);
+      });
+    }
 
   // --- Custom pattern editor ---
   let customPoints = [];
@@ -791,7 +892,7 @@
 
     function defaultQuickIndices() {
       const out = [];
-      MODE_NAMES.forEach((name, idx) => {
+      currentModeNames().forEach((name, idx) => {
         if (idx < 3) out.push(idx + 1);
         if (name.toLowerCase().includes('musik'))
           out.push(idx + 1);
@@ -802,7 +903,7 @@
     function renderQuickModes(selected = defaultQuickIndices()) {
       const wrap = document.getElementById('quickList');
       wrap.innerHTML = '';
-      MODE_NAMES.forEach((name, idx) => {
+      currentModeNames().forEach((name, idx) => {
         const lbl = document.createElement('label');
         lbl.className = 'quick-label';
         const cb = document.createElement('input');
@@ -812,7 +913,7 @@
         if (selected.includes(idx + 1)) cb.checked = true;
         lbl.appendChild(cb);
         const txt = document.createElement('span');
-        txt.textContent = name;
+        txt.textContent = `${idx + 1}. ${name}`;
         lbl.appendChild(txt);
         wrap.appendChild(lbl);
       });
@@ -825,10 +926,10 @@
         .filter(n => !Number.isNaN(n));
     }
 
-    function setQuickSelection(indices) {
-      const idxSet = new Set(indices);
+    function setQuickSelection(indices, useDefaultWhenEmpty = false) {
+      const idxSet = (!indices || indices.length === 0) ? new Set(useDefaultWhenEmpty ? defaultQuickIndices() : []) : new Set(indices);
       document.querySelectorAll('.quickCb').forEach(cb => {
-        cb.checked = idxSet.size === 0 ? defaultQuickIndices().includes(parseInt(cb.value, 10)) : idxSet.has(parseInt(cb.value, 10));
+        cb.checked = idxSet.has(parseInt(cb.value, 10));
       });
     }
 
@@ -929,7 +1030,14 @@
     document.getElementById('btnCfgExport').onclick = () => sendCmd('cfg export');
     document.getElementById('modeSelect').onchange = (e) => {
       const val = e.target.value;
-      if (val) sendCmd('mode ' + val);
+      if (val) {
+        if (val.startsWith('profile-')) {
+          const slot = val.split('-')[1];
+          sendCmd('profile load ' + slot);
+        } else {
+          sendCmd('mode ' + val);
+        }
+      }
     };
     document.getElementById('autoToggle').onchange = (e) => {
       sendCmd(e.target.checked ? 'auto on' : 'auto off');
@@ -1034,6 +1142,38 @@
       const sel = getQuickSelection();
       sendCmd(sel.length ? ('quick ' + sel.join(',')) : 'quick default');
     };
+    const btnQuickAll = document.getElementById('btnQuickAll');
+    const btnQuickNone = document.getElementById('btnQuickNone');
+    const btnQuickDefault = document.getElementById('btnQuickDefault');
+    if (btnQuickAll) btnQuickAll.onclick = () => setQuickSelection(MODE_NAMES.map((_, i) => i + 1));
+    if (btnQuickNone) btnQuickNone.onclick = () => setQuickSelection([]);
+    if (btnQuickDefault) btnQuickDefault.onclick = () => setQuickSelection(defaultQuickIndices());
+    const getProfileSlot = () => parseInt((document.getElementById('profileSlot') || { value: '1' }).value, 10) || 1;
+    const btnProfileSave = document.getElementById('btnProfileSave');
+    const btnProfileLoad = document.getElementById('btnProfileLoad');
+    const btnProfileExport = document.getElementById('btnProfileExport');
+    const btnProfileImport = document.getElementById('btnProfileImport');
+    if (btnProfileSave) btnProfileSave.onclick = () => sendCmd('profile save ' + getProfileSlot());
+    if (btnProfileLoad) btnProfileLoad.onclick = () => sendCmd('profile load ' + getProfileSlot());
+    if (btnProfileExport) btnProfileExport.onclick = () => {
+      pendingProfileExport = getProfileSlot();
+      sendCmd('profile load ' + pendingProfileExport);
+      setTimeout(() => sendCmd('cfg export'), 200);
+    };
+    if (btnProfileImport) btnProfileImport.onclick = () => {
+      const blob = (document.getElementById('profileBlob') || {}).value || '';
+      const slot = getProfileSlot();
+      if (!blob.trim()) return;
+      const text = blob.trim().startsWith('cfg import') ? blob.trim() : ('cfg import ' + blob.trim());
+      sendCmd(text);
+      setTimeout(() => sendCmd('profile save ' + slot), 250);
+    };
+    const btnProfileQuick1 = document.getElementById('btnProfileQuick1');
+    const btnProfileQuick2 = document.getElementById('btnProfileQuick2');
+    const btnProfileQuick3 = document.getElementById('btnProfileQuick3');
+    if (btnProfileQuick1) btnProfileQuick1.onclick = () => sendCmd('profile load 1');
+    if (btnProfileQuick2) btnProfileQuick2.onclick = () => sendCmd('profile load 2');
+    if (btnProfileQuick3) btnProfileQuick3.onclick = () => sendCmd('profile load 3');
     document.getElementById('btnTouchHold').onclick = () => {
       const v = document.getElementById('touchHold').value;
       sendCmd('touch hold ' + v);
@@ -1065,6 +1205,31 @@
     if (btnNotifyStop) {
       btnNotifyStop.onclick = () => sendCmd('notify stop');
     }
+    document.querySelectorAll('.notifyPreset').forEach(btn => {
+      btn.onclick = () => {
+        const seq = btn.dataset.seq || '';
+        const fade = btn.dataset.fade || '';
+        const seqEl = document.getElementById('notifySeq');
+        const fadeEl = document.getElementById('notifyFade');
+        if (seqEl) seqEl.value = seq;
+        if (fadeEl && fade.length) fadeEl.value = fade;
+        log(`Preset: ${seq}${fade ? ' fade=' + fade : ''}`);
+      };
+    });
+    const btnWake = document.getElementById('btnWake');
+    if (btnWake) btnWake.onclick = () => {
+      const v = document.getElementById('wakeSec').value || '180';
+      sendCmd('wake ' + v);
+    };
+    const btnSleep = document.getElementById('btnSleep');
+    if (btnSleep) btnSleep.onclick = () => {
+      const v = document.getElementById('sleepMin').value || '15';
+      sendCmd('sleep ' + v);
+    };
+    const btnWakeStop = document.getElementById('btnWakeStop');
+    if (btnWakeStop) btnWakeStop.onclick = () => sendCmd('wake stop');
+    const btnSleepStop = document.getElementById('btnSleepStop');
+    if (btnSleepStop) btnSleepStop.onclick = () => sendCmd('sleep stop');
     const btnCustomSend = document.getElementById('btnCustomSend');
     if (btnCustomSend) {
       btnCustomSend.onclick = () => {
