@@ -1,16 +1,12 @@
 import { Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-type Props = {
-  presenceText?: string;
-  onPresenceToggle: (on: boolean) => void;
-  onPresenceMe: () => void;
-  onPresenceClear: () => void;
-};
+export function PresenceCard() {
+  const { status, sendCmd } = useConnection();
 
-export function PresenceCard({ presenceText, onPresenceToggle, onPresenceMe, onPresenceClear }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -19,14 +15,16 @@ export function PresenceCard({ presenceText, onPresenceToggle, onPresenceMe, onP
       <CardContent className="space-y-3">
         <div className="flex gap-2 flex-wrap">
           <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => onPresenceToggle(e.target.checked)} /> Presence
+            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)} /> Presence
           </label>
-          <Button onClick={onPresenceMe}>
+          <Button onClick={() => sendCmd('presence set me')}>
             <Shield className="mr-1 h-4 w-4" /> Set me
           </Button>
-          <Button onClick={onPresenceClear}>Clear</Button>
+          <Button onClick={() => sendCmd('presence clear')}>Clear</Button>
+          <Button onClick={() => sendCmd('presence')}>Status</Button>
         </div>
-        <p className="text-sm text-muted">Status: {presenceText ?? '---'}</p>
+        <p className="text-sm text-muted">Status: {status.presence ?? '---'}</p>
+        <p className="text-xs text-muted">Switch: {status.switchState ?? '--'} | Touch: {status.touchState ?? '--'}</p>
       </CardContent>
     </Card>
   );

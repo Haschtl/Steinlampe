@@ -1,14 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-type Props = {
-  onTouchCalib: () => void;
-  onTouchDebug: () => void;
-  onTouchDimToggle: (on: boolean) => void;
-};
+export function TouchCard() {
+  const { sendCmd } = useConnection();
 
-export function TouchCard({ onTouchCalib, onTouchDebug, onTouchDimToggle }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -17,10 +14,10 @@ export function TouchCard({ onTouchCalib, onTouchDebug, onTouchDimToggle }: Prop
       <CardContent className="space-y-3">
         <div className="flex gap-2 flex-wrap">
           <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => onTouchDimToggle(e.target.checked)} /> TouchDim
+            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`touchdim ${e.target.checked ? 'on' : 'off'}`)} /> TouchDim
           </label>
-          <Button onClick={onTouchCalib}>Calibrate touch</Button>
-          <Button onClick={onTouchDebug}>Touch debug</Button>
+          <Button onClick={() => sendCmd('calibrate touch')}>Calibrate touch</Button>
+          <Button onClick={() => sendCmd('touch')}>Touch debug</Button>
         </div>
       </CardContent>
     </Card>

@@ -45,6 +45,8 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
   const [fadeEnabled, setFadeEnabled] = useState(false);
   const [rampOn, setRampOn] = useState<number | undefined>();
   const [rampOff, setRampOff] = useState<number | undefined>();
+  const [rampOnEase, setRampOnEase] = useState('linear');
+  const [rampOffEase, setRampOffEase] = useState('linear');
   const [lampOn, setLampOn] = useState(false);
 
   useEffect(() => {
@@ -118,6 +120,12 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
   const handleRampOff = (val: number) => {
     setRampOff(val);
     if (!Number.isNaN(val)) sendCmd(`ramp off ${val}`);
+  };
+
+  const handleRampEase = (dir: 'on' | 'off', ease: string) => {
+    if (dir === 'on') setRampOnEase(ease);
+    else setRampOffEase(ease);
+    sendCmd(`ramp ${dir} ease ${ease}`).catch((e) => console.warn(e));
   };
 
   const handleLampToggle = (next: boolean) => {
@@ -222,22 +230,21 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
                   className="accent-accent"
                 />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Label className="m-0 text-muted"><Trans k="label.fade">Fade</Trans></Label>
-                <select
-                  className="input"
-                  value={fadeEnabled ? patternFade : 'off'}
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={fadeEnabled ? patternFade : 0}
                   onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'off') handlePatternFade(1, false);
-                    else handlePatternFade(parseFloat(val), true);
+                    const val = parseFloat(e.target.value);
+                    handlePatternFade(val || 1, val > 0);
                   }}
-                >
-                  <option value="off">Off</option>
-                  <option value="0.5">0.5x</option>
-                  <option value="1">1x</option>
-                  <option value="2">2x</option>
-                </select>
+                  className="accent-accent"
+                />
+                <span className="chip-muted">{fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -262,6 +269,16 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
             <CardTitle className="text-base text-text">Ramp On</CardTitle>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
+                <Label className="m-0">Mode</Label>
+                <select className="input" value={rampOnEase} onChange={(e) => handleRampEase('on', e.target.value)}>
+                  <option value="linear">linear</option>
+                  <option value="ease">ease</option>
+                  <option value="ease-in">ease-in</option>
+                  <option value="ease-out">ease-out</option>
+                  <option value="ease-in-out">ease-in-out</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
                 <Label className="m-0">Duration</Label>
                 <Input
                   type="number"
@@ -280,6 +297,16 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
           <Card className="p-3">
             <CardTitle className="text-base text-text">Ramp Off</CardTitle>
             <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="m-0">Mode</Label>
+                <select className="input" value={rampOffEase} onChange={(e) => handleRampEase('off', e.target.value)}>
+                  <option value="linear">linear</option>
+                  <option value="ease">ease</option>
+                  <option value="ease-in">ease-in</option>
+                  <option value="ease-out">ease-out</option>
+                  <option value="ease-in-out">ease-in-out</option>
+                </select>
+              </div>
               <div className="flex items-center gap-2">
                 <Label className="m-0">Duration</Label>
                 <Input

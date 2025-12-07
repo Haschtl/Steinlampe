@@ -37,8 +37,6 @@ export default function App() {
     log,
     liveLog,
     setLiveLog,
-    autoReconnect,
-    setAutoReconnect,
     connect,
     disconnect,
     refreshStatus,
@@ -79,10 +77,6 @@ export default function App() {
                   <LogOut className="mr-1 h-4 w-4" /> {t('btn.disconnect', 'Disconnect')}
                 </Button>
               )}
-              <label className="pill cursor-pointer">
-                <input type="checkbox" className="accent-accent" checked={autoReconnect} onChange={(e) => setAutoReconnect(e.target.checked)} />{' '}
-                <Trans k="toggle.autoReconnect">Auto-reconnect</Trans>
-              </label>
               <Button
                 size="sm"
                 onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
