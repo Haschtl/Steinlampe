@@ -67,16 +67,18 @@ export function WakeSleepCard({
               <Label><Trans k="label.briPct">Brightness (%)</Trans></Label>
               <Input type="number" placeholder="Bri %" value={wakeBri} onChange={(e) => setWakeBri(e.target.value)} suffix="%" />
             </div>
-            <div className="flex items-center gap-2">
-              <label className="pill cursor-pointer">
-                <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> Soft
+            <div className="space-y-2">
+              <label className="pill cursor-pointer inline-flex items-center gap-2">
+                <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> <Trans k="label.soft">Soft</Trans>
               </label>
-              <Button variant="primary" onClick={handleWake}>
-                <RefreshCw className="mr-1 h-4 w-4" /> Wake
-              </Button>
-              <Button variant="danger" onClick={() => sendCmd('wake stop')}>
-                <ZapOff className="mr-1 h-4 w-4" /> Stop
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="primary" onClick={handleWake}>
+                  <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.wake">Wake</Trans>
+                </Button>
+                <Button variant="danger" onClick={() => sendCmd('wake stop')}>
+                  <ZapOff className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -89,14 +91,14 @@ export function WakeSleepCard({
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
             <div>
-              <Label>Duration (min)</Label>
+              <Label><Trans k="label.duration">Duration</Trans> (min)</Label>
               <Input type="number" min={1} value={sleepMinutes} onChange={(e) => setSleepMinutes(Number(e.target.value))} suffix="min" />
             </div>
             <Button variant="primary" onClick={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`)}>
-              <Zap className="mr-1 h-4 w-4" /> Sleep
+              <Zap className="mr-1 h-4 w-4" /> <Trans k="btn.sleep">Sleep</Trans>
             </Button>
             <Button variant="danger" onClick={() => sendCmd('sleep stop')}>
-              <ZapOff className="mr-1 h-4 w-4" /> Stop
+              <ZapOff className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
             </Button>
           </div>
         </CardContent>

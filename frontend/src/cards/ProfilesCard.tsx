@@ -21,17 +21,14 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <Button onClick={() => sendCmd('cfg export')}>
-              <Copy className="mr-1 h-4 w-4" /> cfg export
-            </Button>
             <Input placeholder="cfg import key=val ..." value={cfgText} onChange={(e) => setCfgText(e.target.value)} />
             <Button onClick={() => cfgText.trim() && sendCmd(cfgText)}>
-              <ClipboardPaste className="mr-1 h-4 w-4" /> Import
+              <ClipboardPaste className="mr-1 h-4 w-4" /> <Trans k="btn.import">Import</Trans>
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={() => sendCmd('cfg export').then(() => setExportText(cfgText))}>
-              <Copy className="mr-1 h-4 w-4" /> Export to text/QR
+              <Copy className="mr-1 h-4 w-4" /> <Trans k="btn.exportQr">Export to text/QR</Trans>
             </Button>
             {exportText && (
               <>
@@ -49,15 +46,15 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2 flex-wrap items-center">
-            <Label className="m-0">Slot</Label>
+            <Label className="m-0"><Trans k="label.slot">Slot</Trans></Label>
             <select className="input w-20" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
             </select>
-            <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}>Save Profile {profileSlot}</Button>
-            <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}>Load Profile {profileSlot}</Button>
-            <Button onClick={() => sendCmd('cfg export')}>Backup Settings</Button>
+            <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}><Trans k="btn.saveProfile">Save Profile</Trans> {profileSlot}</Button>
+            <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.loadProfile">Load Profile</Trans> {profileSlot}</Button>
+            <Button onClick={() => sendCmd('cfg export')}><Trans k="btn.backup">Backup Settings</Trans></Button>
           </div>
         </CardContent>
       </Card>

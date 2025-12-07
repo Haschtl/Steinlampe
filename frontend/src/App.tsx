@@ -156,7 +156,8 @@ export default function App() {
           )}
         </main>
 
-        <footer className="sticky bottom-0 z-20 border-t border-border/60 bg-bg">
+        <footer className="sticky bottom-0 z-20 border-t border-border/60 backdrop-blur-sm relative">
+          <div className="pointer-events-none absolute -top-3 inset-x-0 h-4 bg-gradient-to-t from-bg/0 via-bg/0 to-transparent" aria-hidden />
           <div className="mx-auto max-w-6xl px-4 py-2">
             <button
               type="button"
@@ -221,8 +222,9 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-stretch overflow-hidden rounded-md border border-border">
                   <Input
+                    className="w-full border-none"
                     placeholder={t("input.command", "Type command")}
                     value={commandInput}
                     onChange={(e) => setCommandInput(e.target.value)}
@@ -239,6 +241,7 @@ export default function App() {
                   <Button
                     variant="primary"
                     size="sm"
+                    className="rounded-none border-l border-border"
                     onClick={() => {
                       const val = commandInput.trim();
                       if (val) {
@@ -247,7 +250,7 @@ export default function App() {
                       }
                     }}
                   >
-                    <Send className="mr-1 h-4 w-4" /> {t("btn.send", "Send")}
+                    <Send className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

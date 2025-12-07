@@ -25,10 +25,10 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
           <Button variant="primary" onClick={() => sendCmd('sos')}>
-            <Zap className="mr-1 h-4 w-4" /> SOS Start
+            <Zap className="mr-1 h-4 w-4" /> <Trans k="notify.sosStart">SOS Start</Trans>
           </Button>
           <Button variant="danger" onClick={() => sendCmd('sos stop')}>
-            <ZapOff className="mr-1 h-4 w-4" /> SOS Stop
+            <ZapOff className="mr-1 h-4 w-4" /> <Trans k="notify.sosStop">SOS Stop</Trans>
           </Button>
         </div>
         <div className="grid gap-2 md:grid-cols-[1fr_auto]">
@@ -44,22 +44,22 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
           </div>
           <div className="flex items-end gap-2">
             <Button variant="primary" onClick={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}>
-              <Send className="mr-1 h-4 w-4" /> Notify
+              <Send className="mr-1 h-4 w-4" /> <Trans k="title.notify">Notify</Trans>
             </Button>
             <Button variant="danger" onClick={() => sendCmd('notify stop')}>
-              <ZapOff className="mr-1 h-4 w-4" /> Stop
+              <ZapOff className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: 'Short blink', seq: '80 40 80 120', fade: 0 },
-            { label: 'Soft alert', seq: '200 100', fade: 100 },
-            { label: 'Triple pulse', seq: '120 80 120 80 120 200', fade: 40 },
-            { label: 'Doorbell', seq: '200 80 200 400', fade: 30 },
-            { label: 'Long Fade Alert', seq: '500 300', fade: 120 },
-            { label: 'Double 60', seq: '60 60 60 200', fade: 0 },
-            { label: 'SOS', seq: '400 400 400 800 800 800 400 400 400 1200', fade: 0 },
+            { label: <Trans k="notify.preset.short">Short blink</Trans>, seq: '80 40 80 120', fade: 0 },
+            { label: <Trans k="notify.preset.soft">Soft alert</Trans>, seq: '200 100', fade: 100 },
+            { label: <Trans k="notify.preset.triple">Triple pulse</Trans>, seq: '120 80 120 80 120 200', fade: 40 },
+            { label: <Trans k="notify.preset.door">Doorbell</Trans>, seq: '200 80 200 400', fade: 30 },
+            { label: <Trans k="notify.preset.longfade">Long Fade Alert</Trans>, seq: '500 300', fade: 120 },
+            { label: <Trans k="notify.preset.double">Double 60</Trans>, seq: '60 60 60 200', fade: 0 },
+            { label: <Trans k="notify.preset.sos">SOS</Trans>, seq: '400 400 400 800 800 800 400 400 400 1200', fade: 0 },
           ].map((p) => (
             <Button key={p.label} onClick={() => handleNotify(p.seq, p.fade, 1)}>
               {p.label}

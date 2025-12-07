@@ -67,7 +67,13 @@ export function ModesCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => sendCmd('prev')}>
+          <Button
+            size="sm"
+            onClick={() => {
+              const prevIdx = pattern > 1 ? pattern - 1 : patternOptions.length;
+              handlePatternChange(prevIdx);
+            }}
+          >
             <ArrowLeftCircle className="h-4 w-4" />
           </Button>
           <select
@@ -81,7 +87,13 @@ export function ModesCard() {
               </option>
             ))}
           </select>
-          <Button size="sm" onClick={() => sendCmd('next')}>
+          <Button
+            size="sm"
+            onClick={() => {
+              const nextIdx = pattern < patternOptions.length ? pattern + 1 : 1;
+              handlePatternChange(nextIdx);
+            }}
+          >
             <ArrowRightCircle className="h-4 w-4" />
           </Button>
         </div>
