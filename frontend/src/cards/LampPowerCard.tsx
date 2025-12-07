@@ -4,12 +4,14 @@ import { Flashlight, Pause, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SliderRow } from '@/components/ui/slider-row';
+import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
 import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
 export function LampPowerCard() {
   const { status, sendCmd } = useConnection();
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [brightness, setBrightness] = useState(70);
   const [lampOn, setLampOn] = useState(false);
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
@@ -111,9 +113,13 @@ export function LampPowerCard() {
               {lampOn ? <Trans k="btn.on">On</Trans> : <Trans k="btn.off">Off</Trans>}
             </span>
             {lampOn && status.currentPattern && (
-              <span className="rounded-full bg-amber-300/25 px-3 py-1 text-sm text-amber-50 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(true)}
+                className="rounded-full bg-amber-300/25 px-3 py-1 text-sm text-amber-50 shadow-inner underline decoration-amber-100/70 decoration-dotted"
+              >
                 {patternText ? patternText : `Mode ${status.currentPattern}`}
-              </span>
+              </button>
             )}
           </div>
         </motion.button>
@@ -127,6 +133,7 @@ export function LampPowerCard() {
           }}
           onInputChange={(val) => handleBrightness(val)}
         />
+        <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </CardContent>
     </Card>
   );

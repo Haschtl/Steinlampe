@@ -8,10 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trans, useI18n } from '@/i18n';
 import { useConnection } from '@/context/connection';
+import { PatternPalette } from '@/components/PatternPalette';
 
 export function HomeSection() {
   const [profileSlot, setProfileSlot] = useState('1');
-  const { sendCmd } = useConnection();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const { sendCmd, status } = useConnection();
   const { t } = useI18n();
 
   return (
@@ -50,6 +52,7 @@ export function HomeSection() {
             <Save className="h-4 w-4" />
           </Button>
         </div>
+        <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </div>
       <LampPowerCard />
       <ModesCard />
