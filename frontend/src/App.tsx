@@ -173,7 +173,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-        <header className="sticky top-0 z-10 bg-header px-4 py-3 shadow-lg shadow-black/20">
+        <header className="sticky top-0 z-10 bg-header backdrop-blur-sm px-4 py-3 shadow-lg shadow-black/20">
           <div className="mx-auto flex max-w-6xl flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <img
@@ -328,12 +328,11 @@ export default function App() {
                 <span className="font-semibold">
                   <Trans k="title.log">Log</Trans>
                 </span>
-                <span className="text-xs text-muted">
-                  {logOpen ? t("log.hide", "Hide") : t("log.show", "Show")}
-                </span>
+                {log.length>0&&
                 <span className="text-xs text-muted">
                   ({log.length} {t("log.lines", "lines")})
                 </span>
+                }
               </div>
               <div className="flex items-center gap-2 text-xs text-muted">
                 <span>
