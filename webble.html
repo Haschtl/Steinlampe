@@ -206,19 +206,35 @@
         <button class="notifyPreset" data-seq="500 300" data-fade="120">Long Fade Alert</button>
         <button class="notifyPreset" data-seq="60 60 60 200" data-fade="0">Double 60</button>
       </div>
-      <div class="row" style="gap:0.5rem; align-items:center;">
-        <div class="input-group" style="max-width:220px;">
+      <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
+    </div>
+
+    <div class="card">
+      <h3>Wake / Sleep</h3>
+      <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap;">
+        <div class="input-group" style="max-width:180px;">
           <input id="wakeSec" type="number" min="5" max="600" step="5" value="180" />
           <button id="btnWake">Wake</button>
         </div>
-        <div class="input-group" style="max-width:220px;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="wakeSoft" style="margin-right:0.35rem;" />Soft
+        </label>
+        <select id="wakeMode" style="min-width:170px;">
+          <option value="">Mode unverändert</option>
+        </select>
+        <div class="input-group" style="width:150px;">
+          <input id="wakeBri" type="number" min="1" max="100" step="1" placeholder="Bri %" />
+          <button id="wakeBriClr" title="Bri Feld leeren">X</button>
+        </div>
+        <button id="btnWakeStop">Wake stop</button>
+      </div>
+      <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap; margin-top:0.4rem;">
+        <div class="input-group" style="max-width:180px;">
           <input id="sleepMin" type="number" min="1" max="240" step="1" value="15" />
           <button id="btnSleep">Sleep</button>
         </div>
-        <button id="btnWakeStop">Wake stop</button>
         <button id="btnSleepStop">Sleep stop</button>
       </div>
-      <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
     </div>
 
     <div class="card">
@@ -912,6 +928,20 @@
         opt.textContent = `${idx + 1} - ${name}`;
         sel.appendChild(opt);
       });
+      const wakeSel = document.getElementById('wakeMode');
+      if (wakeSel) {
+        const current = wakeSel.value;
+        wakeSel.innerHTML = '<option value=\"\">Mode unverändert</option>';
+        names.forEach((name, idx) => {
+          const opt = document.createElement('option');
+          opt.value = (idx + 1).toString();
+          opt.textContent = `${idx + 1} - ${name}`;
+          wakeSel.appendChild(opt);
+        });
+        if (current && Array.from(wakeSel.options).some(o => o.value === current)) {
+          wakeSel.value = current;
+        }
+      }
     }
 
   // --- Custom pattern editor ---
@@ -1351,7 +1381,20 @@
     const btnWake = document.getElementById('btnWake');
     if (btnWake) btnWake.onclick = () => {
       const v = document.getElementById('wakeSec').value || '180';
-      sendCmd('wake ' + v);
+      let cmd = 'wake';
+      const soft = document.getElementById('wakeSoft');
+      const modeSel = document.getElementById('wakeMode');
+      const bri = document.getElementById('wakeBri');
+      if (soft && soft.checked) cmd += ' soft';
+      if (modeSel && modeSel.value) cmd += ' mode=' + modeSel.value;
+      if (bri && bri.value) cmd += ' bri=' + bri.value;
+      cmd += ' ' + v;
+      sendCmd(cmd.trim());
+    };
+    const wakeBriClr = document.getElementById('wakeBriClr');
+    if (wakeBriClr) wakeBriClr.onclick = () => {
+      const bri = document.getElementById('wakeBri');
+      if (bri) bri.value = '';
     };
     const btnSleep = document.getElementById('btnSleep');
     if (btnSleep) btnSleep.onclick = () => {
