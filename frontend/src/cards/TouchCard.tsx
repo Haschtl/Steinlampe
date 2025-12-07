@@ -16,10 +16,10 @@ export function TouchCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => sendCmd('calibrate touch')}>Calibrate touch</Button>
-          <Button onClick={() => sendCmd('touch')}>Touch debug</Button>
-          <Button onClick={() => sendCmd('touch thr 0.5')}>Thr 0.5</Button>
-          <Button onClick={() => sendCmd('touch cool 800')}>Cool 800ms</Button>
+          <Button onClick={() => sendCmd('calibrate touch')}><Trans k="btn.calibrate">Calibrate</Trans></Button>
+          <Button onClick={() => sendCmd('touch')}><Trans k="btn.debug">Debug</Trans></Button>
+          <Button onClick={() => sendCmd('touch thr 0.5')}><Trans k="label.clapThr">Clap thr</Trans></Button>
+          <Button onClick={() => sendCmd('touch cool 800')}><Trans k="label.cool">Cooldown</Trans></Button>
         </div>
       </CardContent>
     </Card>

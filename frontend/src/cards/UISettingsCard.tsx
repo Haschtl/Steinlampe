@@ -22,7 +22,7 @@ export function UISettingsCard() {
           <Trans k="toggle.autoReconnect">Auto-reconnect</Trans>
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted">Language</span>
+          <span className="text-sm text-muted"><Trans k="label.language">Language</Trans></span>
           <button
             type="button"
             className="pill"

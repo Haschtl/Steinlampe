@@ -69,7 +69,7 @@ export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: st
         </div>
         <SliderRow
           label={<Trans k="label.brightness">Brightness</Trans>}
-          description="Set output level"
+          description={<Trans k="desc.brightness">Set output level</Trans>}
           inputProps={{
             min: 1,
             max: 100,

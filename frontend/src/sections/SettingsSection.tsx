@@ -1,8 +1,4 @@
 import { useEffect, useState } from 'react';
-import { LightCard } from '@/cards/LightCard';
-import { MusicCard } from '@/cards/MusicCard';
-import { PresenceCard } from '@/cards/PresenceCard';
-import { TouchCard } from '@/cards/TouchCard';
 import { SettingsCard } from '@/cards/SettingsCard';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
@@ -17,10 +13,6 @@ export function SettingsSection() {
       <SettingsCard />
       <QuickCustomCard />
       <ProfilesCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
-      <PresenceCard />
-      <TouchCard />
-      <LightCard />
-      <MusicCard />
     </div>
   );
 }

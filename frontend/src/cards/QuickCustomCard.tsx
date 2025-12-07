@@ -100,10 +100,10 @@ export function QuickCustomCard() {
           <div className="flex gap-2">
             <Button onClick={saveQuickSelection}>Save quick list</Button>
             <Button onClick={refreshStatus}>
-              <RefreshCw className="mr-1 h-4 w-4" /> Reload
+              <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.reload">Reload</Trans>
             </Button>
           </div>
-          <p className="text-sm text-muted">Tap the physical switch to cycle through selected quick modes.</p>
+          <p className="text-sm text-muted"><Trans k="desc.tapSwitch">Tap the physical switch to cycle through selected quick modes.</Trans></p>
         </CardContent>
       </Card>
 
@@ -126,9 +126,9 @@ export function QuickCustomCard() {
               onChange={(e) => setCustomStep(Number(e.target.value))}
               className="w-28"
               suffix="ms"
-              description="Step duration for each custom value"
+              description={<Trans k="desc.customStep">Step duration for each custom value</Trans>}
             />
-            <Button onClick={() => applyCustom()}>Set step</Button>
+            <Button onClick={() => applyCustom()}><Trans k="btn.apply">Apply</Trans></Button>
           </div>
           <div className="flex gap-2">
             <Button variant="primary" onClick={applyCustom}>

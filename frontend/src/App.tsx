@@ -10,6 +10,7 @@ import { HomeSection } from './sections/HomeSection';
 import { SettingsSection } from './sections/SettingsSection';
 import { ActionsSection } from './sections/ActionsSection';
 import { HelpSection } from './sections/HelpSection';
+import { AdvancedSection } from './sections/AdvancedSection';
 
 const bleGuids = [
   { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
@@ -44,7 +45,7 @@ export default function App() {
     refreshStatus,
     sendCmd,
   } = useConnection();
-  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'actions' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
 
@@ -59,9 +60,10 @@ export default function App() {
     return () => clearInterval(id);
   }, [status.connected, refreshStatus]);
 
-  const tabs: { key: 'home' | 'settings' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
+  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
+    { key: 'advanced', label: t('nav.advanced', 'Advanced'), icon: <Settings className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
     { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
@@ -118,6 +120,7 @@ export default function App() {
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-4">
         {activeTab === 'home' && <HomeSection />}
         {activeTab === 'settings' && <SettingsSection />}
+        {activeTab === 'advanced' && <AdvancedSection />}
         {activeTab === 'actions' && <ActionsSection />}
         {activeTab === 'help' && <HelpSection bleGuids={bleGuids} commands={commands} />}
       </main>

@@ -88,7 +88,7 @@ export function ModesCard() {
         <div className="space-y-3">
           <SliderRow
             label={<Trans k="label.speed">Speed</Trans>}
-            description="Pattern speed multiplier"
+            description={<Trans k="desc.patternSpeed">Pattern speed multiplier</Trans>}
             inputProps={{
               min: 0.1,
               max: 5,
@@ -99,7 +99,7 @@ export function ModesCard() {
           />
           <SliderRow
             label={<Trans k="label.fadeMul">Pattern Fade</Trans>}
-            description="Smooth transitions between patterns"
+            description={<Trans k="desc.patternFade">Smooth transitions between patterns</Trans>}
             valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}
             inputProps={{
               min: 0,
