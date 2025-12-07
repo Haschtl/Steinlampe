@@ -7,26 +7,27 @@ import {
   Activity,
   ArrowLeftCircle,
   ArrowRightCircle,
+  ClipboardPaste,
+  Copy,
+  Flashlight,
   LogOut,
   Pause,
   RefreshCw,
   Send,
+  Shield,
+  SlidersHorizontal,
   Zap,
   ZapOff,
-  Flashlight,
-  Music,
   Sun,
   Mic,
-  Shield,
-  Lightbulb,
-  SlidersHorizontal,
-  QrCode,
-  ClipboardPaste,
-  Copy,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { patternLabels } from './data/patterns';
 import { useBle } from './hooks/useBle';
+import { LampCard, PatternOption, ProfilesSection, QuickCustomSection } from './sections/HomeSection';
+import { SettingsCard, PresenceTouchCard, LightMusicCard } from './sections/SettingsSection';
+import { NotifyCard, WakeSleepCard } from './sections/ActionsSection';
+import { HelpSection } from './sections/HelpSection';
 
 const bleGuids = [
   { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
@@ -87,6 +88,8 @@ export default function App() {
   const [customStep, setCustomStep] = useState(400);
   const [cfgExportText, setCfgExportText] = useState('');
   const [profileQrText, setProfileQrText] = useState('');
+  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'actions' | 'help'>('home');
+  const [logOpen, setLogOpen] = useState(false);
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
@@ -216,6 +219,11 @@ export default function App() {
   const saveQuickSelection = () => {
     if (quickSelection.length === 0) return;
     sendCmd(`quick ${quickSelection.join(',')}`).catch((e) => console.warn(e));
+  };
+
+  const applyCustom = () => {
+    if (customCsv.trim()) sendCmd(`custom ${customCsv.replace(/\s+/g, '')}`);
+    sendCmd(`custom step ${customStep}`);
   };
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;

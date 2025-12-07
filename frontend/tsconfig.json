@@ -4,6 +4,8 @@
     "paths": {
       "@/*": ["./src/*"]
     },
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "types": ["vite/client", "web-bluetooth"],
     "target": "ESNext",
     "useDefineForClassFields": true,
     "module": "ESNext",

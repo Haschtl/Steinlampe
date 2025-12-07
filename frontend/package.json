@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
+    "@types/web-bluetooth": "^0.0.21",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.33",

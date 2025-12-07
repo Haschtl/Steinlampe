@@ -297,7 +297,7 @@ export function useBle(): BleApi {
     const lastId = lastDeviceIdRef.current;
     try {
       const devices = await navigator.bluetooth.getDevices();
-      const match = devices.find((d) => (lastId && d.id === lastId) || (!lastId && d.name));
+      const match = devices.find((d: BluetoothDevice) => (lastId && d.id === lastId) || (!lastId && d.name));
       if (match) {
         setStatus((s) => ({ ...s, connecting: true }));
         await connectWithDevice(match, true);
