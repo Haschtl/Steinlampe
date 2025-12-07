@@ -27,8 +27,8 @@ export function ModesCard() {
 
   useEffect(() => {
     if (typeof status.patternFade === 'number') {
-      setPatternFade(status.patternFade);
-      setFadeEnabled(true);
+      setPatternFade(status.patternFade || 1);
+      setFadeEnabled(status.patternFade > 0);
     }
   }, [status.patternFade]);
 
@@ -52,13 +52,15 @@ export function ModesCard() {
   };
 
   const handlePatternFade = (val: number, enable: boolean) => {
-    setPatternFade(val);
+    const nextVal = val || 1;
+    setPatternFade(nextVal);
     setFadeEnabled(enable);
     if (!enable) {
       sendCmd('pat fade off').catch((e) => console.warn(e));
-    } else {
-      sendCmd(`pat fade amt ${val.toFixed(2)}`).catch((e) => console.warn(e));
+      return;
     }
+    sendCmd('pat fade on').catch((e) => console.warn(e));
+    sendCmd(`pat fade amt ${nextVal.toFixed(2)}`).catch((e) => console.warn(e));
   };
 
   return (
