@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ClipboardPaste, Copy } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import { Trans } from '@/i18n';
 export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
   const { sendCmd } = useConnection();
   const [cfgText, setCfgText] = useState('');
+  const [exportText, setExportText] = useState('');
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -26,6 +28,17 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
             <Button onClick={() => cfgText.trim() && sendCmd(cfgText)}>
               <ClipboardPaste className="mr-1 h-4 w-4" /> Import
             </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => sendCmd('cfg export').then(() => setExportText(cfgText))}>
+              <Copy className="mr-1 h-4 w-4" /> Export to text/QR
+            </Button>
+            {exportText && (
+              <>
+                <Input className="w-full" value={exportText} onChange={(e) => setExportText(e.target.value)} />
+                <QRCodeSVG value={exportText} width={128} height={128} />
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

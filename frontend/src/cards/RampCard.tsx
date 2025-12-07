@@ -12,8 +12,8 @@ const RampGraph = ({ duration, reverse }: { duration?: number; reverse?: boolean
     : 'M8 58 C 42 50 74 12 112 10';
   const gradientId = reverse ? 'rampGradOff' : 'rampGradOn';
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-[#0c1221] px-2 py-2">
-      <svg viewBox="0 0 120 70" className="h-14 w-24">
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-[#0c1221] p-3">
+      <svg viewBox="0 0 120 70" className="h-24 w-full">
         <defs>
           <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
             <stop offset="0%" stopColor={reverse ? '#f97316' : '#22d3ee'} stopOpacity="0.2" />
@@ -70,7 +70,7 @@ export function RampCard() {
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-3">
             <CardTitle className="text-base text-text"><Trans k="label.rampOn">Ramp On</Trans></CardTitle>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
                 <select className="input" value={rampOnEase} onChange={(e) => handleRampEase('on', e.target.value)}>
@@ -93,13 +93,13 @@ export function RampCard() {
                   className="w-28"
                   suffix="ms"
                 />
-                <RampGraph duration={rampOn} />
               </div>
+              <RampGraph duration={rampOn} />
             </div>
           </Card>
           <Card className="p-3">
             <CardTitle className="text-base text-text"><Trans k="label.rampOff">Ramp Off</Trans></CardTitle>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
                 <select className="input" value={rampOffEase} onChange={(e) => handleRampEase('off', e.target.value)}>
@@ -122,8 +122,8 @@ export function RampCard() {
                   className="w-28"
                   suffix="ms"
                 />
-                <RampGraph duration={rampOff} reverse />
               </div>
+              <RampGraph duration={rampOff} reverse />
             </div>
           </Card>
         </div>

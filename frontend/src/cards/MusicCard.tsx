@@ -10,15 +10,13 @@ export function MusicCard() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center justify-between">
         <CardTitle><Trans k="title.music">Music</Trans></CardTitle>
+        <label className="pill cursor-pointer">
+          <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`music ${e.target.checked ? 'on' : 'off'}`)} /> Music
+        </label>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`music ${e.target.checked ? 'on' : 'off'}`)} /> Music
-          </label>
-        </div>
         <div className="flex items-center gap-2">
           <Mic className="h-4 w-4 text-muted" />
           <Label className="m-0">Music gain</Label>

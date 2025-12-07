@@ -139,12 +139,6 @@ export default function App() {
                 <label className="pill cursor-pointer">
                   <input type="checkbox" className="accent-accent" checked={liveLog} onChange={(e) => setLiveLog(e.target.checked)} /> Live log
                 </label>
-                <Button size="sm" onClick={refreshStatus}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> {t('btn.reload', 'Reload status')}
-                </Button>
-                <Button size="sm" onClick={() => sendCmd('cfg export')}>
-                  <Send className="mr-1 h-4 w-4" /> cfg export
-                </Button>
               </div>
               <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-[#0b0f1a] p-3 font-mono text-sm text-accent space-y-1">
                 {logLines.length === 0 && <p className="text-muted">Waiting for connection…</p>}

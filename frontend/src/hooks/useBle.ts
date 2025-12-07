@@ -178,6 +178,8 @@ export function useBle(): BleApi {
     [],
   );
 
+  const lastToast = useRef<string>('');
+
   const sendCmd = useCallback(
     async (cmd: string) => {
       try {
@@ -185,7 +187,10 @@ export function useBle(): BleApi {
         pushLog('> ' + cmd);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        toast.error('Command failed: ' + msg);
+        if (lastToast.current !== msg) {
+          toast.error('Command failed: ' + msg);
+          lastToast.current = msg;
+        }
         throw e;
       }
     },
@@ -198,7 +203,10 @@ export function useBle(): BleApi {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       pushLog('Status error: ' + msg);
-      toast.error('Status error: ' + msg);
+      if (lastToast.current !== msg) {
+        toast.error('Status error: ' + msg);
+        lastToast.current = msg;
+      }
     }
   }, [pushLog, sendCmd]);
 

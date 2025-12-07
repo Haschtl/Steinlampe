@@ -8,12 +8,31 @@ import { useConnection } from '@/context/connection';
 import { patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
+function PreviewGraph({ values }: { values: number[] }) {
+  const points = values.map((v, idx) => {
+    const x = (idx / Math.max(1, values.length - 1)) * 100;
+    const y = 100 - Math.min(100, Math.max(0, v * 100));
+    return `${x},${y}`;
+  });
+  return (
+    <svg viewBox="0 0 100 100" className="h-24 w-full rounded border border-border bg-[#0c1221]">
+      <polyline points={points.join(' ')} fill="none" stroke="#22d3ee" strokeWidth="2" />
+      {values.map((v, idx) => {
+        const x = (idx / Math.max(1, values.length - 1)) * 100;
+        const y = 100 - Math.min(100, Math.max(0, v * 100));
+        return <circle key={idx} cx={x} cy={y} r="1.8" fill="#22d3ee" />;
+      })}
+    </svg>
+  );
+}
+
 export function QuickCustomCard() {
   const { status, refreshStatus, sendCmd } = useConnection();
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSelection, setQuickSelection] = useState<number[]>([]);
   const [customCsv, setCustomCsv] = useState('');
   const [customStep, setCustomStep] = useState(400);
+  const [profileSlot, setProfileSlot] = useState('1');
 
   useEffect(() => {
     if (status.quickCsv) {
@@ -47,6 +66,11 @@ export function QuickCustomCard() {
     if (customStep) sendCmd(`custom step ${customStep}`);
   };
 
+  const values = customCsv
+    .split(',')
+    .map((v) => parseFloat(v.trim()))
+    .filter((n) => !Number.isNaN(n) && n >= 0 && n <= 1);
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
@@ -55,6 +79,15 @@ export function QuickCustomCard() {
           <Input placeholder="Search pattern" value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} className="w-40" />
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
+            <select className="input w-20" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+            <Button size="sm" onClick={() => sendCmd(`profile load ${profileSlot}`)}>Load</Button>
+          </div>
           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
             {patternOptions
               .filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase()))
@@ -81,8 +114,9 @@ export function QuickCustomCard() {
         <CardContent className="space-y-3">
           <Label><Trans k="label.values">Values (0..1 CSV)</Trans></Label>
           <textarea className="input w-full" rows={3} placeholder="0.2,0.8,1.0,0.4" value={customCsv} onChange={(e) => setCustomCsv(e.target.value)} />
+          <PreviewGraph values={values.length ? values : [0, 1]} />
           <div className="flex items-center gap-2">
-            <Label className="m-0">Step (ms)</Label>
+            <Label className="m-0"><Trans k="label.step">Step</Trans> (ms)</Label>
             <Input
               type="number"
               min={20}
@@ -98,10 +132,10 @@ export function QuickCustomCard() {
           </div>
           <div className="flex gap-2">
             <Button variant="primary" onClick={applyCustom}>
-              Apply
+              <Trans k="btn.apply">Apply</Trans>
             </Button>
-            <Button onClick={() => setCustomCsv('')}>Clear</Button>
-            <Button onClick={() => sendCmd('custom')}>Reload</Button>
+            <Button onClick={() => setCustomCsv('')}><Trans k="btn.clear">Clear</Trans></Button>
+            <Button onClick={() => sendCmd('custom')}><Trans k="btn.reload">Reload</Trans></Button>
           </div>
           <p className="text-sm text-muted">
             Current: len={status.customLen ?? '--'} step={status.customStepMs ?? '--'}ms

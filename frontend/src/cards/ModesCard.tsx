@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
@@ -65,62 +66,51 @@ export function ModesCard() {
         <CardTitle><Trans k="title.modes">Modes</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-2">
-          <Button onClick={() => sendCmd('prev')}>
-            <ArrowLeftCircle className="mr-1 h-4 w-4" /> <Trans k="btn.prev">Prev</Trans>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => sendCmd('prev')}>
+            <ArrowLeftCircle className="h-4 w-4" />
           </Button>
-          <select className="input" value={pattern} onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}>
+          <select
+            className="input flex-1 min-w-[200px]"
+            value={pattern}
+            onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}
+          >
             {patternOptions.map((p) => (
               <option key={p.idx} value={p.idx}>
                 {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
               </option>
             ))}
           </select>
-          <Button onClick={() => sendCmd('next')}>
-            <Trans k="btn.next">Next</Trans> <ArrowRightCircle className="ml-1 h-4 w-4" />
+          <Button size="sm" onClick={() => sendCmd('next')}>
+            <ArrowRightCircle className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <Label className="m-0 text-muted"><Trans k="label.speed">Speed</Trans></Label>
-            <Input
-              type="number"
-              min={0.1}
-              max={5}
-              step={0.1}
-              value={patternSpeed}
-              onChange={(e) => handlePatternSpeed(Number(e.target.value))}
-              onBlur={(e) => handlePatternSpeed(Number(e.target.value))}
-              className="w-24"
-              suffix="x"
-              description="Pattern speed multiplier"
-            />
-            <input
-              type="range"
-              min="0.1"
-              max="5"
-              step="0.1"
-              value={patternSpeed}
-              onChange={(e) => handlePatternSpeed(Number(e.target.value))}
-              className="accent-accent"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <Label className="m-0 text-muted"><Trans k="label.fade">Fade</Trans></Label>
-            <input
-              type="range"
-              min="0"
-              max="2"
-              step="0.1"
-              value={fadeEnabled ? patternFade : 0}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                handlePatternFade(val || 1, val > 0);
-              }}
-              className="accent-accent"
-            />
-            <span className="chip-muted">{fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}</span>
-          </div>
+        <div className="space-y-3">
+          <SliderRow
+            label={<Trans k="label.speed">Speed</Trans>}
+            description="Pattern speed multiplier"
+            inputProps={{
+              min: 0.1,
+              max: 5,
+              step: 0.1,
+              value: patternSpeed,
+            }}
+            onInputChange={(val) => handlePatternSpeed(val)}
+          />
+          <SliderRow
+            label={<Trans k="label.fadeMul">Pattern Fade</Trans>}
+            description="Smooth transitions between patterns"
+            valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}
+            inputProps={{
+              min: 0,
+              max: 2,
+              step: 0.1,
+              value: fadeEnabled ? patternFade : 0,
+            }}
+            onInputChange={(val) => {
+              handlePatternFade(val || 1, val > 0);
+            }}
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <label className="pill cursor-pointer">

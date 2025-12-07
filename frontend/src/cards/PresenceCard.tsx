@@ -10,18 +10,21 @@ export function PresenceCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Trans k="title.presence">Presence</Trans></CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle><Trans k="title.presence">Presence</Trans></CardTitle>
           <label className="pill cursor-pointer">
             <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)} /> Presence
           </label>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex gap-2 flex-wrap">
           <Button onClick={() => sendCmd('presence set me')}>
             <Shield className="mr-1 h-4 w-4" /> Set me
           </Button>
           <Button onClick={() => sendCmd('presence clear')}>Clear</Button>
           <Button onClick={() => sendCmd('presence')}>Status</Button>
+          <Button onClick={() => sendCmd('presence scan')}>Scan</Button>
         </div>
         <p className="text-sm text-muted">Status: {status.presence ?? '---'}</p>
         <p className="text-xs text-muted">Switch: {status.switchState ?? '--'} | Touch: {status.touchState ?? '--'}</p>

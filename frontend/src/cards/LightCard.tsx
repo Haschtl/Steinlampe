@@ -11,15 +11,13 @@ export function LightCard() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex items-center justify-between">
         <CardTitle><Trans k="title.light">Light</Trans></CardTitle>
+        <label className="pill cursor-pointer">
+          <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`light ${e.target.checked ? 'on' : 'off'}`)} /> Light
+        </label>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`light ${e.target.checked ? 'on' : 'off'}`)} /> Light
-          </label>
-        </div>
         <div className="flex items-center gap-2">
           <Sun className="h-4 w-4 text-muted" />
           <Label className="m-0">Light gain</Label>

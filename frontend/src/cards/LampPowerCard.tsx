@@ -11,6 +11,7 @@ export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: st
   const { status, sendCmd } = useConnection();
   const [brightness, setBrightness] = useState(70);
   const [lampOn, setLampOn] = useState(false);
+  const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
@@ -50,7 +51,7 @@ export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: st
         <div className="flex flex-wrap items-center gap-3">
           <span className="chip-muted">Switch: {status.switchState ?? '--'}</span>
           <span className="chip-muted">Touch: {status.touchState ?? '--'}</span>
-          <Button size="sm" onClick={() => sendCmd('sync')}>
+          <Button size="sm" onClick={() => sendCmd('sync')} disabled={!canSync}>
             <RefreshCw className="mr-1 h-4 w-4" /> Sync
           </Button>
           <Button size="sm" variant="primary" onClick={() => handleLampToggle(!lampOn)}>
