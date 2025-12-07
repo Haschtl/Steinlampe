@@ -113,6 +113,12 @@ bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
 float patternFilteredLevel = 0.0f;
 uint32_t patternFilterLastMs = 0;
+// SOS shortcut snapshot
+bool sosModeActive = false;
+float sosPrevBrightness = Settings::DEFAULT_BRIGHTNESS;
+size_t sosPrevPattern = 0;
+bool sosPrevAutoCycle = false;
+bool sosPrevLampOn = false;
 
 // Switch handling
 bool switchRawState = false;
@@ -746,6 +752,21 @@ void announcePattern()
 }
 
 /**
+ * @brief Find the index of a pattern by name (case-insensitive), -1 if missing.
+ */
+int findPatternIndexByName(const char *name)
+{
+  if (!name)
+    return -1;
+  for (size_t i = 0; i < PATTERN_COUNT; ++i)
+  {
+    if (String(PATTERNS[i].name).equalsIgnoreCase(name))
+      return (int)i;
+  }
+  return -1;
+}
+
+/**
  * @brief Change the active pattern and optionally announce/persist it.
  */
 void setPattern(size_t index, bool announce, bool persist)
@@ -1312,12 +1333,14 @@ void importConfig(const String &args)
         v = 0;
       presenceGraceMs = v;
     }
+#if ENABLE_MUSIC_MODE
     else if (key == "music_gain")
     {
       float v = val.toFloat();
       if (v >= 0.1f && v <= 5.0f)
         musicGain = v;
     }
+#endif
     else if (key == "ramp_on_ease")
     {
       rampEaseOnType = easeFromString(val);
@@ -1396,6 +1419,7 @@ void printHelp()
       "  bri min/max <0..1>- Min/Max-Level setzen",
       "  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)",
       "  wake stop         - Weckfade abbrechen",
+      "  sos [stop]        - SOS-Alarm: Lampe 100%, SOS-Muster",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
       "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
@@ -2039,6 +2063,58 @@ void handleCommand(String line)
           durationMs = (uint32_t)(seconds * 1000.0f);
       }
       startWakeFade(durationMs, true);
+    }
+    return;
+  }
+  if (lower.startsWith("sos"))
+  {
+    String arg = line.substring(3);
+    arg.trim();
+    if (arg.equalsIgnoreCase(F("stop")) || arg.equalsIgnoreCase(F("cancel")))
+    {
+      if (!sosModeActive)
+      {
+        sendFeedback(F("[SOS] Nicht aktiv"));
+      }
+      else
+      {
+        autoCycle = sosPrevAutoCycle;
+        setBrightnessPercent(sosPrevBrightness * 100.0f, false);
+        size_t restoreIdx = (sosPrevPattern < PATTERN_COUNT) ? sosPrevPattern : 0;
+        setPattern(restoreIdx, true, false);
+        sosModeActive = false;
+        notifyActive = false;
+        sleepFadeActive = false;
+        wakeFadeActive = false;
+        if (sosPrevLampOn)
+          setLampEnabled(true, "sos stop");
+        else
+          setLampEnabled(false, "sos stop");
+        saveSettings();
+        sendFeedback(F("[SOS] beendet, Zustand wiederhergestellt"));
+      }
+    }
+    else
+    {
+      if (!sosModeActive)
+      {
+        sosPrevBrightness = masterBrightness;
+        sosPrevPattern = currentPattern;
+        sosPrevAutoCycle = autoCycle;
+        sosPrevLampOn = lampEnabled;
+      }
+      autoCycle = false;
+      sleepFadeActive = false;
+      wakeFadeActive = false;
+      notifyActive = false;
+      setLampEnabled(true, "cmd sos");
+      setBrightnessPercent(100.0f, false);
+      int sosIdx = findPatternIndexByName("SOS");
+      if (sosIdx >= 0)
+        setPattern((size_t)sosIdx, true, false);
+      sosModeActive = true;
+      saveSettings();
+      sendFeedback(F("[SOS] aktiv (100% Helligkeit)"));
     }
     return;
   }

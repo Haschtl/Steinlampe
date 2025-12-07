@@ -12,6 +12,27 @@
 
 #include "utils.h"
 
+// Evaluate a simple on/off sequence defined by durations and levels.
+static float evalSequence(uint32_t ms, const uint16_t *durations, const float *levels, size_t count)
+{
+  if (!durations || !levels || count == 0)
+    return 0.0f;
+  uint32_t total = 0;
+  for (size_t i = 0; i < count; ++i)
+    total += durations[i];
+  if (total == 0)
+    return 0.0f;
+  uint32_t t = ms % total;
+  uint32_t acc = 0;
+  for (size_t i = 0; i < count; ++i)
+  {
+    acc += durations[i];
+    if (t < acc)
+      return levels[i];
+  }
+  return 0.0f;
+}
+
 // --- Simple hash-based noise helpers (deterministic, non-repeating for very long ranges) ---
 static inline float hash11(uint32_t x)
 {
@@ -125,6 +146,30 @@ float patternTwinkle(uint32_t ms)
   return clamp01(slow + wave + flicker);
 }
 
+/// Simple alert: steady blink on/off
+float patternAlert(uint32_t ms)
+{
+  // double flash with short pause: on-off-on-off/pause
+  static const uint16_t durations[] = {320, 220, 320, 780};
+  static const float levels[] = {1.0f, 0.0f, 1.0f, 0.0f};
+  return evalSequence(ms, durations, levels, sizeof(durations) / sizeof(durations[0]));
+}
+
+/// SOS in Morse (... --- ...), repeats
+float patternSOS(uint32_t ms)
+{
+  // Morse timing: dot=1u, dash=3u, intra=1u, letter=3u, word=7u, u=200ms
+  static const uint16_t durations[] = {
+      200, 200, 200, 200, 200, 600,   // S (...): dot space dot space dot letter-gap
+      600, 200, 600, 200, 600, 600,   // O (---): dash space dash space dash letter-gap
+      200, 200, 200, 200, 200, 1400}; // S (...): dot space dot space dot word-gap
+  static const float levels[] = {
+      1, 0, 1, 0, 1, 0,
+      1, 0, 1, 0, 1, 0,
+      1, 0, 1, 0, 1, 0};
+  return evalSequence(ms, durations, levels, sizeof(durations) / sizeof(durations[0]));
+}
+
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
 #if ENABLE_MUSIC_MODE
@@ -142,6 +187,8 @@ const Pattern PATTERNS[] = {
     {"Lagerfeuer", patternCampfire, 18000},
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
+    {"Alert", patternAlert, 0},
+    {"SOS", patternSOS, 0},
     {"Custom", patternCustom, 0},
 #if ENABLE_MUSIC_MODE
     {"Musik", patternMusic, 0},

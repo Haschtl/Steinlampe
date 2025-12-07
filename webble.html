@@ -106,6 +106,11 @@
         <span class="status-chip">Touch: <span id="touchState">--</span></span>
         <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
+      <div class="row" style="gap:0.5rem; flex-wrap:wrap;">
+        <button data-cmd="sos" style="background:#2b0d0d; border-color:#a33; color:#ffdede;">SOS</button>
+        <button data-cmd="sos stop">SOS Stop</button>
+        <span class="status-chip" style="color:var(--muted);">SOS: 100% brightness + pattern</span>
+      </div>
       <div class="input-group" style="max-width: 100%;">
         <button data-cmd="prev" style="border-radius:6px 0 0 6px;">Prev</button>
         <select id="modeSelect" style="min-width:170px; border-radius:0; margin:0; height:100%; margin-top: 0.125rem; padding-top:0.5rem; padding-bottom:0.35rem;"></select>
@@ -449,6 +454,7 @@
           <tr><td>ramp MS / idle MIN</td><td>Ramp and auto-off</td></tr>
           <tr><td>profile save/load</td><td>Store/recall profiles (no touch/presence/quick)</td></tr>
           <tr><td>presence on|off|set|clear</td><td>Presence control</td></tr>
+          <tr><td>sos [stop]</td><td>100% brightness + SOS pattern; stop restores</td></tr>
           <tr><td>wake [s] / sleep [m]</td><td>Start fades</td></tr>
           <tr><td>custom ...</td><td>Custom pattern CSV</td></tr>
           <tr><td>cfg export / import</td><td>Backup/restore settings</td></tr>
@@ -469,7 +475,8 @@
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
     const PATTERN_LABELS = [
       'Konstant', 'Atmung', 'Pulsierend', 'Funkeln', 'Kerze Soft',
-      'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Custom', 'Musik'
+      'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Alert', 'SOS',
+      'Custom', 'Musik'
     ];
     const PROFILE_SLOTS = 3;
 
@@ -487,6 +494,9 @@
     let pendingProfileExport = null;
     let lastCfgExport = '';
     let patternCount = PATTERN_LABELS.length;
+    let lastDeviceType = localStorage.getItem('lastDeviceType') || '';
+    let lastDeviceName = localStorage.getItem('lastDeviceName') || '';
+    let lastDeviceId = localStorage.getItem('lastDeviceId') || '';
 
     const logEl = document.getElementById('log');
     let liveLogEnabled = true;
@@ -505,18 +515,32 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    async function connect() {
+    function persistLastDevice(type, dev) {
+      if (!dev) return;
+      lastDeviceType = type;
+      lastDeviceName = dev.name || '';
+      lastDeviceId = dev.id || '';
+      localStorage.setItem('lastDeviceType', lastDeviceType);
+      localStorage.setItem('lastDeviceName', lastDeviceName);
+      localStorage.setItem('lastDeviceId', lastDeviceId);
+    }
+
+    async function connect(existingDevice = null) {
       if (!navigator.bluetooth) {
         log('Web Bluetooth not supported or not available (needs Chrome/Edge over HTTPS/localhost; enable chrome://flags/#enable-experimental-web-platform-features on some platforms).');
         return;
       }
       try {
-        let reqOpts = { filters: [{ services: [SERVICE] }], optionalServices: [SERVICE] };
-        try {
-          device = await navigator.bluetooth.requestDevice(reqOpts);
-        } catch (e1) {
-          log('Filter request failed, trying acceptAllDevices...');
-          device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE] });
+        if (existingDevice) {
+          device = existingDevice;
+        } else {
+          let reqOpts = { filters: [{ services: [SERVICE] }], optionalServices: [SERVICE] };
+          try {
+            device = await navigator.bluetooth.requestDevice(reqOpts);
+          } catch (e1) {
+            log('Filter request failed, trying acceptAllDevices...');
+            device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE] });
+          }
         }
 
         log('Connecting...');
@@ -603,6 +627,7 @@
         }
         document.getElementById('status').textContent = 'Connected to ' + device.name;
         log('Connected to ' + device.name);
+        persistLastDevice('ble', device);
         sendCmd('status');
         setTimeout(() => sendCmd('status'), 300);
       } catch (e) {
@@ -610,13 +635,13 @@
       }
     }
 
-    async function connectSerial() {
+    async function connectSerial(portOverride = null) {
       if (!('serial' in navigator)) {
         log('Web Serial not supported (needs Chrome/Edge over HTTPS/localhost)');
         return;
       }
       try {
-        serialPort = await navigator.serial.requestPort();
+        serialPort = portOverride || await navigator.serial.requestPort();
         await serialPort.open({ baudRate: 115200 });
         const encoder = new TextEncoderStream();
         serialWriter = encoder.writable.getWriter();
@@ -628,6 +653,7 @@
         let buffer = '';
         log('Serial connected');
         document.getElementById('status').textContent = 'Serial connected';
+        persistLastDevice('serial', { name: 'Serial', id: 'serial' });
         (async () => {
           try {
             while (true) {
@@ -1433,6 +1459,34 @@
         img.style.display = 'block';
       };
     }
+    // Auto-reconnect last device (serial if permission already granted; BLE if cached device is available)
+    async function autoReconnectLast() {
+      if (lastDeviceType === 'serial' && navigator.serial && navigator.serial.getPorts) {
+        try {
+          const ports = await navigator.serial.getPorts();
+          if (ports && ports.length > 0) {
+            log('Auto-opening last serial device...');
+            connectSerial(ports[0]);
+            return;
+          }
+        } catch (e) {
+          log('Serial auto-open failed: ' + e);
+        }
+      }
+      if (lastDeviceType === 'ble' && navigator.bluetooth && navigator.bluetooth.getDevices) {
+        try {
+          const devs = await navigator.bluetooth.getDevices();
+          const match = devs.find(d => (d.id && lastDeviceId && d.id === lastDeviceId) || (d.name && lastDeviceName && d.name === lastDeviceName));
+          if (match) {
+            log('Auto-connecting to cached BLE device...');
+            connect(match);
+          }
+        } catch (e) {
+          log('BLE auto-connect not available: ' + e);
+        }
+      }
+    }
+    autoReconnectLast();
     const btnExport = document.getElementById('btnExport');
     if (btnExport) btnExport.onclick = () => sendCmd('cfg export');
     document.getElementById('btnImport').onclick = () => {

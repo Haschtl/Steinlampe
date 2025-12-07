@@ -32,8 +32,8 @@ flowchart LR
 
 ## Features
 
-- Pattern sequencer (Konstant, Atmung, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern)
-- Wake fade triggered via BLE/serial `wake <seconds>`
+- Pattern sequencer (Konstant, Atmung, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Alert, SOS, Custom)
+- Wake fade triggered via BLE/serial `wake [soft] [mode=XX] [bri=XX] <seconds>` (soft: touch cancels, hard: SOS after fade)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
@@ -72,8 +72,9 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `bri min/max <0..1>` | Set min/max brightness clamp                               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
-| `wake <seconds>`    | Start a sunrise fade over the specified duration           |
+| `wake [soft] [mode=XX] [bri=XX] <seconds>` | Start wake fade (soft: touch cancels; hard: SOS after) |
 | `wake stop`         | Abort an active wake fade                                  |
+| `sos [stop]`        | Start SOS alert (100% brightness, SOS pattern); stop restores previous state |
 | `sleep [minutes]`   | Fade down to off over given minutes (default 15)           |
 | `sleep stop`        | Abort an active sleep fade                                 |
 | `ramp <ms>`         | Set brightness ramp duration (50–10000 ms)                 |
@@ -91,8 +92,9 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `custom v1,v2,...`  | Set custom pattern values (0..1)                           |
 | `custom step <ms>`  | Set custom pattern step duration                           |
 | `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
-| `light gain <f>`    | Adjust light sensor gain (if built with ENABLE_LIGHT_SENSOR) |
+| `light gain <f>` / `light clamp <min> <max>` | Adjust sensor gain and clamp (if built with ENABLE_LIGHT_SENSOR) |
 | `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
+| `music sens <f>`    | Adjust music sensitivity (if built with ENABLE_MUSIC_MODE) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |
 | `cfg import key=val ...` | Import settings (ramp, idle, touch_on/off, bri, auto, presence) |
 | `factory`           | Reset all settings to defaults                             |
