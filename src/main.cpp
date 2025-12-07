@@ -73,6 +73,8 @@ static const char *PREF_KEY_THR_OFF = "thr_off";
 static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
+static const char *PREF_KEY_RAMP_ON_MS = "ramp_on_ms";
+static const char *PREF_KEY_RAMP_OFF_MS = "ramp_off_ms";
 static const char *PREF_KEY_IDLE_OFF = "idle_off";
 static const char *PREF_KEY_LS_EN = "ls_en";
 static const char *PREF_KEY_CUSTOM = "cust";
@@ -294,6 +296,10 @@ String buildProfileString()
   cfg += String(patternSpeedScale, 2);
   cfg += F(" ramp=");
   cfg += rampDurationMs;
+  cfg += F(" ramp_on_ms=");
+  cfg += rampOnDurationMs;
+  cfg += F(" ramp_off_ms=");
+  cfg += rampOffDurationMs;
   cfg += F(" pat_fade=");
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
@@ -611,6 +617,8 @@ void saveSettings()
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
+  prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
+  prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
   prefs.putUChar(PREF_KEY_RAMP_EASE_ON, rampEaseOnType);
   prefs.putUChar(PREF_KEY_RAMP_EASE_OFF, rampEaseOffType);
@@ -692,6 +700,12 @@ void loadSettings()
   rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
+  rampOnDurationMs = prefs.getUInt(PREF_KEY_RAMP_ON_MS, Settings::DEFAULT_RAMP_ON_MS);
+  rampOffDurationMs = prefs.getUInt(PREF_KEY_RAMP_OFF_MS, Settings::DEFAULT_RAMP_OFF_MS);
+  if (rampOnDurationMs < 50)
+    rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
+  if (rampOffDurationMs < 50)
+    rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
   rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, 1);
   rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, 2);
@@ -1124,7 +1138,9 @@ void cancelSleepFade()
  */
 void setBrightnessPercent(float percent, bool persist = false, bool announce = true)
 {
-  startBrightnessRamp(clamp01(percent / 100.0f), rampDurationMs);
+  float target = clamp01(percent / 100.0f);
+  uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
+  startBrightnessRamp(target, dur);
   if (announce)
   {
     logBrightnessChange("cmd bri");
@@ -1166,8 +1182,10 @@ void printStatus()
 #endif
 
   String line3 = F("Ramp=");
-  line3 += String(rampDurationMs);
-  line3 += F("ms | IdleOff=");
+  line3 += String(rampOnDurationMs);
+  line3 += F("ms (on) / ");
+  line3 += String(rampOffDurationMs);
+  line3 += F("ms (off) | IdleOff=");
   if (idleOffMs == 0)
     line3 += F("off");
   else
@@ -1304,8 +1322,23 @@ void importConfig(const String &args)
     if (key == "ramp")
     {
       uint32_t v = val.toInt();
-      if (v >= 50 && v <= 10000)
+      if (v >= 50 && v <= 10000) {
         rampDurationMs = v;
+        rampOnDurationMs = v;
+        rampOffDurationMs = v;
+      }
+    }
+    else if (key == "ramp_on_ms")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampOnDurationMs = v;
+    }
+    else if (key == "ramp_off_ms")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampOffDurationMs = v;
     }
     else if (key == "idle")
     {
@@ -1453,12 +1486,24 @@ void importConfig(const String &args)
       if (v >= 0.01f && v <= 10.0f)
         rampEaseOnPower = v;
     }
-    else if (key == "ramp_off_pow")
-    {
-      float v = val.toFloat();
-      if (v >= 0.01f && v <= 10.0f)
-        rampEaseOffPower = v;
-    }
+  else if (key == "ramp_off_pow")
+  {
+    float v = val.toFloat();
+    if (v >= 0.01f && v <= 10.0f)
+      rampEaseOffPower = v;
+  }
+  else if (key == "ramp_on_ms")
+  {
+    uint32_t v = val.toInt();
+    if (v >= 50 && v <= 10000)
+      rampOnDurationMs = v;
+  }
+  else if (key == "ramp_off_ms")
+  {
+    uint32_t v = val.toInt();
+    if (v >= 50 && v <= 10000)
+      rampOffDurationMs = v;
+  }
     else if (key == "pwm_gamma")
     {
       float v = val.toFloat();
@@ -1526,7 +1571,9 @@ void printHelp()
       "  sos [stop]        - SOS-Alarm: Lampe 100%, SOS-Muster",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
-      "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
+      "  ramp <ms>         - Ramp-Dauer (on/off gemeinsam) 50-10000ms",
+      "  ramp on <ms>      - Ramp-Dauer nur für Einschalten",
+      "  ramp off <ms>     - Ramp-Dauer nur für Ausschalten",
       "  ramp ease on|off <linear|ease|ease-in|ease-out|ease-in-out> [power]",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
@@ -1980,16 +2027,38 @@ void handleCommand(String line)
     }
     else
     {
+      bool isOn = arg.startsWith("on");
+      bool isOff = arg.startsWith("off");
+      if (isOn || isOff)
+      {
+        arg = arg.substring(isOn ? 2 : 3);
+        arg.trim();
+      }
       uint32_t val = arg.toInt();
       if (val >= 50 && val <= 10000)
       {
-        rampDurationMs = val;
+        if (!isOn && !isOff)
+        {
+          rampDurationMs = val;
+          rampOnDurationMs = val;
+          rampOffDurationMs = val;
+          sendFeedback(String(F("[Ramp] on/off=")) + String(val) + F(" ms"));
+        }
+        else if (isOn)
+        {
+          rampOnDurationMs = val;
+          sendFeedback(String(F("[Ramp] on=")) + String(val) + F(" ms"));
+        }
+        else if (isOff)
+        {
+          rampOffDurationMs = val;
+          sendFeedback(String(F("[Ramp] off=")) + String(val) + F(" ms"));
+        }
         saveSettings();
-        sendFeedback(String(F("[Ramp] Duration set to ")) + String(val) + F(" ms"));
       }
       else
       {
-        sendFeedback(F("Usage: ramp <50-10000 ms>"));
+        sendFeedback(F("Usage: ramp <50-10000> | ramp on <ms> | ramp off <ms>"));
       }
     }
     return;

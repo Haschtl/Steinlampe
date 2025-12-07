@@ -9,7 +9,7 @@
 // ---------- LEDC ----------
 const int LEDC_CH = 0;
 const int LEDC_FREQ = 2000;
-const int LEDC_RES = 12;
+const int LEDC_RES = 13;
 const int PWM_MAX = (1 << LEDC_RES) - 1;
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 
@@ -32,6 +32,8 @@ uint32_t rampStartMs = 0;
 uint32_t rampDurationActive = 0;
 bool rampAffectsMaster = true;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
+uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
+uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
 uint8_t rampEaseOnType = 1;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
 uint8_t rampEaseOffType = 2;
@@ -206,7 +208,7 @@ void setLampEnabled(bool enable, const char *reason)
     if (target > briMaxUser)
       target = briMaxUser;
     masterBrightness = target;
-    startBrightnessRamp(1.0f, rampDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
+    startBrightnessRamp(1.0f, rampOnDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
     lastOnBrightness = target;
     logLampState(reason);
   }
@@ -218,7 +220,7 @@ void setLampEnabled(bool enable, const char *reason)
       lastOnBrightness = masterBrightness;
     else if (lastOnBrightness < briMinUser)
       lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
-    startBrightnessRamp(0.0f, rampDurationMs, false, rampEaseOffType, rampEaseOffPower);
+    startBrightnessRamp(0.0f, rampOffDurationMs, false, rampEaseOffType, rampEaseOffPower);
     logLampState(reason);
   }
 }

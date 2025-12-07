@@ -209,6 +209,12 @@
           <div class="row" style="flex-wrap:wrap; gap:0.6rem;">
             <div style="flex:1; min-width:240px; border:1px solid var(--border); border-radius:10px; padding:0.6rem; background:#0d1322;">
               <label>Ramp On</label>
+              <div class="input-group" style="max-width:200px; margin-top:0.2rem;">
+                <label class="sr-only" for="rampOnMs">Ramp on duration</label>
+                <input id="rampOnMs" type="number" min="50" max="10000" step="10" value="400" />
+                <span class="input-suffix">ms</span>
+                <button id="btnRampOn">Set</button>
+              </div>
               <div class="row" style="gap:0.4rem; align-items:center;">
                 <select id="rampEaseOn">
                   <option value="linear">linear</option>
@@ -232,6 +238,12 @@
             </div>
             <div style="flex:1; min-width:240px; border:1px solid var(--border); border-radius:10px; padding:0.6rem; background:#0d1322;">
               <label>Ramp Off</label>
+              <div class="input-group" style="max-width:200px; margin-top:0.2rem;">
+                <label class="sr-only" for="rampOffMs">Ramp off duration</label>
+                <input id="rampOffMs" type="number" min="50" max="10000" step="10" value="400" />
+                <span class="input-suffix">ms</span>
+                <button id="btnRampOff">Set</button>
+              </div>
               <div class="row" style="gap:0.4rem; align-items:center;">
                 <select id="rampEaseOff">
                   <option value="linear">linear</option>
@@ -307,9 +319,9 @@
       </div>
     </div>
 
-    <div class="card"  style="flex:1;">
-      <h3>Wake / Sleep</h3>
-      <p class="hint" style="margin-top:0;">Wake timer uses seconds; sleep timer uses minutes; optional wake brightness is a percent override.</p>
+    <div class="card" style="flex:1;">
+      <h3>Wake</h3>
+      <p class="hint" style="margin-top:0;">Wake timer uses seconds; optional brightness overrides percent; Soft stops on touch.</p>
       <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap;">
         <div class="input-group" style="max-width:180px;">
           <label class="sr-only" for="wakeSec">Wake duration seconds</label>
@@ -331,7 +343,12 @@
         </div>
         <button id="btnWakeStop">Wake stop</button>
       </div>
-      <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap; margin-top:0.4rem;">
+    </div>
+
+    <div class="card" style="flex:1;">
+      <h3>Sleep</h3>
+      <p class="hint" style="margin-top:0;">Sleep timer uses minutes; fades down to off.</p>
+      <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap;">
         <div class="input-group" style="max-width:180px;">
           <label class="sr-only" for="sleepMin">Sleep minutes</label>
           <input id="sleepMin" type="number" min="1" max="240" step="1" value="15" />
@@ -635,7 +652,7 @@
           <tr><td>pat scale 0.1-5</td><td>Pattern speed factor</td></tr>
           <tr><td>touchdim on|off</td><td>Enable touch dimming</td></tr>
           <tr><td>touch tune on off</td><td>Set touch thresholds</td></tr>
-          <tr><td>ramp MS / idle MIN</td><td>Ramp and auto-off</td></tr>
+          <tr><td>ramp on/off MS</td><td>Ramp durations (50-10000 ms) and easing/power</td></tr>
           <tr><td>profile save/load</td><td>Store/recall profiles (no touch/presence/quick)</td></tr>
           <tr><td>presence on|off|set|clear</td><td>Presence control</td></tr>
           <tr><td>sos [stop]</td><td>100% brightness + SOS pattern; stop restores</td></tr>
@@ -1063,9 +1080,13 @@
       }
       // Ramp/Idle/TouchDim
       if (line.startsWith('Ramp=')) {
-        const r = line.match(/Ramp=([0-9]+)/);
-        const rampMsEl = document.getElementById('rampMs');
-        if (r && rampMsEl) rampMsEl.value = r[1];
+        const r = line.match(/Ramp=([0-9]+)ms \(on\) \/ ([0-9]+)ms/);
+        const rampOnEl = document.getElementById('rampOnMs');
+        const rampOffEl = document.getElementById('rampOffMs');
+        if (r) {
+          if (rampOnEl) rampOnEl.value = r[1];
+          if (rampOffEl) rampOffEl.value = r[2];
+        }
         const i = line.match(/IdleOff=([0-9]+)m|IdleOff=off/);
         if (i) {
           const v = i[0].includes('off') ? 0 : parseInt(i[1]);
@@ -1503,10 +1524,20 @@
     const rampPowOff = document.getElementById('rampPowOff');
     const rampPowOnRange = document.getElementById('rampPowOnRange');
     const rampPowOffRange = document.getElementById('rampPowOffRange');
+    const rampOnMs = document.getElementById('rampOnMs');
+    const rampOffMs = document.getElementById('rampOffMs');
     if (rampEaseOn) rampEaseOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn.value} ${rampPowOn ? rampPowOn.value : ''}`); };
     if (rampPowOn) rampPowOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn.value}`); };
     if (rampEaseOff) rampEaseOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff.value} ${rampPowOff ? rampPowOff.value : ''}`); };
     if (rampPowOff) rampPowOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff.value}`); };
+    const btnRampOn = document.getElementById('btnRampOn');
+    if (btnRampOn) btnRampOn.onclick = () => {
+      if (rampOnMs && rampOnMs.value) sendCmd(`ramp on ${rampOnMs.value}`);
+    };
+    const btnRampOff = document.getElementById('btnRampOff');
+    if (btnRampOff) btnRampOff.onclick = () => {
+      if (rampOffMs && rampOffMs.value) sendCmd(`ramp off ${rampOffMs.value}`);
+    };
     if (rampPowOnRange) {
       rampPowOnRange.oninput = (e) => { if (rampPowOn) rampPowOn.value = parseFloat(e.target.value).toFixed(2); drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); };
       rampPowOnRange.onchange = (e) => { if (rampPowOn) rampPowOn.value = parseFloat(e.target.value).toFixed(2); sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn ? rampPowOn.value : ''}`); };
@@ -1588,37 +1619,6 @@
       btnTouchHold.onclick = () => {
         const v = document.getElementById('touchHold') ? document.getElementById('touchHold').value : '';
         if (v) sendCmd('touch hold ' + v);
-      };
-    }
-    const btnRamp = document.getElementById('btnRamp');
-    if (btnRamp) {
-      btnRamp.onclick = () => {
-        const rampMs = document.getElementById('rampMs');
-        if (!rampMs) return;
-        const v = rampMs.value;
-        const range = document.getElementById('rampMsRange');
-        if (range) range.value = v;
-        const lbl = document.getElementById('rampMsLabel');
-        if (lbl) lbl.textContent = v;
-        sendCmd('ramp ' + v);
-      };
-    }
-    const rampMsRange = document.getElementById('rampMsRange');
-    if (rampMsRange) {
-      rampMsRange.oninput = (e) => {
-        const v = e.target.value;
-        const rampMs = document.getElementById('rampMs');
-        if (rampMs) rampMs.value = v;
-        const lbl = document.getElementById('rampMsLabel');
-        if (lbl) lbl.textContent = v;
-      };
-      rampMsRange.onchange = (e) => {
-        const v = e.target.value;
-        const rampMs = document.getElementById('rampMs');
-        if (rampMs) rampMs.value = v;
-        const lbl = document.getElementById('rampMsLabel');
-        if (lbl) lbl.textContent = v;
-        sendCmd('ramp ' + v);
       };
     }
     document.getElementById('btnIdle').onclick = () => {

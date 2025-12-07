@@ -26,7 +26,9 @@ extern float outputScale;  // on/off ramp scaling
 
 // Ramp state
 extern bool rampActive;
-extern uint32_t rampDurationMs;
+extern uint32_t rampDurationMs; // generic ramp (bri command)
+extern uint32_t rampOnDurationMs;
+extern uint32_t rampOffDurationMs;
 extern uint32_t lastActivityMs;
 extern uint8_t rampEaseOnType;
 extern uint8_t rampEaseOffType;

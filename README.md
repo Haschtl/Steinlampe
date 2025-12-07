@@ -80,7 +80,10 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `sos [stop]`        | Start SOS alert (100% brightness, SOS pattern); stop restores previous state |
 | `sleep [minutes]`   | Fade down to off over given minutes (default 15)           |
 | `sleep stop`        | Abort an active sleep fade                                 |
-| `ramp <ms>`         | Set brightness ramp duration (50–10000 ms)                 |
+| `ramp <ms>`         | Set both on/off brightness ramp durations (50–10000 ms)    |
+| `ramp on <ms>`      | Set on-ramp duration only (50–10000 ms)                    |
+| `ramp off <ms>`     | Set off-ramp duration only (50–10000 ms)                   |
+| `ramp ease on|off <linear|ease|ease-in|ease-out|ease-in-out> [power]` | Set easing curve and optional power for on/off ramps |
 | `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touchdim on/off`   | Enable/disable touch dimming                               |
