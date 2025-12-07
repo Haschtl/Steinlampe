@@ -28,7 +28,6 @@
 
 #include <esp_sleep.h>
 #include <esp_spp_api.h>
-#include <esp_spp_api.h>
 
 // ---------- Pins ----------
 static const int PIN_PWM = 23;       // MOSFET-Gate
