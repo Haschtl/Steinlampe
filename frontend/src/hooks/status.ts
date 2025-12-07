@@ -33,6 +33,10 @@ export type DeviceStatus = {
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
+  rampOnEase?: string;
+  rampOffEase?: string;
+  rampOnPow?: number;
+  rampOffPow?: number;
   customLen?: number;
   customStepMs?: number;
   briMin?: number;
@@ -110,6 +114,10 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         touchState: kv.touch_dim ? (kv.touch_dim === '1' ? 'TOUCHDIM' : s.touchState) : s.touchState,
         rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
         rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
+        rampOnEase: kv.ramp_on_ease ?? s.rampOnEase,
+        rampOffEase: kv.ramp_off_ease ?? s.rampOffEase,
+        rampOnPow: asNum('ramp_on_pow') ?? s.rampOnPow,
+        rampOffPow: asNum('ramp_off_pow') ?? s.rampOffPow,
         idleOffMin: asInt('idle_min') ?? s.idleOffMin,
         idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,

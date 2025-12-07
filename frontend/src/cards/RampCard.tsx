@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,47 +26,83 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
   }
 };
 
-const RampGraph = ({
-  duration,
-  reverse,
-  pow = 2,
-  ease = 'linear',
-}: {
-  duration?: number;
-  reverse?: boolean;
-  pow?: number;
-  ease?: EaseType;
-}) => {
-  const dur = Math.max(50, Math.min(5000, duration ?? 500));
-  const points = Array.from({ length: 50 }, (_, i) => {
-    const t = i / 49;
+const buildRampPaths = (duration: number, ease: EaseType, pow: number, reverse?: boolean) => {
+  const dur = Math.max(50, Math.min(10000, duration || 400));
+  const w = 240;
+  const h = 140;
+  const pad = 20;
+  const usableW = w - pad * 2;
+  const usableH = h - pad * 2;
+  const pts = Array.from({ length: 120 }, (_, i) => {
+    const t = i / 119;
     const easedBase = easeSample(t, ease, pow);
     const eased = reverse ? 1 - easedBase : easedBase;
-    const x = 5 + t * 110;
-    const y = 60 - eased * 48;
-    return `${x},${y}`;
-  }).join(' ');
-  const path = `M${points}`;
+    const x = pad + t * usableW;
+    const y = h - pad - eased * usableH;
+    return { x, y };
+  });
+  const path = `M ${pts.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ')}`;
+  const area = `${path} L ${pad + usableW} ${h - pad} L ${pad} ${h - pad} Z`;
+  return { path, area, dur, w, h, pad, usableW, usableH };
+};
+
+const RampGraph = ({ duration, reverse, pow = 2, ease = 'linear' }: { duration?: number; reverse?: boolean; pow?: number; ease?: EaseType }) => {
+  const { path, area, dur, w, h, pad, usableW, usableH } = useMemo(
+    () => buildRampPaths(duration ?? 0, ease, pow, reverse),
+    [duration, ease, pow, reverse],
+  );
   const gradientId = reverse ? 'rampGradOff' : 'rampGradOn';
+  const gridId = reverse ? 'rampGridOff' : 'rampGridOn';
+  const accent = reverse ? '#f97316' : '#5be6ff';
   return (
-    <div className="relative rounded-lg border border-border bg-panel overflow-hidden">
-      <div className="relative w-full" style={{ paddingTop: '58.33%' }}>
-        <svg viewBox="0 0 120 70" className="absolute inset-0 h-full w-full">
-        <defs>
-          <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-            <stop offset="0%" stopColor={reverse ? '#f97316' : '#22d3ee'} stopOpacity="0.15" />
-            <stop offset="100%" stopColor={reverse ? '#f97316' : '#22d3ee'} stopOpacity="0.5" />
-          </linearGradient>
-        </defs>
-        <rect x="0" y="0" width="120" height="70" fill={`url(#${gradientId})`} fillOpacity="0.08" />
-        <path d={path} stroke={`url(#${gradientId})`} strokeWidth="4" fill="none" strokeLinecap="round" />
-        <line x1="8" y1="8" x2="8" y2="62" stroke="#1f2937" strokeWidth="1.5" />
-        <line x1="8" y1="58" x2="112" y2="58" stroke="#1f2937" strokeWidth="1.5" />
+    <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner">
+      <div className="relative w-full" style={{ paddingTop: '62%' }}>
+        <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 h-full w-full">
+          <defs>
+            <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.35" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0.8" />
+            </linearGradient>
+            <linearGradient id="bgFade" x1="0%" x2="0%" y1="0%" y2="100%">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.08" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
+            </linearGradient>
+            <pattern id={gridId} width="24" height="24" patternUnits="userSpaceOnUse">
+              <path d="M24 0H0V24" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect x="0" y="0" width={w} height={h} fill={`url(#${gridId})`} />
+          <rect x={pad} y={pad} width={usableW} height={usableH} rx="10" fill="url(#bgFade)" opacity="0.08" />
+          <motion.path
+            d={area}
+            fill={`url(#${gradientId})`}
+            opacity="0.3"
+            initial={false}
+            animate={{ d: area }}
+            transition={{ type: 'spring', stiffness: 120, damping: 22 }}
+          />
+          <motion.path
+            d={path}
+            fill="none"
+            stroke={`url(#${gradientId})`}
+            strokeWidth="5"
+            strokeLinecap="round"
+            initial={false}
+            animate={{ d: path }}
+            transition={{ type: 'spring', stiffness: 160, damping: 28 }}
+          />
+          <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+          <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+          <text x={pad} y={h - 4} className="text-muted" fill="currentColor" fontSize="10">
+            0 ms
+          </text>
+          <text x={pad + usableW - 36} y={h - 4} className="text-muted" fill="currentColor" fontSize="10">
+            {dur} ms
+          </text>
+          <text x={pad + 6} y={pad + 12} className="text-text" fill="currentColor" fontSize="11">
+            {reverse ? 'Off' : 'On'} · {ease} · γ={pow.toFixed(1)}
+          </text>
         </svg>
-      </div>
-      <div className="absolute inset-x-0 bottom-0 p-3 flex flex-col text-xs text-muted">
-        <span className="text-sm font-semibold text-text drop-shadow">{dur} ms</span>
-        <span className="drop-shadow">{reverse ? 'Fade out' : 'Fade in'} · {ease} · γ={pow.toFixed(1)}</span>
       </div>
     </div>
   );
@@ -83,7 +120,11 @@ export function RampCard() {
   useEffect(() => {
     if (typeof status.rampOnMs === 'number') setRampOn(status.rampOnMs);
     if (typeof status.rampOffMs === 'number') setRampOff(status.rampOffMs);
-  }, [status.rampOnMs, status.rampOffMs]);
+    if (typeof status.rampOnPow === 'number') setRampOnPow(status.rampOnPow);
+    if (typeof status.rampOffPow === 'number') setRampOffPow(status.rampOffPow);
+    if (status.rampOnEase) setRampOnEase(status.rampOnEase as EaseType);
+    if (status.rampOffEase) setRampOffEase(status.rampOffEase as EaseType);
+  }, [status.rampOnMs, status.rampOffMs, status.rampOnPow, status.rampOffPow, status.rampOnEase, status.rampOffEase]);
 
   const handleRampOn = (val: number) => {
     setRampOn(val);

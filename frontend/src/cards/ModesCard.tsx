@@ -69,7 +69,7 @@ export function ModesCard() {
         <CardTitle><Trans k="title.modes">Modes</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-nowrap items-center gap-2">
           <Button
             size="sm"
             onClick={() => {
@@ -80,7 +80,7 @@ export function ModesCard() {
             <ArrowLeftCircle className="h-4 w-4" />
           </Button>
           <Select value={String(pattern)} onValueChange={(v) => handlePatternChange(parseInt(v, 10))}>
-            <SelectTrigger className="flex-1 min-w-[200px]">
+            <SelectTrigger className="flex-1 min-w-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

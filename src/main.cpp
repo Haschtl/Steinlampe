@@ -1572,6 +1572,14 @@ void printStatusStructured()
   line += String(rampOnDurationMs);
   line += F("|ramp_off_ms=");
   line += String(rampOffDurationMs);
+  line += F("|ramp_on_ease=");
+  line += easeToString(rampEaseOnType);
+  line += F("|ramp_off_ease=");
+  line += easeToString(rampEaseOffType);
+  line += F("|ramp_on_pow=");
+  line += String(rampEaseOnPower, 2);
+  line += F("|ramp_off_pow=");
+  line += String(rampEaseOffPower, 2);
   line += F("|idle_min=");
   line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
   line += F("|pat_speed=");
