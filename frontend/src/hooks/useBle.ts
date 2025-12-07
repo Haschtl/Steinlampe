@@ -146,6 +146,11 @@ export function useBle(): BleApi {
       lampState: undefined,
       switchState: undefined,
       touchState: undefined,
+      hasLight: undefined,
+      hasMusic: undefined,
+      hasPoti: undefined,
+      hasPush: undefined,
+      hasPresence: undefined,
     }));
   }, []);
 

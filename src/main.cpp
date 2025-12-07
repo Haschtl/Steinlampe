@@ -117,6 +117,21 @@ static const char *PREF_KEY_RAMP_POW_OFF = "ramp_p_off";
 static const char *PREF_KEY_LCLAMP_MIN = "lcl_min";
 static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
+#if ENABLE_POTI
+static const char *PREF_KEY_POTI_EN = "poti_en";
+static const char *PREF_KEY_POTI_ALPHA = "poti_a";
+static const char *PREF_KEY_POTI_DELTA = "poti_d";
+static const char *PREF_KEY_POTI_OFF = "poti_off";
+static const char *PREF_KEY_POTI_SAMPLE = "poti_s";
+#endif
+#if ENABLE_PUSH_BUTTON
+static const char *PREF_KEY_PUSH_EN = "push_en";
+static const char *PREF_KEY_PUSH_DB = "push_db";
+static const char *PREF_KEY_PUSH_DBL = "push_dbl";
+static const char *PREF_KEY_PUSH_HOLD = "push_hold";
+static const char *PREF_KEY_PUSH_STEP_MS = "push_s_ms";
+static const char *PREF_KEY_PUSH_STEP = "push_step";
+#endif
 static const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
 static const uint8_t PROFILE_SLOTS = 3;
 static const char *PREF_KEY_PWM_GAMMA = "pwm_g";
@@ -167,6 +182,7 @@ bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 uint32_t touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
 
 #if ENABLE_PUSH_BUTTON
+bool pushEnabled = true;
 bool pushRawState = false;
 bool pushDebouncedState = false;
 uint32_t pushLastDebounceMs = 0;
@@ -210,6 +226,7 @@ uint16_t lightMaxRaw = 0;
 float lightGain = Settings::LIGHT_GAIN_DEFAULT;
 float lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
 float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
@@ -226,13 +243,27 @@ String clapCmd3 = F("mode prev");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
 constexpr uint32_t CLAP_WINDOW_MS = 1200;
+#endif
 
 #if ENABLE_POTI
 float potiFiltered = 0.0f;
 float potiLastApplied = -1.0f;
 uint32_t lastPotiSampleMs = 0;
+uint32_t potiSampleMs = Settings::POTI_SAMPLE_MS;
+float potiAlpha = Settings::POTI_ALPHA;
+float potiDeltaMin = Settings::POTI_DELTA_MIN;
+float potiOffThreshold = Settings::POTI_OFF_THRESHOLD;
+bool potiEnabled = true;
 #endif
+
+#if ENABLE_PUSH_BUTTON
+uint32_t pushDebounceMs = Settings::PUSH_DEBOUNCE_MS;
+uint32_t pushDoubleMs = Settings::PUSH_DOUBLE_MS;
+uint32_t pushHoldMs = Settings::PUSH_HOLD_MS;
+uint32_t pushStepMs = Settings::PUSH_BRI_STEP_MS;
+float pushStep = Settings::PUSH_BRI_STEP;
 #endif
+
 bool bleWasConnected = false;
 bool btWasConnected = false;
 
@@ -688,6 +719,21 @@ void saveSettings()
   prefs.putString(PREF_KEY_CLAP_CMD2, clapCmd2);
   prefs.putString(PREF_KEY_CLAP_CMD3, clapCmd3);
 #endif
+#if ENABLE_POTI
+  prefs.putBool(PREF_KEY_POTI_EN, potiEnabled);
+  prefs.putFloat(PREF_KEY_POTI_ALPHA, potiAlpha);
+  prefs.putFloat(PREF_KEY_POTI_DELTA, potiDeltaMin);
+  prefs.putFloat(PREF_KEY_POTI_OFF, potiOffThreshold);
+  prefs.putUInt(PREF_KEY_POTI_SAMPLE, potiSampleMs);
+#endif
+#if ENABLE_PUSH_BUTTON
+  prefs.putBool(PREF_KEY_PUSH_EN, pushEnabled);
+  prefs.putUInt(PREF_KEY_PUSH_DB, pushDebounceMs);
+  prefs.putUInt(PREF_KEY_PUSH_DBL, pushDoubleMs);
+  prefs.putUInt(PREF_KEY_PUSH_HOLD, pushHoldMs);
+  prefs.putUInt(PREF_KEY_PUSH_STEP_MS, pushStepMs);
+  prefs.putFloat(PREF_KEY_PUSH_STEP, pushStep);
+#endif
   prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
   prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
   prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
@@ -807,6 +853,39 @@ void loadSettings()
   if (clapThreshold < 0.05f) clapThreshold = 0.05f;
   if (clapThreshold > 1.5f) clapThreshold = 1.5f;
   if (clapCooldownMs < 200) clapCooldownMs = 200;
+#endif
+#if ENABLE_POTI
+  potiEnabled = prefs.getBool(PREF_KEY_POTI_EN, true);
+  potiAlpha = prefs.getFloat(PREF_KEY_POTI_ALPHA, Settings::POTI_ALPHA);
+  if (potiAlpha < 0.01f) potiAlpha = 0.01f;
+  if (potiAlpha > 1.0f) potiAlpha = 1.0f;
+  potiDeltaMin = prefs.getFloat(PREF_KEY_POTI_DELTA, Settings::POTI_DELTA_MIN);
+  if (potiDeltaMin < 0.001f) potiDeltaMin = 0.001f;
+  if (potiDeltaMin > 0.5f) potiDeltaMin = 0.5f;
+  potiOffThreshold = prefs.getFloat(PREF_KEY_POTI_OFF, Settings::POTI_OFF_THRESHOLD);
+  if (potiOffThreshold < 0.0f) potiOffThreshold = 0.0f;
+  if (potiOffThreshold > 0.5f) potiOffThreshold = 0.5f;
+  potiSampleMs = prefs.getUInt(PREF_KEY_POTI_SAMPLE, Settings::POTI_SAMPLE_MS);
+  if (potiSampleMs < 10) potiSampleMs = 10;
+  if (potiSampleMs > 2000) potiSampleMs = 2000;
+#endif
+#if ENABLE_PUSH_BUTTON
+  pushEnabled = prefs.getBool(PREF_KEY_PUSH_EN, true);
+  pushDebounceMs = prefs.getUInt(PREF_KEY_PUSH_DB, Settings::PUSH_DEBOUNCE_MS);
+  if (pushDebounceMs < 5) pushDebounceMs = 5;
+  if (pushDebounceMs > 500) pushDebounceMs = 500;
+  pushDoubleMs = prefs.getUInt(PREF_KEY_PUSH_DBL, Settings::PUSH_DOUBLE_MS);
+  if (pushDoubleMs < 100) pushDoubleMs = 100;
+  if (pushDoubleMs > 5000) pushDoubleMs = 5000;
+  pushHoldMs = prefs.getUInt(PREF_KEY_PUSH_HOLD, Settings::PUSH_HOLD_MS);
+  if (pushHoldMs < 200) pushHoldMs = 200;
+  if (pushHoldMs > 6000) pushHoldMs = 6000;
+  pushStepMs = prefs.getUInt(PREF_KEY_PUSH_STEP_MS, Settings::PUSH_BRI_STEP_MS);
+  if (pushStepMs < 50) pushStepMs = 50;
+  if (pushStepMs > 2000) pushStepMs = 2000;
+  pushStep = prefs.getFloat(PREF_KEY_PUSH_STEP, Settings::PUSH_BRI_STEP);
+  if (pushStep < 0.005f) pushStep = 0.005f;
+  if (pushStep > 0.5f) pushStep = 0.5f;
 #endif
   outputGamma = prefs.getFloat(PREF_KEY_PWM_GAMMA, Settings::PWM_GAMMA_DEFAULT);
   if (outputGamma < 0.5f || outputGamma > 4.0f)
@@ -1352,8 +1431,28 @@ void printStatus()
   sendFeedback(musicLine);
   payload += musicLine + '\n';
 #endif
+#if ENABLE_POTI
+  String potiLine = String(F("[Poti] ")) + (potiEnabled ? F("ON") : F("OFF")) + F(" a=") + String(potiAlpha, 2) +
+                    F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
+                    F(" smpl=") + String(potiSampleMs) + F("ms");
+#else
+  String potiLine = F("[Poti] N/A");
+#endif
+  sendFeedback(potiLine);
+  payload += potiLine + '\n';
+
+#if ENABLE_PUSH_BUTTON
+  String pushLine = String(F("[Push] ")) + (pushEnabled ? F("ON") : F("OFF")) + F(" db=") + String(pushDebounceMs) +
+                    F(" dbl=") + String(pushDoubleMs) + F(" hold=") + String(pushHoldMs) +
+                    F(" step=") + String(pushStep * 100.0f, 1) + F("%/") + String(pushStepMs) + F("ms");
+#else
+  String pushLine = F("[Push] N/A");
+#endif
+  sendFeedback(pushLine);
+  payload += pushLine + '\n';
 
   updateBleStatus(payload);
+  printStatusStructured();
 }
 
 /**
@@ -1441,6 +1540,62 @@ void printStatusStructured()
   line += String(briMinUser * 100.0f, 1);
   line += F("|bri_max=");
   line += String(briMaxUser * 100.0f, 1);
+#if ENABLE_LIGHT_SENSOR
+  line += F("|light=");
+  line += lightSensorEnabled ? F("ON") : F("OFF");
+  line += F("|light_gain=");
+  line += String(lightGain, 2);
+  line += F("|light_min=");
+  line += String(lightClampMin, 2);
+  line += F("|light_max=");
+  line += String(lightClampMax, 2);
+#else
+  line += F("|light=N/A");
+#endif
+#if ENABLE_MUSIC_MODE
+  line += F("|music=");
+  line += musicEnabled ? F("ON") : F("OFF");
+  line += F("|music_gain=");
+  line += String(musicGain, 2);
+  line += F("|clap=");
+  line += clapEnabled ? F("ON") : F("OFF");
+  line += F("|clap_thr=");
+  line += String(clapThreshold, 2);
+  line += F("|clap_cool=");
+  line += String(clapCooldownMs);
+#else
+  line += F("|music=N/A|clap=N/A");
+#endif
+#if ENABLE_POTI
+  line += F("|poti=");
+  line += potiEnabled ? F("ON") : F("OFF");
+  line += F("|poti_alpha=");
+  line += String(potiAlpha, 2);
+  line += F("|poti_delta=");
+  line += String(potiDeltaMin, 3);
+  line += F("|poti_off=");
+  line += String(potiOffThreshold, 3);
+  line += F("|poti_sample=");
+  line += String(potiSampleMs);
+#else
+  line += F("|poti=N/A");
+#endif
+#if ENABLE_PUSH_BUTTON
+  line += F("|push=");
+  line += pushEnabled ? F("ON") : F("OFF");
+  line += F("|push_db=");
+  line += String(pushDebounceMs);
+  line += F("|push_dbl=");
+  line += String(pushDoubleMs);
+  line += F("|push_hold=");
+  line += String(pushHoldMs);
+  line += F("|push_step_ms=");
+  line += String(pushStepMs);
+  line += F("|push_step=");
+  line += String(pushStep, 3);
+#else
+  line += F("|push=N/A");
+#endif
   sendFeedback(line);
 }
 
@@ -1756,6 +1911,8 @@ void printHelp()
       "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
       "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/Presence/Quick",
       "  light gain <f>     - Verstärkung Lichtsensor",
+      "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms> - Poti-Config",
+      "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",
       "  music on|off       - Music-Mode (ADC) aktivieren",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
       "  calibrate         - Touch-Baseline neu messen",
@@ -2506,6 +2663,186 @@ void handleCommand(String line)
 #endif
     return;
   }
+#if ENABLE_POTI
+  if (lower.startsWith("poti"))
+  {
+    String arg = line.substring(4);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      potiEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Poti] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      potiEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Poti] Disabled"));
+    }
+    else if (arg.startsWith("alpha"))
+    {
+      float v = arg.substring(5).toFloat();
+      if (v >= 0.01f && v <= 1.0f)
+      {
+        potiAlpha = v;
+        saveSettings();
+        sendFeedback(String(F("[Poti] alpha=")) + String(v, 2));
+      }
+      else
+      {
+        sendFeedback(F("Usage: poti alpha 0.01-1.0"));
+      }
+    }
+    else if (arg.startsWith("delta"))
+    {
+      float v = arg.substring(5).toFloat();
+      if (v >= 0.001f && v <= 0.5f)
+      {
+        potiDeltaMin = v;
+        saveSettings();
+        sendFeedback(String(F("[Poti] delta=")) + String(v, 3));
+      }
+      else
+      {
+        sendFeedback(F("Usage: poti delta 0.001-0.5"));
+      }
+    }
+    else if (arg.startsWith("off"))
+    {
+      float v = arg.substring(3).toFloat();
+      if (v >= 0.0f && v <= 0.5f)
+      {
+        potiOffThreshold = v;
+        saveSettings();
+        sendFeedback(String(F("[Poti] off=")) + String(v, 3));
+      }
+      else
+      {
+        sendFeedback(F("Usage: poti off 0.0-0.5"));
+      }
+    }
+    else if (arg.startsWith("sample"))
+    {
+      uint32_t v = arg.substring(6).toInt();
+      if (v >= 10 && v <= 2000)
+      {
+        potiSampleMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Poti] sample=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: poti sample 10-2000"));
+      }
+    }
+    else
+    {
+      sendFeedback(String(F("[Poti] ")) + (potiEnabled ? F("ON ") : F("OFF ")) + F("a=") + String(potiAlpha, 2) +
+                   F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
+                   F(" smpl=") + String(potiSampleMs) + F("ms"));
+    }
+    return;
+  }
+#endif
+#if ENABLE_PUSH_BUTTON
+  if (lower.startsWith("push"))
+  {
+    String arg = line.substring(4);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      pushEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Push] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      pushEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Push] Disabled"));
+    }
+    else if (arg.startsWith("debounce"))
+    {
+      uint32_t v = arg.substring(8).toInt();
+      if (v >= 5 && v <= 500)
+      {
+        pushDebounceMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Push] debounce=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: push debounce 5-500"));
+      }
+    }
+    else if (arg.startsWith("double"))
+    {
+      uint32_t v = arg.substring(6).toInt();
+      if (v >= 100 && v <= 5000)
+      {
+        pushDoubleMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Push] double=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: push double 100-5000"));
+      }
+    }
+    else if (arg.startsWith("hold"))
+    {
+      uint32_t v = arg.substring(4).toInt();
+      if (v >= 200 && v <= 6000)
+      {
+        pushHoldMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Push] hold=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: push hold 200-6000"));
+      }
+    }
+    else if (arg.startsWith("step_ms"))
+    {
+      uint32_t v = arg.substring(7).toInt();
+      if (v >= 50 && v <= 2000)
+      {
+        pushStepMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Push] step_ms=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: push step_ms 50-2000"));
+      }
+    }
+    else if (arg.startsWith("step"))
+    {
+      float v = arg.substring(4).toFloat();
+      if (v >= 0.005f && v <= 0.5f)
+      {
+        pushStep = v;
+        saveSettings();
+        sendFeedback(String(F("[Push] step=")) + String(v * 100.0f, 1) + F("%"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: push step 0.005-0.5"));
+      }
+    }
+    else
+    {
+      sendFeedback(String(F("[Push] ")) + (pushEnabled ? F("ON ") : F("OFF ")) + F("db=") + String(pushDebounceMs) +
+                   F(" dbl=") + String(pushDoubleMs) + F(" hold=") + String(pushHoldMs) +
+                   F(" step=") + String(pushStep * 100.0f, 1) + F("%/") + String(pushStepMs) + F("ms"));
+    }
+    return;
+  }
+#endif
 #if ENABLE_MUSIC_MODE
   if (lower.startsWith("music"))
   {
@@ -3258,6 +3595,8 @@ void updateMusicSensor()
 #if ENABLE_PUSH_BUTTON
 void updatePushButton()
 {
+  if (!pushEnabled)
+    return;
   uint32_t now = millis();
   bool raw = digitalRead(PIN_PUSHBTN) == PUSH_ACTIVE_LEVEL;
   if (raw != pushRawState)
@@ -3265,7 +3604,7 @@ void updatePushButton()
     pushRawState = raw;
     pushLastDebounceMs = now;
   }
-  if ((now - pushLastDebounceMs) >= Settings::PUSH_DEBOUNCE_MS && pushDebouncedState != pushRawState)
+  if ((now - pushLastDebounceMs) >= pushDebounceMs && pushDebouncedState != pushRawState)
   {
     pushDebouncedState = pushRawState;
     if (pushDebouncedState)
@@ -3281,7 +3620,7 @@ void updatePushButton()
       }
       else
       {
-        if (pushAwaitDouble && (now - pushLastReleaseMs) <= Settings::PUSH_DOUBLE_MS)
+        if (pushAwaitDouble && (now - pushLastReleaseMs) <= pushDoubleMs)
         {
           pushAwaitDouble = false;
           size_t from = currentModeIndex;
@@ -3300,14 +3639,14 @@ void updatePushButton()
   }
 
   // finalize single click if waiting too long
-  if (pushAwaitDouble && (now - pushLastReleaseMs) > Settings::PUSH_DOUBLE_MS)
+  if (pushAwaitDouble && (now - pushLastReleaseMs) > pushDoubleMs)
   {
     pushAwaitDouble = false;
     setLampEnabled(!lampEnabled, "pushbtn");
   }
 
   // hold brightness adjustment
-  if (pushDebouncedState && !pushHoldActive && (now - pushPressMs) >= Settings::PUSH_HOLD_MS)
+  if (pushDebouncedState && !pushHoldActive && (now - pushPressMs) >= pushHoldMs)
   {
     pushHoldActive = true;
     pushHoldLastStepMs = now;
@@ -3316,10 +3655,10 @@ void updatePushButton()
 
   if (pushHoldActive && pushDebouncedState)
   {
-    if (now - pushHoldLastStepMs >= Settings::PUSH_BRI_STEP_MS)
+    if (now - pushHoldLastStepMs >= pushStepMs)
     {
       pushHoldLastStepMs = now;
-      float pct = masterBrightness * 100.0f + Settings::PUSH_BRI_STEP * 100.0f;
+      float pct = masterBrightness * 100.0f + pushStep * 100.0f;
       if (pct > 100.0f)
         pct = briMinUser * 100.0f;
       setBrightnessPercent(pct, true);
@@ -3335,20 +3674,22 @@ void updatePushButton()
 #if ENABLE_POTI
 void updatePoti()
 {
+  if (!potiEnabled)
+    return;
   uint32_t now = millis();
-  if (now - lastPotiSampleMs < Settings::POTI_SAMPLE_MS)
+  if (now - lastPotiSampleMs < potiSampleMs)
     return;
   lastPotiSampleMs = now;
 
   int raw = analogRead(PIN_POTI);
   float level = clamp01((float)raw / 4095.0f);
-  potiFiltered = Settings::POTI_ALPHA * level + (1.0f - Settings::POTI_ALPHA) * potiFiltered;
+  potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 
-  if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < Settings::POTI_DELTA_MIN)
+  if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)
     return;
 
   potiLastApplied = potiFiltered;
-  if (potiFiltered <= Settings::POTI_OFF_THRESHOLD)
+  if (potiFiltered <= potiOffThreshold)
   {
     if (lampEnabled)
       setLampEnabled(false, "poti");

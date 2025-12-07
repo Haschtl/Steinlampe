@@ -12,7 +12,9 @@ export type DeviceStatus = {
   cap?: number;
   lampState?: string;
   switchState?: string;
+  hasSwitch?: boolean;
   touchState?: string;
+  hasTouch?: boolean;
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
@@ -20,11 +22,38 @@ export type DeviceStatus = {
   idleMinutes?: number;
   pwmCurve?: number;
   presence?: string;
+  hasPresence?: boolean;
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
   customLen?: number;
   customStepMs?: number;
+  briMin?: number;
+  briMax?: number;
+  hasLight?: boolean;
+  lightEnabled?: boolean;
+  lightGain?: number;
+  lightClampMin?: number;
+  lightClampMax?: number;
+  hasMusic?: boolean;
+  musicEnabled?: boolean;
+  musicGain?: number;
+  clapEnabled?: boolean;
+  clapThreshold?: number;
+  clapCooldownMs?: number;
+  hasPoti?: boolean;
+  potiEnabled?: boolean;
+  potiAlpha?: number;
+  potiDelta?: number;
+  potiOff?: number;
+  potiSample?: number;
+  hasPush?: boolean;
+  pushEnabled?: boolean;
+  pushDebounceMs?: number;
+  pushDoubleMs?: number;
+  pushHoldMs?: number;
+  pushStepMs?: number;
+  pushStep?: number;
 };
 
 /**
@@ -33,6 +62,86 @@ export type DeviceStatus = {
  */
 export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction<DeviceStatus>>): boolean {
   if (!line) return false;
+  if (line.startsWith('STATUS|')) {
+    const parts = line.split('|').slice(1);
+    const kv: Record<string, string> = {};
+    parts.forEach((p) => {
+      const eq = p.indexOf('=');
+      if (eq > 0) {
+        kv[p.slice(0, eq)] = p.slice(eq + 1);
+      }
+    });
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasLight = kv.light ? isAvailable('light') : s.hasLight;
+      const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
+      const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
+      const hasPush = kv.push ? isAvailable('push') : s.hasPush;
+      const hasPresence = kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence;
+      const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        patternCount: asInt('pattern_total') ?? s.patternCount,
+        currentPattern: asInt('pattern') ?? s.currentPattern,
+        patternName: kv.pattern_name ?? s.patternName,
+        autoCycle: kv.auto ? kv.auto === '1' : s.autoCycle,
+        brightness: asNum('bri') ?? s.brightness,
+        cap: asNum('cap') ?? s.cap,
+        lampState: kv.lamp ?? s.lampState,
+        switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
+        hasSwitch,
+        touchState: kv.touch_dim ? (kv.touch_dim === '1' ? 'TOUCHDIM' : s.touchState) : s.touchState,
+        rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
+        rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
+        idleOffMin: asInt('idle_min') ?? s.idleOffMin,
+        idleMinutes: asInt('idle_min') ?? s.idleMinutes,
+        patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
+        patternFade: kv.pat_fade ? (kv.pat_fade === 'off' ? 0 : parseFloat(kv.pat_fade)) : s.patternFade,
+        quickCsv: kv.quick ?? s.quickCsv,
+        presence: kv.presence ?? s.presence,
+        hasPresence,
+        customLen: asInt('custom_len') ?? s.customLen,
+        customStepMs: asInt('custom_step_ms') ?? s.customStepMs,
+        pwmCurve: asNum('gamma') ?? s.pwmCurve,
+        briMin: asNum('bri_min') ?? s.briMin,
+        briMax: asNum('bri_max') ?? s.briMax,
+        hasLight,
+        lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
+        lightGain: asNum('light_gain') ?? s.lightGain,
+        lightClampMin: asNum('light_min') ?? s.lightClampMin,
+        lightClampMax: asNum('light_max') ?? s.lightClampMax,
+        hasMusic,
+        musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
+        musicGain: asNum('music_gain') ?? s.musicGain,
+        clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
+        clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
+        clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
+        hasPoti,
+        potiEnabled: kv.poti ? kv.poti.toUpperCase() === 'ON' : hasPoti === false ? false : s.potiEnabled,
+        potiAlpha: asNum('poti_alpha') ?? s.potiAlpha,
+        potiDelta: asNum('poti_delta') ?? s.potiDelta,
+        potiOff: asNum('poti_off') ?? s.potiOff,
+        potiSample: asInt('poti_sample') ?? s.potiSample,
+        hasPush,
+        pushEnabled: kv.push ? kv.push.toUpperCase() === 'ON' : hasPush === false ? false : s.pushEnabled,
+        pushDebounceMs: asInt('push_db') ?? s.pushDebounceMs,
+        pushDoubleMs: asInt('push_dbl') ?? s.pushDoubleMs,
+        pushHoldMs: asInt('push_hold') ?? s.pushHoldMs,
+        pushStepMs: asInt('push_step_ms') ?? s.pushStepMs,
+        pushStep: asNum('push_step') ?? s.pushStep,
+      };
+    });
+    return true;
+  }
   let handled = false;
   const swAny = line.match(/Switch[:=]\s*([A-Za-z0-9]+)/i);
   const touchAny = line.match(/Touch[:=]\s*([A-Za-z0-9]+)/i);
