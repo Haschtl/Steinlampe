@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { LightMusicCard } from '@/cards/LightMusicCard';
-import { PresenceTouchCard } from '@/cards/PresenceTouchCard';
+import { LightCard } from '@/cards/LightCard';
+import { MusicCard } from '@/cards/MusicCard';
+import { PresenceCard } from '@/cards/PresenceCard';
+import { TouchCard } from '@/cards/TouchCard';
 import { SettingsCard } from '@/cards/SettingsCard';
 import { useConnection } from '@/context/connection';
 
@@ -46,26 +48,28 @@ export function SettingsSection() {
         handleIdle={handleIdle}
         handlePwm={handlePwm}
       />
-      <div className="grid gap-4 md:grid-cols-2">
-        <PresenceTouchCard
-          presenceText={status.presence}
-          onPresenceToggle={(on) => sendCmd(`presence ${on ? 'on' : 'off'}`)}
-          onPresenceMe={() => sendCmd('presence set me')}
-          onPresenceClear={() => sendCmd('presence clear')}
-          onTouchCalib={() => sendCmd('calibrate touch')}
-          onTouchDebug={() => sendCmd('touch')}
-          onTouchDimToggle={(on) => sendCmd(`touchdim ${on ? 'on' : 'off'}`)}
-        />
-        <LightMusicCard
-          onLightToggle={(on) => sendCmd(`light ${on ? 'on' : 'off'}`)}
-          onLightGain={(v) => sendCmd(`light gain ${v}`)}
-          onLightCalib={() => sendCmd('light calib')}
-          onMusicToggle={(on) => sendCmd(`music ${on ? 'on' : 'off'}`)}
-          onMusicGain={(v) => sendCmd(`music sens ${v}`)}
-          onClapThr={(v) => sendCmd(`clap thr ${v}`)}
-          onClapCool={(v) => sendCmd(`clap cool ${v}`)}
-        />
-      </div>
+      <PresenceCard
+        presenceText={status.presence}
+        onPresenceToggle={(on) => sendCmd(`presence ${on ? 'on' : 'off'}`)}
+        onPresenceMe={() => sendCmd('presence set me')}
+        onPresenceClear={() => sendCmd('presence clear')}
+      />
+      <TouchCard
+        onTouchCalib={() => sendCmd('calibrate touch')}
+        onTouchDebug={() => sendCmd('touch')}
+        onTouchDimToggle={(on) => sendCmd(`touchdim ${on ? 'on' : 'off'}`)}
+      />
+      <LightCard
+        onLightToggle={(on) => sendCmd(`light ${on ? 'on' : 'off'}`)}
+        onLightGain={(v) => sendCmd(`light gain ${v}`)}
+        onLightCalib={() => sendCmd('light calib')}
+      />
+      <MusicCard
+        onMusicToggle={(on) => sendCmd(`music ${on ? 'on' : 'off'}`)}
+        onMusicGain={(v) => sendCmd(`music sens ${v}`)}
+        onClapThr={(v) => sendCmd(`clap thr ${v}`)}
+        onClapCool={(v) => sendCmd(`clap cool ${v}`)}
+      />
     </div>
   );
 }
