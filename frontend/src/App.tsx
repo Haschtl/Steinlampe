@@ -86,6 +86,10 @@ export default function App() {
   const isStale = status.connected && lastStatusAge !== null && lastStatusAge > 25000; // 25s without update
 
   useEffect(() => {
+    if (!status.connected) setShowConnectOverlay(true);
+  }, [status.connected]);
+
+  useEffect(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const fallback = prefersDark ? 'fancy' : 'fancy-light';
     const theme = localStorage.getItem('ql-theme') || fallback;
