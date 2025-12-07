@@ -38,6 +38,8 @@ export default function App() {
     log,
     liveLog,
     setLiveLog,
+    filterParsed,
+    setFilterParsed,
     connect,
     connectBle,
     connectSerial,
@@ -70,7 +72,7 @@ export default function App() {
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
-    { key: 'advanced', label: t('nav.advanced', 'Advanced'), icon: <Settings className="h-4 w-4" /> },
+    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Settings className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
     { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
@@ -180,11 +182,21 @@ export default function App() {
                     : t("status.disconnected", "Not connected")}
                 </span>
                 <span>•</span>
-                <span>
-                  {t("status.last", "Last status")}:{" "}
-                  {status.lastStatusAt
-                    ? new Date(status.lastStatusAt).toLocaleTimeString()
-                    : "--"}
+                <span
+                  className={`inline-flex h-2.5 w-2.5 items-center justify-center rounded-full ${
+                    status.connected ? 'bg-green-500/30' : status.connecting ? 'bg-yellow-400/40' : 'bg-red-500/30'
+                  }`}
+                  title={
+                    status.lastStatusAt
+                      ? new Date(status.lastStatusAt).toLocaleTimeString()
+                      : "--"
+                  }
+                >
+                  <span
+                    className={`inline-block h-1.5 w-1.5 rounded-full ${
+                      status.connected ? 'bg-green-400' : status.connecting ? 'bg-yellow-300' : 'bg-red-500'
+                    } animate-pulse`}
+                  />
                 </span>
               </div>
             </button>
@@ -200,6 +212,15 @@ export default function App() {
                       onChange={(e) => setLiveLog(e.target.checked)}
                     />{" "}
                     Live log
+                  </label>
+                  <label className="pill cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-accent"
+                      checked={filterParsed}
+                      onChange={(e) => setFilterParsed(e.target.checked)}
+                    />{" "}
+                    {t("log.filter", "Filter status lines")}
                   </label>
                 </div>
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg p-3 font-mono text-sm text-accent space-y-1 shadow-inner">

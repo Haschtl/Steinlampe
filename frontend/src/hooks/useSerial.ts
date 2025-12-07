@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-type SerialStatus = {
-  connected: boolean;
-  connecting: boolean;
-  deviceName: string;
-  lastStatusAt: number | null;
-};
+import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
 
 type SerialApi = {
-  status: SerialStatus;
+  status: DeviceStatus;
   log: LogEntry[];
   liveLog: boolean;
   setLiveLog: (v: boolean) => void;
+  filterParsed: boolean;
+  setFilterParsed: (v: boolean) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
@@ -21,22 +17,47 @@ type SerialApi = {
 };
 
 export function useSerial(): SerialApi {
-  const [status, setStatus] = useState<SerialStatus>({
+  const [status, setStatus] = useState<DeviceStatus>({
     connected: false,
     connecting: false,
     deviceName: '',
     lastStatusAt: null,
+    patternCount: 0,
   });
   const [log, setLog] = useState<LogEntry[]>([]);
   const [liveLog, setLiveLog] = useState(true);
+  const [filterParsed, setFilterParsed] = useState<boolean>(() => {
+    const stored = localStorage.getItem('ql-log-filter');
+    return stored !== 'false';
+  });
   const portRef = useRef<SerialPort | null>(null);
   const readerCancelRef = useRef<() => void>();
   const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
 
-  const pushLog = useCallback((line: string) => {
-    const entry = { ts: Date.now(), line };
-    setLog((prev) => [...prev.slice(-400), entry]);
-  }, []);
+  const pushLog = useCallback(
+    (line: string) => {
+      if (!line) return;
+      if (
+        filterParsed &&
+        (/^Status[:=]/i.test(line) ||
+          /^Lamp=/.test(line) ||
+          /^Ramp=/.test(line) ||
+          /^RampOn/i.test(line) ||
+          /^RampOff/i.test(line) ||
+          line.startsWith('[Quick]') ||
+          line.startsWith('[Touch]'))
+      ) {
+        return;
+      }
+      const entry = { ts: Date.now(), line };
+      setLog((prev) => [...prev.slice(-400), entry]);
+    },
+    [filterParsed],
+  );
+
+  useEffect(() => {
+    localStorage.setItem('ql-log-filter', filterParsed ? 'true' : 'false');
+  }, [filterParsed]);
 
   const disconnect = useCallback(() => {
     readerCancelRef.current?.();
@@ -104,8 +125,9 @@ export function useSerial(): SerialApi {
             const { value, done } = await reader.read();
             if (done) break;
             if (value) {
-              pushLog(value);
-              setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+              const handled = parseStatusLine(value, setStatus);
+              if (!handled || !filterParsed) pushLog(value);
+              else setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
             }
           }
         } catch (err) {
@@ -136,11 +158,13 @@ export function useSerial(): SerialApi {
       log,
       liveLog,
       setLiveLog,
+      filterParsed,
+      setFilterParsed,
       connect,
       disconnect,
       refreshStatus,
       sendCmd,
     }),
-    [connect, disconnect, liveLog, log, refreshStatus, sendCmd, status],
+    [connect, disconnect, filterParsed, liveLog, log, refreshStatus, sendCmd, setFilterParsed, status],
   );
 }

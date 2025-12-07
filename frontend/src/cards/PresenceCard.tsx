@@ -9,13 +9,17 @@ export function PresenceCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2">
+      <CardHeader className="flex items-center justify-between gap-2">
           <CardTitle><Trans k="title.presence">Presence</Trans></CardTitle>
           <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)} /> Presence
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={status.presence?.toUpperCase().includes('ON') ?? false}
+              onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)}
+            />{' '}
+            <Trans k="title.presence">Presence</Trans>
           </label>
-        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2 flex-wrap">
@@ -27,7 +31,7 @@ export function PresenceCard() {
           <Button onClick={() => sendCmd('presence scan')}><Trans k="btn.scan">Scan</Trans></Button>
         </div>
         <p className="text-sm text-muted">Status: {status.presence ?? '---'}</p>
-        <p className="text-xs text-muted">Switch: {status.switchState ?? '--'} | Touch: {status.touchState ?? '--'}</p>
+        <p className="text-xs text-muted">Switch: {status.switchState ?? '--'}</p>
       </CardContent>
     </Card>
   );
