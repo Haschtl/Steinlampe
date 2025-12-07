@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react';
 import { Flashlight, Pause, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
+export function LampPowerCard() {
   const { status, sendCmd } = useConnection();
   const [brightness, setBrightness] = useState(70);
   const [lampOn, setLampOn] = useState(false);
@@ -37,16 +35,6 @@ export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: st
     <Card>
       <CardHeader>
         <CardTitle><Trans k="title.lamp">Lamp</Trans></CardTitle>
-        <div className="flex items-center gap-2">
-          <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
-          <select className="input" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-          </select>
-          <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.load">Load</Trans></Button>
-          <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}><Trans k="btn.save">Save</Trans></Button>
-        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">

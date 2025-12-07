@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trans } from '@/i18n';
 
 type PatternOption = { idx: number; label: string };
@@ -52,14 +53,19 @@ export function WakeSleepCard({
             </div>
             <div>
               <Label><Trans k="label.mode">Mode</Trans></Label>
-              <select className="input" value={wakeMode} onChange={(e) => setWakeMode(e.target.value)}>
-                <option value="">Unverändert</option>
-                {patternOptions.slice(0, 10).map((p) => (
-                  <option key={p.idx} value={p.idx}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={wakeMode} onValueChange={(v) => setWakeMode(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Unverändert" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unverändert</SelectItem>
+                  {patternOptions.slice(0, 10).map((p) => (
+                    <SelectItem key={p.idx} value={String(p.idx)}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">

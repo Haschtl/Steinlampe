@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useConnection } from './context/connection';
 import { Trans, useI18n } from './i18n';
 import { HomeSection } from './sections/HomeSection';
@@ -148,14 +149,35 @@ export default function App() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl space-y-4 px-4 py-4">
-          {activeTab === "home" && <HomeSection />}
-          {activeTab === "settings" && <SettingsSection />}
-          {activeTab === "advanced" && <AdvancedSection />}
-          {activeTab === "actions" && <ActionsSection />}
-          {activeTab === "help" && (
-            <HelpSection bleGuids={bleGuids} commands={commands} />
-          )}
+        <main className="relative mx-auto max-w-6xl px-4 py-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 12, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }}
+              exit={{ opacity: 0, y: -8, scale: 0.995, transition: { duration: 0.25, ease: 'easeInOut' } }}
+              className="space-y-4"
+            >
+              {activeTab === "home" && <HomeSection />}
+              {activeTab === "settings" && <SettingsSection />}
+              {activeTab === "advanced" && <AdvancedSection />}
+              {activeTab === "actions" && <ActionsSection />}
+              {activeTab === "help" && (
+                <HelpSection bleGuids={bleGuids} commands={commands} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+          <motion.div
+            key={`${activeTab}-glow`}
+            className="pointer-events-none absolute -inset-10 -z-10"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 0.6, scale: 1, transition: { duration: 0.6 } }}
+            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.3 } }}
+            style={{
+              background: 'radial-gradient(60% 40% at 50% 40%, rgba(var(--accent-rgb),0.18), transparent), radial-gradient(40% 30% at 30% 60%, rgba(140,245,155,0.1), transparent)',
+              filter: 'blur(40px)',
+            }}
+          />
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-border/60 backdrop-blur-sm relative">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
@@ -126,13 +127,18 @@ export function RampCard() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
-                <select className="input" value={rampOnEase} onChange={(e) => handleRampEase('on', e.target.value)}>
-                  <option value="linear">linear</option>
-                  <option value="ease">ease</option>
-                  <option value="ease-in">ease-in</option>
-                  <option value="ease-out">ease-out</option>
-                  <option value="ease-in-out">ease-in-out</option>
-                </select>
+                <Select value={rampOnEase} onValueChange={(v) => handleRampEase('on', v)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out'].map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <SliderRow
                 label={<Trans k="label.pow">Power</Trans>}
@@ -166,13 +172,18 @@ export function RampCard() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
-                <select className="input" value={rampOffEase} onChange={(e) => handleRampEase('off', e.target.value)}>
-                  <option value="linear">linear</option>
-                  <option value="ease">ease</option>
-                  <option value="ease-in">ease-in</option>
-                  <option value="ease-out">ease-out</option>
-                  <option value="ease-in-out">ease-in-out</option>
-                </select>
+                <Select value={rampOffEase} onValueChange={(v) => handleRampEase('off', v)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out'].map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <SliderRow
                 label={<Trans k="label.pow">Power</Trans>}

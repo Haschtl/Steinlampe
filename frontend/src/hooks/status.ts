@@ -100,6 +100,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       rampOnMs: onMs ? parseInt(onMs[1], 10) : s.rampOnMs,
       rampOffMs: offMs ? parseInt(offMs[1], 10) : s.rampOffMs,
       idleOffMin: idle ? parseInt(idle[1], 10) : s.idleOffMin,
+      idleMinutes: idle ? parseInt(idle[1], 10) : s.idleMinutes,
       patternFade: patFade ? parseFloat(patFade[1]) : s.patternFade,
       touchState: touchDim ? (touchDim[1] === 'ON' ? 'TOUCHDIM' : s.touchState) : s.touchState,
       lastStatusAt: Date.now(),

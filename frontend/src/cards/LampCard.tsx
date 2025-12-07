@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
@@ -139,11 +140,16 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
         <CardTitle><Trans k="title.lamp">Lamp</Trans></CardTitle>
         <div className="flex items-center gap-2">
           <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
-          <select className="input" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-          </select>
+          <Select value={profileSlot} onValueChange={(v) => setProfileSlot(v)}>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1</SelectItem>
+              <SelectItem value="2">2</SelectItem>
+              <SelectItem value="3">3</SelectItem>
+            </SelectContent>
+          </Select>
           <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.load">Load</Trans></Button>
           <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}><Trans k="btn.save">Save</Trans></Button>
         </div>
@@ -194,13 +200,18 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
               <Button onClick={() => sendCmd('prev')}>
                 <ArrowLeftCircle className="mr-1 h-4 w-4" /> Prev
               </Button>
-              <select className="input" value={pattern} onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}>
-                {patternOptions.map((p) => (
-                  <option key={p.idx} value={p.idx}>
-                    {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={String(pattern)} onValueChange={(v) => handlePatternChange(parseInt(v, 10))}>
+                <SelectTrigger className="flex-1 min-w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {patternOptions.map((p) => (
+                    <SelectItem key={p.idx} value={String(p.idx)}>
+                      {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button onClick={() => sendCmd('next')}>
                 Next <ArrowRightCircle className="ml-1 h-4 w-4" />
               </Button>
@@ -270,13 +281,18 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label className="m-0">Mode</Label>
-                <select className="input" value={rampOnEase} onChange={(e) => handleRampEase('on', e.target.value)}>
-                  <option value="linear">linear</option>
-                  <option value="ease">ease</option>
-                  <option value="ease-in">ease-in</option>
-                  <option value="ease-out">ease-out</option>
-                  <option value="ease-in-out">ease-in-out</option>
-                </select>
+                <Select value={rampOnEase} onValueChange={(v) => handleRampEase('on', v)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out'].map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Label className="m-0">Duration</Label>
@@ -299,13 +315,18 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label className="m-0">Mode</Label>
-                <select className="input" value={rampOffEase} onChange={(e) => handleRampEase('off', e.target.value)}>
-                  <option value="linear">linear</option>
-                  <option value="ease">ease</option>
-                  <option value="ease-in">ease-in</option>
-                  <option value="ease-out">ease-out</option>
-                  <option value="ease-in-out">ease-in-out</option>
-                </select>
+                <Select value={rampOffEase} onValueChange={(v) => handleRampEase('off', v)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out'].map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2">
                 <Label className="m-0">Duration</Label>

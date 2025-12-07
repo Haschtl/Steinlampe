@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SliderRow } from '@/components/ui/slider-row';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
@@ -76,17 +77,18 @@ export function ModesCard() {
           >
             <ArrowLeftCircle className="h-4 w-4" />
           </Button>
-          <select
-            className="input flex-1 min-w-[200px]"
-            value={pattern}
-            onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}
-          >
-            {patternOptions.map((p) => (
-              <option key={p.idx} value={p.idx}>
-                {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
-              </option>
-            ))}
-          </select>
+          <Select value={String(pattern)} onValueChange={(v) => handlePatternChange(parseInt(v, 10))}>
+            <SelectTrigger className="flex-1 min-w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {patternOptions.map((p) => (
+                <SelectItem key={p.idx} value={String(p.idx)}>
+                  {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             size="sm"
             onClick={() => {

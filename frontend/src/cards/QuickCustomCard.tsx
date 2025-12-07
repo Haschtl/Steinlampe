@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabels } from '@/data/patterns';
 import { Trans, useI18n } from '@/i18n';
@@ -118,11 +119,16 @@ export function QuickCustomCard() {
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
             <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
-            <select className="input w-20" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-            </select>
+            <Select value={profileSlot} onValueChange={(v) => setProfileSlot(v)}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1</SelectItem>
+                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="3">3</SelectItem>
+              </SelectContent>
+            </Select>
             <Button size="sm" onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.load">Load</Trans></Button>
           </div>
           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
