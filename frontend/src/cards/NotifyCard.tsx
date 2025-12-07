@@ -53,16 +53,16 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: <Trans k="notify.preset.short">Short blink</Trans>, seq: '80 40 80 120', fade: 0 },
-            { label: <Trans k="notify.preset.soft">Soft alert</Trans>, seq: '200 100', fade: 100 },
-            { label: <Trans k="notify.preset.triple">Triple pulse</Trans>, seq: '120 80 120 80 120 200', fade: 40 },
-            { label: <Trans k="notify.preset.door">Doorbell</Trans>, seq: '200 80 200 400', fade: 30 },
-            { label: <Trans k="notify.preset.longfade">Long Fade Alert</Trans>, seq: '500 300', fade: 120 },
-            { label: <Trans k="notify.preset.double">Double 60</Trans>, seq: '60 60 60 200', fade: 0 },
-            { label: <Trans k="notify.preset.sos">SOS</Trans>, seq: '400 400 400 800 800 800 400 400 400 1200', fade: 0 },
+            { key: 'notify.preset.short', fallback: 'Short blink', seq: '80 40 80 120', fade: 0 },
+            { key: 'notify.preset.soft', fallback: 'Soft alert', seq: '200 100', fade: 100 },
+            { key: 'notify.preset.triple', fallback: 'Triple pulse', seq: '120 80 120 80 120 200', fade: 40 },
+            { key: 'notify.preset.door', fallback: 'Doorbell', seq: '200 80 200 400', fade: 30 },
+            { key: 'notify.preset.longfade', fallback: 'Long Fade Alert', seq: '500 300', fade: 120 },
+            { key: 'notify.preset.double', fallback: 'Double 60', seq: '60 60 60 200', fade: 0 },
+            { key: 'notify.preset.sos', fallback: 'SOS', seq: '400 400 400 800 800 800 400 400 400 1200', fade: 0 },
           ].map((p) => (
-            <Button key={p.label} onClick={() => handleNotify(p.seq, p.fade, 1)}>
-              {p.label}
+            <Button key={p.seq} onClick={() => handleNotify(p.seq, p.fade, 1)}>
+              <Trans k={p.key}>{p.fallback}</Trans>
             </Button>
           ))}
         </div>

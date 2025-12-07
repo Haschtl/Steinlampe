@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   prefix?: ReactNode;
   suffix?: ReactNode;
-  description?: string;
+  description?: ReactNode;
   label?: string;
   variant?: 'solid' | 'ghost';
 };

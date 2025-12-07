@@ -17,6 +17,8 @@ export type DeviceStatus = {
   patternSpeed?: number;
   patternFade?: number;
   idleOffMin?: number;
+  idleMinutes?: number;
+  pwmCurve?: number;
   presence?: string;
   quickCsv?: string;
   rampOnMs?: number;

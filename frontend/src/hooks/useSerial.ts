@@ -100,11 +100,12 @@ export function useSerial(): SerialApi {
       portRef.current = port;
 
       const textEncoder = new TextEncoderStream();
-      textEncoder.readable.pipeTo(port.writable as WritableStream<Uint8Array>);
+      // Cast to any to satisfy differing BufferSource/Uint8Array stream typings
+      textEncoder.readable.pipeTo(port.writable as unknown as WritableStream<any>);
       writerRef.current = textEncoder.writable.getWriter();
 
       const textDecoder = new TextDecoderStream();
-      (port.readable as ReadableStream<Uint8Array>).pipeTo(textDecoder.writable);
+      (port.readable as ReadableStream<Uint8Array>).pipeTo(textDecoder.writable as unknown as WritableStream<any>);
       const reader = textDecoder.readable
         .pipeThrough(
           new TransformStream<string, string>({

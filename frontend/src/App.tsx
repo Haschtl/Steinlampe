@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
+import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useConnection } from './context/connection';
@@ -72,7 +72,7 @@ export default function App() {
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
-    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Settings className="h-4 w-4" /> },
+    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
     { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
@@ -173,7 +173,9 @@ export default function App() {
                 <span className="text-xs text-muted">
                   {logOpen ? t("log.hide", "Hide") : t("log.show", "Show")}
                 </span>
-                <span className="text-xs text-muted">({log.length} lines)</span>
+                <span className="text-xs text-muted">
+                  ({log.length} {t("log.lines", "lines")})
+                </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted">
                 <span>
