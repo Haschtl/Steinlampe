@@ -33,6 +33,12 @@ uint32_t rampDurationActive = 0;
 bool rampAffectsMaster = true;
 uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t lastActivityMs = 0;
+uint8_t rampEaseOnType = 1;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
+uint8_t rampEaseOffType = 1;
+float rampEaseOnPower = 2.0f;
+float rampEaseOffPower = 2.0f;
+static uint8_t rampEaseActiveType = 1;
+static float rampEaseActivePower = 2.0f;
 
 /**
  * @brief Write a gamma-corrected PWM value to the LED driver.
@@ -94,7 +100,30 @@ void logLampState(const char *reason)
   sendFeedback(msg);
 }
 
-void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster)
+static float applyEase(float t, uint8_t type, float power)
+{
+  t = clamp01(t);
+  switch (type)
+  {
+  case 0: // linear
+    return t;
+  case 2: // ease-in
+    return powf(t, power > 0.1f ? power : 1.0f);
+  case 3: // ease-out
+    return 1.0f - powf(1.0f - t, power > 0.1f ? power : 1.0f);
+  case 4: // ease-in-out
+  {
+    float p = power > 0.1f ? power : 1.0f;
+    float t2 = (t < 0.5f) ? 0.5f * powf(t * 2.0f, p) : 1.0f - 0.5f * powf((1.0f - t) * 2.0f, p);
+    return t2;
+  }
+  case 1: // smooth ease (default)
+  default:
+    return t * t * (3.0f - 2.0f * t);
+  }
+}
+
+void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster, uint8_t easeType, float easePower)
 {
   rampAffectsMaster = affectMaster;
   if (affectMaster)
@@ -106,6 +135,8 @@ void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster)
   uint32_t dur = (durationMs > 0 ? durationMs : rampDurationMs);
   rampDurationActive = dur;
   rampActive = (dur > 0 && rampStartLevel != rampTargetLevel);
+  rampEaseActiveType = easeType;
+  rampEaseActivePower = easePower;
   if (!rampActive)
   {
     if (rampAffectsMaster)
@@ -127,7 +158,7 @@ void updateBrightnessRamp()
   uint32_t now = millis();
   lastActivityMs = now;
   float t = rampDurationActive > 0 ? clamp01((float)(now - rampStartMs) / (float)rampDurationActive) : 1.0f;
-  float eased = t * t * (3.0f - 2.0f * t);
+  float eased = applyEase(t, rampEaseActiveType, rampEaseActivePower);
   if (rampAffectsMaster)
     masterBrightness = rampStartLevel + (rampTargetLevel - rampStartLevel) * eased;
   else
@@ -170,7 +201,7 @@ void setLampEnabled(bool enable, const char *reason)
     if (target > briMaxUser)
       target = briMaxUser;
     masterBrightness = target;
-    startBrightnessRamp(1.0f, rampDurationMs, false); // ramp output only
+    startBrightnessRamp(1.0f, rampDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
     lastOnBrightness = target;
     logLampState(reason);
   }
@@ -182,7 +213,7 @@ void setLampEnabled(bool enable, const char *reason)
       lastOnBrightness = masterBrightness;
     else if (lastOnBrightness < briMinUser)
       lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
-    startBrightnessRamp(0.0f, rampDurationMs, false);
+    startBrightnessRamp(0.0f, rampDurationMs, false, rampEaseOffType, rampEaseOffPower);
     logLampState(reason);
   }
 }

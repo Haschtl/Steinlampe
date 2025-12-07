@@ -28,11 +28,15 @@ extern float outputScale;  // on/off ramp scaling
 extern bool rampActive;
 extern uint32_t rampDurationMs;
 extern uint32_t lastActivityMs;
+extern uint8_t rampEaseOnType;
+extern uint8_t rampEaseOffType;
+extern float rampEaseOnPower;
+extern float rampEaseOffPower;
 
 // Core lamp helpers
 void applyPwmLevel(float normalized);
 void logBrightnessChange(const char *reason);
 void logLampState(const char *reason = nullptr);
-void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true);
+void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true, uint8_t easeType = 1, float easePower = 2.0f);
 void updateBrightnessRamp();
 void setLampEnabled(bool enable, const char *reason = nullptr);

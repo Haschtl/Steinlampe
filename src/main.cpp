@@ -85,6 +85,10 @@ static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
 static const char *PREF_KEY_PAT_FADE_AMT = "pat_fade_amt";
+static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
+static const char *PREF_KEY_RAMP_EASE_OFF = "ramp_e_off";
+static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
+static const char *PREF_KEY_RAMP_POW_OFF = "ramp_p_off";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -198,6 +202,41 @@ bool parseBool(const String &s, bool &out)
     return true;
   }
   return false;
+}
+
+uint8_t easeFromString(const String &s)
+{
+  String l = s;
+  l.toLowerCase();
+  if (l == "linear")
+    return 0;
+  if (l == "ease")
+    return 1;
+  if (l == "ease-in" || l == "easein")
+    return 2;
+  if (l == "ease-out" || l == "easeout")
+    return 3;
+  if (l == "ease-in-out" || l == "easeinout")
+    return 4;
+  return 1;
+}
+
+String easeToString(uint8_t t)
+{
+  switch (t)
+  {
+  case 0:
+    return F("linear");
+  case 2:
+    return F("ease-in");
+  case 3:
+    return F("ease-out");
+  case 4:
+    return F("ease-in-out");
+  case 1:
+  default:
+    return F("ease");
+  }
 }
 
 /**
@@ -336,6 +375,14 @@ void exportConfig()
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
   cfg += String(patternFadeStrength, 2);
+  cfg += F(" ramp_on_ease=");
+  cfg += easeToString(rampEaseOnType);
+  cfg += F(" ramp_off_ease=");
+  cfg += easeToString(rampEaseOffType);
+  cfg += F(" ramp_on_pow=");
+  cfg += String(rampEaseOnPower, 2);
+  cfg += F(" ramp_off_pow=");
+  cfg += String(rampEaseOffPower, 2);
   cfg += F(" quick=");
   cfg += quickMaskToCsv();
   sendFeedback(cfg);
@@ -360,6 +407,10 @@ void saveSettings()
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
+  prefs.putUChar(PREF_KEY_RAMP_EASE_ON, rampEaseOnType);
+  prefs.putUChar(PREF_KEY_RAMP_EASE_OFF, rampEaseOffType);
+  prefs.putFloat(PREF_KEY_RAMP_POW_ON, rampEaseOnPower);
+  prefs.putFloat(PREF_KEY_RAMP_POW_OFF, rampEaseOffPower);
 #if ENABLE_LIGHT_SENSOR
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   lightMinRaw = 4095;
@@ -430,6 +481,22 @@ void loadSettings()
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
+  rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, 1);
+  rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, 1);
+  rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, 2.0f);
+  rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, 2.0f);
+  if (rampEaseOnType > 4)
+    rampEaseOnType = 1;
+  if (rampEaseOffType > 4)
+    rampEaseOffType = 1;
+  if (rampEaseOnPower < 0.01f)
+    rampEaseOnPower = 0.01f;
+  if (rampEaseOffPower < 0.01f)
+    rampEaseOffPower = 0.01f;
+  if (rampEaseOnPower > 10.0f)
+    rampEaseOnPower = 10.0f;
+  if (rampEaseOffPower > 10.0f)
+    rampEaseOffPower = 10.0f;
 #if ENABLE_LIGHT_SENSOR
   lightSensorEnabled = prefs.getBool(PREF_KEY_LS_EN, Settings::LIGHT_SENSOR_DEFAULT_ENABLED);
 #endif
@@ -849,6 +916,16 @@ void printStatus()
   {
     line3 += F("OFF");
   }
+  line3 += F(" | RampOn=");
+  line3 += easeToString(rampEaseOnType);
+  line3 += F("(");
+  line3 += String(rampEaseOnPower, 2);
+  line3 += F(")");
+  line3 += F(" | RampOff=");
+  line3 += easeToString(rampEaseOffType);
+  line3 += F("(");
+  line3 += String(rampEaseOffPower, 2);
+  line3 += F(")");
   sendFeedback(line3);
   payload += line3 + '\n';
 
@@ -1052,6 +1129,26 @@ void importConfig(const String &args)
         v = 0;
       presenceGraceMs = v;
     }
+    else if (key == "ramp_on_ease")
+    {
+      rampEaseOnType = easeFromString(val);
+    }
+    else if (key == "ramp_off_ease")
+    {
+      rampEaseOffType = easeFromString(val);
+    }
+    else if (key == "ramp_on_pow")
+    {
+      float v = val.toFloat();
+      if (v >= 0.01f && v <= 10.0f)
+        rampEaseOnPower = v;
+    }
+    else if (key == "ramp_off_pow")
+    {
+      float v = val.toFloat();
+      if (v >= 0.01f && v <= 10.0f)
+        rampEaseOffPower = v;
+    }
     else if (key == "quick")
     {
       uint32_t mask = 0;
@@ -1098,6 +1195,7 @@ void printHelp()
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
       "  sleep stop        - Sleep-Fade abbrechen",
       "  ramp <ms>         - Ramp-Dauer für Helligkeit setzen",
+      "  ramp ease on|off <linear|ease|ease-in|ease-out|ease-in-out> [power]",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  pat scale <0.1-5> - Pattern-Geschwindigkeit",
@@ -1470,16 +1568,67 @@ void handleCommand(String line)
   {
     String arg = line.substring(4);
     arg.trim();
-    uint32_t val = arg.toInt();
-    if (val >= 50 && val <= 10000)
+    if (lower.startsWith("ramp ease"))
     {
-      rampDurationMs = val;
+      arg = arg.substring(arg.indexOf("ease") + 4);
+      arg.trim();
+      bool isOn = arg.startsWith("on");
+      bool isOff = arg.startsWith("off");
+      if (isOn || isOff)
+      {
+        arg = arg.substring(isOn ? 2 : 3);
+        arg.trim();
+      }
+      String typeToken;
+      float power = -1.0f;
+      int space = arg.indexOf(' ');
+      if (space >= 0)
+      {
+        typeToken = arg.substring(0, space);
+        power = arg.substring(space + 1).toFloat();
+      }
+      else
+      {
+        typeToken = arg;
+      }
+      uint8_t etype = easeFromString(typeToken);
+      if (isnan(power) || power < 0.01f)
+        power = 2.0f;
+      if (power > 10.0f)
+        power = 10.0f;
+      if (!isOn && !isOff)
+      {
+        rampEaseOnType = rampEaseOffType = etype;
+        rampEaseOnPower = rampEaseOffPower = power;
+        sendFeedback(String(F("[Ramp] ease on/off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
+      }
+      else if (isOn)
+      {
+        rampEaseOnType = etype;
+        rampEaseOnPower = power;
+        sendFeedback(String(F("[Ramp] ease on ")) + easeToString(etype) + F(" pow=") + String(power, 2));
+      }
+      else if (isOff)
+      {
+        rampEaseOffType = etype;
+        rampEaseOffPower = power;
+        sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
+      }
       saveSettings();
-      sendFeedback(String(F("[Ramp] Duration set to ")) + String(val) + F(" ms"));
     }
     else
     {
-      sendFeedback(F("Usage: ramp <50-10000 ms>"));
+      uint32_t val = arg.toInt();
+      if (val >= 50 && val <= 10000)
+      {
+        rampDurationMs = val;
+        saveSettings();
+        sendFeedback(String(F("[Ramp] Duration set to ")) + String(val) + F(" ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: ramp <50-10000 ms>"));
+      }
     }
     return;
   }
@@ -1717,6 +1866,8 @@ void handleCommand(String line)
     presenceAddr = "";
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
+    rampEaseOnType = rampEaseOffType = 1;
+    rampEaseOnPower = rampEaseOffPower = 2.0f;
     briMinUser = Settings::BRI_MIN_DEFAULT;
     briMaxUser = Settings::BRI_MAX_DEFAULT;
     customLen = 0;
