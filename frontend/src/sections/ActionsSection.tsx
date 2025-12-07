@@ -1,9 +1,14 @@
+import { useMemo, useState } from 'react';
 import { Zap, ZapOff, Send, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConnection } from '@/context/connection';
+import { patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
+
+type PatternOption = { idx: number; label: string };
 
 type NotifyProps = {
   notifySeq: string;
@@ -28,11 +33,11 @@ type WakeSleepProps = {
   handleWake: () => void;
   sleepMinutes: number;
   setSleepMinutes: (v: number) => void;
-  patternOptions: { idx: number; label: string }[];
+  patternOptions: PatternOption[];
   sendCmd: (cmd: string) => void;
 };
 
-export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade, notifyRepeat, setNotifyRepeat, handleNotify, sendCmd }: NotifyProps) {
+function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade, notifyRepeat, setNotifyRepeat, handleNotify, sendCmd }: NotifyProps) {
   return (
     <Card>
       <CardHeader>
@@ -87,21 +92,7 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
   );
 }
 
-export function WakeSleepCard({
-  wakeDuration,
-  setWakeDuration,
-  wakeMode,
-  setWakeMode,
-  wakeBri,
-  setWakeBri,
-  wakeSoft,
-  setWakeSoft,
-  handleWake,
-  sleepMinutes,
-  setSleepMinutes,
-  patternOptions,
-  sendCmd,
-}: WakeSleepProps) {
+function WakeSleepCard({ wakeDuration, setWakeDuration, wakeMode, setWakeMode, wakeBri, setWakeBri, wakeSoft, setWakeSoft, handleWake, sleepMinutes, setSleepMinutes, patternOptions, sendCmd }: WakeSleepProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
@@ -165,6 +156,84 @@ export function WakeSleepCard({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export function ActionsSection() {
+  const { status, sendCmd } = useConnection();
+  const [notifySeq, setNotifySeq] = useState('80 40 80 120');
+  const [notifyFade, setNotifyFade] = useState(0);
+  const [notifyRepeat, setNotifyRepeat] = useState(1);
+  const [wakeDuration, setWakeDuration] = useState(180);
+  const [wakeMode, setWakeMode] = useState('');
+  const [wakeBri, setWakeBri] = useState('');
+  const [wakeSoft, setWakeSoft] = useState(false);
+  const [sleepMinutes, setSleepMinutes] = useState(15);
+
+  const patternOptions = useMemo(() => {
+    const count = status.patternCount || patternLabels.length;
+    return Array.from({ length: count }, (_, i) => ({
+      idx: i + 1,
+      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+    }));
+  }, [status.patternCount]);
+
+  const buildNotifyCmd = (seq: string, fade?: number, repeat = 1) => {
+    const parts = seq
+      .split(/\s+/)
+      .map((n) => parseInt(n, 10))
+      .filter((n) => !Number.isNaN(n) && n > 0);
+    if (!parts.length) return '';
+    const expanded: number[] = [];
+    for (let i = 0; i < repeat; i += 1) expanded.push(...parts);
+    let cmd = `notify ${expanded.join(' ')}`;
+    if (fade && fade > 0) cmd += ` fade=${fade}`;
+    return cmd;
+  };
+
+  const handleNotify = (seq: string, fade?: number, repeat = 1) => {
+    const cmd = buildNotifyCmd(seq, fade, repeat);
+    if (!cmd) return;
+    sendCmd(cmd).catch((e) => console.warn(e));
+  };
+
+  const handleWake = () => {
+    const parts = ['wake'];
+    if (wakeSoft) parts.push('soft');
+    if (wakeMode.trim()) parts.push(`mode=${wakeMode.trim()}`);
+    if (wakeBri.trim()) parts.push(`bri=${wakeBri.trim()}`);
+    parts.push(String(Math.max(1, wakeDuration || 1)));
+    sendCmd(parts.join(' ')).catch((e) => console.warn(e));
+  };
+
+  return (
+    <div className="space-y-4">
+      <WakeSleepCard
+        wakeDuration={wakeDuration}
+        setWakeDuration={setWakeDuration}
+        wakeMode={wakeMode}
+        setWakeMode={setWakeMode}
+        wakeBri={wakeBri}
+        setWakeBri={setWakeBri}
+        wakeSoft={wakeSoft}
+        setWakeSoft={setWakeSoft}
+        handleWake={handleWake}
+        sleepMinutes={sleepMinutes}
+        setSleepMinutes={setSleepMinutes}
+        patternOptions={patternOptions}
+        sendCmd={sendCmd}
+      />
+      <NotifyCard
+        notifySeq={notifySeq}
+        setNotifySeq={setNotifySeq}
+        notifyFade={notifyFade}
+        setNotifyFade={setNotifyFade}
+        notifyRepeat={notifyRepeat}
+        setNotifyRepeat={setNotifyRepeat}
+        handleNotify={handleNotify}
+        sendCmd={sendCmd}
+      />
     </div>
   );
 }

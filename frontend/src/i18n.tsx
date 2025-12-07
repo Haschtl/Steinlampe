@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
 type Lang = 'en' | 'de';
 
@@ -12,6 +12,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'btn.connect': 'Connect',
     'btn.disconnect': 'Disconnect',
     'btn.connectSerial': 'Connect Serial',
+    'btn.reload': 'Reload',
+    'btn.send': 'Send',
     'toggle.autoReconnect': 'Auto-reconnect',
     'title.app': 'Quarzlampe Control',
     'title.lamp': 'Lamp & Ramps',
@@ -38,6 +40,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'label.cap': 'Brightness cap (%)',
     'label.idle': 'Idle off (min)',
     'label.pwm': 'PWM Curve',
+    'log.show': 'Show',
+    'log.hide': 'Hide',
+    'status.connected': 'Connected',
+    'status.disconnected': 'Not connected',
+    'status.last': 'Last status',
     'btn.load': 'Load',
     'btn.save': 'Save',
     'btn.sync': 'Sync',
@@ -53,6 +60,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'btn.connect': 'Verbinden',
     'btn.disconnect': 'Trennen',
     'btn.connectSerial': 'Seriell verbinden',
+    'btn.reload': 'Aktualisieren',
+    'btn.send': 'Senden',
     'toggle.autoReconnect': 'Auto-Reconnect',
     'title.app': 'Quarzlampe Steuerung',
     'title.lamp': 'Lampe & Rampen',
@@ -79,6 +88,11 @@ const translations: Record<Lang, Record<string, string>> = {
     'label.cap': 'Max. Helligkeit (%)',
     'label.idle': 'Idle aus (Min)',
     'label.pwm': 'PWM Kurve',
+    'log.show': 'Anzeigen',
+    'log.hide': 'Verbergen',
+    'status.connected': 'Verbunden',
+    'status.disconnected': 'Nicht verbunden',
+    'status.last': 'Letzter Status',
     'btn.load': 'Laden',
     'btn.save': 'Speichern',
     'btn.sync': 'Sync',
@@ -87,15 +101,25 @@ const translations: Record<Lang, Record<string, string>> = {
   },
 };
 
-const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (key: string) => string }>({
+const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (key: string, fallback?: string) => string }>({
   lang: 'en',
   setLang: () => undefined,
-  t: (k) => k,
+  t: (k, fb) => fb ?? k,
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>('en');
-  const t = useMemo(() => (key: string) => translations[lang][key] || translations.en[key] || key, [lang]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return;
+    const preferred = navigator.language || navigator.languages?.[0];
+    if (preferred?.toLowerCase().startsWith('de')) setLang('de');
+  }, []);
+
+  const t = useMemo(
+    () => (key: string, fallback?: string) => translations[lang][key] || translations.en[key] || fallback || key,
+    [lang],
+  );
   return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>;
 }
 
