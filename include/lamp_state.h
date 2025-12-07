@@ -19,6 +19,7 @@ extern bool lampOffPending;
 extern float lastLoggedBrightness;
 extern float briMinUser;
 extern float briMaxUser;
+extern float brightnessCap;
 
 // Output multipliers
 extern float ambientScale; // light sensor scaling

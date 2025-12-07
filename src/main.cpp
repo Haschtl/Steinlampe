@@ -70,6 +70,7 @@ static const char *PREF_KEY_MODE = "mode";
 static const char *PREF_KEY_AUTO = "auto";
 static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
+static const char *PREF_KEY_BRI_CAP = "bri_cap";
 static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
@@ -304,6 +305,8 @@ String buildProfileString()
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
   cfg += String(patternFadeStrength, 2);
+  cfg += F(" bri_cap=");
+  cfg += String(brightnessCap, 3);
   cfg += F(" ramp_on_ease=");
   cfg += easeToString(rampEaseOnType);
   cfg += F(" ramp_off_ease=");
@@ -316,6 +319,8 @@ String buildProfileString()
   cfg += String(briMinUser, 3);
   cfg += F(" bri_max=");
   cfg += String(briMaxUser, 3);
+  cfg += F(" bri_cap=");
+  cfg += String(brightnessCap, 3);
   cfg += F(" pwm_gamma=");
   cfg += String(outputGamma, 2);
 #if ENABLE_LIGHT_SENSOR
@@ -616,6 +621,7 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
+  prefs.putFloat(PREF_KEY_BRI_CAP, brightnessCap);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
@@ -697,6 +703,11 @@ void loadSettings()
     patternFadeStrength = 10.0f;
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
+  brightnessCap = prefs.getFloat(PREF_KEY_BRI_CAP, Settings::BRI_CAP_DEFAULT);
+  if (brightnessCap < briMinUser)
+    brightnessCap = briMinUser;
+  if (brightnessCap > 1.0f)
+    brightnessCap = 1.0f;
   rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
   if (rampDurationMs < 50)
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
@@ -1138,7 +1149,11 @@ void cancelSleepFade()
  */
 void setBrightnessPercent(float percent, bool persist = false, bool announce = true)
 {
+  float cap = brightnessCap;
+  if (cap < briMinUser) cap = briMinUser;
+  if (cap > 1.0f) cap = 1.0f;
   float target = clamp01(percent / 100.0f);
+  if (target > cap) target = cap;
   uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
   startBrightnessRamp(target, dur);
   if (announce)
@@ -1171,7 +1186,7 @@ void printStatus()
 
   String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Switch=") +
                  (switchDebouncedState ? F("ON") : F("OFF")) + F(" | Brightness=") +
-                 String(masterBrightness * 100.0f, 1) + F("%");
+                 String(masterBrightness * 100.0f, 1) + F("% | Cap=") + String(brightnessCap * 100.0f, 1) + F("%");
   sendFeedback(line2);
   payload += line2 + '\n';
 
@@ -1438,6 +1453,15 @@ void importConfig(const String &args)
     else if (key == "bri_max")
     {
       briMaxUser = clamp01(val.toFloat());
+    }
+    else if (key == "bri_cap")
+    {
+      float v = clamp01(val.toFloat());
+      if (v < briMinUser)
+        v = briMinUser;
+      brightnessCap = v;
+      if (briMaxUser > brightnessCap)
+        briMaxUser = brightnessCap;
     }
     else if (key == "pres_grace")
     {
@@ -1946,6 +1970,19 @@ void handleCommand(String line)
     briMaxUser = v;
     saveSettings();
     sendFeedback(String(F("[Bri] max=")) + String(v, 3));
+    return;
+  }
+  if (lower.startsWith("bri cap"))
+  {
+    float v = line.substring(7).toFloat();
+    v = clamp01(v / 100.0f);
+    if (v < briMinUser)
+      v = briMinUser;
+    brightnessCap = v;
+    if (briMaxUser > brightnessCap)
+      briMaxUser = brightnessCap;
+    saveSettings();
+    sendFeedback(String(F("[Bri] cap=")) + String(brightnessCap * 100.0f, 1) + F("%"));
     return;
   }
   if (lower.startsWith("bri"))

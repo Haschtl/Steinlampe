@@ -34,6 +34,7 @@ constexpr float LIGHT_CLAMP_MIN_DEFAULT = 0.2f;
 constexpr float LIGHT_CLAMP_MAX_DEFAULT = 1.0f;
 constexpr float BRI_MIN_DEFAULT = 0.05f;
 constexpr float BRI_MAX_DEFAULT = 0.95f;
+constexpr float BRI_CAP_DEFAULT = 1.0f;       ///< Hard cap for brightness (0..1)
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
 
 #if ENABLE_LIGHT_SENSOR

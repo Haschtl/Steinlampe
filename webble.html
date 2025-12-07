@@ -427,6 +427,15 @@
           <button id="btnIdle">Set</button>
         </div>
       </div>
+      <div class="row">
+        <label>Brightness cap (%)</label>
+        <div class="input-group" style="max-width:200px;">
+          <label class="sr-only" for="briCap">Brightness cap percent</label>
+          <input id="briCap" type="number" min="1" max="100" step="1" value="100" />
+          <span class="input-suffix">%</span>
+          <button id="btnBriCap">Set</button>
+        </div>
+      </div>
       <div class="row" style="align-items:flex-start;">
         <div class="input-group" style="flex:1;">
           <textarea id="importArea" rows="2" style="flex:1; min-width:180px;" placeholder="paste cfg export here"></textarea>
@@ -937,6 +946,7 @@
       // Lamp state + brightness
     if (line.includes('Lamp=')) {
       const m = line.match(/Brightness=([0-9.]+)/);
+      const capMatch = line.match(/Cap=([0-9.]+)/);
       if (m) {
         const val = Math.round(parseFloat(m[1]));
         const bri = document.getElementById('bri');
@@ -947,6 +957,11 @@
           briVal.textContent = val;
           if (briNum) briNum.value = val;
         }
+      }
+      if (capMatch) {
+        const v = parseFloat(capMatch[1]);
+        const capEl = document.getElementById('briCap');
+        if (capEl && !Number.isNaN(v)) capEl.value = v.toFixed(1);
       }
       const lampState = line.match(/Lamp=([A-Z]+)/);
       const switchState = line.match(/Switch=([A-Z]+)/);
@@ -1656,6 +1671,13 @@
       const v = document.getElementById('idleMin').value;
       sendCmd('idle ' + v);
     };
+    const btnBriCap = document.getElementById('btnBriCap');
+    if (btnBriCap) {
+      btnBriCap.onclick = () => {
+        const cap = document.getElementById('briCap');
+        if (cap && cap.value) sendCmd('bri cap ' + cap.value);
+      };
+    }
     document.getElementById('btnCustomStep').onclick = () => {
       const v = document.getElementById('customStep').value;
       sendCmd('custom step ' + v);

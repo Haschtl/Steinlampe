@@ -77,6 +77,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `bri min/max <0..1>` | Set min/max brightness clamp                               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
+| `bri cap <0..100>`  | Set hard brightness cap (percent, applies to all ramps)    |
 | `wake [soft] [mode=XX] [bri=XX] <seconds>` | Wake fade with options (soft: touch cancels; mode/bri optional) |
 | `wake stop`         | Abort an active wake fade                                  |
 | `sos [stop]`        | Start SOS alert (100% brightness, SOS pattern); stop restores previous state |

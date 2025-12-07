@@ -21,6 +21,7 @@ bool lampOffPending = false;
 float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
 float briMinUser = Settings::BRI_MIN_DEFAULT;
 float briMaxUser = Settings::BRI_MAX_DEFAULT;
+float brightnessCap = Settings::BRI_CAP_DEFAULT;
 float ambientScale = 1.0f;
 float outputScale = 1.0f;
 
@@ -50,7 +51,16 @@ void applyPwmLevel(float normalized)
   float level = clamp01(normalized);
   if (briMaxUser < briMinUser)
     briMaxUser = briMinUser;
+  float cap = brightnessCap;
+  if (cap < briMinUser)
+    cap = briMinUser;
+  if (cap > 1.0f)
+    cap = 1.0f;
+  float capFactor = 1.0f;
+  if (briMaxUser > 0.0f)
+    capFactor = fminf(1.0f, cap / briMaxUser);
   float levelEff = briMinUser + (briMaxUser - briMinUser) * level;
+  float levelScaled = briMinUser + (levelEff - briMinUser) * capFactor;
   if (level <= 0.0f)
   {
     ledcWrite(LEDC_CH, 0);
@@ -61,7 +71,7 @@ void applyPwmLevel(float normalized)
     gamma = 0.5f;
   if (gamma > 4.0f)
     gamma = 4.0f;
-  float pwm = powf(levelEff, gamma) * PWM_MAX;
+  float pwm = powf(levelScaled, gamma) * PWM_MAX;
   if (pwm < 0.0f)
     pwm = 0.0f;
   if (pwm > PWM_MAX)
