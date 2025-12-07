@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
@@ -51,6 +51,14 @@ export default function App() {
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
   const logLines = log.slice(-150);
 
+  useEffect(() => {
+    if (!status.connected) return;
+    const id = setInterval(() => {
+      refreshStatus();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [status.connected, refreshStatus]);
+
   const tabs: { key: 'home' | 'settings' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
@@ -96,7 +104,7 @@ export default function App() {
                 className={`flex items-center gap-2 ${activeTab === tab.key ? 'bg-accent/10 ring-1 ring-accent' : ''}`}
               >
                 {tab.icon}
-                <span>{tab.label}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
               </Button>
             ))}
             <div className="flex-1" />
