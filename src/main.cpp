@@ -55,6 +55,7 @@ void handleCommand(String line);
 void startWakeFade(uint32_t durationMs, bool announce = true);
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
+void syncLampToSwitch();
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -1049,6 +1050,7 @@ void printHelp()
       "  next / prev       - weiter oder zurück",
       "  quick <CSV|default>- Modi für schnellen Schalter-Tap",
       "  on / off / toggle - Lampe schalten",
+      "  sync             - Lampe an Schalterzustand angleichen",
       "  auto on|off       - automatisches Durchschalten",
       "  bri <0..100>      - globale Helligkeit in %",
       "  bri min/max <0..1>- Min/Max-Level setzen",
@@ -1089,6 +1091,15 @@ void listPatterns()
   {
     sendFeedback(String(i + 1) + F(": ") + PATTERNS[i].name);
   }
+}
+
+/**
+ * @brief Force lamp state to match current physical switch position.
+ */
+void syncLampToSwitch()
+{
+  setLampEnabled(switchDebouncedState, "sync switch");
+  sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (switchDebouncedState ? F("ON") : F("OFF")));
 }
 
 /**
@@ -1156,6 +1167,13 @@ void handleCommand(String line)
   if (lower == "off")
   {
     setLampEnabled(false, "cmd off");
+    saveSettings();
+    printStatus();
+    return;
+  }
+  if (lower == "sync")
+  {
+    syncLampToSwitch();
     saveSettings();
     printStatus();
     return;
