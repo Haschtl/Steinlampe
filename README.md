@@ -32,7 +32,7 @@ flowchart LR
 
 ## Features
 
-- Pattern sequencer (Konstant, Atmung, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Alert, SOS, Custom)
+- Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Gewitter, Sonnenuntergang, Alert, SOS, Custom)
 - Wake fade triggered via BLE/serial `wake [soft] [mode=XX] [bri=XX] <seconds>` (soft: touch cancels, hard: SOS after fade)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.

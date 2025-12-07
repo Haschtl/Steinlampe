@@ -73,6 +73,36 @@ float patternBreathing(uint32_t ms)
   return 0.25f + 0.7f * eased;
 }
 
+/// Warm asymmetric breathing: slower rise, quicker fall
+float patternBreathingWarm(uint32_t ms)
+{
+  const float base = 0.28f;
+  const float peak = 0.92f;
+  const float risePortion = 0.6f; // percent of cycle spent rising
+  const uint32_t period = 8200;
+  float phase = (ms % period) / (float)period;
+  float t = 0.0f;
+  if (phase < risePortion)
+  {
+    t = phase / risePortion;
+    t = t * t * (3.0f - 2.0f * t); // smooth ease
+  }
+  else
+  {
+    t = 1.0f - ((phase - risePortion) / (1.0f - risePortion));
+    t = 1.0f - t * t; // faster fall
+  }
+  return clamp01(base + (peak - base) * t);
+}
+
+/// Clean sine wave
+float patternSinus(uint32_t ms)
+{
+  float phase = (ms % 6500u) / 6500.0f;
+  float wave = 0.5f + 0.5f * sinf(TWO_PI * phase);
+  return clamp01(0.18f + 0.78f * wave);
+}
+
 /// Gentle pulse without hard peaks
 float patternPulse(uint32_t ms)
 {
@@ -146,6 +176,89 @@ float patternTwinkle(uint32_t ms)
   return clamp01(slow + wave + flicker);
 }
 
+/// Fireflies: dark base with rare, soft pulses
+float patternFireflies(uint32_t ms)
+{
+  float base = 0.05f + (smoothNoise(ms, 900, 0xD1) - 0.5f) * 0.04f;
+  const uint32_t window = 1100;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float flash = 0.0f;
+  // multiple small pulses possible per window
+  for (int k = 0; k < 2; ++k)
+  {
+    uint32_t salt = idx * 0x9E37u + (uint32_t)k * 0x45u;
+    float chance = hash11(salt);
+    if (chance < 0.35f)
+      continue;
+    uint32_t offset = (uint32_t)(hash11(salt ^ 0xAAu) * (window - 280));
+    uint32_t t = ms - start;
+    if (t >= offset && t < offset + 280)
+    {
+      uint32_t dt = t - offset;
+      float env = expf(-(float)dt / 140.0f);
+      flash += 0.75f * env * (0.7f + 0.3f * hash11(salt ^ 0x11u));
+    }
+  }
+  return clamp01(base + flash);
+}
+
+/// Sunset fade: slow warm rise then gentle fall
+float patternSunset(uint32_t ms)
+{
+  const uint32_t period = 42000; // 42s cycle
+  const float base = 0.12f;
+  const float peak = 0.95f;
+  float phase = (ms % period) / (float)period;
+  float t;
+  if (phase < 0.4f)
+  {
+    t = phase / 0.4f; // rise
+    t = t * t * (3.0f - 2.0f * t);
+  }
+  else
+  {
+    t = 1.0f - ((phase - 0.4f) / 0.6f); // fall
+    t = t * t; // slow decay
+  }
+  return clamp01(base + (peak - base) * t);
+}
+
+/// Thunder: low ambient light, occasional sharp flashes with afterglow
+float patternThunder(uint32_t ms)
+{
+  const float base = 0.06f;
+  float ambient = (smoothNoise(ms, 420, 0xC1) - 0.5f) * 0.05f;
+
+  // One flash window per ~7s
+  const uint32_t windowMs = 7000;
+  uint32_t winIdx = ms / windowMs;
+  uint32_t winStart = winIdx * windowMs;
+  float chance = hash11(winIdx * 0x9E3779B9u + 0x77);
+  float flash = 0.0f;
+  if (chance > 0.35f)
+  {
+    uint32_t offset = (uint32_t)(hash11(winIdx * 0xA5B35705u + 0x44) * (windowMs - 900));
+    uint32_t t = ms - winStart;
+    if (t >= offset && t < offset + 900)
+    {
+      uint32_t dt = t - offset;
+      if (dt < 120)
+      {
+        flash = 1.0f; // hard flash
+      }
+      else
+      {
+        float decay = expf(-(float)(dt - 120) / 260.0f);
+        float micro = (sinf((float)dt * 0.09f) + 1.0f) * 0.08f;
+        flash = 0.8f * decay + micro * decay;
+      }
+    }
+  }
+
+  return clamp01(base + ambient + flash);
+}
+
 /// Simple alert: steady blink on/off
 float patternAlert(uint32_t ms)
 {
@@ -180,6 +293,8 @@ extern float patternMusic(uint32_t ms);
 const Pattern PATTERNS[] = {
     {"Konstant", patternConstant, 8000},
     {"Atmung", patternBreathing, 15000},
+    {"Atmung Warm", patternBreathingWarm, 14000},
+    {"Sinus", patternSinus, 12000},
     {"Pulsierend", patternPulse, 12000},
     {"Funkeln", patternSparkle, 12000},
     {"Kerze Soft", patternCandleSoft, 16000},
@@ -187,6 +302,9 @@ const Pattern PATTERNS[] = {
     {"Lagerfeuer", patternCampfire, 18000},
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
+    {"Gluehwuermchen", patternFireflies, 12000},
+    {"Gewitter", patternThunder, 0},
+    {"Sonnenuntergang", patternSunset, 0},
     {"Alert", patternAlert, 0},
     {"SOS", patternSOS, 0},
     {"Custom", patternCustom, 0},
