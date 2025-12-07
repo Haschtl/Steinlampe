@@ -9,7 +9,7 @@ type HelpProps = {
 
 export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card>
         <CardHeader>
           <CardTitle>
@@ -59,23 +59,58 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
           </div>
         </CardContent>
       </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>
-            <Trans k="help.commandsLinks">Command Reference &amp; Links</Trans>
+            <Trans k="help.commandsLinks">Command Reference</Trans>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <table className="w-full border-collapse text-sm">
+          <table className="w-full table-fixed border-collapse text-sm">
             <tbody>
               {commands.map((c) => (
-                <tr key={c.cmd} className="border-b border-border">
-                  <td className="py-1 pr-2 font-mono text-accent">{c.cmd}</td>
-                  <td className="py-1 text-muted">{c.desc}</td>
+                <tr key={c.cmd} className="border-b border-border align-top">
+                  <td className="w-40 py-1 pr-2 font-mono text-accent break-words whitespace-normal">{c.cmd}</td>
+                  <td className="py-1 text-muted break-words whitespace-normal">{c.desc}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <Trans k="help.midiMap">MIDI Mapping (info)</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {midi && midi.length > 0 ? (
+            <table className="w-full table-fixed border-collapse text-sm">
+              <tbody>
+                {midi.map((m) => (
+                  <tr key={m.msg} className="border-b border-border/60 align-top">
+                    <td className="w-36 py-1 pr-2 font-mono text-accent break-words whitespace-normal">{m.msg}</td>
+                    <td className="py-1 text-muted break-words whitespace-normal">{m.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-muted">No MIDI mapping available.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <Trans k="help.commandsLinks">Links</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <a className="pill" href="https://play.google.com/store/apps/details?id=net.dinglisch.android.taskerm" target="_blank" rel="noopener noreferrer">
               Tasker (Play Store)
@@ -87,21 +122,6 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
               Firmware Build (Actions)
             </a>
           </div>
-          {midi && midi.length > 0 && (
-            <div className="mt-4 rounded-lg border border-border/60 bg-panel/70 p-3">
-              <p className="text-xs uppercase tracking-[0.08em] text-muted"><Trans k="help.midiMap">MIDI Mapping (info)</Trans></p>
-              <table className="mt-2 w-full border-collapse text-sm">
-                <tbody>
-                  {midi.map((m) => (
-                    <tr key={m.msg} className="border-b border-border/60">
-                      <td className="py-1 pr-2 font-mono text-accent">{m.msg}</td>
-                      <td className="py-1 text-muted">{m.action}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
