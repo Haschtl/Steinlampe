@@ -65,6 +65,7 @@
     .bar-row input[type=range] { flex:1; accent-color: var(--accent2); }
     .bar-row input[type=number] { width:80px; text-align:right; }
     .bar-row button { padding:0.3rem 0.6rem; }
+    .icon { width:16px; height:16px; fill: currentColor; vertical-align: middle; }
     .dropdown { position:relative; }
     .dropdown-menu { display:none; position:absolute; top:110%; right:0; background:#0d1322; border:1px solid var(--border); border-radius:10px; padding:0.5rem; min-width:210px; box-shadow:0 10px 25px rgba(0,0,0,0.35); z-index:20; }
     .dropdown.open .dropdown-menu { display:block; }
@@ -84,8 +85,14 @@
   <div class="header">
     <img src="icon-lamp.svg" alt="Lamp Icon" style="width:40px; height:40px; border-radius:8px; border:1px solid var(--border); background:#0b0f1a; padding:4px;" />
     <h1>Quarzlampe</h1>
-    <button id="btnConnect">Connect</button>
-    <button id="btnSerial">Connect Serial</button>
+    <button id="btnConnect" title="Connect">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 13.41a1 1 0 0 1 0-1.41l2.83-2.83a1 1 0 0 1 1.41 1.41l-2.83 2.83a1 1 0 0 1-1.41 0Z"/><path d="M9.17 14.83a3 3 0 0 0 4.24 0l2.83-2.83a3 3 0 0 0-4.24-4.24l-.7.7a1 1 0 1 1-1.42-1.42l.71-.7a5 5 0 0 1 7.07 7.06l-2.83 2.83a5 5 0 0 1-7.07-7.06l1.41-1.42a1 1 0 0 1 1.42 1.42l-1.41 1.41a3 3 0 0 0 0 4.24Z"/></svg>
+      <span class="sr-only">Connect</span>
+    </button>
+    <button id="btnSerial" title="Connect Serial">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5Zm0 2h14v10H5V7Z"/><path d="M8 9h2v6H8V9Zm3 0h2v6h-2V9Zm3 0h2v6h-2V9Z"/></svg>
+      <span class="sr-only">Connect Serial</span>
+    </button>
     <label class="pill" style="cursor:pointer;">
       <input type="checkbox" id="autoReconnect" style="margin-right:0.35rem;" checked />Auto-reconnect
     </label>
@@ -140,9 +147,15 @@
             <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
           </div>
           <div class="input-group" style="max-width: 100%;">
-            <button data-cmd="prev" style="border-radius:6px 0 0 6px;">Prev</button>
+            <button data-cmd="prev" style="border-radius:6px 0 0 6px;">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              <span class="sr-only">Prev</span>
+            </button>
             <select id="modeSelect" style="min-width:170px; border-radius:0; margin:0; height:100%; margin-top: 0.125rem; padding-top:0.5rem; padding-bottom:0.35rem;"></select>
-            <button data-cmd="next" style="border-radius:0 6px 6px 0;">Next</button>
+            <button data-cmd="next" style="border-radius:0 6px 6px 0;">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8.59 16.59 1.41 1.41L16 12l-5.99-6-1.42 1.41L13.17 12z"/></svg>
+              <span class="sr-only">Next</span>
+            </button>
           </div>
           <div class="row">
             <label class="pill" style="cursor:pointer;">
@@ -299,7 +312,10 @@
             </div>
           </div>
           <button id="btnNotify">Notify</button>
-          <button id="btnNotifyStop">Stop</button>
+      <button id="btnNotifyStop" title="Stop Notify" style="color:#f59e0b;">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+        <span class="sr-only">Stop</span>
+      </button>
         </div>
       </div>
       <div class="row" style="gap:0.35rem; flex-wrap:wrap;">
@@ -314,7 +330,10 @@
 
       <div class="row" style="gap:0.5rem; flex-wrap:wrap;">
         <button data-cmd="sos" style="background:#2b0d0d; border-color:#a33; color:#ffdede;">SOS</button>
-        <button data-cmd="sos stop">SOS Stop</button>
+        <button data-cmd="sos stop" title="SOS Stop" style="color:#f59e0b;">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+          <span class="sr-only">SOS Stop</span>
+        </button>
         <span class="status-chip" style="color:var(--muted);">SOS: 100% brightness + pattern</span>
       </div>
     </div>
@@ -341,7 +360,10 @@
           <span class="input-suffix">%</span>
           <button id="wakeBriClr" title="Bri Feld leeren">X</button>
         </div>
-        <button id="btnWakeStop">Wake stop</button>
+        <button id="btnWakeStop" title="Wake stop" style="color:#f59e0b;">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+          <span class="sr-only">Wake stop</span>
+        </button>
       </div>
     </div>
 
@@ -355,7 +377,10 @@
           <span class="input-suffix">min</span>
           <button id="btnSleep">Sleep</button>
         </div>
-        <button id="btnSleepStop">Sleep stop</button>
+        <button id="btnSleepStop" title="Sleep stop" style="color:#f59e0b;">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+          <span class="sr-only">Sleep stop</span>
+        </button>
       </div>
     </div>
 
@@ -616,8 +641,14 @@
       <label class="pill" style="cursor:pointer; margin:0;">
         <input type="checkbox" id="liveLogToggle" style="margin-right:0.35rem;" checked />Live log
       </label>
-      <button id="btnStatus">Status</button>
-      <button id="btnCfgExport">cfg export</button>
+      <button id="btnStatus" title="Status">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm0 15a1 1 0 1 1 1-1 1 1 0 0 1-1 1Zm1-4h-2V7h2Z"/></svg>
+        <span class="sr-only">Status</span>
+      </button>
+      <button id="btnCfgExport" title="cfg export">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v9.586l2.293-2.293 1.414 1.414L12 17.414l-4.707-4.707 1.414-1.414L11 13.586V4a1 1 0 0 1 1-1Z"/><path d="M5 19h14v2H5z"/></svg>
+        <span class="sr-only">cfg export</span>
+      </button>
     </div>
   </div>
   <div class="log-block">

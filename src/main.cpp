@@ -2943,6 +2943,8 @@ void setup()
   Serial.println(F("Quarzlampe PWM-Demo"));
 
   pinMode(PIN_SWITCH, INPUT_PULLUP);
+  pinMode(PIN_PWM, OUTPUT);
+  digitalWrite(PIN_PWM, LOW); // keep LED off during init
   initSwitchState();
   calibrateTouchBaseline();
 
@@ -2955,6 +2957,7 @@ void setup()
   loadSettings();
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
   ledcAttachPin(PIN_PWM, LEDC_CH);
+  ledcWrite(LEDC_CH, 0); // explicit off at startup
   patternStartMs = millis();
 
   announcePattern();
