@@ -95,15 +95,23 @@ export function RampCard() {
   };
 
   const handleRampEase = (dir: 'on' | 'off', ease: string) => {
-    if (dir === 'on') setRampOnEase(ease);
-    else setRampOffEase(ease);
-    sendCmd(`ramp ${dir} ease ${ease}`).catch((e) => console.warn(e));
+    if (dir === 'on') {
+      setRampOnEase(ease);
+      sendCmd(`ramp ease on ${ease} ${rampOnPow}`).catch((e) => console.warn(e));
+    } else {
+      setRampOffEase(ease);
+      sendCmd(`ramp ease off ${ease} ${rampOffPow}`).catch((e) => console.warn(e));
+    }
   };
 
   const handleRampPow = (dir: 'on' | 'off', pow: number) => {
-    if (dir === 'on') setRampOnPow(pow);
-    else setRampOffPow(pow);
-    if (!Number.isNaN(pow)) sendCmd(`ramp ${dir} pow ${pow}`);
+    if (dir === 'on') {
+      setRampOnPow(pow);
+      if (!Number.isNaN(pow)) sendCmd(`ramp ease on ${rampOnEase} ${pow}`);
+    } else {
+      setRampOffPow(pow);
+      if (!Number.isNaN(pow)) sendCmd(`ramp ease off ${rampOffEase} ${pow}`);
+    }
   };
 
   return (
