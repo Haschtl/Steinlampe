@@ -8,6 +8,7 @@ import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
 import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
+import { getPatternBrightness } from '@/lib/patternSim';
 
 export function LampPowerCard() {
   const { status, sendCmd } = useConnection();
@@ -15,6 +16,7 @@ export function LampPowerCard() {
   const [brightness, setBrightness] = useState(70);
   const [lampOn, setLampOn] = useState(false);
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
@@ -27,6 +29,18 @@ export function LampPowerCard() {
   const patternText = lampOn && status.currentPattern
     ? `${patternLabel(status.currentPattern, status.patternName)}`
     : '';
+
+  useEffect(() => {
+    let raf: number;
+    const loop = (t: number) => {
+      setTick(t);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const energy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, tick % 12000) : 0;
 
   const handleBrightness = (value: number) => {
     const clamped = Math.min(100, Math.max(1, Math.round(value)));
@@ -71,11 +85,11 @@ export function LampPowerCard() {
           <motion.div
             className="absolute inset-0 opacity-80"
             initial={false}
-            animate={{
+            style={{
               background: lampOn
-                ? "radial-gradient(circle at 30% 30%, rgba(255,214,134,0.4), transparent 45%), radial-gradient(circle at 80% 20%, rgba(255,140,90,0.3), transparent 40%), linear-gradient(120deg, rgba(255,236,200,0.35), rgba(255,180,110,0.45))"
+                ? "linear-gradient(135deg, rgba(255,214,134,0.4), rgba(255,140,90,0.3))"
                 : "linear-gradient(120deg, rgba(40,50,70,0.7), rgba(20,24,36,0.8))",
-              filter: lampOn ? "blur(0px)" : "blur(0px)",
+              opacity: lampOn ? energy : 0.9,
             }}
           />
           <motion.div
@@ -85,8 +99,11 @@ export function LampPowerCard() {
             transition={{ duration: 1.4, ease: "easeInOut" }}
             style={{
               background:
-                "radial-gradient(45% 35% at 50% 50%, rgba(var(--accent-rgb),0.3), transparent 60%)",
+                lampOn
+                  ? "radial-gradient(45% 35% at 50% 50%, rgba(var(--accent-rgb),0.4), transparent 60%)"
+                  : "radial-gradient(45% 35% at 50% 50%, rgba(var(--accent-rgb),0.2), transparent 60%)",
               filter: "blur(45px)",
+              opacity: lampOn ? energy : 0.35,
             }}
           />
           <div className="relative z-10 flex items-center gap-3 text-shadow">
@@ -115,7 +132,7 @@ export function LampPowerCard() {
             {lampOn && status.currentPattern && (
               <button
                 type="button"
-                onClick={() => setPaletteOpen(true)}
+                onClick={(e) => {e.stopPropagation();setPaletteOpen(true)}}
                 className="rounded-full bg-amber-300/25 px-3 py-1 text-sm text-amber-50 shadow-inner underline decoration-amber-100/70 decoration-dotted"
               >
                 {patternText ? patternText : `Mode ${status.currentPattern}`}
