@@ -104,8 +104,6 @@
       <div class="row">
         <span class="status-chip">Switch: <span id="switchState">--</span></span>
         <span class="status-chip">Touch: <span id="touchState">--</span></span>
-        <span class="status-chip">Light: <span id="lightState">--</span></span>
-        <span class="status-chip">Music: <span id="musicState">--</span></span>
         <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
       <div class="input-group" style="max-width: 100%;">
@@ -233,7 +231,34 @@
       <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
     </div>
 
+    <div class="card" id="lightCard">
+      <h3>Light Sensor</h3>
+      <div class="row" style="align-items:center; gap:0.5rem;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="lightToggle" style="margin-right:0.35rem;" />Light Auto
+        </label>
+        <button id="btnLightCalib">Calibrate</button>
+      </div>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Gain</span>
+          <input id="lightGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
+        <div class="slider-row">
+          <input id="lightGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
+      </div>
+    </div>
 
+    <div class="card" id="musicCard">
+      <h3>Music Mode</h3>
+      <div class="row" style="align-items:center; gap:0.5rem;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
+        </label>
+      </div>
+      <p style="color:var(--muted); margin:0.2rem 0 0;">Toggles audio-reactive pattern (if built).</p>
+    </div>
 
     <div class="card">
       <h3>Settings</h3>
@@ -340,6 +365,41 @@
         <button id="btnCalib">calibrate baseline</button>
       </div>
     </div>
+
+
+    <div class="card">
+      <h3>Light Sensor</h3>
+      
+      <div class="row" style="align-items:center; gap:0.5rem;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="lightToggle" style="margin-right:0.35rem;" />Light Auto
+        </label>
+        <span class="status-chip">Light: <span id="lightState">--</span></span>
+
+        <button id="btnLightCalib">Calibrate</button>
+      </div>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Gain</span>
+          <input id="lightGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
+        <div class="slider-row">
+          <input id="lightGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Music Mode</h3>
+      <div class="row" style="align-items:center; gap:0.5rem;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
+        </label>
+        <span class="status-chip">Music: <span id="musicState">--</span></span>
+      </div>
+      <p style="color:var(--muted); margin:0.2rem 0 0;">Toggles audio-reactive pattern (if built).</p>
+    </div>
+
   </div>
 
   <div class="row" style="align-items:center; justify-content:space-between;">
@@ -673,6 +733,10 @@
             chip.style.color = '#8cf59b';
           }
         }
+        const lt = document.getElementById('lightToggle');
+        if (lt) lt.checked = !line.includes('N/A') && (line.includes('en=1') || line.includes('Enabled') || line.includes('ON'));
+        const lc = document.getElementById('lightCard');
+        if (lc) lc.style.display = line.includes('N/A') ? 'none' : 'block';
       }
       if (line.startsWith('[Music]')) {
         const chip = document.getElementById('musicState');
@@ -685,6 +749,10 @@
             chip.style.color = line.includes('ON') ? '#8cf59b' : 'var(--muted)';
           }
         }
+        const mt = document.getElementById('musicToggle');
+        if (mt) mt.checked = line.includes('ON');
+        const mc = document.getElementById('musicCard');
+        if (mc) mc.style.display = line.includes('N/A') ? 'none' : 'block';
       }
       // Presence address hint
       if (line.startsWith('Presence=')) {
@@ -1265,6 +1333,27 @@
         if (ok) sendCmd('factory');
       };
     }
+    const lt = document.getElementById('lightToggle');
+    const lg = document.getElementById('lightGain');
+    const lgNum = document.getElementById('lightGainNum');
+    if (lt) lt.onchange = (e) => sendCmd(e.target.checked ? 'light on' : 'light off');
+    const syncLg = (v, send = false) => {
+      if (lg) lg.value = v;
+      if (lgNum) lgNum.value = v;
+      if (send) sendCmd('light gain ' + v);
+    };
+    if (lg) {
+      lg.oninput = (e) => syncLg(e.target.value);
+      lg.onchange = (e) => syncLg(e.target.value, true);
+    }
+    if (lgNum) {
+      lgNum.oninput = (e) => syncLg(e.target.value);
+      lgNum.onchange = (e) => syncLg(e.target.value, true);
+    }
+    const btnLightCalib = document.getElementById('btnLightCalib');
+    if (btnLightCalib) btnLightCalib.onclick = () => sendCmd('light calib');
+    const mt = document.getElementById('musicToggle');
+    if (mt) mt.onchange = (e) => sendCmd(e.target.checked ? 'music on' : 'music off');
     const btnExport = document.getElementById('btnExport');
     if (btnExport) btnExport.onclick = () => sendCmd('cfg export');
     document.getElementById('btnImport').onclick = () => {
