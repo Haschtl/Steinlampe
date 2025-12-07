@@ -149,7 +149,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="relative mx-auto max-w-6xl px-4 py-4">
+        <main className="relative mx-auto max-w-6xl px-4 py-4 pb-32">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -311,7 +311,6 @@ export default function App() {
           theme="dark"
         />
       </div>
-      <div className="h-36 bg-bg" />
     </>
   );
 }

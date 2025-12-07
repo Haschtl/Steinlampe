@@ -53,12 +53,12 @@ export function WakeSleepCard({
             </div>
             <div>
               <Label><Trans k="label.mode">Mode</Trans></Label>
-              <Select value={wakeMode} onValueChange={(v) => setWakeMode(v)}>
+              <Select value={wakeMode || 'none'} onValueChange={(v) => setWakeMode(v === 'none' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Unverändert" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unverändert</SelectItem>
+                  <SelectItem value="none">Unverändert</SelectItem>
                   {patternOptions.slice(0, 10).map((p) => (
                     <SelectItem key={p.idx} value={String(p.idx)}>
                       {p.label}
