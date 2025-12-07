@@ -32,8 +32,13 @@
 
 // ---------- Pins ----------
 static const int PIN_PWM = 23;       // MOSFET-Gate
+#if ENABLE_SWITCH
 static const int PIN_SWITCH = 32;    // Kippschalter (digital)
+#endif
 static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO27)
+#if ENABLE_POTI
+static const int PIN_POTI = Settings::POTI_PIN;
+#endif
 
 // ---------- Schalter / Touch ----------
 static const int SWITCH_ACTIVE_LEVEL = LOW;
@@ -133,12 +138,14 @@ bool sosPrevAutoCycle = false;
 bool sosPrevLampOn = false;
 
 // Switch handling
+#if ENABLE_SWITCH
 bool switchRawState = false;
 bool switchDebouncedState = false;
 uint32_t switchLastDebounceMs = 0;
 uint32_t lastSwitchOffMs = 0;
 uint32_t lastSwitchOnMs = 0;
 bool modeTapArmed = false;
+#endif
 
 // Touch sensing state
 int touchBaseline = 0;
@@ -204,6 +211,12 @@ String clapCmd3 = F("mode prev");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
 constexpr uint32_t CLAP_WINDOW_MS = 1200;
+
+#if ENABLE_POTI
+float potiFiltered = 0.0f;
+float potiLastApplied = -1.0f;
+uint32_t lastPotiSampleMs = 0;
+#endif
 #endif
 bool bleWasConnected = false;
 bool btWasConnected = false;
@@ -804,6 +817,7 @@ void loadSettings()
   currentModeIndex = currentPattern;
 }
 
+#if ENABLE_SWITCH
 /**
  * @brief Read the current raw logic level of the mechanical switch.
  */
@@ -935,6 +949,7 @@ void updateSwitchLogic()
     lastActivityMs = now;
   }
 }
+#endif
 
 // Presence is handled via polling in loop()
 void blePresenceUpdate(bool, const String &) {}
@@ -1201,9 +1216,12 @@ void printStatus()
   sendFeedback(quickLine);
   payload += quickLine + '\n';
 
-  String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Switch=") +
-                 (switchDebouncedState ? F("ON") : F("OFF")) + F(" | Brightness=") +
+  String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Brightness=") +
                  String(masterBrightness * 100.0f, 1) + F("% | Cap=") + String(brightnessCap * 100.0f, 1) + F("%");
+#if ENABLE_SWITCH
+  line2 += F(" | Switch=");
+  line2 += (switchDebouncedState ? F("ON") : F("OFF"));
+#endif
   sendFeedback(line2);
   payload += line2 + '\n';
 
@@ -1376,8 +1394,12 @@ void printStatusStructured()
   line += String(brightnessCap * 100.0f, 1);
   line += F("|lamp=");
   line += lampEnabled ? F("ON") : F("OFF");
+#if ENABLE_SWITCH
   line += F("|switch=");
   line += switchDebouncedState ? F("ON") : F("OFF");
+#else
+  line += F("|switch=N/A");
+#endif
   line += F("|touch_dim=");
   line += touchDimEnabled ? F("1") : F("0");
   line += F("|ramp_on_ms=");
@@ -1750,8 +1772,13 @@ void listPatterns()
  */
 void syncLampToSwitch()
 {
+#if !ENABLE_SWITCH
+  sendFeedback(F("[Sync] Switch disabled at build"));
+  return;
+#else
   setLampEnabled(switchDebouncedState, "sync switch");
   sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (switchDebouncedState ? F("ON") : F("OFF")));
+#endif
 }
 
 void executeClapCommand(uint8_t count)
@@ -2994,7 +3021,11 @@ void updatePatternEngine()
         sendFeedback(F("[Presence] detected (client match)"));
       presenceDetected = true;
       lastPresenceSeenMs = millis();
+#if ENABLE_SWITCH
       if (switchDebouncedState && !lampEnabled)
+#else
+      if (!lampEnabled)
+#endif
       {
         setLampEnabled(true, "presence connect");
         sendFeedback(F("[Presence] Detected -> Lamp ON"));
@@ -3209,6 +3240,41 @@ void updateMusicSensor()
 }
 #endif
 
+#if ENABLE_POTI
+void updatePoti()
+{
+  uint32_t now = millis();
+  if (now - lastPotiSampleMs < Settings::POTI_SAMPLE_MS)
+    return;
+  lastPotiSampleMs = now;
+
+  int raw = analogRead(PIN_POTI);
+  float level = clamp01((float)raw / 4095.0f);
+  potiFiltered = Settings::POTI_ALPHA * level + (1.0f - Settings::POTI_ALPHA) * potiFiltered;
+
+  if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < Settings::POTI_DELTA_MIN)
+    return;
+
+  potiLastApplied = potiFiltered;
+  if (potiFiltered <= Settings::POTI_OFF_THRESHOLD)
+  {
+    if (lampEnabled)
+      setLampEnabled(false, "poti");
+    return;
+  }
+
+  float target = briMinUser + (briMaxUser - briMinUser) * potiFiltered;
+  float cap = brightnessCap > 0.0f ? brightnessCap : 1.0f;
+  if (target > cap)
+    target = cap;
+  target = clamp01(target);
+
+  if (!lampEnabled)
+    setLampEnabled(true, "poti");
+  setBrightnessPercent(target * 100.0f, true);
+}
+#endif
+
 /**
  * @brief Enter light sleep briefly when lamp is idle to save power.
  */
@@ -3218,10 +3284,14 @@ void maybeLightSleep()
   if (lampEnabled || wakeFadeActive || sleepFadeActive || rampActive)
     return;
   esp_sleep_enable_timer_wakeup(200000); // 200 ms
+#if ENABLE_SWITCH
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_SWITCH, SWITCH_ACTIVE_LEVEL == LOW ? 0 : 1);
+#endif
   esp_light_sleep_start();
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+#if ENABLE_SWITCH
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+#endif
 #endif
 }
 
@@ -3236,16 +3306,26 @@ void setup()
   Serial.println();
   Serial.println(F("Quarzlampe PWM-Demo"));
 
+#if ENABLE_SWITCH
   pinMode(PIN_SWITCH, INPUT_PULLUP);
+#endif
   pinMode(PIN_PWM, OUTPUT);
   digitalWrite(PIN_PWM, LOW); // keep LED off during init
+#if ENABLE_SWITCH
   initSwitchState();
+#endif
   calibrateTouchBaseline();
 
-#if ENABLE_LIGHT_SENSOR
+#if ENABLE_LIGHT_SENSOR || ENABLE_POTI
   analogReadResolution(12);
+#endif
+#if ENABLE_LIGHT_SENSOR
   analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
   pinMode(Settings::LIGHT_PIN, INPUT);
+#endif
+#if ENABLE_POTI
+  analogSetPinAttenuation(PIN_POTI, ADC_11db);
+  pinMode(PIN_POTI, INPUT);
 #endif
 
   loadSettings();
@@ -3267,11 +3347,16 @@ void setup()
 void loop()
 {
   pollCommunications();
+#if ENABLE_SWITCH
   updateSwitchLogic();
+#endif
   updateTouchBrightness();
   updateBrightnessRamp();
   updatePatternEngine();
   updateLightSensor();
+#if ENABLE_POTI
+  updatePoti();
+#endif
 #if ENABLE_MUSIC_MODE
   updateMusicSensor();
 #endif

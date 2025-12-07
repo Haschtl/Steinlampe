@@ -37,6 +37,14 @@ constexpr float BRI_MAX_DEFAULT = 0.95f;
 constexpr float BRI_CAP_DEFAULT = 1.0f;       ///< Hard cap for brightness (0..1)
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
 
+#if ENABLE_POTI
+constexpr int POTI_PIN = 39;                    ///< ADC pin for optional brightness knob
+constexpr uint32_t POTI_SAMPLE_MS = 80;
+constexpr float POTI_ALPHA = 0.25f;
+constexpr float POTI_DELTA_MIN = 0.025f;
+constexpr float POTI_OFF_THRESHOLD = 0.02f;
+#endif
+
 #if ENABLE_LIGHT_SENSOR
 constexpr bool LIGHT_SENSOR_DEFAULT_ENABLED = false;
 constexpr uint32_t LIGHT_SAMPLE_MS = 1000;      ///< light sensor sample interval

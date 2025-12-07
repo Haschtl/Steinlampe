@@ -29,6 +29,13 @@
 #define ENABLE_BT_MIDI 0
 #endif
 
+#ifndef ENABLE_SWITCH
+#define ENABLE_SWITCH 1
+#endif
+
+#ifndef ENABLE_POTI
+#define ENABLE_POTI 0
+#endif
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 0
 #endif
