@@ -83,6 +83,8 @@ static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
+static const char *PREF_KEY_PAT_FADE = "pat_fade";
+static const char *PREF_KEY_PAT_FADE_AMT = "pat_fade_amt";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -92,6 +94,10 @@ uint32_t patternStartMs = 0;
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 float patternSpeedScale = 1.0f;
 uint32_t quickMask = 0; // bitmask of modes used for quick switch tap cycling
+bool patternFadeEnabled = false;
+float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
+float patternFilteredLevel = 0.0f;
+uint32_t patternFilterLastMs = 0;
 
 // Switch handling
 bool switchRawState = false;
@@ -326,6 +332,10 @@ void exportConfig()
   cfg += String(briMaxUser, 3);
   cfg += F(" pres_grace=");
   cfg += presenceGraceMs;
+  cfg += F(" pat_fade=");
+  cfg += patternFadeEnabled ? F("on") : F("off");
+  cfg += F(" pat_fade_amt=");
+  cfg += String(patternFadeStrength, 2);
   cfg += F(" quick=");
   cfg += quickMaskToCsv();
   sendFeedback(cfg);
@@ -365,6 +375,8 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
   prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
   prefs.putUInt(PREF_KEY_PRES_GRACE, presenceGraceMs);
+  prefs.putBool(PREF_KEY_PAT_FADE, patternFadeEnabled);
+  prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
   prefs.putUInt(PREF_KEY_QUICK_MASK, quickMask);
   lastLoggedBrightness = masterBrightness;
   
@@ -406,6 +418,12 @@ void loadSettings()
     touchHoldStartMs = 5000;
   quickMask = prefs.getUInt(PREF_KEY_QUICK_MASK, computeDefaultQuickMask());
   sanitizeQuickMask();
+  patternFadeEnabled = prefs.getBool(PREF_KEY_PAT_FADE, false);
+  patternFadeStrength = prefs.getFloat(PREF_KEY_PAT_FADE_AMT, 1.0f);
+  if (patternFadeStrength < 0.01f)
+    patternFadeStrength = 0.01f;
+  if (patternFadeStrength > 10.0f)
+    patternFadeStrength = 10.0f;
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
   rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
@@ -822,6 +840,15 @@ void printStatus()
   }
   line3 += F(" | TouchDim=");
   line3 += touchDimEnabled ? F("ON") : F("OFF");
+  line3 += F(" | PatFade=");
+  if (patternFadeEnabled)
+  {
+    line3 += String(F("ON(")) + String(patternFadeStrength, 2) + F("x)");
+  }
+  else
+  {
+    line3 += F("OFF");
+  }
   sendFeedback(line3);
   payload += line3 + '\n';
 
@@ -962,6 +989,18 @@ void importConfig(const String &args)
       if (v >= 0.1f && v <= 5.0f)
         patternSpeedScale = v;
     }
+    else if (key == "pat_fade")
+    {
+      bool v;
+      if (parseBool(val, v))
+        patternFadeEnabled = v;
+    }
+    else if (key == "pat_fade_amt")
+    {
+      float v = val.toFloat();
+      if (v >= 0.01f && v <= 10.0f)
+        patternFadeStrength = v;
+    }
     else if (key == "bri")
     {
       float v = val.toFloat();
@@ -1062,6 +1101,8 @@ void printHelp()
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  pat scale <0.1-5> - Pattern-Geschwindigkeit",
+      "  pat fade on|off   - Pattern-Ausgabe glätten",
+      "  pat fade amt <0.01-10> - Stärke der Glättung (größer = langsamer)",
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  presence on|off   - Auto-Off wenn Gerät weg",
@@ -1340,6 +1381,41 @@ void handleCommand(String line)
     else
     {
       sendFeedback(F("Usage: pat scale 0.1-5"));
+    }
+    return;
+  }
+  if (lower.startsWith("pat fade") || lower.startsWith("pattern fade"))
+  {
+    int pos = lower.indexOf("fade");
+    String arg = line.substring(pos + 4);
+    arg.trim();
+  if (arg.startsWith("amt"))
+  {
+    float v = arg.substring(3).toFloat();
+    if (v >= 0.01f && v <= 10.0f)
+    {
+      patternFadeStrength = v;
+      saveSettings();
+      sendFeedback(String(F("[Pattern] fade amt=")) + String(v, 2));
+    }
+    else
+    {
+      sendFeedback(F("Usage: pat fade amt 0.01-10.0"));
+    }
+  }
+    else
+    {
+      bool v;
+      if (parseBool(arg, v))
+      {
+        patternFadeEnabled = v;
+        saveSettings();
+        sendFeedback(String(F("[Pattern] fade ")) + (v ? F("ON") : F("OFF")));
+      }
+      else
+      {
+        sendFeedback(F("Usage: pat fade on|off|amt"));
+      }
     }
     return;
   }
@@ -1652,6 +1728,10 @@ void handleCommand(String line)
 #if ENABLE_MUSIC_MODE
     musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 #endif
+    patternFadeEnabled = false;
+    patternFadeStrength = 1.0f;
+    patternFilteredLevel = 0.0f;
+    patternFilterLastMs = 0;
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));
     return;
@@ -1831,7 +1911,26 @@ void updatePatternEngine()
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
-  applyPwmLevel(combined);
+  if (patternFadeEnabled)
+  {
+    if (patternFilterLastMs == 0)
+    {
+      patternFilteredLevel = combined;
+      patternFilterLastMs = now;
+    }
+    uint32_t dt = now - patternFilterLastMs;
+    patternFilterLastMs = now;
+    float base = (float)(rampDurationMs > 0 ? rampDurationMs : 1);
+    float alpha = clamp01((float)dt / (base * patternFadeStrength));
+    patternFilteredLevel += (combined - patternFilteredLevel) * alpha;
+    applyPwmLevel(patternFilteredLevel);
+  }
+  else
+  {
+    patternFilteredLevel = combined;
+    patternFilterLastMs = now;
+    applyPwmLevel(combined);
+  }
 
   uint32_t durEff = p.durationMs > 0 ? (uint32_t)((float)p.durationMs / patternSpeedScale) : 0;
   if (autoCycle && durEff > 0 && elapsed >= durEff)
