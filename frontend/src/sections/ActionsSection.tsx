@@ -3,7 +3,7 @@ import { MorseCard } from '@/cards/MorseCard';
 import { NotifyCard } from '@/cards/NotifyCard';
 import { WakeSleepCard } from '@/cards/WakeSleepCard';
 import { useConnection } from '@/context/connection';
-import { patternLabels } from '@/data/patterns';
+import { patternLabel, patternLabels } from '@/data/patterns';
 
 export function ActionsSection() {
   const { status, sendCmd } = useConnection();
@@ -20,7 +20,7 @@ export function ActionsSection() {
     const count = status.patternCount || patternLabels.length;
     return Array.from({ length: count }, (_, i) => ({
       idx: i + 1,
-      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+      label: `${i + 1} - ${patternLabel(i + 1)}`,
     }));
   }, [status.patternCount]);
 

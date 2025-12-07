@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
+import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
 export function LampPowerCard() {
@@ -20,6 +21,10 @@ export function LampPowerCard() {
   useEffect(() => {
     setLampOn(status.lampState === 'ON');
   }, [status.lampState]);
+
+  const patternText = lampOn && status.currentPattern
+    ? `${patternLabel(status.currentPattern, status.patternName)}`
+    : '';
 
   const handleBrightness = (value: number) => {
     const clamped = Math.min(100, Math.max(1, Math.round(value)));
@@ -103,12 +108,13 @@ export function LampPowerCard() {
           </div>
           <div className="relative z-10 flex items-center gap-3">
             <span className="rounded-full bg-black/30 px-3 py-1 text-sm text-amber-100 shadow-inner">
-              {lampOn ? (
-                status.currentPattern ?? <Trans k="btn.on">On</Trans>
-              ) : (
-                <Trans k="btn.off">Off</Trans>
-              )}
+              {lampOn ? <Trans k="btn.on">On</Trans> : <Trans k="btn.off">Off</Trans>}
             </span>
+            {lampOn && status.currentPattern && (
+              <span className="rounded-full bg-amber-300/25 px-3 py-1 text-sm text-amber-50 shadow-inner">
+                {patternText ? patternText : `Mode ${status.currentPattern}`}
+              </span>
+            )}
           </div>
         </motion.button>
         <SliderRow

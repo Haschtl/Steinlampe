@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { SliderRow } from '@/components/ui/slider-row';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
-import { patternLabels } from '@/data/patterns';
+import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
 export function ModesCard() {
@@ -36,7 +36,7 @@ export function ModesCard() {
     const count = status.patternCount || patternLabels.length;
     return Array.from({ length: count }, (_, i) => ({
       idx: i + 1,
-      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+      label: `${i + 1} - ${patternLabel(i + 1)}`,
     }));
   }, [status.patternCount]);
 

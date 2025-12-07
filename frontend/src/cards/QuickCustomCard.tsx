@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
-import { patternLabels } from '@/data/patterns';
+import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans, useI18n } from '@/i18n';
 
 function PreviewGraph({ values, stepMs }: { values: number[]; stepMs?: number }) {
@@ -79,7 +79,7 @@ export function QuickCustomCard() {
     const count = status.patternCount || patternLabels.length;
     const base = Array.from({ length: count }, (_, i) => ({
       idx: i + 1,
-      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+      label: `${i + 1} - ${patternLabel(i + 1)}`,
     }));
     const profileOpts = Array.from({ length: 3 }, (_, i) => ({
       idx: count + i + 1,
@@ -122,20 +122,6 @@ export function QuickCustomCard() {
           <Input placeholder={t('search.pattern', 'Search pattern')} value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} className="w-40" />
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
-            <Select value={profileSlot} onValueChange={(v) => setProfileSlot(v)}>
-              <SelectTrigger className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1</SelectItem>
-                <SelectItem value="2">2</SelectItem>
-                <SelectItem value="3">3</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.load">Load</Trans></Button>
-          </div>
           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
             {patternOptions
               .filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase()))

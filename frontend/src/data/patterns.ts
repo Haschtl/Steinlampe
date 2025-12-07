@@ -44,3 +44,9 @@ export const patternLabels = [
   'Custom',
   'Musik',
 ];
+
+export function patternLabel(idx: number, name?: string) {
+  if (name) return name;
+  const label = patternLabels[idx - 1];
+  return label || `Pattern ${idx}`;
+}
