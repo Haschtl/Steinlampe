@@ -11,6 +11,7 @@ type ConnectionContextValue = {
   log: { ts: number; line: string }[];
   liveLog: boolean;
   setLiveLog: (v: boolean) => void;
+  setLog: (v: { ts: number; line: string }[]) => void;
   filterParsed: boolean;
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
@@ -49,6 +50,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       log: active.log,
       liveLog: active.liveLog,
       setLiveLog: active.setLiveLog,
+      setLog: active.setLog,
       filterParsed: active.filterParsed,
       setFilterParsed: active.setFilterParsed,
       autoReconnect: ble.autoReconnect,

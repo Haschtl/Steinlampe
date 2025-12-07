@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { MorseCard } from '@/cards/MorseCard';
 import { NotifyCard } from '@/cards/NotifyCard';
 import { WakeSleepCard } from '@/cards/WakeSleepCard';
 import { useConnection } from '@/context/connection';
@@ -78,6 +79,7 @@ export function ActionsSection() {
         handleNotify={handleNotify}
         sendCmd={sendCmd}
       />
+      <MorseCard sendCmd={sendCmd} />
     </div>
   );
 }

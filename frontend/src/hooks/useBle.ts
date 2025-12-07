@@ -10,6 +10,7 @@ type BleApi = {
   log: LogEntry[];
   liveLog: boolean;
   setLiveLog: (v: boolean) => void;
+  setLog: (v: LogEntry[] | ((prev: LogEntry[]) => LogEntry[])) => void;
   filterParsed: boolean;
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
@@ -28,7 +29,8 @@ export function useBle(): BleApi {
     lastStatusAt: null,
     patternCount: 0,
   });
-  const [log, setLog] = useState<LogEntry[]>([]);
+  const [log, setLogState] = useState<LogEntry[]>([]);
+  const setLog = useCallback((v: LogEntry[] | ((prev: LogEntry[]) => LogEntry[])) => setLogState(v), []);
   const [liveLog, setLiveLog] = useState(true);
   const [filterParsed, setFilterParsed] = useState<boolean>(() => {
     const stored = localStorage.getItem('ql-log-filter');
@@ -279,6 +281,7 @@ export function useBle(): BleApi {
       log,
       liveLog,
       setLiveLog,
+      setLog,
       filterParsed,
       setFilterParsed,
       autoReconnect,
@@ -288,6 +291,6 @@ export function useBle(): BleApi {
       refreshStatus,
       sendCmd,
     }),
-    [autoReconnect, cleanup, connect, filterParsed, liveLog, log, refreshStatus, sendCmd, setAutoReconnect, setFilterParsed, setLiveLog, status],
+    [autoReconnect, cleanup, connect, filterParsed, liveLog, log, refreshStatus, sendCmd, setAutoReconnect, setFilterParsed, setLiveLog, setLog, status],
   );
 }

@@ -9,6 +9,7 @@ type SerialApi = {
   log: LogEntry[];
   liveLog: boolean;
   setLiveLog: (v: boolean) => void;
+  setLog: (v: LogEntry[] | ((prev: LogEntry[]) => LogEntry[])) => void;
   filterParsed: boolean;
   setFilterParsed: (v: boolean) => void;
   connect: () => Promise<void>;
@@ -27,6 +28,7 @@ export function useSerial(): SerialApi {
   });
   const [log, setLog] = useState<LogEntry[]>([]);
   const [liveLog, setLiveLog] = useState(true);
+  const setLogPublic = useCallback((v: LogEntry[] | ((prev: LogEntry[]) => LogEntry[])) => setLog(v), []);
   const [filterParsed, setFilterParsed] = useState<boolean>(() => {
     const stored = localStorage.getItem('ql-log-filter');
     return stored !== 'false';
@@ -164,6 +166,7 @@ export function useSerial(): SerialApi {
       log,
       liveLog,
       setLiveLog,
+      setLog: setLogPublic,
       filterParsed,
       setFilterParsed,
       connect,
@@ -171,6 +174,6 @@ export function useSerial(): SerialApi {
       refreshStatus,
       sendCmd,
     }),
-    [connect, disconnect, filterParsed, liveLog, log, refreshStatus, sendCmd, setFilterParsed, status],
+    [connect, disconnect, filterParsed, liveLog, log, refreshStatus, sendCmd, setFilterParsed, setLogPublic, status],
   );
 }

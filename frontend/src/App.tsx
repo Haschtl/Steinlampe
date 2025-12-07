@@ -72,6 +72,7 @@ export default function App() {
     disconnect,
     refreshStatus,
     sendCmd,
+    setLog,
   } = useConnection();
   const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
@@ -315,6 +316,9 @@ export default function App() {
                     />{" "}
                     {t("log.filter", "Filter status lines")}
                   </label>
+                  <Button size="sm" variant="ghost" onClick={() => setLog([])}>
+                    {t('btn.clear', 'Clear')}
+                  </Button>
                 </div>
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg p-3 font-mono text-sm text-accent space-y-1 shadow-inner">
                   {logLines.length === 0 && (

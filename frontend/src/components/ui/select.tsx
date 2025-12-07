@@ -39,7 +39,7 @@ export const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-panel text-text shadow-lg',
+        'z-50 min-w-[8rem] w-[var(--radix-select-trigger-width)] max-h-[70vh] overflow-hidden rounded-md border border-border bg-panel text-text shadow-lg',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         className,
       )}
@@ -49,7 +49,7 @@ export const SelectContent = React.forwardRef<
       <SelectPrimitive.ScrollUpButton className="flex h-8 cursor-default items-center justify-center bg-panel text-muted">
         <ChevronUp className="h-4 w-4" />
       </SelectPrimitive.ScrollUpButton>
-      <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+      <SelectPrimitive.Viewport className="p-1 max-h-72 overflow-y-auto">{children}</SelectPrimitive.Viewport>
       <SelectPrimitive.ScrollDownButton className="flex h-8 cursor-default items-center justify-center bg-panel text-muted">
         <ChevronDown className="h-4 w-4" />
       </SelectPrimitive.ScrollDownButton>
