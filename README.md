@@ -32,7 +32,7 @@ flowchart LR
 
 ## Features
 
-- Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Gewitter, Sonnenuntergang, Alert, SOS, Custom)
+- Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Popcorn, Weihnacht, Saber Idle, Saber Clash, Emergency Bridge, Arc Reactor, Warp Core, KITT Scanner, Tron Grid, Gewitter, Distant Storm, Rolling Thunder, Heat Lightning, Strobe Front, Sheet Lightning, Mixed Storm, Sonnenuntergang, Alert, SOS, Custom)
 - Wake fade via `wake [soft] [mode=N] [bri=XX] <seconds>` (soft: touch cancels; mode/bri optional)
 - Optional clap control via audio sensor (`clap on|off`, threshold/cooldown tunable)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).

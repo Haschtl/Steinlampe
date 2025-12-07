@@ -176,6 +176,128 @@ float patternTwinkle(uint32_t ms)
   return clamp01(slow + wave + flicker);
 }
 
+/// Distant storm: dark base, rare soft flashes with long afterglow
+float patternDistantStorm(uint32_t ms)
+{
+  float base = 0.03f + (smoothNoise(ms, 1400, 0x1A) - 0.5f) * 0.03f;
+  const uint32_t window = 9000;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float flash = 0.0f;
+  if (hash11(idx * 0xC7u) > 0.6f)
+  {
+    uint32_t offset = (uint32_t)(hash11(idx * 0x31u) * (window - 1100));
+    uint32_t t = ms - start;
+    if (t >= offset && t < offset + 1100)
+    {
+      uint32_t dt = t - offset;
+      if (dt < 120)
+        flash = 0.9f;
+      else
+      {
+        float decay = expf(-(float)(dt - 120) / 420.0f);
+        flash = 0.7f * decay;
+      }
+    }
+  }
+  return clamp01(base + flash);
+}
+
+/// Rolling thunder: slow swell plus occasional double-flash
+float patternRollingThunder(uint32_t ms)
+{
+  float swell = 0.05f + 0.05f * sinf((ms / 1000.0f) * 0.35f * TWO_PI);
+  const uint32_t window = 7500;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float flash = 0.0f;
+  if (hash11(idx * 0x99u) > 0.5f)
+  {
+    uint32_t baseOff = (uint32_t)(hash11(idx * 0x21u) * (window - 900));
+    uint32_t t = ms - start;
+    if (t >= baseOff && t < baseOff + 400)
+    {
+      flash = 1.0f;
+    }
+    else if (t >= baseOff + 420 && t < baseOff + 900)
+    {
+      uint32_t dt = t - (baseOff + 420);
+      float decay = expf(-(float)dt / 250.0f);
+      flash = 0.9f * decay;
+    }
+  }
+  return clamp01(swell + flash);
+}
+
+/// Heat lightning: diffuse wide pulses with gentle shimmer
+float patternHeatLightning(uint32_t ms)
+{
+  float base = 0.04f + (smoothNoise(ms, 1200, 0xA1) - 0.5f) * 0.02f;
+  const uint32_t period = 6200;
+  float phase = (ms % period) / (float)period;
+  float env = 0.0f;
+  if (phase < 0.3f)
+  {
+    float t = phase / 0.3f;
+    env = t * t;
+  }
+  else if (phase < 0.8f)
+  {
+    float t = 1.0f - (phase - 0.3f) / 0.5f;
+    env = t * t;
+  }
+  float shimmer = (smoothNoise(ms, 90, 0xB2) - 0.5f) * 0.08f;
+  return clamp01(base + 0.55f * env + shimmer);
+}
+
+/// Strobe front: short burst cluster then long pause
+float patternStrobeFront(uint32_t ms)
+{
+  const uint32_t cycle = 9500;
+  uint32_t t = ms % cycle;
+  if (t < 1200)
+  {
+    uint32_t mod = t % 180;
+    return (mod < 60) ? 1.0f : 0.15f;
+  }
+  return 0.05f + (smoothNoise(ms, 800, 0x5E) - 0.5f) * 0.03f;
+}
+
+/// Sheet lightning: broad pulses with subtle flicker
+float patternSheetLightning(uint32_t ms)
+{
+  const uint32_t period = 5200;
+  float phase = (ms % period) / (float)period;
+  float pulse = 0.0f;
+  if (phase < 0.5f)
+  {
+    float t = phase / 0.5f;
+    pulse = t * t * 0.9f;
+  }
+  else
+  {
+    float t = 1.0f - ((phase - 0.5f) / 0.5f);
+    pulse = t * 0.9f;
+  }
+  float flicker = (smoothNoise(ms, 55, 0x7C) - 0.5f) * 0.12f;
+  return clamp01(0.08f + pulse + flicker);
+}
+
+/// Mixed storm: random pick between flash styles
+float patternMixedStorm(uint32_t ms)
+{
+  uint32_t idx = ms / 5000;
+  float choice = hash11(idx * 0xEFu);
+  if (choice < 0.2f)
+    return patternDistantStorm(ms);
+  if (choice < 0.4f)
+    return patternRollingThunder(ms);
+  if (choice < 0.6f)
+    return patternHeatLightning(ms);
+  if (choice < 0.8f)
+    return patternStrobeFront(ms);
+  return patternThunder(ms);
+}
 /// Fireflies: dark base with rare, soft pulses
 float patternFireflies(uint32_t ms)
 {
@@ -201,6 +323,138 @@ float patternFireflies(uint32_t ms)
     }
   }
   return clamp01(base + flash);
+}
+
+/// Popcorn: dark base with quick popping spikes
+float patternPopcorn(uint32_t ms)
+{
+  float base = 0.04f + (smoothNoise(ms, 800, 0xC5) - 0.5f) * 0.03f;
+  const uint32_t window = 900;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float pop = 0.0f;
+  // up to 3 pops per window with diminishing probability
+  for (int k = 0; k < 3; ++k)
+  {
+    uint32_t salt = idx * 0x812u + (uint32_t)k * 0x3Du;
+    if (hash11(salt) < (0.45f - 0.1f * k))
+      continue;
+    uint32_t offset = (uint32_t)(hash11(salt ^ 0x55u) * (window - 180));
+    uint32_t t = ms - start;
+    if (t >= offset && t < offset + 180)
+    {
+      uint32_t dt = t - offset;
+      float rise = (dt < 40) ? (dt / 40.0f) : 1.0f;
+      float decay = expf(-(float)(dt > 40 ? (dt - 40) : 0) / 90.0f);
+      pop += (0.6f + 0.4f * hash11(salt ^ 0x99u)) * rise * decay;
+    }
+  }
+  return clamp01(base + pop);
+}
+
+/// Festive twinkle: gentle wave with occasional spark bursts
+float patternChristmas(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float wave = 0.25f + 0.25f * sinf(t * 0.35f * TWO_PI);
+  float shimmer = (smoothNoise(ms, 120, 0xD4) - 0.5f) * 0.12f;
+  float burst = 0.0f;
+  const uint32_t window = 1600;
+  uint32_t idx = ms / window;
+  if (hash11(idx * 0xABu) > 0.6f)
+  {
+    uint32_t start = idx * window;
+    uint32_t off = (uint32_t)(hash11(idx * 0x37u) * (window - 400));
+    uint32_t dt = ms - start;
+    if (dt >= off && dt < off + 400)
+    {
+      float x = (dt - off) / 400.0f;
+      burst = (1.0f - (x - 0.5f) * (x - 0.5f) * 4.0f) * 0.5f; // parabola-ish pulse
+    }
+  }
+  return clamp01(wave + shimmer + burst);
+}
+
+/// Lightsaber idle: slow pulse with micro flicker
+float patternSaberIdle(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float pulse = 0.15f * sinf(t * TWO_PI * 0.9f) + 0.45f;
+  float shimmer = (smoothNoise(ms, 55, 0x77) - 0.5f) * 0.05f;
+  float drift = (smoothNoise(ms, 1200, 0x91) - 0.5f) * 0.05f;
+  return clamp01(pulse + shimmer + drift);
+}
+
+/// Lightsaber clash: dark idle, sporadic bright flares with decay
+float patternSaberClash(uint32_t ms)
+{
+  float base = 0.12f + (smoothNoise(ms, 1400, 0x42) - 0.5f) * 0.03f;
+  const uint32_t window = 1600;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float flare = 0.0f;
+  if (hash11(idx * 0x1337u) > 0.55f)
+  {
+    uint32_t off = (uint32_t)(hash11(idx * 0x51u) * (window - 320));
+    uint32_t dt = ms - start;
+    if (dt >= off && dt < off + 320)
+    {
+      float x = (float)(dt - off);
+      float rise = x < 40.0f ? (x / 40.0f) : 1.0f;
+      float decay = expf(-(x > 40.0f ? (x - 40.0f) : 0.0f) / 110.0f);
+      float spark = (smoothNoise(ms, 25, 0xA5) - 0.5f) * 0.12f;
+      flare = (0.9f + spark) * rise * decay;
+    }
+  }
+  return clamp01(base + flare);
+}
+
+/// Emergency bridge: double flash then pause
+float patternEmergencyBridge(uint32_t ms)
+{
+  static const uint16_t durations[] = {160, 160, 160, 780};
+  static const float levels[] = {1.0f, 0.0f, 1.0f, 0.05f};
+  return evalSequence(ms, durations, levels, sizeof(durations) / sizeof(durations[0]));
+}
+
+/// Arc reactor: subtle centered glow with tiny breathing
+float patternArcReactor(uint32_t ms)
+{
+  float phase = (ms % 5200u) / 5200.0f;
+  float wave = 0.55f + 0.08f * sinf(phase * TWO_PI);
+  float micro = (smoothNoise(ms, 85, 0x3C) - 0.5f) * 0.04f;
+  return clamp01(wave + micro);
+}
+
+/// Warp core: asymmetrical thump with slight jitter
+float patternWarpCore(uint32_t ms)
+{
+  const uint32_t period = 850;
+  uint32_t t = ms % period;
+  float env = (t < 320) ? (t / 320.0f) : (1.0f - (t - 320) / 530.0f);
+  if (env < 0.0f) env = 0.0f;
+  float wobble = (smoothNoise(ms, 70, 0x59) - 0.5f) * 0.06f;
+  return clamp01(0.25f + 0.5f * env * env + wobble);
+}
+
+/// KITT scanner: swinging emphasis
+float patternKittScanner(uint32_t ms)
+{
+  float phase = (ms % 2800u) / 2800.0f;
+  float tri = (phase < 0.5f) ? (phase * 2.0f) : (2.0f - phase * 2.0f);
+  float glow = 0.08f + 0.65f * tri * tri;
+  float tail = (smoothNoise(ms, 120, 0x6D) - 0.5f) * 0.05f;
+  return clamp01(glow + tail);
+}
+
+/// Tron grid: stepped pulses on a beat
+float patternTronGrid(uint32_t ms)
+{
+  const uint32_t beat = 500; // 120 BPM
+  uint32_t t = ms % beat;
+  float step = (t < 120) ? 1.0f : (t < 240 ? 0.55f : (t < 320 ? 0.3f : 0.08f));
+  float digitalNoise = (smoothNoise(ms, 65, 0x2E) - 0.5f) * 0.06f;
+  return clamp01(step + digitalNoise);
 }
 
 /// Sunset fade: slow warm rise then gentle fall
@@ -303,7 +557,22 @@ const Pattern PATTERNS[] = {
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
     {"Gluehwuermchen", patternFireflies, 12000},
+    {"Popcorn", patternPopcorn, 10000},
+    {"Weihnacht", patternChristmas, 12000},
+    {"Saber Idle", patternSaberIdle, 12000},
+    {"Saber Clash", patternSaberClash, 10000},
+    {"Emergency Bridge", patternEmergencyBridge, 0},
+    {"Arc Reactor", patternArcReactor, 0},
+    {"Warp Core", patternWarpCore, 0},
+    {"KITT Scanner", patternKittScanner, 0},
+    {"Tron Grid", patternTronGrid, 0},
     {"Gewitter", patternThunder, 0},
+    {"Distant Storm", patternDistantStorm, 0},
+    {"Rolling Thunder", patternRollingThunder, 0},
+    {"Heat Lightning", patternHeatLightning, 0},
+    {"Strobe Front", patternStrobeFront, 0},
+    {"Sheet Lightning", patternSheetLightning, 0},
+    {"Mixed Storm", patternMixedStorm, 0},
     {"Sonnenuntergang", patternSunset, 0},
     {"Alert", patternAlert, 0},
     {"SOS", patternSOS, 0},
