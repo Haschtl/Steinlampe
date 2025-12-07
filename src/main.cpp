@@ -53,7 +53,7 @@ static const float DIM_MAX = 0.95f;
 
 // Vorwärtsdeklarationen
 void handleCommand(String line);
-void startWakeFade(uint32_t durationMs, bool announce = true);
+void startWakeFade(uint32_t durationMs, bool announce = true, bool softCancel = false, float targetOverride = -1.0f);
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
 void syncLampToSwitch();
@@ -211,6 +211,7 @@ bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
 uint32_t wakeDurationMs = 0;
 float wakeTargetLevel = 0.8f;
+bool wakeSoftCancel = false;
 
 bool sleepFadeActive = false;
 uint32_t sleepStartMs = 0;
@@ -933,6 +934,13 @@ void updateTouchBrightness()
     // touchBaseline = (touchBaseline * 15 + raw) / 16;
     if (mag > touchDeltaOn && (now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
     {
+      if (wakeFadeActive && wakeSoftCancel)
+      {
+        cancelWakeFade(true);
+        setLampEnabled(false, "wake soft touch");
+        touchActive = false;
+        return;
+      }
       touchActive = true;
       touchStartMs = now;
       touchLastRampMs = now;
@@ -995,13 +1003,17 @@ void updateTouchBrightness()
 /**
  * @brief Start a sunrise-style wake fade over the given duration.
  */
-void startWakeFade(uint32_t durationMs, bool announce)
+void startWakeFade(uint32_t durationMs, bool announce, bool softCancel, float targetOverride)
 {
   if (durationMs < 5000)
     durationMs = 5000;
   wakeDurationMs = durationMs;
   wakeStartMs = millis();
-  wakeTargetLevel = clamp01(fmax(masterBrightness, Settings::WAKE_MIN_TARGET));
+  if (targetOverride >= 0.0f)
+    wakeTargetLevel = clamp01(targetOverride);
+  else
+    wakeTargetLevel = clamp01(fmax(masterBrightness, Settings::WAKE_MIN_TARGET));
+  wakeSoftCancel = softCancel;
   setLampEnabled(true);
   wakeFadeActive = true;
   if (announce)
@@ -1018,6 +1030,7 @@ void cancelWakeFade(bool announce)
   if (!wakeFadeActive)
     return;
   wakeFadeActive = false;
+  wakeSoftCancel = false;
   if (announce)
   {
     sendFeedback(F("[Wake] Abgebrochen."));
@@ -1417,7 +1430,7 @@ void printHelp()
       "  auto on|off       - automatisches Durchschalten",
       "  bri <0..100>      - globale Helligkeit in %",
       "  bri min/max <0..1>- Min/Max-Level setzen",
-      "  wake [Sekunden]   - sanfter Weckfade starten (Default 180s)",
+      "  wake [soft] [mode=N] [bri=XX] <Sek> - Weckfade (Default 180s, optional weich/Mode/Bri)",
       "  wake stop         - Weckfade abbrechen",
       "  sos [stop]        - SOS-Alarm: Lampe 100%, SOS-Muster",
       "  sleep [Minuten]   - Sleep-Fade auf 0, Default 15min",
@@ -2046,24 +2059,66 @@ void handleCommand(String line)
 #endif
   if (lower.startsWith("wake"))
   {
-    String arg = line.substring(4);
-    arg.trim();
-    arg.toLowerCase();
-    if (arg == "stop" || arg == "cancel")
+    String rawArgs = line.substring(4);
+    rawArgs.trim();
+    String lowerArgs = rawArgs;
+    lowerArgs.toLowerCase();
+    if (lowerArgs == "stop" || lowerArgs == "cancel")
     {
       cancelWakeFade(true);
+      return;
     }
-    else
+    String args = rawArgs;
+    bool soft = false;
+    int modeIdx = -1;
+    float briPct = -1.0f;
+    float seconds = -1.0f;
+    while (args.length() > 0)
     {
-      uint32_t durationMs = Settings::DEFAULT_WAKE_MS;
-      if (arg.length() > 0)
+      int sp = args.indexOf(' ');
+      String tok = (sp >= 0) ? args.substring(0, sp) : args;
+      args = (sp >= 0) ? args.substring(sp + 1) : "";
+      tok.trim();
+      if (tok.length() == 0)
+        continue;
+      String ltok = tok;
+      ltok.toLowerCase();
+      if (ltok == "soft")
       {
-        float seconds = line.substring(4).toFloat();
-        if (seconds > 0.0f)
-          durationMs = (uint32_t)(seconds * 1000.0f);
+        soft = true;
       }
-      startWakeFade(durationMs, true);
+      else if (ltok.startsWith("mode="))
+      {
+        int v = ltok.substring(5).toInt();
+        if (v >= 1 && (size_t)v <= PATTERN_COUNT)
+          modeIdx = v;
+      }
+      else if (ltok.startsWith("bri="))
+      {
+        float v = tok.substring(4).toFloat();
+        if (v >= 0.0f && v <= 100.0f)
+          briPct = v;
+      }
+      else if (seconds < 0.0f)
+      {
+        float v = tok.toFloat();
+        if (v > 0.0f)
+          seconds = v;
+      }
     }
+    uint32_t durationMs = Settings::DEFAULT_WAKE_MS;
+    if (seconds > 0.0f)
+      durationMs = (uint32_t)(seconds * 1000.0f);
+    if (modeIdx >= 1)
+      setPattern((size_t)modeIdx - 1, true, false);
+    float targetOverride = -1.0f;
+    if (briPct >= 0.0f)
+    {
+      targetOverride = clamp01(briPct / 100.0f);
+      masterBrightness = targetOverride;
+      logBrightnessChange("wake bri");
+    }
+    startWakeFade(durationMs, true, soft, targetOverride);
     return;
   }
   if (lower.startsWith("sos"))
@@ -2361,6 +2416,7 @@ void updatePatternEngine()
     if (!lampEnabled)
     {
       wakeFadeActive = false;
+      wakeSoftCancel = false;
       return;
     }
     uint32_t elapsedWake = now - wakeStartMs;
@@ -2371,6 +2427,7 @@ void updatePatternEngine()
     if (progress >= 1.0f)
     {
       wakeFadeActive = false;
+      wakeSoftCancel = false;
       patternStartMs = now;
       sendFeedback(F("[Wake] Fade abgeschlossen."));
     }

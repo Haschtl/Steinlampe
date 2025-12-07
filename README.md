@@ -33,7 +33,7 @@ flowchart LR
 ## Features
 
 - Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Gewitter, Sonnenuntergang, Alert, SOS, Custom)
-- Wake fade triggered via BLE/serial `wake [soft] [mode=XX] [bri=XX] <seconds>` (soft: touch cancels, hard: SOS after fade)
+- Wake fade via `wake [soft] [mode=N] [bri=XX] <seconds>` (soft: touch cancels; mode/bri optional)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
@@ -72,7 +72,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `bri min/max <0..1>` | Set min/max brightness clamp                               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
-| `wake [soft] [mode=XX] [bri=XX] <seconds>` | Start wake fade (soft: touch cancels; hard: SOS after) |
+| `wake [soft] [mode=XX] [bri=XX] <seconds>` | Wake fade with options (soft: touch cancels; mode/bri optional) |
 | `wake stop`         | Abort an active wake fade                                  |
 | `sos [stop]`        | Start SOS alert (100% brightness, SOS pattern); stop restores previous state |
 | `sleep [minutes]`   | Fade down to off over given minutes (default 15)           |
