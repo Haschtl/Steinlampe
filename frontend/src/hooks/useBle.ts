@@ -68,7 +68,8 @@ export function useBle(): BleApi {
           line.startsWith('[Poti]') ||
           line.startsWith('[Push]') ||
           line.startsWith('STATUS|') ||
-          line.startsWith('SENSORS|')
+          line.startsWith('SENSORS|') ||
+          line.startsWith('> status')
         )
       ) {
         return;

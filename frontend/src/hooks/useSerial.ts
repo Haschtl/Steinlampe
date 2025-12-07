@@ -42,13 +42,21 @@ export function useSerial(): SerialApi {
       if (!line) return;
       if (
         filterParsed &&
-        (/^Status[:=]/i.test(line) ||
+        (
+          /^Status[:=]/i.test(line) ||
           /^Lamp=/.test(line) ||
           /^Ramp=/.test(line) ||
           /^RampOn/i.test(line) ||
           /^RampOff/i.test(line) ||
           line.startsWith('[Quick]') ||
-          line.startsWith('[Touch]'))
+          line.startsWith('[Touch]') ||
+          line.startsWith('Device=') ||
+          line.startsWith('[Poti]') ||
+          line.startsWith('[Push]') ||
+          line.startsWith('STATUS|') ||
+          line.startsWith('SENSORS|') ||
+          line.startsWith('> status')
+        )
       ) {
         return;
       }
@@ -113,30 +121,36 @@ export function useSerial(): SerialApi {
 
       const textDecoder = new TextDecoderStream();
       (port.readable as ReadableStream<Uint8Array>).pipeTo(textDecoder.writable as unknown as WritableStream<any>);
-      const reader = textDecoder.readable
-        .pipeThrough(
-          new TransformStream<string, string>({
-            transform(chunk, controller) {
-              const parts = chunk.split(/\r?\n/);
-              parts.forEach((p) => controller.enqueue(p));
-            },
-          }),
-        )
-        .getReader();
+      const reader = textDecoder.readable.getReader();
 
       readerCancelRef.current = () => reader.cancel().catch(() => undefined);
 
+      let buffer = '';
       const pump = async () => {
         try {
           // eslint-disable-next-line no-constant-condition
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            if (value) {
-              const handled = parseStatusLine(value, setStatus);
-              if (!handled || !filterParsed) pushLog(value);
-              else setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+            if (value !== undefined) {
+              buffer += value;
+              const parts = buffer.split(/\r?\n/);
+              buffer = parts.pop() || '';
+              parts.forEach((line) => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+                const handled = parseStatusLine(trimmed, setStatus);
+                if (!handled || !filterParsed) pushLog(trimmed);
+                else setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+              });
             }
+          }
+          // flush remainder if any
+          if (buffer.trim()) {
+            const trimmed = buffer.trim();
+            const handled = parseStatusLine(trimmed, setStatus);
+            if (!handled || !filterParsed) pushLog(trimmed);
+            buffer = '';
           }
         } catch (err) {
           pushLog('Serial read error: ' + err);

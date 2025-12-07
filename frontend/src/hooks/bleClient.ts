@@ -38,8 +38,17 @@ export async function subscribeToLines(
   char: BluetoothRemoteGATTCharacteristic,
   handler: LineHandler,
 ): Promise<() => void> {
+  let buffer = '';
   const onNotify = (ev: Event) => {
-    decodeLines(ev).forEach(handler);
+    const target = ev.target as BluetoothRemoteGATTCharacteristic;
+    const value = (target.value as DataView) || new DataView(new ArrayBuffer(0));
+    buffer += new TextDecoder().decode(value);
+    const parts = buffer.split(/\r?\n/);
+    buffer = parts.pop() || '';
+    parts.forEach((line) => {
+      const trimmed = line.trim();
+      if (trimmed) handler(trimmed);
+    });
   };
   char.addEventListener('characteristicvaluechanged', onNotify as EventListener);
   try {

@@ -877,7 +877,12 @@ void loadSettings()
   }
   else
   {
-    customLen = 0;
+    // Default custom pattern: gentle wave / pulse
+    const float defVals[] = {0.1f, 0.3f, 0.6f, 0.9f, 0.6f, 0.3f};
+    customLen = sizeof(defVals) / sizeof(defVals[0]);
+    for (size_t i = 0; i < customLen && i < CUSTOM_MAX; ++i)
+      customPattern[i] = defVals[i];
+    customStepMs = 600;
   }
 #if ENABLE_MUSIC_MODE
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
