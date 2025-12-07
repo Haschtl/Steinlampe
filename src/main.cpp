@@ -339,6 +339,8 @@ uint8_t easeFromString(const String &s)
     return 3;
   if (l == "ease-in-out" || l == "easeinout")
     return 4;
+  if (l == "flash")
+    return 5;
   return 1;
 }
 
@@ -354,6 +356,8 @@ String easeToString(uint8_t t)
     return F("ease-out");
   case 4:
     return F("ease-in-out");
+  case 5:
+    return F("flash");
   case 1:
   default:
     return F("ease");
@@ -846,9 +850,9 @@ void loadSettings()
   rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, Settings::DEFAULT_RAMP_EASE_OFF);
   rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, Settings::DEFAULT_RAMP_POW_ON);
   rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, Settings::DEFAULT_RAMP_POW_OFF);
-  if (rampEaseOnType > 4)
+  if (rampEaseOnType > 5)
     rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
-  if (rampEaseOffType > 4)
+  if (rampEaseOffType > 5)
     rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
   if (rampEaseOnPower < 0.01f)
     rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
@@ -1944,7 +1948,7 @@ void printHelp()
       "  ramp <ms>         - Ramp-Dauer (on/off gemeinsam) 50-10000ms",
       "  ramp on <ms>      - Ramp-Dauer nur für Einschalten",
       "  ramp off <ms>     - Ramp-Dauer nur für Ausschalten",
-      "  ramp ease on|off <linear|ease|ease-in|ease-out|ease-in-out> [power]",
+      "  ramp ease on|off <linear|ease|ease-in|ease-out|ease-in-out|flash> [power]",
       "  idleoff <Min>     - Auto-Off nach X Minuten (0=aus)",
       "  touch tune <on> <off> - Touch-Schwellen setzen",
       "  pat scale <0.1-5> - Pattern-Geschwindigkeit",

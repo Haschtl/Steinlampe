@@ -134,6 +134,14 @@ static float applyEase(float t, uint8_t type, float power)
     float t2 = (t < 0.5f) ? 0.5f * powf(t * 2.0f, p) : 1.0f - 0.5f * powf((1.0f - t) * 2.0f, p);
     return t2;
   }
+  case 5: // flash: accelerate hard to target
+  {
+    float expo = power > 0.1f ? (1.0f / power) : 1.0f;
+    float v = powf(t, expo);
+    if (v > 1.0f)
+      v = 1.0f;
+    return v;
+  }
   case 1: // smooth ease (default)
   default:
     return t * t * (3.0f - 2.0f * t);
