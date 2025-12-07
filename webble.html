@@ -311,10 +311,15 @@
               </div>
             </div>
           </div>
+          <div class="input-group" style="max-width:320px; margin-left:0.35rem;">
+            <label class="sr-only" for="morseInput">Morse Text</label>
+            <input id="morseInput" type="text" placeholder="SOS" />
+            <button id="btnMorse">Morse</button>
+          </div>
           <button id="btnNotify">Notify</button>
-      <button id="btnNotifyStop" title="Stop Notify" style="color:#f59e0b;">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
-        <span class="sr-only">Stop</span>
+          <button id="btnNotifyStop" title="Stop Notify" style="color:#f59e0b;">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z"/></svg>
+            <span class="sr-only">Stop</span>
       </button>
         </div>
       </div>
@@ -716,7 +721,7 @@
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
     const PATTERN_LABELS = [
       'Konstant', 'Atmung', 'Atmung Warm', 'Atmung 2', 'Sinus',
-      'Zig-Zag', 'Saegezahn', 'Pulsierend', 'Heartbeat', 'Heartbeat Alarm', 'Comet', 'Aurora', 'Polizei DE', 'Camera', 'TV Static', 'Funkeln',
+      'Zig-Zag', 'Saegezahn', 'Pulsierend', 'Heartbeat', 'Heartbeat Alarm', 'Comet', 'Aurora', 'Polizei DE', 'Camera', 'TV Static', 'HAL-9000', 'Funkeln',
       'Kerze Soft', 'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Gluehwuermchen',
       'Popcorn', 'Weihnacht', 'Saber Idle', 'Saber Clash', 'Emergency Bridge', 'Arc Reactor',
       'Warp Core', 'KITT Scanner', 'Tron Grid', 'Gewitter', 'Distant Storm', 'Rolling Thunder', 'Heat Lightning',
@@ -1724,6 +1729,14 @@
     const btnNotifyStop = document.getElementById('btnNotifyStop');
     if (btnNotifyStop) {
       btnNotifyStop.onclick = () => sendCmd('notify stop');
+    }
+    const btnMorse = document.getElementById('btnMorse');
+    if (btnMorse) {
+      btnMorse.onclick = () => {
+        const inp = document.getElementById('morseInput');
+        const txt = inp ? inp.value.trim() : '';
+        if (txt) sendCmd('morse ' + txt);
+      };
     }
     document.querySelectorAll('.notifyPreset').forEach(btn => {
       btn.onclick = () => {

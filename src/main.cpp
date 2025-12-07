@@ -1614,6 +1614,7 @@ void printHelp()
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
       "  notify [on1 off1 on2 off2] - Blinksignal (ms)",
+      "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
       "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/Presence/Quick",
       "  light gain <f>     - Verstärkung Lichtsensor",
       "  music on|off       - Music-Mode (ADC) aktivieren",
@@ -2147,6 +2148,105 @@ void handleCommand(String line)
       seqStr += String(notifySeq[i]);
     }
     sendFeedback(String(F("[Notify] ")) + seqStr + (notifyInvert ? F(" invert") : F("")));
+    return;
+  }
+  if (lower.startsWith("morse"))
+  {
+    String text = line.substring(5);
+    text.trim();
+    if (text.isEmpty())
+    {
+      sendFeedback(F("Usage: morse <text>"));
+      return;
+    }
+    auto symbol = [](char c) -> const char * {
+      switch (c)
+      {
+      case 'A': return ".-";
+      case 'B': return "-...";
+      case 'C': return "-.-.";
+      case 'D': return "-..";
+      case 'E': return ".";
+      case 'F': return "..-.";
+      case 'G': return "--.";
+      case 'H': return "....";
+      case 'I': return "..";
+      case 'J': return ".---";
+      case 'K': return "-.-";
+      case 'L': return ".-..";
+      case 'M': return "--";
+      case 'N': return "-.";
+      case 'O': return "---";
+      case 'P': return ".--.";
+      case 'Q': return "--.-";
+      case 'R': return ".-.";
+      case 'S': return "...";
+      case 'T': return "-";
+      case 'U': return "..-";
+      case 'V': return "...-";
+      case 'W': return ".--";
+      case 'X': return "-..-";
+      case 'Y': return "-.--";
+      case 'Z': return "--..";
+      case '1': return ".----";
+      case '2': return "..---";
+      case '3': return "...--";
+      case '4': return "....-";
+      case '5': return ".....";
+      case '6': return "-....";
+      case '7': return "--...";
+      case '8': return "---..";
+      case '9': return "----.";
+      case '0': return "-----";
+      default: return nullptr;
+      }
+    };
+
+    std::vector<uint32_t> seq;
+    auto addOnOff = [&](uint32_t on, uint32_t off) {
+      seq.push_back(on);
+      seq.push_back(off);
+    };
+
+    text.toUpperCase();
+    for (size_t i = 0; i < text.length(); ++i)
+    {
+      char c = text.charAt(i);
+      if (c == ' ')
+      {
+        if (!seq.empty())
+          seq.back() = 1400; // word gap
+        continue;
+      }
+      const char *code = symbol(c);
+      if (!code)
+        continue;
+      for (const char *p = code; *p; ++p)
+      {
+        if (*p == '.')
+          addOnOff(200, 200);
+        else if (*p == '-')
+          addOnOff(600, 200);
+      }
+      if (!seq.empty())
+        seq.back() = 600; // letter gap
+    }
+    if (seq.empty())
+    {
+      sendFeedback(F("[Morse] no valid symbols"));
+      return;
+    }
+    notifySeq = seq;
+    notifyIdx = 0;
+    notifyStageStartMs = millis();
+    notifyFadeMs = 0;
+    notifyInvert = (masterBrightness > 0.8f);
+    notifyActive = true;
+    notifyPrevLampOn = lampEnabled;
+    notifyRestoreLamp = !lampEnabled;
+    if (notifyRestoreLamp)
+      setLampEnabled(true, "morse");
+    sendFeedback(String(F("[Morse] ")) + text);
     return;
   }
   if (lower == "notify stop")

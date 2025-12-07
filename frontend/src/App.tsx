@@ -13,10 +13,12 @@ const commands = [
   { cmd: 'on / off / toggle', desc: 'Switch lamp power' },
   { cmd: 'mode N / next / prev', desc: 'Select pattern' },
   { cmd: 'bri X', desc: 'Brightness 0..100%' },
+  { cmd: 'bri cap X', desc: 'Brightness cap (%)' },
   { cmd: 'ramp on/off <ms>', desc: 'Set ramp durations' },
   { cmd: 'wake [soft] <s>', desc: 'Wake fade' },
   { cmd: 'sleep <min>', desc: 'Sleep fade' },
   { cmd: 'notify ...', desc: 'Blink sequence' },
+  { cmd: 'morse <text>', desc: 'Morse blink' },
   { cmd: 'profile save/load', desc: 'User profiles' },
 ];
 

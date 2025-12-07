@@ -269,6 +269,21 @@ float patternTVStatic(uint32_t ms)
   return clamp01(base + mid + blip);
 }
 
+/// HAL-9000: eerie pulsing eye with occasional spikes
+float patternHal9000(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float slow = 0.35f + 0.22f * sinf(t * 0.22f * TWO_PI);
+  float pulse = 0.25f * sinf(t * 1.3f * TWO_PI + 0.6f) * sinf(t * 0.45f * TWO_PI + 0.9f);
+  float spike = 0.0f;
+  if (hash11(ms / 900u) > 0.88f)
+  {
+    float x = (ms % 900u) / 900.0f;
+    spike = 0.35f * expf(-x * 8.0f);
+  }
+  return clamp01(slow + pulse + spike);
+}
+
 /// Subtle sparkle via stacked sine components
 float patternSparkle(uint32_t ms)
 {
@@ -736,6 +751,7 @@ const Pattern PATTERNS[] = {
     {"Polizei DE", patternPoliceDE, 8000},
     {"Camera", patternCameraFlash, 8000},
     {"TV Static", patternTVStatic, 8000},
+    {"HAL-9000", patternHal9000, 10000},
     {"Funkeln", patternSparkle, 12000},
     {"Kerze Soft", patternCandleSoft, 16000},
     {"Kerze", patternCandle, 16000},
