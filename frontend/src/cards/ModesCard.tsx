@@ -67,7 +67,7 @@ export function ModesCard() {
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Button onClick={() => sendCmd('prev')}>
-            <ArrowLeftCircle className="mr-1 h-4 w-4" /> Prev
+            <ArrowLeftCircle className="mr-1 h-4 w-4" /> <Trans k="btn.prev">Prev</Trans>
           </Button>
           <select className="input" value={pattern} onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}>
             {patternOptions.map((p) => (
@@ -77,7 +77,7 @@ export function ModesCard() {
             ))}
           </select>
           <Button onClick={() => sendCmd('next')}>
-            Next <ArrowRightCircle className="ml-1 h-4 w-4" />
+            <Trans k="btn.next">Next</Trans> <ArrowRightCircle className="ml-1 h-4 w-4" />
           </Button>
         </div>
         <div className="flex flex-wrap gap-3">

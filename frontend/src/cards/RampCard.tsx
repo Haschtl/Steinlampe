@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConnection } from '@/context/connection';
+import { Trans } from '@/i18n';
 
 const RampGraph = ({ duration, reverse }: { duration?: number; reverse?: boolean }) => {
   const dur = Math.max(50, Math.min(5000, duration ?? 500));
@@ -63,15 +64,15 @@ export function RampCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ramps</CardTitle>
+        <CardTitle><Trans k="title.ramps">Ramps</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-3">
-            <CardTitle className="text-base text-text">Ramp On</CardTitle>
+            <CardTitle className="text-base text-text"><Trans k="label.rampOn">Ramp On</Trans></CardTitle>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Label className="m-0">Mode</Label>
+                <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
                 <select className="input" value={rampOnEase} onChange={(e) => handleRampEase('on', e.target.value)}>
                   <option value="linear">linear</option>
                   <option value="ease">ease</option>
@@ -81,7 +82,7 @@ export function RampCard() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="m-0">Duration</Label>
+                <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
                 <Input
                   type="number"
                   min={50}
@@ -97,10 +98,10 @@ export function RampCard() {
             </div>
           </Card>
           <Card className="p-3">
-            <CardTitle className="text-base text-text">Ramp Off</CardTitle>
+            <CardTitle className="text-base text-text"><Trans k="label.rampOff">Ramp Off</Trans></CardTitle>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Label className="m-0">Mode</Label>
+                <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
                 <select className="input" value={rampOffEase} onChange={(e) => handleRampEase('off', e.target.value)}>
                   <option value="linear">linear</option>
                   <option value="ease">ease</option>
@@ -110,7 +111,7 @@ export function RampCard() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <Label className="m-0">Duration</Label>
+                <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
                 <Input
                   type="number"
                   min={50}

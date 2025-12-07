@@ -38,6 +38,8 @@ export default function App() {
     liveLog,
     setLiveLog,
     connect,
+    connectBle,
+    connectSerial,
     disconnect,
     refreshStatus,
     sendCmd,
@@ -63,30 +65,25 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-3">
             <img src={iconHref} alt="Lamp Icon" className="h-10 w-10 rounded-lg border border-border bg-[#0b0f1a] p-1.5" />
             <div className="flex flex-1 flex-col">
-              <h1 className="text-xl font-semibold tracking-wide"><Trans k="title.app">Quarzlampe Control</Trans></h1>
+              <h1 className="text-xl font-semibold tracking-wide"><Trans k="title.app">Quarzlampe</Trans></h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="primary" onClick={connect} disabled={status.connecting}>
-                {status.connecting ? 'Connecting…' : (
-                  <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> {t('btn.connect', 'Connect BLE')}</span>
-                )}
-              </Button>
-              <Button disabled><Trans k="btn.connectSerial">Connect Serial</Trans></Button>
-              {status.connected && (
+              {status.connected ? (
                 <Button onClick={disconnect}>
                   <LogOut className="mr-1 h-4 w-4" /> {t('btn.disconnect', 'Disconnect')}
                 </Button>
+              ) : (
+                <>
+                  <Button variant="primary" onClick={connectBle} disabled={status.connecting}>
+                    {status.connecting ? 'Connecting…' : (
+                      <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> {t('btn.connect', 'Connect BLE')}</span>
+                    )}
+                  </Button>
+                  <Button onClick={connectSerial} disabled={status.connecting}>
+                    <Zap className="mr-1 h-4 w-4" /> <Trans k="btn.connectSerial">Connect Serial</Trans>
+                  </Button>
+                </>
               )}
-              <Button
-                size="sm"
-                onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
-                aria-label={lang === 'en' ? 'Switch to German' : 'Switch to English'}
-                title={lang === 'en' ? 'Switch to German' : 'Switch to English'}
-              >
-                <span className="text-lg" role="img" aria-hidden>
-                  {lang === 'en' ? '🇬🇧' : '🇩🇪'}
-                </span>
-              </Button>
             </div>
           </div>
 

@@ -136,7 +136,7 @@ export function LampCard({ profileSlot, setProfileSlot }: { profileSlot: string;
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Trans k="title.lamp">Lamp &amp; Ramps</Trans></CardTitle>
+        <CardTitle><Trans k="title.lamp">Lamp</Trans></CardTitle>
         <div className="flex items-center gap-2">
           <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
           <select className="input" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
