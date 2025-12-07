@@ -106,11 +106,6 @@
         <span class="status-chip">Touch: <span id="touchState">--</span></span>
         <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
-      <div class="row" style="gap:0.5rem; flex-wrap:wrap;">
-        <button data-cmd="sos" style="background:#2b0d0d; border-color:#a33; color:#ffdede;">SOS</button>
-        <button data-cmd="sos stop">SOS Stop</button>
-        <span class="status-chip" style="color:var(--muted);">SOS: 100% brightness + pattern</span>
-      </div>
       <div class="input-group" style="max-width: 100%;">
         <button data-cmd="prev" style="border-radius:6px 0 0 6px;">Prev</button>
         <select id="modeSelect" style="min-width:170px; border-radius:0; margin:0; height:100%; margin-top: 0.125rem; padding-top:0.5rem; padding-bottom:0.35rem;"></select>
@@ -205,8 +200,16 @@
         <button class="notifyPreset" data-seq="200 80 200 400" data-fade="30">Doorbell</button>
         <button class="notifyPreset" data-seq="500 300" data-fade="120">Long Fade Alert</button>
         <button class="notifyPreset" data-seq="60 60 60 200" data-fade="0">Double 60</button>
+        <button class="notifyPreset" data-cmd="sos">SOS</button>
+        <button class="notifyPreset" data-cmd="sos stop">SOS stop</button>
       </div>
       <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
+
+      <div class="row" style="gap:0.5rem; flex-wrap:wrap;">
+        <button data-cmd="sos" style="background:#2b0d0d; border-color:#a33; color:#ffdede;">SOS</button>
+        <button data-cmd="sos stop">SOS Stop</button>
+        <span class="status-chip" style="color:var(--muted);">SOS: 100% brightness + pattern</span>
+      </div>
     </div>
 
     <div class="card">
@@ -412,6 +415,24 @@
           <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
         </label>
         <span class="status-chip">Music: <span id="musicState">--</span></span>
+      </div>
+      <div class="row" style="align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <label class="pill" style="cursor:pointer; margin:0;">
+          <input type="checkbox" id="clapToggle" style="margin-right:0.35rem;" />Clap
+        </label>
+        <div class="slider-group" style="flex:1; min-width:200px; margin:0;">
+          <div class="slider-top">
+            <span>Clap Thr</span>
+            <input id="clapThrNum" class="slider-number" type="number" min="0.05" max="1.5" step="0.01" value="0.35" />
+          </div>
+          <div class="slider-row">
+            <input id="clapThr" type="range" min="0.05" max="1.5" step="0.01" value="0.35" />
+          </div>
+        </div>
+        <div class="input-group" style="max-width:160px;">
+          <input id="clapCool" type="number" min="200" max="5000" step="50" value="800" />
+          <button id="btnClapCool">Set</button>
+        </div>
       </div>
       <div class="slider-group">
         <div class="slider-top">
@@ -820,6 +841,23 @@
         if (mc && mc.style.display !== 'none' && chip && chip.closest('.status-chip')) {
           chip.closest('.status-chip').style.display = 'none';
         }
+      }
+      if (line.startsWith('[Clap]')) {
+        const ct = document.getElementById('clapToggle');
+        const thr = document.getElementById('clapThr');
+        const thrNum = document.getElementById('clapThrNum');
+        const cool = document.getElementById('clapCool');
+        if (ct) ct.checked = line.includes('ON');
+        const mThr = line.match(/thr=([0-9.]+)/);
+        if (mThr) {
+          const v = parseFloat(mThr[1]);
+          if (!Number.isNaN(v)) {
+            if (thr) thr.value = v.toFixed(2);
+            if (thrNum) thrNum.value = v.toFixed(2);
+          }
+        }
+        const mCool = line.match(/cool=([0-9]+)/);
+        if (mCool && cool) cool.value = mCool[1];
       }
       // Presence address hint
       if (line.startsWith('Presence=')) {
@@ -1369,6 +1407,10 @@
     }
     document.querySelectorAll('.notifyPreset').forEach(btn => {
       btn.onclick = () => {
+        if (btn.dataset.cmd) {
+          sendCmd(btn.dataset.cmd);
+          return;
+        }
         const seq = btn.dataset.seq || '';
         const fade = btn.dataset.fade || '';
         const seqEl = document.getElementById('notifySeq');
@@ -1461,6 +1503,28 @@
     if (btnLightCalib) btnLightCalib.onclick = () => sendCmd('light calib');
     const mt = document.getElementById('musicToggle');
     if (mt) mt.onchange = (e) => sendCmd(e.target.checked ? 'music on' : 'music off');
+    const ct = document.getElementById('clapToggle');
+    if (ct) ct.onchange = (e) => sendCmd(e.target.checked ? 'clap on' : 'clap off');
+    const clapThr = document.getElementById('clapThr');
+    const clapThrNum = document.getElementById('clapThrNum');
+    const syncClapThr = (v, send = false) => {
+      if (clapThr) clapThr.value = v;
+      if (clapThrNum) clapThrNum.value = v;
+      if (send) sendCmd('clap thr ' + v);
+    };
+    if (clapThr) {
+      clapThr.oninput = (e) => syncClapThr(e.target.value);
+      clapThr.onchange = (e) => syncClapThr(e.target.value, true);
+    }
+    if (clapThrNum) {
+      clapThrNum.oninput = (e) => syncClapThr(e.target.value);
+      clapThrNum.onchange = (e) => syncClapThr(e.target.value, true);
+    }
+    const btnClapCool = document.getElementById('btnClapCool');
+    if (btnClapCool) btnClapCool.onclick = () => {
+      const v = document.getElementById('clapCool').value || '800';
+      sendCmd('clap cool ' + v);
+    };
     const lmin = document.getElementById('lightClampMin');
     const lmax = document.getElementById('lightClampMax');
     const lminNum = document.getElementById('lightClampMinNum');

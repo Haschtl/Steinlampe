@@ -47,5 +47,8 @@ constexpr int MUSIC_PIN = 36;                   ///< default ADC pin for music m
 constexpr uint32_t MUSIC_SAMPLE_MS = 25;
 constexpr float MUSIC_ALPHA = 0.15f;
 constexpr float MUSIC_GAIN_DEFAULT = 1.0f;
+constexpr bool CLAP_DEFAULT_ENABLED = false;
+constexpr float CLAP_THRESHOLD_DEFAULT = 0.35f; ///< normalized 0..1
+constexpr uint32_t CLAP_COOLDOWN_MS_DEFAULT = 800;
 #endif
 } // namespace Settings

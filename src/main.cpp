@@ -79,6 +79,9 @@ static const char *PREF_KEY_CUSTOM = "cust";
 static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
 #if ENABLE_MUSIC_MODE
 static const char *PREF_KEY_MUSIC_EN = "music_en";
+static const char *PREF_KEY_CLAP_EN = "clap_en";
+static const char *PREF_KEY_CLAP_THR = "clap_thr";
+static const char *PREF_KEY_CLAP_COOL = "clap_cl";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
@@ -181,6 +184,11 @@ bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
+bool clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
+float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
+uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
+uint32_t clapLastMs = 0;
+bool clapAbove = false;
 #endif
 bool bleWasConnected = false;
 bool btWasConnected = false;
@@ -316,6 +324,12 @@ String buildProfileString()
   cfg += musicEnabled ? F("on") : F("off");
   cfg += F(" music_gain=");
   cfg += String(musicGain, 2);
+  cfg += F(" clap=");
+  cfg += clapEnabled ? F("on") : F("off");
+  cfg += F(" clap_thr=");
+  cfg += String(clapThreshold, 2);
+  cfg += F(" clap_cool=");
+  cfg += String(clapCooldownMs);
 #endif
   return cfg;
 }
@@ -582,6 +596,9 @@ void saveSettings()
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
   prefs.putFloat(PREF_KEY_MUSIC_GAIN, musicGain);
+  prefs.putBool(PREF_KEY_CLAP_EN, clapEnabled);
+  prefs.putFloat(PREF_KEY_CLAP_THR, clapThreshold);
+  prefs.putUInt(PREF_KEY_CLAP_COOL, clapCooldownMs);
 #endif
   prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
   prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
@@ -681,6 +698,12 @@ void loadSettings()
   musicGain = prefs.getFloat(PREF_KEY_MUSIC_GAIN, Settings::MUSIC_GAIN_DEFAULT);
   if (musicGain < 0.1f) musicGain = 0.1f;
   if (musicGain > 5.0f) musicGain = 5.0f;
+  clapEnabled = prefs.getBool(PREF_KEY_CLAP_EN, Settings::CLAP_DEFAULT_ENABLED);
+  clapThreshold = prefs.getFloat(PREF_KEY_CLAP_THR, Settings::CLAP_THRESHOLD_DEFAULT);
+  clapCooldownMs = prefs.getUInt(PREF_KEY_CLAP_COOL, Settings::CLAP_COOLDOWN_MS_DEFAULT);
+  if (clapThreshold < 0.05f) clapThreshold = 0.05f;
+  if (clapThreshold > 1.5f) clapThreshold = 1.5f;
+  if (clapCooldownMs < 200) clapCooldownMs = 200;
 #endif
   touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
   lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
@@ -1100,6 +1123,12 @@ void printStatus()
   sendFeedback(line2);
   payload += line2 + '\n';
 
+#if ENABLE_MUSIC_MODE
+  String clapLine = String(F("[Clap] ")) + (clapEnabled ? F("ON") : F("OFF")) + F(" thr=") + String(clapThreshold, 2) + F(" cool=") + String(clapCooldownMs);
+  sendFeedback(clapLine);
+  payload += clapLine + '\n';
+#endif
+
   String line3 = F("Ramp=");
   line3 += String(rampDurationMs);
   line3 += F("ms | IdleOff=");
@@ -1353,6 +1382,24 @@ void importConfig(const String &args)
       if (v >= 0.1f && v <= 5.0f)
         musicGain = v;
     }
+    else if (key == "clap")
+    {
+      bool v;
+      if (parseBool(val, v))
+        clapEnabled = v;
+    }
+    else if (key == "clap_thr")
+    {
+      float v = val.toFloat();
+      if (v >= 0.05f && v <= 1.5f)
+        clapThreshold = v;
+    }
+    else if (key == "clap_cool")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 200 && v <= 5000)
+        clapCooldownMs = v;
+    }
 #endif
     else if (key == "ramp_on_ease")
     {
@@ -1444,6 +1491,7 @@ void printHelp()
       "  pat fade amt <0.01-10> - Stärke der Glättung (größer = langsamer)",
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
+      "  clap on|off/thr <0..1>/cool <ms> - Klatschsteuerung (Audio)",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
       "  presence grace <ms> - Verzögerung vor Auto-Off",
@@ -2057,6 +2105,61 @@ void handleCommand(String line)
     return;
   }
 #endif
+  if (lower.startsWith("clap"))
+  {
+#if ENABLE_MUSIC_MODE
+    String arg = line.substring(4);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "on")
+    {
+      clapEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Clap] Enabled"));
+    }
+    else if (arg == "off")
+    {
+      clapEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Clap] Disabled"));
+    }
+    else if (arg.startsWith("thr"))
+    {
+      float v = arg.substring(3).toFloat();
+      if (v >= 0.05f && v <= 1.5f)
+      {
+        clapThreshold = v;
+        saveSettings();
+        sendFeedback(String(F("[Clap] thr=")) + String(v, 2));
+      }
+      else
+      {
+        sendFeedback(F("Usage: clap thr 0.05-1.5"));
+      }
+    }
+    else if (arg.startsWith("cool"))
+    {
+      uint32_t v = arg.substring(4).toInt();
+      if (v >= 200 && v <= 5000)
+      {
+        clapCooldownMs = v;
+        saveSettings();
+        sendFeedback(String(F("[Clap] cool=")) + String(v) + F("ms"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: clap cool 200-5000"));
+      }
+    }
+    else
+    {
+      sendFeedback(String(F("[Clap] ")) + (clapEnabled ? F("ON ") : F("OFF ")) + F("thr=") + String(clapThreshold, 2) + F(" cool=") + String(clapCooldownMs));
+    }
+#else
+    sendFeedback(F("[Clap] Audio sensor not built (ENABLE_MUSIC_MODE=0)"));
+#endif
+    return;
+  }
   if (lower.startsWith("wake"))
   {
     String rawArgs = line.substring(4);
@@ -2648,7 +2751,7 @@ void updateLightSensor()
 #if ENABLE_MUSIC_MODE
 void updateMusicSensor()
 {
-  if (!musicEnabled)
+  if (!musicEnabled && !clapEnabled)
     return;
   uint32_t now = millis();
   if (now - lastMusicSampleMs < Settings::MUSIC_SAMPLE_MS)
@@ -2660,6 +2763,23 @@ void updateMusicSensor()
   float val = (float)raw / 4095.0f;
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
+  if (clapEnabled)
+  {
+    if (musicFiltered >= clapThreshold)
+    {
+      if (!clapAbove && (now - clapLastMs) >= clapCooldownMs)
+      {
+        clapLastMs = now;
+        setLampEnabled(!lampEnabled, "clap");
+        sendFeedback(String(F("[Clap] Toggle -> ")) + (lampEnabled ? F("ON") : F("OFF")));
+      }
+      clapAbove = true;
+    }
+    else
+    {
+      clapAbove = false;
+    }
+  }
 }
 #endif
 

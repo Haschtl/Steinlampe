@@ -34,6 +34,7 @@ flowchart LR
 
 - Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Gewitter, Sonnenuntergang, Alert, SOS, Custom)
 - Wake fade via `wake [soft] [mode=N] [bri=XX] <seconds>` (soft: touch cancels; mode/bri optional)
+- Optional clap control via audio sensor (`clap on|off`, threshold/cooldown tunable)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
@@ -81,6 +82,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touchdim on/off`   | Enable/disable touch dimming                               |
+| `clap on/off` / `clap thr <0..1>` / `clap cool <ms>` | Audio clap toggle/threshold/cooldown (requires music build) |
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |
 | `calibrate`         | Re-measure touch baseline                                  |
