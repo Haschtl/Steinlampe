@@ -28,6 +28,8 @@ constexpr uint32_t PRESENCE_GRACE_MS_DEFAULT = 3000; ///< Wait before presence-o
 constexpr bool TOUCH_DIM_DEFAULT_ENABLED = true;
 constexpr uint32_t TOUCH_HOLD_MS_DEFAULT = 1000; ///< Default touch hold start (ms)
 constexpr float LIGHT_GAIN_DEFAULT = 1.0f;
+constexpr float LIGHT_CLAMP_MIN_DEFAULT = 0.2f;
+constexpr float LIGHT_CLAMP_MAX_DEFAULT = 1.0f;
 constexpr float BRI_MIN_DEFAULT = 0.05f;
 constexpr float BRI_MAX_DEFAULT = 0.95f;
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
@@ -44,5 +46,6 @@ constexpr bool MUSIC_DEFAULT_ENABLED = false;
 constexpr int MUSIC_PIN = 36;                   ///< default ADC pin for music mode
 constexpr uint32_t MUSIC_SAMPLE_MS = 25;
 constexpr float MUSIC_ALPHA = 0.15f;
+constexpr float MUSIC_GAIN_DEFAULT = 1.0f;
 #endif
 } // namespace Settings

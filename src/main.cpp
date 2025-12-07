@@ -94,6 +94,9 @@ static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
 static const char *PREF_KEY_RAMP_EASE_OFF = "ramp_e_off";
 static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
 static const char *PREF_KEY_RAMP_POW_OFF = "ramp_p_off";
+static const char *PREF_KEY_LCLAMP_MIN = "lcl_min";
+static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
+static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
 static const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
 static const uint8_t PROFILE_SLOTS = 3;
 
@@ -165,10 +168,13 @@ uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
 #endif
 float lightGain = Settings::LIGHT_GAIN_DEFAULT;
+float lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
 uint32_t lastMusicSampleMs = 0;
+float musicGain = Settings::MUSIC_GAIN_DEFAULT;
 #endif
 bool bleWasConnected = false;
 bool btWasConnected = false;
@@ -291,12 +297,18 @@ String buildProfileString()
 #if ENABLE_LIGHT_SENSOR
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
+  cfg += F(" light_min=");
+  cfg += String(lightClampMin, 2);
+  cfg += F(" light_max=");
+  cfg += String(lightClampMax, 2);
   cfg += F(" light=");
   cfg += lightSensorEnabled ? F("on") : F("off");
 #endif
 #if ENABLE_MUSIC_MODE
   cfg += F(" music=");
   cfg += musicEnabled ? F("on") : F("off");
+  cfg += F(" music_gain=");
+  cfg += String(musicGain, 2);
 #endif
   return cfg;
 }
@@ -495,6 +507,10 @@ void exportConfig()
   cfg += touchHoldStartMs;
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
+  cfg += F(" light_min=");
+  cfg += String(lightClampMin, 2);
+  cfg += F(" light_max=");
+  cfg += String(lightClampMax, 2);
   cfg += F(" bri_min=");
   cfg += String(briMinUser, 3);
   cfg += F(" bri_max=");
@@ -515,6 +531,10 @@ void exportConfig()
   cfg += String(rampEaseOffPower, 2);
   cfg += F(" quick=");
   cfg += quickMaskToCsv();
+#if ENABLE_MUSIC_MODE
+  cfg += F(" music_gain=");
+  cfg += String(musicGain, 2);
+#endif
   if (notifyActive)
     cfg += F(" notify=active");
   sendFeedback(cfg);
@@ -547,11 +567,14 @@ void saveSettings()
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   lightMinRaw = 4095;
   lightMaxRaw = 0;
+  prefs.putFloat(PREF_KEY_LCLAMP_MIN, lightClampMin);
+  prefs.putFloat(PREF_KEY_LCLAMP_MAX, lightClampMax);
 #endif
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
+  prefs.putFloat(PREF_KEY_MUSIC_GAIN, musicGain);
 #endif
   prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
   prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
@@ -648,9 +671,20 @@ void loadSettings()
   }
 #if ENABLE_MUSIC_MODE
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
+  musicGain = prefs.getFloat(PREF_KEY_MUSIC_GAIN, Settings::MUSIC_GAIN_DEFAULT);
+  if (musicGain < 0.1f) musicGain = 0.1f;
+  if (musicGain > 5.0f) musicGain = 5.0f;
 #endif
   touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
   lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
+  lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
+  lightClampMax = prefs.getFloat(PREF_KEY_LCLAMP_MAX, Settings::LIGHT_CLAMP_MAX_DEFAULT);
+  if (lightClampMin < 0.0f) lightClampMin = 0.0f;
+  if (lightClampMax > 1.5f) lightClampMax = 1.0f;
+  if (lightClampMin >= lightClampMax) {
+    lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+    lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+  }
   briMinUser = prefs.getFloat(PREF_KEY_BRI_MIN, Settings::BRI_MIN_DEFAULT);
   briMaxUser = prefs.getFloat(PREF_KEY_BRI_MAX, Settings::BRI_MAX_DEFAULT);
   presenceGraceMs = prefs.getUInt(PREF_KEY_PRES_GRACE, Settings::PRESENCE_GRACE_MS_DEFAULT);
@@ -1251,6 +1285,18 @@ void importConfig(const String &args)
       if (lightGain > 5.0f)
         lightGain = 5.0f;
     }
+    else if (key == "light_min")
+    {
+      float v = val.toFloat();
+      if (v >= 0.0f && v <= 1.0f)
+        lightClampMin = v;
+    }
+    else if (key == "light_max")
+    {
+      float v = val.toFloat();
+      if (v >= 0.0f && v <= 1.5f)
+        lightClampMax = v;
+    }
     else if (key == "bri_min")
     {
       briMinUser = clamp01(val.toFloat());
@@ -1265,6 +1311,12 @@ void importConfig(const String &args)
       if (v < 0)
         v = 0;
       presenceGraceMs = v;
+    }
+    else if (key == "music_gain")
+    {
+      float v = val.toFloat();
+      if (v >= 0.1f && v <= 5.0f)
+        musicGain = v;
     }
     else if (key == "ramp_on_ease")
     {
@@ -1304,6 +1356,21 @@ void importConfig(const String &args)
       }
     }
   }
+  if (lightClampMin < 0.0f)
+    lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+  if (lightClampMax > 1.5f)
+    lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+  if (lightClampMin >= lightClampMax)
+  {
+    lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+    lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+  }
+#if ENABLE_MUSIC_MODE
+  if (musicGain < 0.1f)
+    musicGain = Settings::MUSIC_GAIN_DEFAULT;
+  if (musicGain > 5.0f)
+    musicGain = 5.0f;
+#endif
   saveSettings();
   sendFeedback(F("[Config] Imported"));
   if (briMaxUser < briMinUser)
@@ -1888,6 +1955,28 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Light] gain=")) + String(g, 2));
     }
+    else if (arg.startsWith("clamp"))
+    {
+      int pos = arg.indexOf(' ');
+      String restClamp = pos >= 0 ? arg.substring(pos + 1) : "";
+      restClamp.trim();
+      float mn = restClamp.toFloat();
+      int pos2 = restClamp.indexOf(' ');
+      float mx = (pos2 >= 0) ? restClamp.substring(pos2 + 1).toFloat() : lightClampMax;
+      if (mn < 0.0f) mn = 0.0f;
+      if (mx > 1.5f) mx = 1.5f;
+      if (mn >= mx)
+      {
+        sendFeedback(F("[Light] clamp invalid (min>=max)"));
+      }
+      else
+      {
+        lightClampMin = mn;
+        lightClampMax = mx;
+        saveSettings();
+        sendFeedback(String(F("[Light] clamp ")) + String(mn, 2) + F("..") + String(mx, 2));
+      }
+    }
     else
     {
       sendFeedback(String(F("[Light] raw=")) + String((int)lightFiltered) + F(" en=") + (lightSensorEnabled ? F("1") : F("0")));
@@ -1914,6 +2003,15 @@ void handleCommand(String line)
       musicEnabled = false;
       saveSettings();
       sendFeedback(F("[Music] Disabled"));
+    }
+    else if (arg.startsWith("sens"))
+    {
+      float g = arg.substring(4).toFloat();
+      if (g < 0.1f) g = 0.1f;
+      if (g > 5.0f) g = 5.0f;
+      musicGain = g;
+      saveSettings();
+      sendFeedback(String(F("[Music] gain=")) + String(g, 2));
     }
     else
     {
@@ -2082,8 +2180,11 @@ void handleCommand(String line)
     lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
 #endif
     lightGain = Settings::LIGHT_GAIN_DEFAULT;
+    lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+    lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
 #if ENABLE_MUSIC_MODE
     musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
+    musicGain = Settings::MUSIC_GAIN_DEFAULT;
 #endif
     patternFadeEnabled = false;
     patternFadeStrength = 1.0f;
@@ -2401,7 +2502,12 @@ void updateLightSensor()
   float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
   norm = clamp01(norm);
   // Map ambient reading to a dimming factor; smooth via low-pass
-  float target = clamp01((0.2f + 0.8f * norm) * lightGain);
+  float target = (0.2f + 0.8f * norm) * lightGain;
+  if (target < lightClampMin)
+    target = lightClampMin;
+  if (target > lightClampMax)
+    target = lightClampMax;
+  target = clamp01(target);
   ambientScale = 0.85f * ambientScale + 0.15f * target;
 #endif
 }
@@ -2420,7 +2526,7 @@ void updateMusicSensor()
   static float env = 0.0f;
   float val = (float)raw / 4095.0f;
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
-  musicFiltered = clamp01(env);
+  musicFiltered = clamp01(env * musicGain);
 }
 #endif
 

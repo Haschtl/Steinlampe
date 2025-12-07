@@ -188,6 +188,7 @@
         <div class="input-group">
           <input id="notifySeq" type="text" placeholder="80 40 80 120" />
           <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
+          <input id="notifyRepeat" type="number" min="1" max="10" step="1" value="1" style="width:70px;" />
           <button id="btnNotify">Notify</button>
           <button id="btnNotifyStop">Stop</button>
         </div>
@@ -196,6 +197,9 @@
         <button class="notifyPreset" data-seq="80 40 80 120" data-fade="0">Short blink</button>
         <button class="notifyPreset" data-seq="200 100" data-fade="100">Soft alert</button>
         <button class="notifyPreset" data-seq="120 80 120 80 120 200" data-fade="40">Triple pulse</button>
+        <button class="notifyPreset" data-seq="200 80 200 400" data-fade="30">Doorbell</button>
+        <button class="notifyPreset" data-seq="500 300" data-fade="120">Long Fade Alert</button>
+        <button class="notifyPreset" data-seq="60 60 60 200" data-fade="0">Double 60</button>
       </div>
       <div class="row" style="gap:0.5rem; align-items:center;">
         <div class="input-group" style="max-width:220px;">
@@ -277,6 +281,10 @@
       <label>Profile blob (cfg import ...)</label>
       <textarea id="profileBlob" rows="3" style="width:100%;" placeholder="cfg import bri=..."></textarea>
       <p style="color:var(--muted); margin:0.35rem 0 0;">Export loads the slot, then captures cfg export; Import applies blob and saves to slot.</p>
+      <div class="row" style="gap:0.4rem; align-items:center;">
+        <button id="btnProfileQR">Show QR</button>
+        <img id="profileQRImg" alt="Profile QR" style="width:140px; height:140px; border:1px solid var(--border); border-radius:8px; display:none;" />
+      </div>
     </div>
     <div class="card">
       <h3 style="display:flex; align-items:center; gap:0.6rem; justify-content:space-between;">
@@ -338,15 +346,13 @@
     </div>
 
 
-    <div class="card"  id="lightCard">
+    <div class="card"  id="lightCard" style="display:none;">
       <h3>Light Sensor</h3>
-      
       <div class="row" style="align-items:center; gap:0.5rem;">
         <label class="pill" style="cursor:pointer; margin:0;">
           <input type="checkbox" id="lightToggle" style="margin-right:0.35rem;" />Light Auto
         </label>
         <span class="status-chip">Light: <span id="lightState">--</span></span>
-
         <button id="btnLightCalib">Calibrate</button>
       </div>
       <div class="slider-group">
@@ -358,15 +364,42 @@
           <input id="lightGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
         </div>
       </div>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Clamp Min</span>
+          <input id="lightClampMinNum" class="slider-number" type="number" min="0" max="1.2" step="0.01" value="0.20" />
+        </div>
+        <div class="slider-row">
+          <input id="lightClampMin" type="range" min="0" max="1.2" step="0.01" value="0.20" />
+        </div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Clamp Max</span>
+          <input id="lightClampMaxNum" class="slider-number" type="number" min="0" max="1.5" step="0.01" value="1.00" />
+        </div>
+        <div class="slider-row">
+          <input id="lightClampMax" type="range" min="0" max="1.5" step="0.01" value="1.00" />
+        </div>
+      </div>
     </div>
 
-    <div class="card"  id="musicCard">
+    <div class="card"  id="musicCard" style="display:none;">
       <h3>Music Mode</h3>
       <div class="row" style="align-items:center; gap:0.5rem;">
         <label class="pill" style="cursor:pointer; margin:0;">
           <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
         </label>
         <span class="status-chip">Music: <span id="musicState">--</span></span>
+      </div>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Sensitivity</span>
+          <input id="musicGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
+        <div class="slider-row">
+          <input id="musicGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+        </div>
       </div>
       <p style="color:var(--muted); margin:0.2rem 0 0;">Toggles audio-reactive pattern (if built).</p>
     </div>
@@ -376,6 +409,9 @@
   <div class="row" style="align-items:center; justify-content:space-between;">
     <h3 style="margin:0;">Log</h3>
     <div class="row" style="gap:0.4rem;">
+      <label class="pill" style="cursor:pointer; margin:0;">
+        <input type="checkbox" id="liveLogToggle" style="margin-right:0.35rem;" checked />Live log
+      </label>
       <button id="btnStatus">Status</button>
       <button id="btnCfgExport">cfg export</button>
     </div>
@@ -453,9 +489,11 @@
     let patternCount = PATTERN_LABELS.length;
 
     const logEl = document.getElementById('log');
+    let liveLogEnabled = true;
     let lastLogLine = '';
     let lastLogMs = 0;
     function log(msg) {
+      if (!liveLogEnabled) return;
       const now = Date.now();
       if (msg === lastLogLine && (now - lastLogMs) < 400) {
         return; // dedupe bursts
@@ -565,6 +603,7 @@
         }
         document.getElementById('status').textContent = 'Connected to ' + device.name;
         log('Connected to ' + device.name);
+        sendCmd('status');
         setTimeout(() => sendCmd('status'), 300);
       } catch (e) {
         log('Connect error: ' + e);
@@ -705,13 +744,21 @@
           }
         }
         const lt = document.getElementById('lightToggle');
-        if (lt) lt.checked = !line.includes('N/A') && (line.includes('en=1') || line.includes('Enabled') || line.includes('ON'));
-        const lc = document.getElementById('lightCard');
-        if (lc) lc.style.display = line.includes('N/A') ? 'none' : 'block';
-        // Hide duplicated status chip if card is visible
-        if (lc && lc.style.display !== 'none' && chip && chip.closest('.status-chip')) {
-          chip.closest('.status-chip').style.display = 'none';
-        }
+    if (lt) lt.checked = !line.includes('N/A') && (line.includes('en=1') || line.includes('Enabled') || line.includes('ON'));
+    const lc = document.getElementById('lightCard');
+    if (lc) lc.style.display = line.includes('N/A') ? 'none' : 'block';
+    // Hide duplicated status chip if card is visible
+    if (lc && lc.style.display !== 'none' && chip && chip.closest('.status-chip')) {
+      chip.closest('.status-chip').style.display = 'none';
+    }
+        const lmin = document.getElementById('lightClampMin');
+        const lmax = document.getElementById('lightClampMax');
+        const lminNum = document.getElementById('lightClampMinNum');
+        const lmaxNum = document.getElementById('lightClampMaxNum');
+        if (lmin && lmin.value === '') lmin.value = '0.20';
+        if (lmax && lmax.value === '') lmax.value = '1.00';
+        if (lminNum && lminNum.value === '') lminNum.value = '0.20';
+        if (lmaxNum && lmaxNum.value === '') lmaxNum.value = '1.00';
       }
       if (line.startsWith('[Music]')) {
         const chip = document.getElementById('musicState');
@@ -1074,6 +1121,8 @@
     }, 10000);
     document.getElementById('btnStatus').onclick = () => sendCmd('status');
     document.getElementById('btnCfgExport').onclick = () => sendCmd('cfg export');
+    const liveLogToggle = document.getElementById('liveLogToggle');
+    if (liveLogToggle) liveLogToggle.onchange = (e) => { liveLogEnabled = e.target.checked; };
     document.getElementById('modeSelect').onchange = (e) => {
       const val = e.target.value;
       if (val) {
@@ -1241,8 +1290,19 @@
       btnNotify.onclick = () => {
         const seq = document.getElementById('notifySeq').value.trim();
         const fade = document.getElementById('notifyFade').value.trim();
+        const repEl = document.getElementById('notifyRepeat');
+        let rep = repEl ? parseInt(repEl.value || '1', 10) : 1;
+        if (Number.isNaN(rep) || rep < 1) rep = 1;
+        if (rep > 10) rep = 10;
         let cmd = 'notify';
-        if (seq) cmd += ' ' + seq;
+        if (seq) {
+          let built = seq;
+          if (rep > 1) {
+            const parts = seq.split(/\s+/).filter(Boolean);
+            built = Array(rep).fill(parts.join(' ')).join(' ');
+          }
+          cmd += ' ' + built;
+        }
         if (fade && parseInt(fade, 10) > 0) cmd += ' fade=' + fade;
         sendCmd(cmd);
       };
@@ -1332,6 +1392,47 @@
     if (btnLightCalib) btnLightCalib.onclick = () => sendCmd('light calib');
     const mt = document.getElementById('musicToggle');
     if (mt) mt.onchange = (e) => sendCmd(e.target.checked ? 'music on' : 'music off');
+    const lmin = document.getElementById('lightClampMin');
+    const lmax = document.getElementById('lightClampMax');
+    const lminNum = document.getElementById('lightClampMinNum');
+    const lmaxNum = document.getElementById('lightClampMaxNum');
+    const syncClamp = (fromMin, send = false) => {
+      let mn = parseFloat(lmin ? lmin.value : (lminNum ? lminNum.value : '0.2')) || 0;
+      let mx = parseFloat(lmax ? lmax.value : (lmaxNum ? lmaxNum.value : '1.0')) || 1;
+      if (mn < 0) mn = 0;
+      if (mx > 1.5) mx = 1.5;
+      if (mn >= mx) mn = Math.max(0, Math.min(mx - 0.01, mn));
+      if (lmin) lmin.value = mn;
+      if (lmax) lmax.value = mx;
+      if (lminNum) lminNum.value = mn;
+      if (lmaxNum) lmaxNum.value = mx;
+      if (send) sendCmd(`light clamp ${mn.toFixed(2)} ${mx.toFixed(2)}`);
+    };
+    if (lmin) { lmin.oninput = () => syncClamp(true); lmin.onchange = () => syncClamp(true, true); }
+    if (lmax) { lmax.oninput = () => syncClamp(false); lmax.onchange = () => syncClamp(false, true); }
+    if (lminNum) { lminNum.oninput = () => syncClamp(true); lminNum.onchange = () => syncClamp(true, true); }
+    if (lmaxNum) { lmaxNum.oninput = () => syncClamp(false); lmaxNum.onchange = () => syncClamp(false, true); }
+    const mg = document.getElementById('musicGain');
+    const mgNum = document.getElementById('musicGainNum');
+    const syncMusicGain = (v, send = false) => {
+      if (mg) mg.value = v;
+      if (mgNum) mgNum.value = v;
+      if (send) sendCmd('music sens ' + v);
+    };
+    if (mg) { mg.oninput = (e) => syncMusicGain(e.target.value); mg.onchange = (e) => syncMusicGain(e.target.value, true); }
+    if (mgNum) { mgNum.oninput = (e) => syncMusicGain(e.target.value); mgNum.onchange = (e) => syncMusicGain(e.target.value, true); }
+    const btnProfileQR = document.getElementById('btnProfileQR');
+    if (btnProfileQR) {
+      btnProfileQR.onclick = () => {
+        const blob = (document.getElementById('profileBlob') || {}).value || '';
+        const img = document.getElementById('profileQRImg');
+        if (!img) return;
+        if (!blob.trim()) { img.style.display = 'none'; return; }
+        const data = encodeURIComponent(blob.trim());
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${data}`;
+        img.style.display = 'block';
+      };
+    }
     const btnExport = document.getElementById('btnExport');
     if (btnExport) btnExport.onclick = () => sendCmd('cfg export');
     document.getElementById('btnImport').onclick = () => {
