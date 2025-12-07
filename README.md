@@ -36,6 +36,7 @@ flowchart LR
 - Wake fade via `wake [soft] [mode=N] [bri=XX] <seconds>` (soft: touch cancels; mode/bri optional)
 - Optional clap control via audio sensor (`clap on|off`, threshold/cooldown tunable)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
+- Optional BLE-MIDI RX (receive-only) behind `ENABLE_BLE_MIDI=1` (standard BLE-MIDI service UUID; logs NoteOn/Off/CC).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
 
@@ -50,6 +51,7 @@ flowchart LR
   - Status Characteristic UUID: `c5ad78b6-9b77-4a96-9a42-8e6e9a40c123` (Read/Notify) — read/subscribe for snapshots (same content as `status`).
 - Classic BT (SPP): Device name from `Settings::BT_SERIAL_NAME` (default `Quarzlampe-SPP`); identical Text-Kommandos wie bei USB/BLE.
 - Presence: BLE- oder SPP-Connect registriert die Peer-MAC und kann Auto-Off/On steuern (`presence`-Kommandos).
+- Optional BLE-MIDI (RX-only, if built with `ENABLE_BLE_MIDI`): Service `03B80E5A-EDE8-4B33-A751-6CE34EC4C700`, Characteristic `7772E5DB-3868-4112-A1A9-F2669D106BF3` (Write/WriteNR). NoteOn/Off und einige CCs werden als `[MIDI] ...` geloggt (Serial/BLE notify) und können für Automationen genutzt werden.
 
 ## How-to program an app for this device
 

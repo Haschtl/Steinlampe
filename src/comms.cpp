@@ -2,6 +2,9 @@
 
 #include "lamp_config.h"
 #include "settings.h"
+#if ENABLE_BLE && ENABLE_BLE_MIDI
+#include "midi_ble.h"
+#endif
 
 #if ENABLE_BT_SERIAL
 #include <BluetoothSerial.h>
@@ -223,6 +226,9 @@ void startBle()
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
+#if ENABLE_BLE_MIDI
+  setupBleMidi(bleServer, advertising);
+#endif
   BLEDevice::startAdvertising();
   Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
 }
