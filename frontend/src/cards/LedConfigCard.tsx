@@ -32,7 +32,7 @@ export function LedConfigCard() {
     <Card>
       <CardHeader>
         <CardTitle>
-          <Trans k="title.hardware">Hardware</Trans>
+          <Trans k="title.ledConfig">Led configuration</Trans>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">

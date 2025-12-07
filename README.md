@@ -40,6 +40,8 @@ flowchart LR
 - Optional BT-MIDI RX (classic SPP) behind `ENABLE_BT_MIDI=1` (parses NoteOn/Off/CC from BT serial and logs `[MIDI-BT] ...`).
   For Android automations you can use the [Tasker BLE Writer](https://github.com/Haschtl/Tasker-Ble-Writer) profile to send commands like `wake 180`.
 - Physical switch: on/off + tap-to-cycle; capacitive hold-to-dim
+- Optional brightness knob (`ENABLE_POTI`) that auto on/off and can be tuned at runtime (`poti ...`)
+- Optional momentary push button (`ENABLE_PUSH_BUTTON`) with single/double/hold actions and tunable timings (`push ...`)
 
 ### Configuration
 
@@ -60,7 +62,7 @@ flowchart LR
 - **Connect via BLE**: Discover the service UUID `d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b`. Write plain-text commands to the Command Characteristic (`4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7`). Subscribe/notify on both Command (for ACK/Logs) and Status (`c5ad78b6-9b77-4a96-9a42-8e6e9a40c123`) for snapshots.
 - **Or via SPP (Classic BT)**: Connect to the device name (default `Quarzlampe-SPP`) and send the same ASCII commands as over BLE/USB. Read lines for feedback.
 - **Core commands to implement**: `on/off/toggle`, `bri <0..100>`, `mode <n>`, `next/prev`, `wake <s>`/`sleep <min>`, `status`, plus optional `ramp`, `idleoff`, `presence` and `custom`/`music` if used.
-- **Status parsing**: The Status Characteristic gives a single-line snapshot; you can also request `status` via command and parse the notify. Touch/Light logs appear as separate notify messages.
+- **Status parsing**: The Status Characteristic gives a single-line snapshot; you can also request `status` via command and parse the notify. It emits a `STATUS|key=val...` line and extra `[Touch]/[Light]/[Music]` debug lines you can filter or use for telemetry.
 - **Optional sensors/features**: If built with `ENABLE_LIGHT_SENSOR`/`ENABLE_MUSIC_MODE`, expose toggles in your UI (`light on/off/calib`, `music on/off`). Presence can be managed in-app with `presence set me` after connecting.
 - **Config import/export**: Use `cfg export` to read all settings as a single `cfg import ...` line you can store/rest. Apply with `cfg import ...` to restore user prefs.
 
@@ -90,9 +92,9 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `idleoff <minutes>` | Auto-off after given minutes (0=disabled)                  |
 | `touch tune <on> <off>` | Adjust touch thresholds (on>off>0)                       |
 | `touchdim on/off`   | Enable/disable touch dimming                               |
+| `touch`             | Print raw touch debug info (baseline/raw/delta/thresholds) |
 | `pwm curve 0.5-4`  | Adjust PWM gamma/curve (linearization)                      |
 | `clap on/off` / `clap thr <0..1>` / `clap cool <ms>` | Audio clap toggle/threshold/cooldown (requires music build) |
-| `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |
 | `calibrate`         | Re-measure touch baseline                                  |
 | `notify d1 d2 ... [fade=ms]` | Blink notification sequence (ms, optional fade per edge) |
@@ -105,8 +107,10 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `custom step <ms>`  | Set custom pattern step duration                           |
 | `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
 | `light gain <f>` / `light clamp <min> <max>` | Adjust sensor gain and clamp (if built with ENABLE_LIGHT_SENSOR) |
+| `poti on/off` / `poti alpha <0..1>` / `poti delta <0..0.5>` / `poti off <0..0.5>` / `poti sample <ms>` | Configure optional brightness knob (ENABLE_POTI) |
 | `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
 | `music sens <f>`    | Adjust music sensitivity (if built with ENABLE_MUSIC_MODE) |
+| `push on/off` / `push debounce <ms>` / `push double <ms>` / `push hold <ms>` / `push step_ms <ms>` / `push step <0..0.5>` | Configure optional momentary push button (ENABLE_PUSH_BUTTON) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |
 | `cfg import key=val ...` | Import settings (ramp, idle, touch_on/off, bri, auto, presence) |
 | `factory`           | Reset all settings to defaults                             |

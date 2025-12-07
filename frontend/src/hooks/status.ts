@@ -15,6 +15,13 @@ export type DeviceStatus = {
   hasSwitch?: boolean;
   touchState?: string;
   hasTouch?: boolean;
+  touchBase?: number;
+  touchRaw?: number;
+  touchDelta?: number;
+  touchThrOn?: number;
+  touchThrOff?: number;
+  touchActive?: boolean;
+  lastTouchLine?: string;
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
@@ -99,6 +106,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lampState: kv.lamp ?? s.lampState,
         switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
         hasSwitch,
+        hasTouch: true,
         touchState: kv.touch_dim ? (kv.touch_dim === '1' ? 'TOUCHDIM' : s.touchState) : s.touchState,
         rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
         rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
@@ -138,6 +146,32 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         pushHoldMs: asInt('push_hold') ?? s.pushHoldMs,
         pushStepMs: asInt('push_step_ms') ?? s.pushStepMs,
         pushStep: asNum('push_step') ?? s.pushStep,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('SENSORS|')) {
+    const parts = line.split('|').slice(1);
+    const kv: Record<string, string> = {};
+    parts.forEach((p) => {
+      const eq = p.indexOf('=');
+      if (eq > 0) kv[p.slice(0, eq)] = p.slice(eq + 1);
+    });
+    const num = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    setStatus((s) => {
+      const lightRaw = kv.light_raw;
+      const hasLight = lightRaw ? lightRaw.toUpperCase() !== 'N/A' : s.hasLight;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        touchBase: num('touch_base') ?? s.touchBase,
+        touchRaw: num('touch_raw') ?? s.touchRaw,
+        touchDelta: num('touch_delta') ?? s.touchDelta,
+        touchActive: kv.touch_active ? kv.touch_active === '1' : s.touchActive,
+        hasLight,
       };
     });
     return true;
@@ -195,7 +229,23 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
   if (line.startsWith('[Touch]')) {
     handled = true;
     const active = line.includes('active=1');
-    setStatus((s) => ({ ...s, touchState: active ? 'TOUCH' : 'idle', lastStatusAt: Date.now() }));
+    const base = line.match(/base=([0-9]+)/);
+    const raw = line.match(/raw=([0-9]+)/);
+    const delta = line.match(/delta=([-0-9]+)/);
+    const thrOn = line.match(/thrOn=([0-9]+)/);
+    const thrOff = line.match(/thrOff=([0-9]+)/);
+    setStatus((s) => ({
+      ...s,
+      touchState: active ? 'TOUCH' : 'idle',
+      touchBase: base ? parseInt(base[1], 10) : s.touchBase,
+      touchRaw: raw ? parseInt(raw[1], 10) : s.touchRaw,
+      touchDelta: delta ? parseInt(delta[1], 10) : s.touchDelta,
+      touchThrOn: thrOn ? parseInt(thrOn[1], 10) : s.touchThrOn,
+      touchThrOff: thrOff ? parseInt(thrOff[1], 10) : s.touchThrOff,
+      touchActive: active,
+      lastTouchLine: line,
+      lastStatusAt: Date.now(),
+    }));
   }
   if (line.startsWith('Ramp=')) {
     handled = true;

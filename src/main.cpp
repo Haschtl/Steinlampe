@@ -1953,6 +1953,7 @@ void syncLampToSwitch()
 #endif
 }
 
+#if ENABLE_MUSIC_MODE
 void executeClapCommand(uint8_t count)
 {
   String cmd = (count == 1) ? clapCmd1 : (count == 2) ? clapCmd2 : clapCmd3;
@@ -1964,6 +1965,12 @@ void executeClapCommand(uint8_t count)
     return; // avoid recursion
   handleCommand(cmd);
 }
+#else
+void executeClapCommand(uint8_t)
+{
+  // Music/clap disabled at build; ignore
+}
+#endif
 
 /**
  * @brief Parse and execute a command string from any input channel.

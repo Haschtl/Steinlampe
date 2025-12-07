@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -7,11 +7,18 @@ import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
 export function TouchCard() {
-  const { sendCmd } = useConnection();
+  const { status, sendCmd } = useConnection();
   const [showCalib, setShowCalib] = useState(false);
-  const [touchOn, setTouchOn] = useState(0.35);
-  const [touchOff, setTouchOff] = useState(0.25);
+  const [touchOn, setTouchOn] = useState(10);
+  const [touchOff, setTouchOff] = useState(6);
   const [touchHold, setTouchHold] = useState(800);
+  const [lastLine, setLastLine] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof status.touchThrOn === 'number') setTouchOn(status.touchThrOn);
+    if (typeof status.touchThrOff === 'number') setTouchOff(status.touchThrOff);
+    if (typeof status.lastTouchLine === 'string') setLastLine(status.lastTouchLine);
+  }, [status.lastTouchLine, status.touchThrOff, status.touchThrOn]);
 
   return (
     <Card>
@@ -65,33 +72,39 @@ export function TouchCard() {
             </DialogContent>
           </Dialog>
         </div>
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-panel/60 px-3 py-2 text-xs text-muted">
+          <span className="truncate">
+            {lastLine ? lastLine : <Trans k="touch.noDebug">No debug data yet.</Trans>}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => sendCmd('touch')}>
+            <Trans k="btn.debug">Debug</Trans>
+          </Button>
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <p className="text-sm text-muted"><Trans k="touch.onThr">Touch On threshold</Trans></p>
             <Input
               type="number"
-              min={0.05}
-              max={1.5}
-              step={0.01}
+              min={1}
+              max={200}
+              step={1}
               value={touchOn}
               onChange={(e) => setTouchOn(Number(e.target.value))}
               onBlur={(e) => sendCmd(`touch tune ${e.target.value} ${touchOff}`)}
               className="w-24"
-              suffix="x"
             />
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted"><Trans k="touch.offThr">Touch Off threshold</Trans></p>
             <Input
               type="number"
-              min={0.05}
-              max={1.5}
-              step={0.01}
+              min={1}
+              max={200}
+              step={1}
               value={touchOff}
               onChange={(e) => setTouchOff(Number(e.target.value))}
               onBlur={(e) => sendCmd(`touch tune ${touchOn} ${e.target.value}`)}
               className="w-24"
-              suffix="x"
             />
           </div>
         </div>
