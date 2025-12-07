@@ -58,6 +58,9 @@ static float smoothNoise(uint32_t ms, uint32_t stepMs, uint32_t salt)
   return fa + (fb - fa) * t;
 }
 
+// Forward declaration for cross-references
+float patternThunder(uint32_t ms);
+
 /// Soft base brightness – calm mode
 float patternConstant(uint32_t)
 {

@@ -334,6 +334,29 @@ String buildProfileString()
   return cfg;
 }
 
+/**
+ * @brief Default profiles for slots 1..3 (used if slot is empty).
+ */
+String defaultProfileString(uint8_t slot)
+{
+  String cfg;
+  switch (slot)
+  {
+  case 1: // A: full brightness, constant
+    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    break;
+  case 2: // B: half brightness, constant
+    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    break;
+  case 3: // C: half brightness, pulsierend
+    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    break;
+  default:
+    break;
+  }
+  return cfg;
+}
+
 size_t quickModeCount()
 {
   return PATTERN_COUNT + PROFILE_SLOTS;
@@ -365,6 +388,12 @@ bool loadProfileSlot(uint8_t slot, bool announce = true)
     return false;
   String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
   String cfg = prefs.getString(key.c_str(), "");
+  if (cfg.length() == 0)
+  {
+    cfg = defaultProfileString(slot);
+    if (cfg.length() > 0)
+      prefs.putString(key.c_str(), cfg);
+  }
   if (cfg.length() == 0)
   {
     if (announce)
