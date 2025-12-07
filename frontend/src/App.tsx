@@ -77,10 +77,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
+  const [showConnectOverlay, setShowConnectOverlay] = useState(true);
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
   const logLines = log.slice(-150);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const lastStatusAge = status.lastStatusAt ? Date.now() - status.lastStatusAt : null;
+  const isStale = status.connected && lastStatusAge !== null && lastStatusAge > 25000; // 25s without update
 
   useEffect(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -96,6 +99,10 @@ export default function App() {
     }, 10000);
     return () => clearInterval(id);
   }, [status.connected, refreshStatus]);
+
+  useEffect(() => {
+    if (status.connected) setShowConnectOverlay(false);
+  }, [status.connected]);
 
   useEffect(() => {
     if (liveLog && logRef.current) {
@@ -114,6 +121,58 @@ export default function App() {
   return (
     <>
       <div className="min-h-screen bg-bg text-text">
+        <AnimatePresence>
+          {showConnectOverlay && !status.connected && (
+            <motion.div
+              key="connect-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="w-full max-w-2xl rounded-3xl border border-border/80 bg-panel/90 p-8 shadow-2xl"
+              >
+                <h2 className="mb-4 text-center text-2xl font-semibold text-text drop-shadow">
+                  <Trans k="title.app">Quarzlampe</Trans>
+                </h2>
+                <p className="mb-6 text-center text-muted">Verbinden oder überspringen, um die App anzuschauen.</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Button
+                    size="md"
+                    variant="primary"
+                    className="h-20 text-lg"
+                    onClick={() => {
+                      setShowConnectOverlay(false);
+                      connectBle();
+                    }}
+                  >
+                    <Bluetooth className="mr-2 h-6 w-6" /> BLE verbinden
+                  </Button>
+                  <Button
+                    size="md"
+                    className="h-20 text-lg"
+                    onClick={() => {
+                      setShowConnectOverlay(false);
+                      connectSerial();
+                    }}
+                  >
+                    <Zap className="mr-2 h-6 w-6" /> BT/Serial verbinden
+                  </Button>
+                </div>
+                <div className="mt-6 text-center">
+                  <Button variant="ghost" onClick={() => setShowConnectOverlay(false)}>
+                    Skip
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <header className="sticky top-0 z-10 bg-header px-4 py-3 shadow-lg shadow-black/20">
           <div className="mx-auto flex max-w-6xl flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -230,7 +289,7 @@ export default function App() {
           </AnimatePresence>
           <motion.div
             key={`${activeTab}-glow`}
-            className="pointer-events-none absolute -inset-10 -z-10"
+            className="pointer-events-none absolute -inset-10 -z-10 hidden md:block"
             initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
             animate={{ opacity: 0.75, scale: 1, rotate: 0, transition: { duration: 0.8, ease: 'easeOut' } }}
             exit={{ opacity: 0, scale: 0.95, rotate: 1, transition: { duration: 0.35 } }}
@@ -244,7 +303,7 @@ export default function App() {
           />
           <motion.div
             key={`${activeTab}-facet`}
-            className="pointer-events-none absolute -inset-12 -z-20"
+            className="pointer-events-none absolute -inset-12 -z-20 hidden md:block"
             initial={{ opacity: 0, scale: 1 }}
             animate={{ opacity: 0.35, scale: 1, transition: { duration: 1.1, ease: 'easeOut' } }}
             exit={{ opacity: 0, transition: { duration: 0.4 } }}
@@ -279,13 +338,21 @@ export default function App() {
               <div className="flex items-center gap-2 text-xs text-muted">
                 <span>
                   {status.connected
-                    ? t("status.connected", "Connected")
+                    ? isStale
+                      ? `${t("status.connected", "Connected")} (no status)`
+                      : t("status.connected", "Connected")
                     : t("status.disconnected", "Not connected")}
                 </span>
                 <span>•</span>
                 <span
                   className={`inline-flex h-2.5 w-2.5 items-center justify-center rounded-full ${
-                    status.connected ? 'bg-green-500/30' : status.connecting ? 'bg-yellow-400/40' : 'bg-red-500/30'
+                    status.connected
+                      ? isStale
+                        ? 'bg-amber-400/40'
+                        : 'bg-green-500/30'
+                      : status.connecting
+                        ? 'bg-yellow-400/40'
+                        : 'bg-red-500/30'
                   }`}
                   title={
                     status.lastStatusAt
@@ -295,7 +362,13 @@ export default function App() {
                 >
                   <span
                     className={`inline-block h-1.5 w-1.5 rounded-full ${
-                      status.connected ? 'bg-green-400' : status.connecting ? 'bg-yellow-300' : 'bg-red-500'
+                      status.connected
+                        ? isStale
+                          ? 'bg-amber-300'
+                          : 'bg-green-400'
+                        : status.connecting
+                          ? 'bg-yellow-300'
+                          : 'bg-red-500'
                     } animate-pulse`}
                   />
                 </span>

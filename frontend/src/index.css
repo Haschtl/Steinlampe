@@ -11,6 +11,13 @@
 
 body {
   @apply bg-bg text-text font-sans antialiased;
+  min-height: 100svh;
+  overflow-x: hidden;
+}
+
+html, body, #root {
+  min-height: 100svh;
+  width: 100%;
 }
 
 .card {
