@@ -115,6 +115,54 @@ float patternPulse(uint32_t ms)
   return 0.25f + 0.7f * env;
 }
 
+/// Heartbeat: double-beat with short rest (strong + softer)
+float patternHeartbeat(uint32_t ms)
+{
+  const uint32_t period = 1900;
+  uint32_t t = ms % period;
+  float level = 0.16f + (smoothNoise(ms, 850, 0x2A) - 0.5f) * 0.02f;
+  auto beat = [](uint32_t dt, uint32_t width, float peak) {
+    if (dt >= width) return 0.0f;
+    float x = dt / (float)width;
+    float rise = x < 0.18f ? (x / 0.18f) : 1.0f;
+    float decay = expf(-(x > 0.18f ? (x - 0.18f) : 0.0f) * 7.0f);
+    float snap = (x < 0.12f) ? (x / 0.12f) : 1.0f;
+    return peak * rise * decay * snap;
+  };
+  // first beat at t=0, second at 280ms
+  level += beat(t, 240, 1.0f);
+  if (t > 280) level += beat(t - 280, 210, 0.78f);
+  // small dip after second beat
+  if (t > 520 && t < 700)
+    level -= 0.05f * ((t - 520) / 180.0f);
+  // tiny breathing between cycles
+  level += (smoothNoise(ms, 420, 0x3B) - 0.5f) * 0.04f;
+  return clamp01(level);
+}
+
+/// Asym breathing v2: slow inhale, quick exhale with micro drift
+float patternBreathing2(uint32_t ms)
+{
+  const float base = 0.18f;
+  const float peak = 0.92f;
+  const uint32_t period = 7200;
+  float phase = (ms % period) / (float)period;
+  float t;
+  if (phase < 0.62f)
+  {
+    t = phase / 0.62f;
+    t = t * t * (3.0f - 2.0f * t);
+  }
+  else
+  {
+    t = 1.0f - ((phase - 0.62f) / 0.38f);
+    t = t * t * t;
+  }
+  float drift = (smoothNoise(ms, 1800, 0x19) - 0.5f) * 0.06f;
+  float shimmer = (smoothNoise(ms, 120, 0x29) - 0.5f) * 0.03f;
+  return clamp01(base + (peak - base) * t + drift + shimmer);
+}
+
 /// Angular triangle-like wave: clean zig-zag up/down
 float patternZigZag(uint32_t ms)
 {
@@ -128,14 +176,34 @@ float patternZigZag(uint32_t ms)
 /// Steep ramp with hard drop: sawtooth shape
 float patternSawtooth(uint32_t ms)
 {
-  const uint32_t period = 4400;
+  const uint32_t period = 4200;
   float phase = (ms % period) / (float)period; // 0..1
-  float ramp;
-  if (phase < 0.92f)
-    ramp = phase / 0.92f; // long rise
-  else
-    ramp = 1.0f - ((phase - 0.92f) / 0.08f); // quick fall
-  return clamp01(0.12f + 0.88f * ramp);
+  // Pure ramp up, instant drop to base
+  return clamp01(0.10f + 0.90f * phase);
+}
+
+/// Comet: rising tail with short falloff and jitter
+float patternComet(uint32_t ms)
+{
+  const uint32_t period = 5200;
+  float phase = (ms % period) / (float)period;
+  float rise = phase < 0.82f ? (phase / 0.82f) : 1.0f;
+  float fall = (phase > 0.82f) ? expf(-(phase - 0.82f) * 22.0f) : 1.0f;
+  float tail = rise * fall;
+  float shimmer = (smoothNoise(ms, 90, 0x5A) - 0.5f) * 0.08f;
+  float trail = (smoothNoise(ms, 220, 0x6A) - 0.5f) * 0.05f;
+  return clamp01(0.14f + 0.86f * tail + shimmer + trail);
+}
+
+/// Aurora: layered slow waves with soft randomness
+float patternAurora(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float slow = 0.35f + 0.20f * sinf(t * 0.18f * TWO_PI + 0.7f);
+  float mid = 0.18f * sinf(t * 0.42f * TWO_PI + sinf(t * 0.07f * TWO_PI));
+  float noise = (smoothNoise(ms, 900, 0x4C) - 0.5f) * 0.10f;
+  float shimmer = (smoothNoise(ms, 140, 0x5C) - 0.5f) * 0.05f;
+  return clamp01(slow + mid + noise + shimmer);
 }
 
 /// Subtle sparkle via stacked sine components
@@ -150,13 +218,19 @@ float patternSparkle(uint32_t ms)
 /// Candle flicker: slow wobble plus high-frequency flutter
 float patternCandle(uint32_t ms)
 {
-  // Layered smooth noise for non-repeating flicker
-  float base = 0.35f;
-  float slow = (smoothNoise(ms, 900, 0x11) - 0.5f) * 0.25f;   // very slow drift
-  float mid = (smoothNoise(ms, 180, 0x22) - 0.5f) * 0.30f;   // main flicker
-  float fast = (smoothNoise(ms, 65, 0x33) - 0.5f) * 0.18f;   // fast shimmer
-  float spark = (smoothNoise(ms, 35, 0x44) - 0.5f) * 0.10f;  // micro jitter
-  return clamp01(base + slow + mid + fast + spark);
+  // Layered smooth noise for non-repeating flicker, with rare soft pops
+  float base = 0.36f;
+  float slow = (smoothNoise(ms, 1000, 0x11) - 0.5f) * 0.22f; // very slow drift
+  float mid = (smoothNoise(ms, 200, 0x22) - 0.5f) * 0.26f;   // main flicker
+  float fast = (smoothNoise(ms, 70, 0x33) - 0.5f) * 0.14f;   // fast shimmer
+  float spark = (smoothNoise(ms, 40, 0x44) - 0.5f) * 0.07f;  // micro jitter
+  float pop = 0.0f;
+  if (hash11(ms / 220u) > 0.92f)
+  {
+    float x = (ms % 220u) / 220.0f;
+    pop = 0.12f * expf(-x * 10.0f);
+  }
+  return clamp01(base + slow + mid + fast + spark + pop);
 }
 
 /// Softer candle: gentle wobble, subdued jitter
@@ -173,11 +247,17 @@ float patternCandleSoft(uint32_t ms)
 float patternCampfire(uint32_t ms)
 {
   float base = 0.45f;
-  float embers = (smoothNoise(ms, 1400, 0x88) - 0.5f) * 0.25f; // slow glowing bed
-  float tongues = (smoothNoise(ms, 320, 0x99) - 0.5f) * 0.30f; // moving flames
-  float sparks = (smoothNoise(ms, 120, 0xAA) - 0.5f) * 0.18f;  // flicker
-  float crackle = (smoothNoise(ms, 45, 0xBB) - 0.5f) * 0.10f;  // fast crackle
-  return clamp01(base + embers + tongues + sparks + crackle);
+  float embers = (smoothNoise(ms, 1500, 0x88) - 0.5f) * 0.23f; // slow glowing bed
+  float tongues = (smoothNoise(ms, 340, 0x99) - 0.5f) * 0.28f; // moving flames
+  float sparks = (smoothNoise(ms, 130, 0xAA) - 0.5f) * 0.16f;  // flicker
+  float crackle = (smoothNoise(ms, 55, 0xBB) - 0.5f) * 0.10f;  // fast crackle
+  float burst = 0.0f;
+  if (hash11(ms / 180u) > 0.94f)
+  {
+    float x = (ms % 180u) / 180.0f;
+    burst = 0.18f * expf(-x * 9.0f);
+  }
+  return clamp01(base + embers + tongues + sparks + crackle + burst);
 }
 
 /// Linear interpolation between preset levels
@@ -414,22 +494,23 @@ float patternSaberIdle(uint32_t ms)
 /// Lightsaber clash: dark idle, sporadic bright flares with decay
 float patternSaberClash(uint32_t ms)
 {
-  float base = 0.12f + (smoothNoise(ms, 1400, 0x42) - 0.5f) * 0.03f;
-  const uint32_t window = 1600;
+  float base = 0.16f + (smoothNoise(ms, 1100, 0x42) - 0.5f) * 0.05f;
+  const uint32_t window = 1400;
   uint32_t idx = ms / window;
   uint32_t start = idx * window;
   float flare = 0.0f;
-  if (hash11(idx * 0x1337u) > 0.55f)
+  if (hash11(idx * 0x1337u) > 0.45f)
   {
-    uint32_t off = (uint32_t)(hash11(idx * 0x51u) * (window - 320));
+    uint32_t off = (uint32_t)(hash11(idx * 0x51u) * (window - 380));
     uint32_t dt = ms - start;
-    if (dt >= off && dt < off + 320)
+    if (dt >= off && dt < off + 380)
     {
       float x = (float)(dt - off);
-      float rise = x < 40.0f ? (x / 40.0f) : 1.0f;
-      float decay = expf(-(x > 40.0f ? (x - 40.0f) : 0.0f) / 110.0f);
-      float spark = (smoothNoise(ms, 25, 0xA5) - 0.5f) * 0.12f;
-      flare = (0.9f + spark) * rise * decay;
+      float rise = x < 30.0f ? (x / 30.0f) : 1.0f;
+      float decay = expf(-(x > 30.0f ? (x - 30.0f) : 0.0f) / 95.0f);
+      float spark = (smoothNoise(ms, 22, 0xA5) - 0.5f) * 0.18f;
+      float crack = (smoothNoise(ms, 11, 0xB3) - 0.5f) * 0.10f;
+      flare = (1.05f + spark + crack) * rise * decay;
     }
   }
   return clamp01(base + flare);
@@ -504,23 +585,23 @@ float patternSunset(uint32_t ms)
   return clamp01(base + (peak - base) * t);
 }
 
-/// Thunder: low ambient light, occasional sharp flashes with afterglow
+/// Thunder: low ambient light, occasional sharp flashes with afterglow and afterflash
 float patternThunder(uint32_t ms)
 {
-  const float base = 0.06f;
-  float ambient = (smoothNoise(ms, 420, 0xC1) - 0.5f) * 0.05f;
+  const float base = 0.05f;
+  float ambient = (smoothNoise(ms, 520, 0xC1) - 0.5f) * 0.06f;
 
-  // One flash window per ~7s
-  const uint32_t windowMs = 7000;
+  // One flash window per ~6.5s
+  const uint32_t windowMs = 6500;
   uint32_t winIdx = ms / windowMs;
   uint32_t winStart = winIdx * windowMs;
   float chance = hash11(winIdx * 0x9E3779B9u + 0x77);
   float flash = 0.0f;
-  if (chance > 0.35f)
+  if (chance > 0.32f)
   {
-    uint32_t offset = (uint32_t)(hash11(winIdx * 0xA5B35705u + 0x44) * (windowMs - 900));
+    uint32_t offset = (uint32_t)(hash11(winIdx * 0xA5B35705u + 0x44) * (windowMs - 950));
     uint32_t t = ms - winStart;
-    if (t >= offset && t < offset + 900)
+    if (t >= offset && t < offset + 950)
     {
       uint32_t dt = t - offset;
       if (dt < 120)
@@ -529,9 +610,15 @@ float patternThunder(uint32_t ms)
       }
       else
       {
-        float decay = expf(-(float)(dt - 120) / 260.0f);
+        float decay = expf(-(float)(dt - 120) / 240.0f);
         float micro = (sinf((float)dt * 0.09f) + 1.0f) * 0.08f;
         flash = 0.8f * decay + micro * decay;
+      }
+      // afterflash shortly after main (only sometimes)
+      if (dt > 220 && dt < 460 && hash11(winIdx * 0x51F19E7Du + 0x12) > 0.58f)
+      {
+        float af = expf(-(float)(dt - 220) / 120.0f) * 0.5f;
+        flash = fmaxf(flash, af);
       }
     }
   }
@@ -574,10 +661,14 @@ const Pattern PATTERNS[] = {
     {"Konstant", patternConstant, 8000},
     {"Atmung", patternBreathing, 15000},
     {"Atmung Warm", patternBreathingWarm, 14000},
+    {"Atmung 2", patternBreathing2, 14000},
     {"Sinus", patternSinus, 12000},
     {"Zig-Zag", patternZigZag, 10000},
     {"Saegezahn", patternSawtooth, 9000},
     {"Pulsierend", patternPulse, 12000},
+    {"Heartbeat", patternHeartbeat, 12000},
+    {"Comet", patternComet, 12000},
+    {"Aurora", patternAurora, 18000},
     {"Funkeln", patternSparkle, 12000},
     {"Kerze Soft", patternCandleSoft, 16000},
     {"Kerze", patternCandle, 16000},

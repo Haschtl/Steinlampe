@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b0f1a" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/svg+xml" href="icon-lamp.svg" />
-  <title>Quarzlampe Web BLE</title>
+  <title>Quarzlampe</title>
   <style>
     :root {
       --bg: #0b0f1a;
@@ -83,7 +83,7 @@
 <body>
   <div class="header">
     <img src="icon-lamp.svg" alt="Lamp Icon" style="width:40px; height:40px; border-radius:8px; border:1px solid var(--border); background:#0b0f1a; padding:4px;" />
-    <h1>Quarzlampe Web BLE</h1>
+    <h1>Quarzlampe</h1>
     <button id="btnConnect">Connect</button>
     <button id="btnSerial">Connect Serial</button>
     <label class="pill" style="cursor:pointer;">
@@ -658,12 +658,12 @@
     const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
     const PATTERN_LABELS = [
-      'Konstant', 'Atmung', 'Atmung Warm', 'Sinus', 'Zig-Zag', 'Saegezahn', 'Pulsierend', 'Funkeln',
+      'Konstant', 'Atmung', 'Atmung Warm', 'Atmung 2', 'Sinus',
+      'Zig-Zag', 'Saegezahn', 'Pulsierend', 'Heartbeat', 'Comet', 'Aurora', 'Funkeln',
       'Kerze Soft', 'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Gluehwuermchen',
       'Popcorn', 'Weihnacht', 'Saber Idle', 'Saber Clash', 'Emergency Bridge', 'Arc Reactor',
       'Warp Core', 'KITT Scanner', 'Tron Grid', 'Gewitter', 'Distant Storm', 'Rolling Thunder', 'Heat Lightning',
       'Strobe Front', 'Sheet Lightning', 'Mixed Storm', 'Sonnenuntergang', 'Alert', 'SOS', 'Custom', 'Musik'
-      
     ];
     const PROFILE_SLOTS = 3;
 
@@ -679,6 +679,7 @@
     let lastPresenceTs = 0;
     const presenceHistory = new Set();
     let pendingProfileExport = null;
+    let pendingProfileQR = false;
     let lastCfgExport = '';
     let patternCount = PATTERN_LABELS.length;
     let lastDeviceType = localStorage.getItem('lastDeviceType') || '';
@@ -1054,6 +1055,10 @@
           blob.value = lastCfgExport;
           log('Captured profile export: ' + lastCfgExport);
           pendingProfileExport = null;
+          if (pendingProfileQR) {
+            renderProfileQR();
+            pendingProfileQR = false;
+          }
         }
       }
       // Ramp/Idle/TouchDim
@@ -1816,16 +1821,34 @@
     };
     if (mg) { mg.oninput = (e) => syncMusicGain(e.target.value); mg.onchange = (e) => syncMusicGain(e.target.value, true); }
     if (mgNum) { mgNum.oninput = (e) => syncMusicGain(e.target.value); mgNum.onchange = (e) => syncMusicGain(e.target.value, true); }
+
+    function renderProfileQR() {
+      const blobEl = document.getElementById('profileBlob');
+      const img = document.getElementById('profileQRImg');
+      if (!img || !blobEl) return;
+      const txt = blobEl.value.trim();
+      if (!txt) { img.style.display = 'none'; return; }
+      const data = encodeURIComponent(txt);
+      const url = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${data}`;
+      img.onload = () => { img.style.display = 'block'; };
+      img.onerror = () => { img.style.display = 'none'; log('QR laden fehlgeschlagen'); };
+      img.src = url;
+      img.style.display = 'block';
+    }
+
     const btnProfileQR = document.getElementById('btnProfileQR');
     if (btnProfileQR) {
       btnProfileQR.onclick = () => {
-        const blob = (document.getElementById('profileBlob') || {}).value || '';
-        const img = document.getElementById('profileQRImg');
-        if (!img) return;
-        if (!blob.trim()) { img.style.display = 'none'; return; }
-        const data = encodeURIComponent(blob.trim());
-        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${data}`;
-        img.style.display = 'block';
+        const blobEl = document.getElementById('profileBlob');
+        const blobTxt = blobEl ? blobEl.value.trim() : '';
+        if (!blobTxt) {
+          pendingProfileExport = getProfileSlot();
+          pendingProfileQR = true;
+          sendCmd('profile load ' + pendingProfileExport);
+          setTimeout(() => sendCmd('cfg export'), 200);
+          return;
+        }
+        renderProfileQR();
       };
     }
     // Auto-reconnect last device (serial if permission already granted; BLE if cached device is available)
