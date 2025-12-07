@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { useConnection } from './context/connection';
 import { Trans, useI18n } from './i18n';
 import { HomeSection } from './sections/HomeSection';
@@ -197,6 +199,7 @@ export default function App() {
           )}
         </div>
       </footer>
+      <ToastContainer position="bottom-right" newestOnTop closeOnClick pauseOnFocusLoss draggable theme="dark" />
     </div>
   );
 }

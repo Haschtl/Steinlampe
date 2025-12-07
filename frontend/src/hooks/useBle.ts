@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { BLE_UUIDS, connectDevice, disconnectDevice, requestDevice, subscribeToLines, writeLine } from './bleClient';
 
 type BleStatus = {
@@ -179,8 +180,14 @@ export function useBle(): BleApi {
 
   const sendCmd = useCallback(
     async (cmd: string) => {
-      await writeLine(cmdCharRef.current, cmd);
-      pushLog('> ' + cmd);
+      try {
+        await writeLine(cmdCharRef.current, cmd);
+        pushLog('> ' + cmd);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error('Command failed: ' + msg);
+        throw e;
+      }
     },
     [pushLog],
   );
@@ -189,7 +196,9 @@ export function useBle(): BleApi {
     try {
       await sendCmd('status');
     } catch (e) {
-      pushLog('Status error: ' + e);
+      const msg = e instanceof Error ? e.message : String(e);
+      pushLog('Status error: ' + msg);
+      toast.error('Status error: ' + msg);
     }
   }, [pushLog, sendCmd]);
 
@@ -266,9 +275,11 @@ export function useBle(): BleApi {
         if (!silent) pushLog('Connected to ' + (dev.name || 'BLE'));
         await refreshStatus();
       } catch (e) {
-        pushLog('Connect error: ' + e);
+        const msg = e instanceof Error ? e.message : String(e);
+        pushLog('Connect error: ' + msg);
         setStatus((s) => ({ ...s, connecting: false }));
         cleanup();
+        toast.error('Connect error: ' + msg);
         throw e;
       }
     },
@@ -278,6 +289,7 @@ export function useBle(): BleApi {
   const connect = useCallback(async () => {
     if (!navigator.bluetooth) {
       pushLog('Web Bluetooth not available');
+      toast.error('Web Bluetooth not available in this browser');
       return;
     }
     setStatus((s) => ({ ...s, connecting: true }));
@@ -285,9 +297,11 @@ export function useBle(): BleApi {
       const dev = await requestDevice();
       await connectWithDevice(dev);
     } catch (e) {
-      pushLog('Connect error: ' + e);
+      const msg = e instanceof Error ? e.message : String(e);
+      pushLog('Connect error: ' + msg);
       setStatus((s) => ({ ...s, connecting: false }));
       cleanup();
+      toast.error('Connect error: ' + msg);
     }
   }, [cleanup, connectWithDevice, pushLog]);
 
@@ -303,7 +317,9 @@ export function useBle(): BleApi {
         await connectWithDevice(match, true);
       }
     } catch (e) {
-      pushLog('Auto-reconnect failed: ' + e);
+      const msg = e instanceof Error ? e.message : String(e);
+      pushLog('Auto-reconnect failed: ' + msg);
+      toast.error('Auto-reconnect failed: ' + msg);
     }
   }, [connectWithDevice, pushLog, setStatus]);
 
