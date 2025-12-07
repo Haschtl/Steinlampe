@@ -636,7 +636,7 @@
         <thead><tr><th>Label</th><th>Value</th><th>Copy</th></tr></thead>
         <tbody id="guidTable"></tbody>
       </table>
-      <p class="hint" style="margin-top:0.35rem;">Hinweis: Wenn das Build-Flag `ENABLE_BLE_MIDI=1` aktiv ist, steht zusätzlich der BLE-MIDI Service (`03B80E5A-EDE8-4B33-A751-6CE34EC4C700`) mit Char (`7772E5DB-3868-4112-A1A9-F2669D106BF3`, Write/WriteNR) zur Verfügung. RX-only; NoteOn/Off/CC werden als `[MIDI] ...` geloggt. BLE-MIDI-Payload: 0x80|ts, ggf. 0x80|ts wiederholt, gefolgt von MIDI-Status/Bytes (z.B. `0x80 t | 0x90 nn vv` für NoteOn; NoteOff via 0x80 oder 0x90 mit vel=0; CC via 0xB0 cc vv). Zeitstempel wird ignoriert.</p>
+      <p class="hint" style="margin-top:0.35rem;">Hinweis: Wenn das Build-Flag `ENABLE_BLE_MIDI=1` aktiv ist, steht zusätzlich der BLE-MIDI Service (`03B80E5A-EDE8-4B33-A751-6CE34EC4C700`) mit Char (`7772E5DB-3868-4112-A1A9-F2669D106BF3`, Write/WriteNR) zur Verfügung. RX-only; NoteOn/Off/CC werden als `[MIDI] ...` geloggt. BLE-MIDI-Payload: 0x80|ts, ggf. 0x80|ts wiederholt, gefolgt von MIDI-Status/Bytes (z.B. `0x80 t | 0x90 nn vv` für NoteOn; NoteOff via 0x80 oder 0x90 mit vel=0; CC via 0xB0 cc vv). Zeitstempel wird ignoriert. Klassisches BT-MIDI (SPP) gibt es optional via `ENABLE_BT_MIDI=1`; NoteOn/Off/CC werden dann als `[MIDI-BT] ...` geloggt.</p>
     </div>
     <div class="card">
       <h3>Command Reference & Links</h3>

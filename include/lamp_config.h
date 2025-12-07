@@ -25,6 +25,10 @@
 #define ENABLE_BLE_MIDI 1
 #endif
 
+#ifndef ENABLE_BT_MIDI
+#define ENABLE_BT_MIDI 0
+#endif
+
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 0
 #endif

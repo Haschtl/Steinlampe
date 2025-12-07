@@ -2,6 +2,9 @@
 
 #include "lamp_config.h"
 #include "settings.h"
+#if ENABLE_BT_SERIAL && ENABLE_BT_MIDI
+#include "midi_bt.h"
+#endif
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 #include "midi_ble.h"
 #endif
@@ -285,6 +288,9 @@ void pollCommunications()
     while (serialBt.available())
     {
       char c = (char)serialBt.read();
+#if ENABLE_BT_MIDI
+      processBtMidiByte((uint8_t)c);
+#endif
       processInputChar(bufferBt, c);
     }
   }
