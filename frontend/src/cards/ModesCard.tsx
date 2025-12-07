@@ -66,7 +66,7 @@ export function ModesCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Trans k="title.modes">Pattern</Trans></CardTitle>
+        <CardTitle><Trans k="title.pattern">Pattern</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-nowrap items-center gap-2">

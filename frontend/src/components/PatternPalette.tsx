@@ -46,12 +46,12 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+      {/* <DialogTrigger asChild>
         <Button variant="primary" size="sm" className="ml-auto flex items-center gap-2">
           <Palette className="h-4 w-4" />
           <span className="hidden sm:inline">Pattern Palette</span>
         </Button>
-      </DialogTrigger>
+      </DialogTrigger> */}
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Pattern Palette</DialogTitle>

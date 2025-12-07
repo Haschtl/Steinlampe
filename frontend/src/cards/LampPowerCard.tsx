@@ -62,13 +62,14 @@ export function LampPowerCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="chip-muted">
+          <span className="chip-muted inline-flex items-center gap-2">
             Switch: {status.switchState ?? "--"}
+            <Button size="sm" variant="ghost" onClick={() => sendCmd("sync")} disabled={!canSync} className="h-6 px-2 text-xs">
+              <RefreshCw className="mr-1 h-3 w-3" />
+              <span className="hidden sm:inline">Sync</span>
+            </Button>
           </span>
           <span className="chip-muted">Touch: {status.touchState ?? "--"}</span>
-          <Button size="sm" onClick={() => sendCmd("sync")} disabled={!canSync}>
-            <RefreshCw className="mr-1 h-4 w-4" /> Sync
-          </Button>
         </div>
 
         <motion.button
