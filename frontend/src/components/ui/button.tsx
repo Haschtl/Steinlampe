@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
 
@@ -16,21 +17,15 @@ const sizeClasses: Record<Size, string> = {
   md: '',
 };
 
-export function Button({
-  variant = 'ghost',
-  size = 'md',
-  className,
-  ...props
-}: PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & { variant?: Variant; size?: Size }) {
-  return (
-    <button
-      className={cn(
-        'btn',
-        variantClasses[variant],
-        sizeClasses[size],
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+export const Button = forwardRef<HTMLButtonElement, PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & { variant?: Variant; size?: Size }>(
+  ({ variant = 'ghost', size = 'md', className, ...props }, ref) => {
+    return (
+      <button
+        ref={ref}
+        className={cn('btn', variantClasses[variant], sizeClasses[size], className)}
+        {...props}
+      />
+    );
+  },
+);
+Button.displayName = 'Button';
