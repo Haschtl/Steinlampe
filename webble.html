@@ -88,9 +88,22 @@
           </label>
         </div>
       </h3>
+      <div class="slider-group">
+        <div class="slider-top">
+          <span>Brightness</span>
+          <div style="display:flex; gap:0.35rem; align-items:center;">
+            <input id="briNum" class="slider-number" type="number" min="1" max="100" step="1" value="70" />
+            <span id="briVal" style="display:none;">70</span>
+          </div>
+        </div>
+        <div class="slider-row">
+          <input id="bri" type="range" min="1" max="100" value="70" />
+        </div>
+      </div>
       <div class="row">
         <span class="status-chip">Switch: <span id="switchState">--</span></span>
         <span class="status-chip">Touch: <span id="touchState">--</span></span>
+        <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
       <div class="input-group" style="max-width: 100%;">
         <button data-cmd="prev" style="border-radius:6px 0 0 6px;">Prev</button>
@@ -105,7 +118,6 @@
         <label class="pill" style="cursor:pointer;">
           <input type="checkbox" id="patFadeToggle" style="margin-right:0.35rem;" />Pattern Fade
         </label>
-        <button data-cmd="sync" title="Align lamp state to physical switch">Sync</button>
       </div>
       <div class="slider-group">
         <div class="slider-top">
@@ -114,18 +126,6 @@
         </div>
         <div class="slider-row">
           <input id="patSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
-        </div>
-      </div>
-      <div class="slider-group">
-        <div class="slider-top">
-          <span>Brightness</span>
-          <div style="display:flex; gap:0.35rem; align-items:center;">
-            <input id="briNum" class="slider-number" type="number" min="1" max="100" step="1" value="70" />
-            <span id="briVal" style="display:none;">70</span>
-          </div>
-        </div>
-        <div class="slider-row">
-          <input id="bri" type="range" min="1" max="100" value="70" />
         </div>
       </div>
 
@@ -138,7 +138,10 @@
           <input id="patFadeAmt" type="range" min="0.01" max="5" step="0.01" value="1.00" />
         </div>
       </div>
+    </div>
 
+    <div class="card">
+      <h3>Ramps</h3>
       <div class="row">
         <label>Ramp (ms)</label>
         <div class="input-group">
@@ -153,9 +156,9 @@
             <select id="rampEaseOn">
               <option value="linear">linear</option>
               <option value="ease">ease</option>
-          <option value="ease-in">ease-in</option>
-          <option value="ease-out">ease-out</option>
-          <option value="ease-in-out">ease-in-out</option>
+              <option value="ease-in">ease-in</option>
+              <option value="ease-out">ease-out</option>
+              <option value="ease-in-out">ease-in-out</option>
             </select>
             <input id="rampPowOn" type="number" min="0.01" max="10" step="0.01" value="2.0" style="width:90px;" />
           </div>
@@ -177,7 +180,6 @@
         </div>
       </div>
     </div>
-
     <div class="card">
       <h3 style="display:flex; align-items:center; gap:0.6rem; justify-content:space-between;">
         <span>Presence</span>
@@ -200,13 +202,19 @@
           <button id="btnPresenceClear" data-cmd="presence clear" style="border-radius:0 6px 6px 0;">Clear</button>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Notify</h3>
       <div class="row">
         <div class="input-group">
-          <input id="notifySeq" type="text" placeholder="50 20 50 30" />
+          <input id="notifySeq" type="text" placeholder="120 60 120 200" />
           <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
           <button id="btnNotify">Notify</button>
+          <button id="btnNotifyStop">Stop</button>
         </div>
       </div>
+      <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
     </div>
 
     <div class="card">
@@ -228,6 +236,9 @@
           <textarea id="importArea" rows="2" style="flex:1; min-width:180px;" placeholder="paste cfg export here"></textarea>
           <button id="btnImport">Import cfg</button>
         </div>
+      </div>
+      <div class="row">
+        <button id="btnFactory" style="background:#2b0d0d; border-color:#a33; color:#fdd;">Factory Reset</button>
       </div>
     </div>
 
@@ -474,6 +485,7 @@
         }
         document.getElementById('status').textContent = 'Connected to ' + device.name;
         log('Connected to ' + device.name);
+        setTimeout(() => sendCmd('status'), 300);
       } catch (e) {
         log('Connect error: ' + e);
       }
@@ -848,8 +860,8 @@
 
     document.getElementById('btnConnect').onclick = connect;
     document.querySelectorAll('button[data-cmd]').forEach(btn => {
-      btn.onclick = () => sendCmd(btn.dataset.cmd);
-      btn.onmouseup = () => {
+      btn.onclick = () => {
+        sendCmd(btn.dataset.cmd);
         if (btn.dataset.cmd === 'next' || btn.dataset.cmd === 'prev') {
           if (window.currentPatternIndex && window.patternCount) {
             let idx = window.currentPatternIndex;
@@ -1049,6 +1061,10 @@
         sendCmd(cmd);
       };
     }
+    const btnNotifyStop = document.getElementById('btnNotifyStop');
+    if (btnNotifyStop) {
+      btnNotifyStop.onclick = () => sendCmd('notify stop');
+    }
     const btnCustomSend = document.getElementById('btnCustomSend');
     if (btnCustomSend) {
       btnCustomSend.onclick = () => {
@@ -1077,7 +1093,15 @@
     if (customCsvArea) {
       customCsvArea.onchange = loadPointsFromCsv;
     }
-    document.getElementById('btnExport').onclick = () => sendCmd('cfg export');
+    const btnFactory = document.getElementById('btnFactory');
+    if (btnFactory) {
+      btnFactory.onclick = () => {
+        const ok = confirm('Factory reset all settings?');
+        if (ok) sendCmd('factory');
+      };
+    }
+    const btnExport = document.getElementById('btnExport');
+    if (btnExport) btnExport.onclick = () => sendCmd('cfg export');
     document.getElementById('btnImport').onclick = () => {
       const cfg = document.getElementById('importArea').value.trim();
       if (cfg) sendCmd(cfg.startsWith('cfg import') ? cfg : ('cfg import ' + cfg));

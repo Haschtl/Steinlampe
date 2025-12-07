@@ -139,7 +139,7 @@ String lastBtAddr;
 uint32_t lastPresenceSeenMs = 0;
 uint32_t lastPresenceScanMs = 0;
 // Notify blink
-std::vector<uint32_t> notifySeq = {50, 20, 50, 30};
+std::vector<uint32_t> notifySeq = {120, 60, 120, 200};
 uint8_t notifyIdx = 0;
 uint32_t notifyStageStartMs = 0;
 bool notifyInvert = false;
@@ -395,6 +395,8 @@ void exportConfig()
   cfg += String(rampEaseOffPower, 2);
   cfg += F(" quick=");
   cfg += quickMaskToCsv();
+  if (notifyActive)
+    cfg += F(" notify=active");
   sendFeedback(cfg);
 }
 
@@ -1672,7 +1674,7 @@ void handleCommand(String line)
       }
     }
     if (seq.empty())
-      seq = {50, 20, 50, 30};
+      seq = {120, 60, 120, 200};
     notifySeq = seq;
     notifyIdx = 0;
     notifyStageStartMs = millis();
@@ -1690,6 +1692,14 @@ void handleCommand(String line)
       seqStr += String(notifySeq[i]);
     }
     sendFeedback(String(F("[Notify] ")) + seqStr + (notifyInvert ? F(" invert") : F("")));
+    return;
+  }
+  if (lower == "notify stop")
+  {
+    notifyActive = false;
+    if (!notifyPrevLampOn)
+      setLampEnabled(false, "notify stop");
+    sendFeedback(F("[Notify] stopped"));
     return;
   }
   if (lower.startsWith("idleoff"))
