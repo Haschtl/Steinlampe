@@ -117,6 +117,13 @@ Tasks or mobile workflows (e.g., Tasker) can simply send these ASCII commands.
 ## Web BLE UI & GitHub Pages
 
 - A static Web BLE UI is provided in `webble.html` (no build step required).
+- **New (React/Vite)**: A modern UI scaffold lives in `frontend/` (React + Tailwind). Install and run locally with:
+  ```sh
+  cd frontend
+  npm install
+  npm run dev   # npm run build for production
+  ```
+  (This repo’s Web Bluetooth logic still needs to be ported into the new React app; current scaffold shows layout only.)
 - To host via GitHub Pages: enable Pages in repo settings and set the source to the `main` branch, root (`/`). The UI will be available at `https://haschtl.github.io/<repo>/webble.html` (replace `<repo>` with this repo name). Example: [https://haschtl.github.io/Steinlampe/webble.html](https://haschtl.github.io/Steinlampe/webble.html).
 - Open the page in a Web-Bluetooth-capable browser (Chrome/Edge/Android) over HTTPS or `localhost`, click **Connect**, and control the lamp.
 

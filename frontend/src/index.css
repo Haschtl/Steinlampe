@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: theme(colors.text);
+  background-color: theme(colors.bg);
+}
+
+body {
+  @apply bg-bg text-text font-sans antialiased;
+}
+
+.card {
+  @apply border border-border rounded-xl bg-gradient-to-br from-white/5 via-black/30 to-black/20 shadow-lg shadow-black/40;
+}
+
+.pill {
+  @apply inline-flex items-center gap-2 rounded-full border border-border bg-[#0d1322] px-3 py-1 text-sm text-muted;
+}
+
+.chip-muted {
+  @apply inline-flex items-center gap-2 rounded-full border border-border bg-[#0d1322] px-2.5 py-1 text-sm text-muted;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md border border-border bg-[#0f1525] px-3 py-2 text-sm font-medium text-text transition hover:border-accent hover:text-accent;
+}
+
+.input {
+  @apply w-full rounded-md border border-border bg-[#0d1322] px-3 py-2 text-text outline-none focus:border-accent;
+}
+
+.label {
+  @apply block text-sm text-muted mb-1;
+}
