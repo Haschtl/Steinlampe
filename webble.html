@@ -33,6 +33,7 @@
     .log-block #log { border:none; border-bottom:1px solid var(--border); border-radius:0; margin:0; }
     .log-row { background:#0d1322; padding:0.5rem; }
     label { display:block; margin-top:0.35rem; font-size: 0.9rem; color: var(--muted); }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; }
     .pill { padding: 0.35rem 0.6rem; border-radius: 999px; background: #10172a; border:1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
     .header { display:flex; gap:0.75rem; align-items:center; margin-bottom: 0.75rem; flex-wrap: wrap; }
@@ -47,10 +48,12 @@
     table.info-table th { background:#10172a; color:var(--accent); }
     table.info-table tbody tr:nth-child(even) { background:#0d1322; }
     .copy-btn { padding:0.3rem 0.5rem; border-radius:6px; border:1px solid var(--border); background:#0f1525; color:var(--text); cursor:pointer; }
-    .input-group { display:flex; align-items:stretch; gap:0; width:100%; }
+    .input-group { display:flex; align-items:stretch; gap:0; width:100%; position:relative; overflow:visible; }
     .input-group input,
     .input-group textarea { border-top-right-radius:0; border-bottom-right-radius:0; margin-right:0; flex:1; min-width:0; }
     .input-group button { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:0; margin-right:0; }
+    .input-suffix { color: var(--muted); font-size:0.9rem; margin-left:0.25rem; white-space:nowrap; display:flex; align-items:center; }
+    .input-group .input-suffix { margin:0 0.4rem; }
     .slider-group { margin:0.35rem 0; }
     .slider-top { display:flex; justify-content:space-between; align-items:center; gap:0.6rem; color:var(--muted); }
     .slider-number { width:90px; text-align:right; }
@@ -62,11 +65,16 @@
     .bar-row input[type=range] { flex:1; accent-color: var(--accent2); }
     .bar-row input[type=number] { width:80px; text-align:right; }
     .bar-row button { padding:0.3rem 0.6rem; }
-    .ramp-preview { width:140px; height:70px; border:1px solid var(--border); border-radius:8px; background:#0d1322; }
+    .dropdown { position:relative; }
+    .dropdown-menu { display:none; position:absolute; top:110%; right:0; background:#0d1322; border:1px solid var(--border); border-radius:10px; padding:0.5rem; min-width:210px; box-shadow:0 10px 25px rgba(0,0,0,0.35); z-index:20; }
+    .dropdown.open .dropdown-menu { display:block; }
+    .dropdown-menu .row { margin:0.15rem 0; }
+    .ramp-preview { width:100%; height:70px; border:1px solid var(--border); border-radius:8px; background:#0d1322; }
     .status-chip { padding:0.35rem 0.6rem; border-radius:999px; border:1px solid var(--border); background:#0d1322; color:var(--muted); }
     .header { position: sticky; top: 0; z-index: 5; padding:0.4rem 0 0.8rem; background: radial-gradient(circle at 20% 20%, #111a2d, #0b0f1a 50%), #0b0f1a; }
     .lamp-ramps-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:1rem; margin-top:0.6rem; align-items:stretch; }
     .lamp-ramps-card { margin:0; display:flex; flex-direction:column; }
+    .hint { color: var(--muted); font-size:0.92rem; margin:0.1rem 0 0.4rem; }
     @media (max-width: 760px) {
       .lamp-ramps-grid { grid-template-columns: 1fr; }
     }
@@ -84,9 +92,10 @@
     <span class="pill" id="status">Not connected</span>
     <span class="pill" id="lastStatus">Last status: --</span>
   </div>
+  <div class="main" style="display: flex; flex-wrap: wrap; gap: 1rem;">
 
-  <div class="grid">
-    <div class="card" style="grid-column: span 2;">
+  <div class="grid" style="flex:3;">
+    <div class="card" style="grid-column: span 2; flex: 1;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
         <h3 style="margin:0;">Lamp & Ramps</h3>
         <div class="row" style="gap:0.4rem; align-items:center; flex-wrap:wrap;">
@@ -114,11 +123,14 @@
             <div class="slider-top">
               <span>Brightness</span>
               <div style="display:flex; gap:0.35rem; align-items:center;">
+                <label class="sr-only" for="briNum">Brightness value</label>
                 <input id="briNum" class="slider-number" type="number" min="1" max="100" step="1" value="70" />
+                <span class="input-suffix">%</span>
                 <span id="briVal" style="display:none;">70</span>
               </div>
             </div>
             <div class="slider-row">
+              <label class="sr-only" for="bri">Brightness slider</label>
               <input id="bri" type="range" min="1" max="100" value="70" />
             </div>
           </div>
@@ -142,21 +154,34 @@
             </label>
           </div>
           <div class="slider-group">
+            <p class="hint" style="margin-top:0;">Speed acts as speed-multiplier for the active pattern.</p>
             <div class="slider-top">
               <span>Speed</span>
-              <input id="patSpeedNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+              <label class="sr-only" for="patSpeedNum">Pattern speed value</label>
+              <div style="display:flex; align-items:center; gap:0.3rem;">
+                <input id="patSpeedNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+                <span class="input-suffix">x</span>
+              </div>
             </div>
             <div class="slider-row">
+              <label class="sr-only" for="patSpeed">Pattern speed slider</label>
               <input id="patSpeed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
             </div>
           </div>
 
           <div class="slider-group">
+                 <p class="hint" style="margin-top:0;">Fade is a smoothing factor for the active patterh.</p>
+
             <div class="slider-top">
               <span>Fade</span>
-              <input id="patFadeNum" class="slider-number" type="number" min="0.01" max="5" step="0.01" value="1.00" />
+              <label class="sr-only" for="patFadeNum">Pattern fade value</label>
+              <div style="display:flex; align-items:center; gap:0.3rem;">
+                <input id="patFadeNum" class="slider-number" type="number" min="0.01" max="5" step="0.01" value="1.00" />
+                <span class="input-suffix">x</span>
+              </div>
             </div>
             <div class="slider-row">
+              <label class="sr-only" for="patFadeAmt">Pattern fade slider</label>
               <input id="patFadeAmt" type="range" min="0.01" max="5" step="0.01" value="1.00" />
             </div>
           </div>
@@ -164,24 +189,25 @@
 
         <div class="card lamp-ramps-card">
           <h3>Ramps</h3>
-          <div class="row">
-            <label>Ramp (ms)</label>
-            <div class="input-group">
-              <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
-              <button id="btnRamp">Set</button>
-            </div>
-          </div>
-          <div class="slider-group">
-            <div class="slider-top">
-              <span>PWM Curve</span>
-              <input id="pwmCurveNum" class="slider-number" type="number" min="0.5" max="4" step="0.05" value="2.20" />
-            </div>
-            <div class="slider-row">
-              <input id="pwmCurve" type="range" min="0.5" max="4" step="0.05" value="2.20" />
+          <p class="hint" style="margin-top:0;">Choose easing and power multipliers for on/off transitions and PWM curve shaping.</p>
+          <div class="row" style="flex-wrap:wrap; gap:0.6rem;">
+            <div style="flex:1; min-width:240px; border:1px solid var(--border); border-radius:10px; padding:0.6rem; background:#0d1322;">
+              <div class="slider-top" style="margin-bottom:0.25rem;">
+                <span>PWM Curve</span>
+                <label class="sr-only" for="pwmCurveNum">PWM curve value</label>
+                <div style="display:flex; align-items:center; gap:0.3rem;">
+                  <input id="pwmCurveNum" class="slider-number" type="number" min="0.5" max="4" step="0.05" value="2.20" />
+                  <span class="input-suffix">x</span>
+                </div>
+              </div>
+              <div class="slider-row">
+                <label class="sr-only" for="pwmCurve">PWM curve slider</label>
+                <input id="pwmCurve" type="range" min="0.5" max="4" step="0.05" value="2.20" />
+              </div>
             </div>
           </div>
           <div class="row" style="flex-wrap:wrap; gap:0.6rem;">
-            <div>
+            <div style="flex:1; min-width:240px; border:1px solid var(--border); border-radius:10px; padding:0.6rem; background:#0d1322;">
               <label>Ramp On</label>
               <div class="row" style="gap:0.4rem; align-items:center;">
                 <select id="rampEaseOn">
@@ -191,11 +217,20 @@
                   <option value="ease-out">ease-out</option>
                   <option value="ease-in-out">ease-in-out</option>
                 </select>
-                <input id="rampPowOn" type="number" min="0.01" max="10" step="0.01" value="2.0" style="width:90px;" />
+                <label class="sr-only" for="rampPowOn">Ramp on power</label>
+                <div style="display:flex; align-items:center; gap:0.3rem;">
+                  <input id="rampPowOn" type="number" min="0.01" max="10" step="0.01" value="2.0"  />
+                  <span class="input-suffix">x</span>
+                </div>
               </div>
-              <svg id="rampPrevOn" class="ramp-preview" viewBox="0 0 100 50"></svg>
+              <div class="slider-row" style="margin-top:0.25rem;">
+                <label class="sr-only" for="rampPowOnRange">Ramp on power slider</label>
+                <input id="rampPowOnRange" type="range" min="0.01" max="10" step="0.01" value="2.0" />
+              </div>
+              <svg id="rampPrevOn" class="ramp-preview" viewBox="0 0 100 50" style="margin-top:0.35rem;"></svg>
+              </div>
             </div>
-            <div>
+            <div style="flex:1; min-width:240px; border:1px solid var(--border); border-radius:10px; padding:0.6rem; background:#0d1322;">
               <label>Ramp Off</label>
               <div class="row" style="gap:0.4rem; align-items:center;">
                 <select id="rampEaseOff">
@@ -205,22 +240,53 @@
                   <option value="ease-out">ease-out</option>
                   <option value="ease-in-out">ease-in-out</option>
                 </select>
-                <input id="rampPowOff" type="number" min="0.01" max="10" step="0.01" value="2.0" style="width:90px;" />
+                <label class="sr-only" for="rampPowOff">Ramp off power</label>
+                <div style="display:flex; align-items:center; gap:0.3rem;">
+                  <input id="rampPowOff" type="number" min="0.01" max="10" step="0.01" value="2.0"  />
+                  <span class="input-suffix">x</span>
+                </div>
               </div>
-              <svg id="rampPrevOff" class="ramp-preview" viewBox="0 0 100 50"></svg>
+              <div class="slider-row" style="margin-top:0.25rem;">
+                <label class="sr-only" for="rampPowOffRange">Ramp off power slider</label>
+                <input id="rampPowOffRange" type="range" min="0.01" max="10" step="0.01" value="2.0" />
+              </div>
+              <svg id="rampPrevOff" class="ramp-preview" viewBox="0 0 100 50" style="margin-top:0.35rem;"></svg>
+              </div>
             </div>
           </div>
         </div>
-      </div>
     </div>
 
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3>Notify</h3>
       <div class="row">
-        <div class="input-group">
-          <input id="notifySeq" type="text" placeholder="80 40 80 120" />
-          <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
-          <input id="notifyRepeat" type="number" min="1" max="10" step="1" value="1" style="width:70px;" />
+        <div class="input-group" style="flex-wrap:wrap; align-items:center;">
+          <label class="sr-only" for="notifySeq">Notify sequence</label>
+          <div style="display:flex; align-items:center; gap:0.35rem; flex:1; min-width:200px;">
+            <input id="notifySeq" type="text" placeholder="80 40 80 120" />
+            <span class="input-suffix">ms list</span>
+          </div>
+          <div class="dropdown" id="notifyDropdown" style="margin-left:0.35rem;">
+            <button id="notifyOptsToggle" type="button">Optionen</button>
+            <div class="dropdown-menu" id="notifyOptsMenu">
+              <div class="row" style="flex-direction:column; gap:0.25rem;">
+                <label for="notifyFade">Fade (dt)</label>
+                <div style="display:flex; align-items:center; gap:0.35rem;">
+                  <label class="sr-only" for="notifyFade">Notify fade</label>
+                  <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:90px;" />
+                  <span class="input-suffix">ms</span>
+                </div>
+              </div>
+              <div class="row" style="flex-direction:column; gap:0.25rem;">
+                <label for="notifyRepeat">Multiplikator</label>
+                <div style="display:flex; align-items:center; gap:0.35rem;">
+                  <label class="sr-only" for="notifyRepeat">Notify repeat count</label>
+                  <input id="notifyRepeat" type="number" min="1" max="10" step="1" value="1" style="width:90px;" />
+                  <span class="input-suffix">x</span>
+                </div>
+              </div>
+            </div>
+          </div>
           <button id="btnNotify">Notify</button>
           <button id="btnNotifyStop">Stop</button>
         </div>
@@ -232,8 +298,6 @@
         <button class="notifyPreset" data-seq="200 80 200 400" data-fade="30">Doorbell</button>
         <button class="notifyPreset" data-seq="500 300" data-fade="120">Long Fade Alert</button>
         <button class="notifyPreset" data-seq="60 60 60 200" data-fade="0">Double 60</button>
-        <button class="notifyPreset" data-cmd="sos">SOS</button>
-        <button class="notifyPreset" data-cmd="sos stop">SOS stop</button>
       </div>
       <p style="color:var(--muted); margin:0.2rem 0 0;">Enter durations in ms, optional fade=NN</p>
 
@@ -244,11 +308,14 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3>Wake / Sleep</h3>
+      <p class="hint" style="margin-top:0;">Wake timer uses seconds; sleep timer uses minutes; optional wake brightness is a percent override.</p>
       <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap;">
         <div class="input-group" style="max-width:180px;">
+          <label class="sr-only" for="wakeSec">Wake duration seconds</label>
           <input id="wakeSec" type="number" min="5" max="600" step="5" value="180" />
+          <span class="input-suffix">s</span>
           <button id="btnWake">Wake</button>
         </div>
         <label class="pill" style="cursor:pointer; margin:0;">
@@ -258,25 +325,32 @@
           <option value="">Mode unverändert</option>
         </select>
         <div class="input-group" style="width:150px;">
+          <label class="sr-only" for="wakeBri">Wake brightness percent</label>
           <input id="wakeBri" type="number" min="1" max="100" step="1" placeholder="Bri %" />
+          <span class="input-suffix">%</span>
           <button id="wakeBriClr" title="Bri Feld leeren">X</button>
         </div>
         <button id="btnWakeStop">Wake stop</button>
       </div>
       <div class="row" style="gap:0.6rem; align-items:center; flex-wrap:wrap; margin-top:0.4rem;">
         <div class="input-group" style="max-width:180px;">
+          <label class="sr-only" for="sleepMin">Sleep minutes</label>
           <input id="sleepMin" type="number" min="1" max="240" step="1" value="15" />
+          <span class="input-suffix">min</span>
           <button id="btnSleep">Sleep</button>
         </div>
         <button id="btnSleepStop">Sleep stop</button>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3>Custom</h3>
+      <p class="hint" style="margin-top:0;">Custom step sets milliseconds between pattern points; CSV values stay normalized (0..1).</p>
       <div class="row">
         <div class="input-group">
+          <label class="sr-only" for="customStep">Custom pattern step</label>
           <input id="customStep" type="number" min="100" max="5000" step="50" value="800" />
+          <span class="input-suffix">ms</span>
           <button id="btnCustomStep">Set Step</button>
         </div>
       </div>
@@ -291,7 +365,7 @@
       <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
     </div>
 
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3>Settings</h3>
       <div class="row" style="align-items:flex-start; flex-direction: column; flex-wrap: wrap;">
         <label style="min-width:120px;">Quick tap modes:</label>
@@ -306,7 +380,9 @@
       <div class="row">
         <label>IdleOff (min, 0=off)</label>
         <div class="input-group">
+          <label class="sr-only" for="idleMin">Idle off minutes</label>
           <input id="idleMin" type="number" min="0" max="180" step="1" value="0" />
+          <span class="input-suffix">min</span>
           <button id="btnIdle">Set</button>
         </div>
       </div>
@@ -320,7 +396,7 @@
         <button id="btnFactory" style="background:#2b0d0d; border-color:#a33; color:#fdd;">Factory Reset</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3>Profiles</h3>
       <div class="row" style="gap:0.5rem; align-items:center; flex-wrap:wrap;">
         <label>Slot</label>
@@ -342,7 +418,7 @@
         <img id="profileQRImg" alt="Profile QR" style="width:140px; height:140px; border:1px solid var(--border); border-radius:8px; display:none;" />
       </div>
     </div>
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3 style="display:flex; align-items:center; gap:0.6rem; justify-content:space-between;">
         <span>Presence</span>
         <label class="pill" style="cursor:pointer; margin:0;">
@@ -359,6 +435,7 @@
       </div>
       <div class="row">
         <div class="input-group">
+          <label class="sr-only" for="presenceMac">Presence MAC address</label>
           <input id="presenceMac" type="text" placeholder="AA:BB:CC:DD:EE:FF" size="20" />
           <button id="btnPresenceSet">Set</button>
           <button id="btnPresenceClear" data-cmd="presence clear" style="border-radius:0 6px 6px 0;">Clear</button>
@@ -366,32 +443,39 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card"  style="flex:1;">
       <h3 style="display:flex; align-items:center; gap:0.6rem; justify-content:space-between;">
         <span>Touch</span>
         <label class="pill" style="cursor:pointer; margin:0;">
           <input type="checkbox" id="touchDimToggle" style="margin-right:0.35rem;" />TouchDim
         </label>
       </h3>
+      <p class="hint" style="margin-top:0;">Hold time is milliseconds; thresholds are raw counts from the touch sensor.</p>
       <div class="row">
         <span class="status-chip" id="touchDetail">base -- | raw -- | delta -- | thr --/--</span>
       </div>
       <div class="row">
         <label>Touch hold (ms)</label>
         <div class="input-group">
+          <label class="sr-only" for="touchHold">Touch hold milliseconds</label>
           <input id="touchHold" type="number" min="500" max="5000" step="100" value="1000" />
+          <span class="input-suffix">ms</span>
           <button id="btnTouchHold">Set</button>
         </div>
       </div>
       <div class="row">
         <label>Touch On</label>
         <div class="input-group" style="max-width:170px;">
+          <label class="sr-only" for="touchOn">Touch on threshold</label>
           <input id="touchOn" type="number" min="1" max="200" step="1" value="10" />
+          <span class="input-suffix">cnt</span>
           <button id="btnTouchTune">Set</button>
         </div>
         <label>Touch Off</label>
         <div class="input-group" style="max-width:170px;">
+          <label class="sr-only" for="touchOff">Touch off threshold</label>
           <input id="touchOff" type="number" min="1" max="200" step="1" value="6" />
+          <span class="input-suffix">cnt</span>
           <button id="btnTouchTuneOff">Set</button>
         </div>
       </div>
@@ -402,8 +486,9 @@
     </div>
 
 
-    <div class="card"  id="lightCard" style="display:none;">
+    <div class="card"  id="lightCard" style="display:none; flex: 1;">
       <h3>Light Sensor</h3>
+      <p class="hint" style="margin-top:0;">Gain and clamp values are normalized multipliers; tune to limit how light input affects brightness.</p>
       <div class="row" style="align-items:center; gap:0.5rem;">
         <label class="pill" style="cursor:pointer; margin:0;">
           <input type="checkbox" id="lightToggle" style="margin-right:0.35rem;" />Light Auto
@@ -414,34 +499,50 @@
       <div class="slider-group">
         <div class="slider-top">
           <span>Gain</span>
-          <input id="lightGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+          <label class="sr-only" for="lightGainNum">Light gain value</label>
+          <div style="display:flex; align-items:center; gap:0.3rem;">
+            <input id="lightGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+            <span class="input-suffix">x</span>
+          </div>
         </div>
         <div class="slider-row">
+          <label class="sr-only" for="lightGain">Light gain slider</label>
           <input id="lightGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
         </div>
       </div>
       <div class="slider-group">
         <div class="slider-top">
           <span>Clamp Min</span>
-          <input id="lightClampMinNum" class="slider-number" type="number" min="0" max="1.2" step="0.01" value="0.20" />
+          <label class="sr-only" for="lightClampMinNum">Light clamp min value</label>
+          <div style="display:flex; align-items:center; gap:0.3rem;">
+            <input id="lightClampMinNum" class="slider-number" type="number" min="0" max="1.2" step="0.01" value="0.20" />
+            <span class="input-suffix">x</span>
+          </div>
         </div>
         <div class="slider-row">
+          <label class="sr-only" for="lightClampMin">Light clamp min slider</label>
           <input id="lightClampMin" type="range" min="0" max="1.2" step="0.01" value="0.20" />
         </div>
       </div>
       <div class="slider-group">
         <div class="slider-top">
           <span>Clamp Max</span>
-          <input id="lightClampMaxNum" class="slider-number" type="number" min="0" max="1.5" step="0.01" value="1.00" />
+          <label class="sr-only" for="lightClampMaxNum">Light clamp max value</label>
+          <div style="display:flex; align-items:center; gap:0.3rem;">
+            <input id="lightClampMaxNum" class="slider-number" type="number" min="0" max="1.5" step="0.01" value="1.00" />
+            <span class="input-suffix">x</span>
+          </div>
         </div>
         <div class="slider-row">
+          <label class="sr-only" for="lightClampMax">Light clamp max slider</label>
           <input id="lightClampMax" type="range" min="0" max="1.5" step="0.01" value="1.00" />
         </div>
       </div>
     </div>
 
-    <div class="card"  id="musicCard" style="display:none;">
+    <div class="card"  id="musicCard" style="display:none; flex: 1;">
       <h3>Music Mode</h3>
+      <p class="hint" style="margin-top:0;">Clap threshold and sensitivity are multipliers; cooldown is milliseconds between clap triggers.</p>
       <div class="row" style="align-items:center; gap:0.5rem;">
         <label class="pill" style="cursor:pointer; margin:0;">
           <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
@@ -455,29 +556,42 @@
         <div class="slider-group" style="flex:1; min-width:200px; margin:0;">
           <div class="slider-top">
             <span>Clap Thr</span>
-            <input id="clapThrNum" class="slider-number" type="number" min="0.05" max="1.5" step="0.01" value="0.35" />
+            <label class="sr-only" for="clapThrNum">Clap threshold value</label>
+            <div style="display:flex; align-items:center; gap:0.3rem;">
+              <input id="clapThrNum" class="slider-number" type="number" min="0.05" max="1.5" step="0.01" value="0.35" />
+              <span class="input-suffix">x</span>
+            </div>
           </div>
           <div class="slider-row">
+            <label class="sr-only" for="clapThr">Clap threshold slider</label>
             <input id="clapThr" type="range" min="0.05" max="1.5" step="0.01" value="0.35" />
           </div>
         </div>
         <div class="input-group" style="max-width:160px;">
+          <label class="sr-only" for="clapCool">Clap cooldown milliseconds</label>
           <input id="clapCool" type="number" min="200" max="5000" step="50" value="800" />
+          <span class="input-suffix">ms</span>
           <button id="btnClapCool">Set</button>
         </div>
       </div>
       <div class="slider-group">
         <div class="slider-top">
           <span>Sensitivity</span>
-          <input id="musicGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+          <label class="sr-only" for="musicGainNum">Music sensitivity value</label>
+          <div style="display:flex; align-items:center; gap:0.3rem;">
+            <input id="musicGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+            <span class="input-suffix">x</span>
+          </div>
         </div>
         <div class="slider-row">
+          <label class="sr-only" for="musicGain">Music sensitivity slider</label>
           <input id="musicGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
         </div>
       </div>
       <p style="color:var(--muted); margin:0.2rem 0 0;">Toggles audio-reactive pattern (if built).</p>
     </div>
 
+  </div>
   </div>
 
   <div class="row" style="align-items:center; justify-content:space-between;">
@@ -493,6 +607,7 @@
   <div class="log-block">
     <pre id="log"></pre>
     <div class="row log-row" style="margin:0;">
+      <label class="sr-only" for="cmdInput">Command input</label>
       <input id="cmdInput" type="text" placeholder="type command" style="flex:1; min-width:200px;" />
       <button id="btnSend">Send</button>
     </div>
@@ -543,11 +658,12 @@
     const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
     const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
     const PATTERN_LABELS = [
-      'Konstant', 'Atmung', 'Atmung Warm', 'Sinus', 'Pulsierend', 'Funkeln',
+      'Konstant', 'Atmung', 'Atmung Warm', 'Sinus', 'Zig-Zag', 'Saegezahn', 'Pulsierend', 'Funkeln',
       'Kerze Soft', 'Kerze', 'Lagerfeuer', 'Stufen', 'Zwinkern', 'Gluehwuermchen',
       'Popcorn', 'Weihnacht', 'Saber Idle', 'Saber Clash', 'Emergency Bridge', 'Arc Reactor',
       'Warp Core', 'KITT Scanner', 'Tron Grid', 'Gewitter', 'Distant Storm', 'Rolling Thunder', 'Heat Lightning',
       'Strobe Front', 'Sheet Lightning', 'Mixed Storm', 'Sonnenuntergang', 'Alert', 'SOS', 'Custom', 'Musik'
+      
     ];
     const PROFILE_SLOTS = 3;
 
@@ -943,11 +1059,13 @@
       // Ramp/Idle/TouchDim
       if (line.startsWith('Ramp=')) {
         const r = line.match(/Ramp=([0-9]+)/);
-        if (r) document.getElementById('rampMs').value = r[1];
+        const rampMsEl = document.getElementById('rampMs');
+        if (r && rampMsEl) rampMsEl.value = r[1];
         const i = line.match(/IdleOff=([0-9]+)m|IdleOff=off/);
         if (i) {
           const v = i[0].includes('off') ? 0 : parseInt(i[1]);
-          document.getElementById('idleMin').value = v;
+          const idleEl = document.getElementById('idleMin');
+          if (idleEl) idleEl.value = v;
         }
         const td = document.getElementById('touchDimToggle');
         if (td) td.checked = line.includes('TouchDim=ON');
@@ -1207,21 +1325,28 @@
     });
     const btnSerial = document.getElementById('btnSerial');
     if (btnSerial) btnSerial.onclick = () => connectSerial();
-    document.getElementById('btnSend').onclick = () => {
-      const txt = document.getElementById('cmdInput').value.trim();
-      if (txt) sendCmd(txt);
-    };
+    const btnSend = document.getElementById('btnSend');
+    if (btnSend) {
+      btnSend.onclick = () => {
+        const cmdIn = document.getElementById('cmdInput');
+        const txt = cmdIn ? cmdIn.value.trim() : '';
+        if (txt) sendCmd(txt);
+      };
+    }
     const briRange = document.getElementById('bri');
     const briNum = document.getElementById('briNum');
     const briVal = document.getElementById('briVal');
-    document.getElementById('btnStatus').onclick = () => {
-      const now = Date.now();
-      if (lastCmdText === 'off' && now - lastCmdTime < 300) {
-        setTimeout(() => sendCmd('status'), 250);
-      } else {
-        sendCmd('status');
-      }
-    };
+    const btnStatus = document.getElementById('btnStatus');
+    if (btnStatus) {
+      btnStatus.onclick = () => {
+        const now = Date.now();
+        if (lastCmdText === 'off' && now - lastCmdTime < 300) {
+          setTimeout(() => sendCmd('status'), 250);
+        } else {
+          sendCmd('status');
+        }
+      };
+    }
     const syncBri = (v, send = false) => {
       if (briRange) briRange.value = v;
       if (briNum) briNum.value = v;
@@ -1237,10 +1362,14 @@
       briNum.onchange = e => syncBri(e.target.value, true);
     }
 
-    document.getElementById('btnPresenceSet').onclick = () => {
-      const mac = document.getElementById('presenceMac').value.trim();
-      if (mac) sendCmd('presence set ' + mac);
-    };
+    const btnPresenceSet = document.getElementById('btnPresenceSet');
+    if (btnPresenceSet) {
+      btnPresenceSet.onclick = () => {
+        const macEl = document.getElementById('presenceMac');
+        const mac = macEl ? macEl.value.trim() : '';
+        if (mac) sendCmd('presence set ' + mac);
+      };
+    }
     const btnPresenceUse = document.getElementById('btnPresenceUse');
     if (btnPresenceUse) {
       btnPresenceUse.onclick = () => {
@@ -1257,8 +1386,10 @@
     setInterval(() => {
       if (cmdChar || serialWriter) sendCmd('status');
     }, 10000);
-    document.getElementById('btnStatus').onclick = () => sendCmd('status');
-    document.getElementById('btnCfgExport').onclick = () => sendCmd('cfg export');
+    const btnStatusInline = document.getElementById('btnStatus');
+    if (btnStatusInline) btnStatusInline.onclick = () => sendCmd('status');
+    const btnCfgExport = document.getElementById('btnCfgExport');
+    if (btnCfgExport) btnCfgExport.onclick = () => sendCmd('cfg export');
     const liveLogToggle = document.getElementById('liveLogToggle');
     if (liveLogToggle) liveLogToggle.onchange = (e) => { liveLogEnabled = e.target.checked; };
     document.getElementById('modeSelect').onchange = (e) => {
@@ -1365,10 +1496,20 @@
     const rampEaseOff = document.getElementById('rampEaseOff');
     const rampPowOn = document.getElementById('rampPowOn');
     const rampPowOff = document.getElementById('rampPowOff');
+    const rampPowOnRange = document.getElementById('rampPowOnRange');
+    const rampPowOffRange = document.getElementById('rampPowOffRange');
     if (rampEaseOn) rampEaseOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn.value} ${rampPowOn ? rampPowOn.value : ''}`); };
     if (rampPowOn) rampPowOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn.value}`); };
     if (rampEaseOff) rampEaseOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff.value} ${rampPowOff ? rampPowOff.value : ''}`); };
     if (rampPowOff) rampPowOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff.value}`); };
+    if (rampPowOnRange) {
+      rampPowOnRange.oninput = (e) => { if (rampPowOn) rampPowOn.value = parseFloat(e.target.value).toFixed(2); drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); };
+      rampPowOnRange.onchange = (e) => { if (rampPowOn) rampPowOn.value = parseFloat(e.target.value).toFixed(2); sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn ? rampPowOn.value : ''}`); };
+    }
+    if (rampPowOffRange) {
+      rampPowOffRange.oninput = (e) => { if (rampPowOff) rampPowOff.value = parseFloat(e.target.value).toFixed(2); drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); };
+      rampPowOffRange.onchange = (e) => { if (rampPowOff) rampPowOff.value = parseFloat(e.target.value).toFixed(2); sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff ? rampPowOff.value : ''}`); };
+    }
     drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn);
     drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff);
     const pwmCurve = document.getElementById('pwmCurve');
@@ -1437,14 +1578,44 @@
     if (btnProfileQuick1) btnProfileQuick1.onclick = () => sendCmd('profile load 1');
     if (btnProfileQuick2) btnProfileQuick2.onclick = () => sendCmd('profile load 2');
     if (btnProfileQuick3) btnProfileQuick3.onclick = () => sendCmd('profile load 3');
-    document.getElementById('btnTouchHold').onclick = () => {
-      const v = document.getElementById('touchHold').value;
-      sendCmd('touch hold ' + v);
-    };
-    document.getElementById('btnRamp').onclick = () => {
-      const v = document.getElementById('rampMs').value;
-      sendCmd('ramp ' + v);
-    };
+    const btnTouchHold = document.getElementById('btnTouchHold');
+    if (btnTouchHold) {
+      btnTouchHold.onclick = () => {
+        const v = document.getElementById('touchHold') ? document.getElementById('touchHold').value : '';
+        if (v) sendCmd('touch hold ' + v);
+      };
+    }
+    const btnRamp = document.getElementById('btnRamp');
+    if (btnRamp) {
+      btnRamp.onclick = () => {
+        const rampMs = document.getElementById('rampMs');
+        if (!rampMs) return;
+        const v = rampMs.value;
+        const range = document.getElementById('rampMsRange');
+        if (range) range.value = v;
+        const lbl = document.getElementById('rampMsLabel');
+        if (lbl) lbl.textContent = v;
+        sendCmd('ramp ' + v);
+      };
+    }
+    const rampMsRange = document.getElementById('rampMsRange');
+    if (rampMsRange) {
+      rampMsRange.oninput = (e) => {
+        const v = e.target.value;
+        const rampMs = document.getElementById('rampMs');
+        if (rampMs) rampMs.value = v;
+        const lbl = document.getElementById('rampMsLabel');
+        if (lbl) lbl.textContent = v;
+      };
+      rampMsRange.onchange = (e) => {
+        const v = e.target.value;
+        const rampMs = document.getElementById('rampMs');
+        if (rampMs) rampMs.value = v;
+        const lbl = document.getElementById('rampMsLabel');
+        if (lbl) lbl.textContent = v;
+        sendCmd('ramp ' + v);
+      };
+    }
     document.getElementById('btnIdle').onclick = () => {
       const v = document.getElementById('idleMin').value;
       sendCmd('idle ' + v);
@@ -1453,6 +1624,23 @@
       const v = document.getElementById('customStep').value;
       sendCmd('custom step ' + v);
     };
+    const notifyDropdown = document.getElementById('notifyDropdown');
+    const notifyToggle = document.getElementById('notifyOptsToggle');
+    if (notifyToggle && notifyDropdown) {
+      notifyToggle.setAttribute('aria-haspopup', 'true');
+      notifyToggle.setAttribute('aria-expanded', 'false');
+      notifyToggle.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = notifyDropdown.classList.toggle('open');
+        notifyToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      };
+      document.addEventListener('click', (e) => {
+        if (!notifyDropdown.contains(e.target)) {
+          notifyDropdown.classList.remove('open');
+          notifyToggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
     const btnNotify = document.getElementById('btnNotify');
     if (btnNotify) {
       btnNotify.onclick = () => {

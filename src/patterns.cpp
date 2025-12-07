@@ -115,6 +115,29 @@ float patternPulse(uint32_t ms)
   return 0.25f + 0.7f * env;
 }
 
+/// Angular triangle-like wave: clean zig-zag up/down
+float patternZigZag(uint32_t ms)
+{
+  const uint32_t period = 5200;
+  float phase = (ms % period) / (float)period;
+  float tri = (phase < 0.5f) ? (phase * 2.0f) : (1.0f - (phase - 0.5f) * 2.0f);
+  float sparkle = 0.05f * sinf(TWO_PI * phase * 5.0f); // tiny texture to avoid flatness
+  return clamp01(0.18f + 0.8f * tri + sparkle);
+}
+
+/// Steep ramp with hard drop: sawtooth shape
+float patternSawtooth(uint32_t ms)
+{
+  const uint32_t period = 4400;
+  float phase = (ms % period) / (float)period; // 0..1
+  float ramp;
+  if (phase < 0.92f)
+    ramp = phase / 0.92f; // long rise
+  else
+    ramp = 1.0f - ((phase - 0.92f) / 0.08f); // quick fall
+  return clamp01(0.12f + 0.88f * ramp);
+}
+
 /// Subtle sparkle via stacked sine components
 float patternSparkle(uint32_t ms)
 {
@@ -552,6 +575,8 @@ const Pattern PATTERNS[] = {
     {"Atmung", patternBreathing, 15000},
     {"Atmung Warm", patternBreathingWarm, 14000},
     {"Sinus", patternSinus, 12000},
+    {"Zig-Zag", patternZigZag, 10000},
+    {"Saegezahn", patternSawtooth, 9000},
     {"Pulsierend", patternPulse, 12000},
     {"Funkeln", patternSparkle, 12000},
     {"Kerze Soft", patternCandleSoft, 16000},
