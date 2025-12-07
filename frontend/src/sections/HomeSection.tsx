@@ -1,123 +1,137 @@
-import { ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowLeftCircle, ArrowRightCircle, ClipboardPaste, Copy, Flashlight, Pause, RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConnection } from '@/context/connection';
+import { patternLabels } from '@/data/patterns';
+import { Trans } from '@/i18n';
 
 export type PatternOption = { idx: number; label: string };
 
-type LampProps = {
-  status: any;
-  brightness: number;
-  pattern: number;
-  patternOptions: PatternOption[];
-  patternSpeed: number;
-  patternFade: number;
-  fadeEnabled: boolean;
-  rampOn?: number;
-  rampOff?: number;
-  lampOn: boolean;
-  onSync: () => void;
-  onLampToggle: (next: boolean) => void;
-  onBrightnessChange: (val: number) => void;
-  onPatternChange: (val: number) => void;
-  onPrev: () => void;
-  onNext: () => void;
-  onAutoCycle: (enabled: boolean) => void;
-  onPatternSpeed: (val: number) => void;
-  onPatternFade: (val: number, enable: boolean) => void;
-  onRampOn: (val: number) => void;
-  onRampOff: (val: number) => void;
+type LampCardProps = {
   profileSlot: string;
-  setProfileSlot: (val: string) => void;
-  onProfileLoad: () => void;
-  onProfileSave: () => void;
-};
-
-type QuickProps = {
-  patternOptions: PatternOption[];
-  quickSearch: string;
-  setQuickSearch: (v: string) => void;
-  quickSelection: number[];
-  toggleQuickSelection: (idx: number) => void;
-  saveQuickSelection: () => void;
-  refreshStatus: () => void;
-};
-
-type CustomProps = {
-  customCsv: string;
-  setCustomCsv: (v: string) => void;
-  customStep: number;
-  setCustomStep: (v: number) => void;
-  applyCustom: () => void;
-  clearCustom: () => void;
-  reloadCustom: () => void;
-  customLen?: number;
-  customStepMs?: number;
+  setProfileSlot: (v: string) => void;
 };
 
 type ProfilesProps = {
   profileSlot: string;
-  onProfileSave: () => void;
-  onProfileLoad: () => void;
-  onBackup: () => void;
-  onImport: (text: string) => void;
-  cfgText: string;
-  setCfgText: (v: string) => void;
-  children?: ReactNode;
+  setProfileSlot: (v: string) => void;
 };
 
-export function LampCard({
-  status,
-  brightness,
-  pattern,
-  patternOptions,
-  patternSpeed,
-  patternFade,
-  fadeEnabled,
-  rampOn,
-  rampOff,
-  lampOn,
-  onSync,
-  onLampToggle,
-  onBrightnessChange,
-  onPatternChange,
-  onPrev,
-  onNext,
-  onAutoCycle,
-  onPatternSpeed,
-  onPatternFade,
-  onRampOn,
-  onRampOff,
-  profileSlot,
-  setProfileSlot,
-  onProfileLoad,
-  onProfileSave,
-}: LampProps) {
+export function LampCard({ profileSlot, setProfileSlot }: LampCardProps) {
+  const { status, sendCmd } = useConnection();
+  const [brightness, setBrightness] = useState(70);
+  const [pattern, setPattern] = useState(1);
+  const [patternSpeed, setPatternSpeed] = useState(1.0);
+  const [patternFade, setPatternFade] = useState(1.0);
+  const [fadeEnabled, setFadeEnabled] = useState(false);
+  const [rampOn, setRampOn] = useState<number | undefined>();
+  const [rampOff, setRampOff] = useState<number | undefined>();
+  const [lampOn, setLampOn] = useState(false);
+
+  useEffect(() => {
+    if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
+  }, [status.brightness]);
+
+  useEffect(() => {
+    if (status.currentPattern) setPattern(status.currentPattern);
+  }, [status.currentPattern]);
+
+  useEffect(() => {
+    setLampOn(status.lampState === 'ON');
+  }, [status.lampState]);
+
+  useEffect(() => {
+    if (typeof status.patternSpeed === 'number') setPatternSpeed(status.patternSpeed);
+  }, [status.patternSpeed]);
+
+  useEffect(() => {
+    if (typeof status.patternFade === 'number') {
+      setPatternFade(status.patternFade);
+      setFadeEnabled(true);
+    }
+  }, [status.patternFade]);
+
+  useEffect(() => {
+    if (typeof status.rampOnMs === 'number') setRampOn(status.rampOnMs);
+    if (typeof status.rampOffMs === 'number') setRampOff(status.rampOffMs);
+  }, [status.rampOnMs, status.rampOffMs]);
+
+  const patternOptions = useMemo(() => {
+    const count = status.patternCount || patternLabels.length;
+    return Array.from({ length: count }, (_, i) => ({
+      idx: i + 1,
+      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+    }));
+  }, [status.patternCount]);
+
+  const handleBrightness = (value: number) => {
+    const clamped = Math.min(100, Math.max(1, Math.round(value)));
+    setBrightness(clamped);
+    sendCmd(`bri ${clamped}`).catch((e) => console.warn(e));
+  };
+
+  const handlePatternChange = (val: number) => {
+    setPattern(val);
+    sendCmd(`mode ${val}`).catch((e) => console.warn(e));
+  };
+
+  const handlePatternSpeed = (val: number) => {
+    const clamped = Math.max(0.1, Math.min(5, val));
+    setPatternSpeed(clamped);
+    sendCmd(`pat scale ${clamped.toFixed(2)}`).catch((e) => console.warn(e));
+  };
+
+  const handlePatternFade = (val: number, enable: boolean) => {
+    setPatternFade(val);
+    setFadeEnabled(enable);
+    if (!enable) {
+      sendCmd('pat fade off').catch((e) => console.warn(e));
+    } else {
+      sendCmd(`pat fade on ${val.toFixed(2)}`).catch((e) => console.warn(e));
+    }
+  };
+
+  const handleRampOn = (val: number) => {
+    setRampOn(val);
+    if (!Number.isNaN(val)) sendCmd(`ramp on ${val}`);
+  };
+
+  const handleRampOff = (val: number) => {
+    setRampOff(val);
+    if (!Number.isNaN(val)) sendCmd(`ramp off ${val}`);
+  };
+
+  const handleLampToggle = (next: boolean) => {
+    setLampOn(next);
+    sendCmd(next ? 'on' : 'off').catch((e) => console.warn(e));
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Lamp &amp; Ramps</CardTitle>
+        <CardTitle><Trans k="title.lamp">Lamp &amp; Ramps</Trans></CardTitle>
         <div className="flex items-center gap-2">
-          <Label className="m-0">Profile</Label>
+          <Label className="m-0"><Trans k="label.profile">Profile</Trans></Label>
           <select className="input" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
             <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
           </select>
-          <Button onClick={onProfileLoad}>Load</Button>
-          <Button onClick={onProfileSave}>Save</Button>
+          <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}><Trans k="btn.load">Load</Trans></Button>
+          <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}><Trans k="btn.save">Save</Trans></Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <span className="chip-muted">Switch: {status.switchState ?? '--'}</span>
           <span className="chip-muted">Touch: {status.touchState ?? '--'}</span>
-          <Button size="sm" onClick={onSync}>
+          <Button size="sm" onClick={() => sendCmd('sync')}>
             <RefreshCw className="mr-1 h-4 w-4" /> Sync
           </Button>
-          <Button size="sm" variant="primary" onClick={() => onLampToggle(!lampOn)}>
+          <Button size="sm" variant="primary" onClick={() => handleLampToggle(!lampOn)}>
             {lampOn ? (
               <>
                 <Pause className="mr-1 h-4 w-4" /> Off
@@ -132,14 +146,14 @@ export function LampCard({
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted">Brightness</span>
+              <span className="text-sm text-muted"><Trans k="label.brightness">Brightness</Trans></span>
               <Input
                 type="number"
                 min={1}
                 max={100}
                 value={brightness}
-                onChange={(e) => onBrightnessChange(Number(e.target.value))}
-                onBlur={(e) => onBrightnessChange(Number(e.target.value))}
+                onChange={(e) => handleBrightness(Number(e.target.value))}
+                onBlur={(e) => handleBrightness(Number(e.target.value))}
                 className="w-24 text-right"
                 suffix="%"
               />
@@ -149,35 +163,35 @@ export function LampCard({
               min="1"
               max="100"
               value={brightness}
-              onChange={(e) => onBrightnessChange(Number(e.target.value))}
+              onChange={(e) => handleBrightness(Number(e.target.value))}
               className="w-full accent-accent"
             />
             <div className="flex gap-2">
-              <Button onClick={onPrev}>
+              <Button onClick={() => sendCmd('prev')}>
                 <ArrowLeftCircle className="mr-1 h-4 w-4" /> Prev
               </Button>
-              <select className="input" value={pattern} onChange={(e) => onPatternChange(parseInt(e.target.value, 10))}>
+              <select className="input" value={pattern} onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}>
                 {patternOptions.map((p) => (
                   <option key={p.idx} value={p.idx}>
                     {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
                   </option>
                 ))}
               </select>
-              <Button onClick={onNext}>
+              <Button onClick={() => sendCmd('next')}>
                 Next <ArrowRightCircle className="ml-1 h-4 w-4" />
               </Button>
             </div>
             <div className="flex flex-wrap gap-3">
               <div className="flex items-center gap-2">
-                <Label className="m-0 text-muted">Speed</Label>
+                <Label className="m-0 text-muted"><Trans k="label.speed">Speed</Trans></Label>
                 <Input
                   type="number"
                   min={0.1}
                   max={5}
                   step={0.1}
                   value={patternSpeed}
-                  onChange={(e) => onPatternSpeed(Number(e.target.value))}
-                  onBlur={(e) => onPatternSpeed(Number(e.target.value))}
+                  onChange={(e) => handlePatternSpeed(Number(e.target.value))}
+                  onBlur={(e) => handlePatternSpeed(Number(e.target.value))}
                   className="w-24"
                   suffix="x"
                   description="Pattern speed multiplier"
@@ -188,19 +202,19 @@ export function LampCard({
                   max="5"
                   step="0.1"
                   value={patternSpeed}
-                  onChange={(e) => onPatternSpeed(Number(e.target.value))}
+                  onChange={(e) => handlePatternSpeed(Number(e.target.value))}
                   className="accent-accent"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Label className="m-0 text-muted">Fade</Label>
+                <Label className="m-0 text-muted"><Trans k="label.fade">Fade</Trans></Label>
                 <select
                   className="input"
                   value={fadeEnabled ? patternFade : 'off'}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === 'off') onPatternFade(1, false);
-                    else onPatternFade(parseFloat(val), true);
+                    if (val === 'off') handlePatternFade(1, false);
+                    else handlePatternFade(parseFloat(val), true);
                   }}
                 >
                   <option value="off">Off</option>
@@ -212,7 +226,7 @@ export function LampCard({
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="pill cursor-pointer">
-                <input type="checkbox" className="accent-accent" onChange={(e) => onAutoCycle(e.target.checked)} />{' '}
+                <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`auto ${e.target.checked ? 'on' : 'off'}`)} />{' '}
                 <span className="inline-flex items-center gap-1">
                   <Activity className="h-4 w-4" /> AutoCycle
                 </span>
@@ -253,11 +267,7 @@ export function LampCard({
                   max={10000}
                   step={10}
                   value={rampOn ?? ''}
-                  onChange={(e) => onRampOn(Number(e.target.value))}
-                  onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isNaN(v)) onRampOn(v);
-                  }}
+                  onChange={(e) => handleRampOn(Number(e.target.value))}
                   className="w-28"
                   suffix="ms"
                 />
@@ -292,11 +302,7 @@ export function LampCard({
                   max={10000}
                   step={10}
                   value={rampOff ?? ''}
-                  onChange={(e) => onRampOff(Number(e.target.value))}
-                  onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isNaN(v)) onRampOff(v);
-                  }}
+                  onChange={(e) => handleRampOff(Number(e.target.value))}
                   className="w-28"
                   suffix="ms"
                 />
@@ -312,29 +318,50 @@ export function LampCard({
   );
 }
 
-export function QuickCustomSection({
-  patternOptions,
-  quickSearch,
-  setQuickSearch,
-  quickSelection,
-  toggleQuickSelection,
-  saveQuickSelection,
-  refreshStatus,
-  customCsv,
-  setCustomCsv,
-  customStep,
-  setCustomStep,
-  applyCustom,
-  clearCustom,
-  reloadCustom,
-  customLen,
-  customStepMs,
-}: QuickProps & CustomProps) {
+export function QuickCustomSection() {
+  const { status, refreshStatus, sendCmd } = useConnection();
+  const [quickSearch, setQuickSearch] = useState('');
+  const [quickSelection, setQuickSelection] = useState<number[]>([]);
+  const [customCsv, setCustomCsv] = useState('');
+  const [customStep, setCustomStep] = useState(400);
+
+  useEffect(() => {
+    if (status.quickCsv) {
+      const nums = status.quickCsv
+        .split(',')
+        .map((n) => parseInt(n.trim(), 10))
+        .filter((n) => !Number.isNaN(n));
+      setQuickSelection(nums);
+    }
+  }, [status.quickCsv]);
+
+  const patternOptions = useMemo(() => {
+    const count = status.patternCount || patternLabels.length;
+    return Array.from({ length: count }, (_, i) => ({
+      idx: i + 1,
+      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+    }));
+  }, [status.patternCount]);
+
+  const toggleQuickSelection = (idx: number) => {
+    setQuickSelection((prev) => (prev.includes(idx) ? prev.filter((n) => n !== idx) : [...prev, idx].sort((a, b) => a - b)));
+  };
+
+  const saveQuickSelection = () => {
+    if (quickSelection.length === 0) return;
+    sendCmd(`quick ${quickSelection.join(',')}`).catch((e) => console.warn(e));
+  };
+
+  const applyCustom = () => {
+    if (customCsv.trim()) sendCmd(`custom ${customCsv.replace(/\s+/g, '')}`);
+    if (customStep) sendCmd(`custom step ${customStep}`);
+  };
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader className="items-start">
-          <CardTitle>Quick Tap Modes</CardTitle>
+          <CardTitle><Trans k="title.quick">Quick Tap Modes</Trans></CardTitle>
           <Input placeholder="Search pattern" value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} className="w-40" />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -359,10 +386,10 @@ export function QuickCustomSection({
 
       <Card>
         <CardHeader>
-          <CardTitle>Custom Pattern</CardTitle>
+          <CardTitle><Trans k="title.custom">Custom Pattern</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Label>Values (0..1 CSV)</Label>
+          <Label><Trans k="label.values">Values (0..1 CSV)</Trans></Label>
           <textarea className="input w-full" rows={3} placeholder="0.2,0.8,1.0,0.4" value={customCsv} onChange={(e) => setCustomCsv(e.target.value)} />
           <div className="flex items-center gap-2">
             <Label className="m-0">Step (ms)</Label>
@@ -383,11 +410,11 @@ export function QuickCustomSection({
             <Button variant="primary" onClick={applyCustom}>
               Apply
             </Button>
-            <Button onClick={clearCustom}>Clear</Button>
-            <Button onClick={reloadCustom}>Reload</Button>
+            <Button onClick={() => setCustomCsv('')}>Clear</Button>
+            <Button onClick={() => sendCmd('custom')}>Reload</Button>
           </div>
           <p className="text-sm text-muted">
-            Current: len={customLen ?? '--'} step={customStepMs ?? '--'}ms
+            Current: len={status.customLen ?? '--'} step={status.customStepMs ?? '--'}ms
           </p>
         </CardContent>
       </Card>
@@ -395,20 +422,23 @@ export function QuickCustomSection({
   );
 }
 
-export function ProfilesSection({ profileSlot, onProfileLoad, onProfileSave, onBackup, onImport, cfgText, setCfgText }: ProfilesProps) {
+export function ProfilesSection({ profileSlot, setProfileSlot }: ProfilesProps) {
+  const { sendCmd } = useConnection();
+  const [cfgText, setCfgText] = useState('');
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Import / Export</CardTitle>
+          <CardTitle><Trans k="title.import">Import / Export</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <Button onClick={onBackup}>
+            <Button onClick={() => sendCmd('cfg export')}>
               <Copy className="mr-1 h-4 w-4" /> cfg export
             </Button>
             <Input placeholder="cfg import key=val ..." value={cfgText} onChange={(e) => setCfgText(e.target.value)} />
-            <Button onClick={() => cfgText.trim() && onImport(cfgText)}>
+            <Button onClick={() => cfgText.trim() && sendCmd(cfgText)}>
               <ClipboardPaste className="mr-1 h-4 w-4" /> Import
             </Button>
           </div>
@@ -417,16 +447,34 @@ export function ProfilesSection({ profileSlot, onProfileLoad, onProfileSave, onB
 
       <Card>
         <CardHeader>
-          <CardTitle>Profiles</CardTitle>
+          <CardTitle><Trans k="title.profiles">Profiles</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex gap-2 flex-wrap">
-            <Button onClick={onProfileSave}>Save Profile {profileSlot}</Button>
-            <Button onClick={onProfileLoad}>Load Profile {profileSlot}</Button>
-            <Button onClick={onBackup}>Backup Settings</Button>
+          <div className="flex gap-2 flex-wrap items-center">
+            <Label className="m-0">Slot</Label>
+            <select className="input w-20" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+            <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}>Save Profile {profileSlot}</Button>
+            <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}>Load Profile {profileSlot}</Button>
+            <Button onClick={() => sendCmd('cfg export')}>Backup Settings</Button>
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export function HomeSection() {
+  const [profileSlot, setProfileSlot] = useState('1');
+
+  return (
+    <div className="space-y-4">
+      <LampCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
+      <QuickCustomSection />
+      <ProfilesSection profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
     </div>
   );
 }

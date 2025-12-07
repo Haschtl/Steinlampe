@@ -61,6 +61,7 @@ void saveSettings();
 void importConfig(const String &args);
 void setPattern(size_t index, bool announce = true, bool persist = false);
 void printStatus();
+void printStatusStructured();
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -1306,6 +1307,90 @@ void printStatus()
   updateBleStatus(payload);
 }
 
+/**
+ * @brief Emit structured sensor snapshot for machine parsing.
+ */
+void printSensorsStructured()
+{
+  String line = F("SENSORS|");
+  line += F("touch_base=");
+  line += String(touchBaseline);
+  int raw = touchRead(PIN_TOUCH_DIM);
+  line += F("|touch_raw=");
+  line += String(raw);
+  line += F("|touch_delta=");
+  line += String(touchBaseline - raw);
+  line += F("|touch_active=");
+  line += touchActive ? F("1") : F("0");
+#if ENABLE_LIGHT_SENSOR
+  line += F("|light_raw=");
+  line += String((int)lightFiltered);
+  line += F("|light_min=");
+  line += String((int)lightMinRaw);
+  line += F("|light_max=");
+  line += String((int)lightMaxRaw);
+#else
+  line += F("|light_raw=N/A");
+#endif
+#if ENABLE_MUSIC_MODE
+  line += F("|music_env=");
+  line += String(musicFiltered, 3);
+#else
+  line += F("|music_env=N/A");
+#endif
+  sendFeedback(line);
+}
+/**
+ * @brief Emit a single structured status line for easier parsing (key=value pairs).
+ */
+void printStatusStructured()
+{
+  String line = F("STATUS|");
+  line += F("pattern=");
+  line += String(currentPattern + 1);
+  line += F("|pattern_total=");
+  line += String(PATTERN_COUNT);
+  line += F("|pattern_name=");
+  line += PATTERNS[currentPattern].name;
+  line += F("|auto=");
+  line += autoCycle ? F("1") : F("0");
+  line += F("|bri=");
+  line += String(masterBrightness * 100.0f, 1);
+  line += F("|cap=");
+  line += String(brightnessCap * 100.0f, 1);
+  line += F("|lamp=");
+  line += lampEnabled ? F("ON") : F("OFF");
+  line += F("|switch=");
+  line += switchDebouncedState ? F("ON") : F("OFF");
+  line += F("|touch_dim=");
+  line += touchDimEnabled ? F("1") : F("0");
+  line += F("|ramp_on_ms=");
+  line += String(rampOnDurationMs);
+  line += F("|ramp_off_ms=");
+  line += String(rampOffDurationMs);
+  line += F("|idle_min=");
+  line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
+  line += F("|pat_speed=");
+  line += String(patternSpeedScale, 2);
+  line += F("|pat_fade=");
+  line += patternFadeEnabled ? String(patternFadeStrength, 2) : F("off");
+  line += F("|quick=");
+  line += quickMaskToCsv();
+  line += F("|presence=");
+  line += presenceEnabled ? (presenceAddr.isEmpty() ? F("ON(no-dev)") : presenceAddr) : F("OFF");
+  line += F("|custom_len=");
+  line += String(customLen);
+  line += F("|custom_step_ms=");
+  line += String(customStepMs);
+  line += F("|gamma=");
+  line += String(outputGamma, 2);
+  line += F("|bri_min=");
+  line += String(briMinUser * 100.0f, 1);
+  line += F("|bri_max=");
+  line += String(briMaxUser * 100.0f, 1);
+  sendFeedback(line);
+}
+
 void importConfig(const String &args)
 {
   // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_en=on)
@@ -1705,6 +1790,16 @@ void handleCommand(String line)
   if (lower == "status")
   {
     printStatus();
+    return;
+  }
+  if (lower == "status raw" || lower == "status json")
+  {
+    printStatusStructured();
+    return;
+  }
+  if (lower == "sensors" || lower == "read sensors")
+  {
+    printSensorsStructured();
     return;
   }
   if (lower == "on")

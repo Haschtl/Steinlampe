@@ -2,10 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { I18nProvider } from './i18n';
+import { ConnectionProvider } from './context/connection';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <ConnectionProvider>
+        <App />
+      </ConnectionProvider>
+    </I18nProvider>
   </React.StrictMode>,
 );
 

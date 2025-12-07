@@ -1,29 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Activity,
-  ArrowLeftCircle,
-  ArrowRightCircle,
-  ClipboardPaste,
-  Copy,
-  Flashlight,
-  LogOut,
-  Pause,
-  RefreshCw,
-  Send,
-  Shield,
-  SlidersHorizontal,
-  Zap,
-  ZapOff,
-  Sun,
-  Mic,
-} from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
 import { patternLabels } from './data/patterns';
-import { useBle } from './hooks/useBle';
+import { useConnection } from './context/connection';
+import { Trans, useI18n } from './i18n';
 import { LampCard, PatternOption, ProfilesSection, QuickCustomSection } from './sections/HomeSection';
 import { SettingsCard, PresenceTouchCard, LightMusicCard } from './sections/SettingsSection';
 import { NotifyCard, WakeSleepCard } from './sections/ActionsSection';
@@ -49,6 +30,7 @@ const commands = [
 ];
 
 export default function App() {
+  const { t, lang, setLang } = useI18n();
   const {
     status,
     log,
@@ -60,7 +42,7 @@ export default function App() {
     disconnect,
     refreshStatus,
     sendCmd,
-  } = useBle();
+  } = useConnection();
   const [brightness, setBrightness] = useState(70);
   const [cap, setCap] = useState(100);
   const [pattern, setPattern] = useState(1);
@@ -87,7 +69,6 @@ export default function App() {
   const [customCsv, setCustomCsv] = useState('');
   const [customStep, setCustomStep] = useState(400);
   const [cfgExportText, setCfgExportText] = useState('');
-  const [profileQrText, setProfileQrText] = useState('');
   const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'actions' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
 
@@ -223,696 +204,267 @@ export default function App() {
 
   const applyCustom = () => {
     if (customCsv.trim()) sendCmd(`custom ${customCsv.replace(/\s+/g, '')}`);
-    sendCmd(`custom step ${customStep}`);
+    if (customStep) sendCmd(`custom step ${customStep}`);
+  };
+
+  const handleIdle = () => {
+    const minutes = Math.max(0, idleMinutes);
+    setIdleMinutes(minutes);
+    sendCmd(`idleoff ${minutes}`).catch((e) => console.warn(e));
+  };
+
+  const handlePwm = (val: number) => {
+    setPwmCurve(val);
+    if (!Number.isNaN(val)) sendCmd(`pwm curve ${val.toFixed(2)}`).catch((e) => console.warn(e));
   };
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
+  const logLines = log.slice(-150);
+
+  const tabs: { key: 'home' | 'settings' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
+    { key: 'home', label: t('tab.home', 'Home'), icon: <Home className="h-4 w-4" /> },
+    { key: 'settings', label: t('tab.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
+    { key: 'actions', label: t('tab.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
+    { key: 'help', label: t('tab.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
+  ];
 
   return (
-    <div className="min-h-screen bg-bg text-text">
+    <div className="min-h-screen bg-bg text-text pb-36">
       <header className="sticky top-0 z-10 bg-gradient-to-br from-[#111a2d] via-[#0b0f1a] to-[#0b0f1a] px-4 py-3 shadow-lg shadow-black/40">
-        <div className="mx-auto flex max-w-6xl items-center gap-3">
-          <img src={iconHref} alt="Lamp Icon" className="h-10 w-10 rounded-lg border border-border bg-[#0b0f1a] p-1.5" />
-          <div className="flex flex-1 items-center gap-3">
-            <h1 className="text-xl font-semibold tracking-wide">Quarzlampe Control</h1>
-            <div className="flex flex-wrap gap-2">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <img src={iconHref} alt="Lamp Icon" className="h-10 w-10 rounded-lg border border-border bg-[#0b0f1a] p-1.5" />
+            <div className="flex flex-1 flex-col">
+              <h1 className="text-xl font-semibold tracking-wide"><Trans k="title.app">Quarzlampe Control</Trans></h1>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                <span className="pill text-accent2">{status.connected ? `${t('status.connected', 'Connected')} ${status.deviceName ?? ''}` : t('status.disconnected', 'Not connected')}</span>
+                <span className="pill">{t('status.last', 'Last status')}: {status.lastStatusAt ? new Date(status.lastStatusAt).toLocaleTimeString() : '--'}</span>
+                {status.patternName && <span className="pill">Pattern: {status.patternName}</span>}
+                {typeof status.patternSpeed === 'number' && <span className="pill">Speed {status.patternSpeed.toFixed(2)}x</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="primary" onClick={connect} disabled={status.connecting}>
-                {status.connecting ? 'Connecting…' : <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> Connect</span>}
+                {status.connecting ? 'Connecting…' : (
+                  <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> {t('btn.connect', 'Connect BLE')}</span>
+                )}
               </Button>
-              <Button disabled>Connect Serial</Button>
+              <Button disabled><Trans k="btn.connectSerial">Connect Serial</Trans></Button>
               {status.connected && (
                 <Button onClick={disconnect}>
-                  <LogOut className="mr-1 h-4 w-4" /> Disconnect
+                  <LogOut className="mr-1 h-4 w-4" /> {t('btn.disconnect', 'Disconnect')}
                 </Button>
               )}
               <label className="pill cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-accent"
-                  checked={autoReconnect}
-                  onChange={(e) => setAutoReconnect(e.target.checked)}
-                />{' '}
-                Auto-reconnect
+                <input type="checkbox" className="accent-accent" checked={autoReconnect} onChange={(e) => setAutoReconnect(e.target.checked)} />{' '}
+                <Trans k="toggle.autoReconnect">Auto-reconnect</Trans>
               </label>
+              <select className="input w-24" value={lang} onChange={(e) => setLang(e.target.value as 'en' | 'de')}>
+                <option value="en">EN</option>
+                <option value="de">DE</option>
+              </select>
             </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
-            <span className="pill text-accent2">Status: {status.connected ? `Connected to ${status.deviceName}` : 'Not connected'}</span>
-            <span className="pill">Last status: {status.lastStatusAt ? new Date(status.lastStatusAt).toLocaleTimeString() : '--'}</span>
-            {status.patternName && <span className="pill">Pattern: {status.patternName}</span>}
-            {typeof status.patternSpeed === 'number' && <span className="pill">Speed {status.patternSpeed.toFixed(2)}x</span>}
+            {tabs.map((tab) => (
+              <Button
+                key={tab.key}
+                variant={activeTab === tab.key ? 'primary' : 'ghost'}
+                onClick={() => setActiveTab(tab.key)}
+                className="flex items-center gap-2"
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </Button>
+            ))}
+            <div className="flex-1" />
+            <Button size="sm" onClick={refreshStatus}>
+              <RefreshCw className="mr-1 h-4 w-4" /> {t('btn.reload', 'Reload')}
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader className="items-start">
-              <CardTitle>Quick Tap Modes</CardTitle>
-              <Input
-                placeholder="Search pattern"
-                value={quickSearch}
-                onChange={(e) => setQuickSearch(e.target.value)}
-                className="w-40"
+      <main className="mx-auto max-w-6xl space-y-4 px-4 py-4">
+        {activeTab === 'home' && (
+          <div className="space-y-4">
+            <LampCard
+              status={status}
+              brightness={brightness}
+              pattern={pattern}
+              patternOptions={patternOptions as PatternOption[]}
+              patternSpeed={patternSpeed}
+              patternFade={patternFade}
+              fadeEnabled={fadeEnabled}
+              rampOn={rampOn}
+              rampOff={rampOff}
+              lampOn={lampOn}
+              onSync={() => sendCmd('sync')}
+              onLampToggle={handleLampToggle}
+              onBrightnessChange={handleBrightness}
+              onPatternChange={handlePatternChange}
+              onPrev={() => sendCmd('prev')}
+              onNext={() => sendCmd('next')}
+              onAutoCycle={(on) => sendCmd(`auto ${on ? 'on' : 'off'}`)}
+              onPatternSpeed={handlePatternSpeed}
+              onPatternFade={handlePatternFade}
+              onRampOn={(val) => {
+                setRampOn(val);
+                sendCmd(`ramp on ${val}`);
+              }}
+              onRampOff={(val) => {
+                setRampOff(val);
+                sendCmd(`ramp off ${val}`);
+              }}
+              profileSlot={profileSlot}
+              setProfileSlot={setProfileSlot}
+              onProfileLoad={() => sendCmd(`profile load ${profileSlot}`)}
+              onProfileSave={() => sendCmd(`profile save ${profileSlot}`)}
+            />
+
+            <QuickCustomSection
+              patternOptions={patternOptions as PatternOption[]}
+              quickSearch={quickSearch}
+              setQuickSearch={setQuickSearch}
+              quickSelection={quickSelection}
+              toggleQuickSelection={toggleQuickSelection}
+              saveQuickSelection={saveQuickSelection}
+              refreshStatus={refreshStatus}
+              customCsv={customCsv}
+              setCustomCsv={setCustomCsv}
+              customStep={customStep}
+              setCustomStep={setCustomStep}
+              applyCustom={applyCustom}
+              clearCustom={() => setCustomCsv('')}
+              reloadCustom={() => sendCmd('custom')}
+              customLen={status.customLen}
+              customStepMs={status.customStepMs}
+            />
+
+            <ProfilesSection
+              profileSlot={profileSlot}
+              onProfileSave={() => sendCmd(`profile save ${profileSlot}`)}
+              onProfileLoad={() => sendCmd(`profile load ${profileSlot}`)}
+              onBackup={() => sendCmd('cfg export')}
+              onImport={(txt) => sendCmd(txt)}
+              cfgText={cfgExportText}
+              setCfgText={setCfgExportText}
+            />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-4">
+            <SettingsCard
+              cap={cap}
+              setCap={setCap}
+              idleMinutes={idleMinutes}
+              setIdleMinutes={setIdleMinutes}
+              pwmCurve={pwmCurve}
+              setPwmCurve={setPwmCurve}
+              handleCap={handleCap}
+              handleIdle={handleIdle}
+              handlePwm={handlePwm}
+            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <PresenceTouchCard
+                presenceText={status.presence}
+                onPresenceToggle={(on) => sendCmd(`presence ${on ? 'on' : 'off'}`)}
+                onPresenceMe={() => sendCmd('presence set me')}
+                onPresenceClear={() => sendCmd('presence clear')}
+                onTouchCalib={() => sendCmd('calibrate touch')}
+                onTouchDebug={() => sendCmd('touch')}
+                onTouchDimToggle={(on) => sendCmd(`touchdim ${on ? 'on' : 'off'}`)}
               />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
-                {patternOptions
-                  .filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase()))
-                  .map((p) => (
-                    <label key={p.idx} className="pill cursor-pointer whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        className="accent-accent"
-                        checked={quickSelection.includes(p.idx)}
-                        onChange={() => toggleQuickSelection(p.idx)}
-                      />{' '}
-                      {p.label}
-                    </label>
-                  ))}
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={saveQuickSelection}>Save quick list</Button>
-                <Button onClick={refreshStatus}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> Reload
-                </Button>
-              </div>
-              <p className="text-sm text-muted">Tap the physical switch to cycle through selected quick modes.</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom Pattern</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Label>Values (0..1 CSV)</Label>
-              <textarea
-                className="input w-full"
-                rows={3}
-                placeholder="0.2,0.8,1.0,0.4"
-                value={customCsv}
-                onChange={(e) => setCustomCsv(e.target.value)}
+              <LightMusicCard
+                onLightToggle={(on) => sendCmd(`light ${on ? 'on' : 'off'}`)}
+                onLightGain={(v) => sendCmd(`light gain ${v}`)}
+                onLightCalib={() => sendCmd('light calib')}
+                onMusicToggle={(on) => sendCmd(`music ${on ? 'on' : 'off'}`)}
+                onMusicGain={(v) => sendCmd(`music sens ${v}`)}
+                onClapThr={(v) => sendCmd(`clap thr ${v}`)}
+                onClapCool={(v) => sendCmd(`clap cool ${v}`)}
               />
-              <div className="flex items-center gap-2">
-                <Label className="m-0">Step (ms)</Label>
-                <Input
-                  type="number"
-                  min={20}
-                  max={2000}
-                  step={20}
-                  value={customStep}
-                  onChange={(e) => setCustomStep(Number(e.target.value))}
-                  className="w-28"
-                  suffix="ms"
-                  description="Step duration for each custom value"
-                />
-                <Button onClick={() => sendCmd(`custom step ${customStep}`)}>Set step</Button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    if (customCsv.trim()) sendCmd(`custom ${customCsv.replace(/\s+/g, '')}`);
-                  }}
-                >
-                  Apply
-                </Button>
-                <Button onClick={() => setCustomCsv('')}>Clear</Button>
-                <Button onClick={() => sendCmd('custom')}>Reload</Button>
-              </div>
-              <p className="text-sm text-muted">
-                Current: len={status.customLen ?? '--'} step={status.customStepMs ?? '--'}ms
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </div>
+        )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Presence &amp; Touch</CardTitle>
-              <div className="flex items-center gap-2">
+        {activeTab === 'actions' && (
+          <div className="space-y-4">
+            <WakeSleepCard
+              wakeDuration={wakeDuration}
+              setWakeDuration={setWakeDuration}
+              wakeMode={wakeMode}
+              setWakeMode={setWakeMode}
+              wakeBri={wakeBri}
+              setWakeBri={setWakeBri}
+              wakeSoft={wakeSoft}
+              setWakeSoft={setWakeSoft}
+              handleWake={handleWake}
+              sleepMinutes={sleepMinutes}
+              setSleepMinutes={setSleepMinutes}
+              patternOptions={patternOptions}
+              sendCmd={sendCmd}
+            />
+            <NotifyCard
+              notifySeq={notifySeq}
+              setNotifySeq={setNotifySeq}
+              notifyFade={notifyFade}
+              setNotifyFade={setNotifyFade}
+              notifyRepeat={notifyRepeat}
+              setNotifyRepeat={setNotifyRepeat}
+              handleNotify={handleNotify}
+              sendCmd={sendCmd}
+            />
+          </div>
+        )}
+
+        {activeTab === 'help' && <HelpSection bleGuids={bleGuids} commands={commands} />}
+      </main>
+
+      <footer className="sticky bottom-0 z-20 border-t border-border/60 bg-[#0b0f1a]/95 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setLogOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg border border-border bg-[#0d1425] px-3 py-2 text-left hover:border-accent"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold"><Trans k="title.log">Log</Trans></span>
+              <span className="text-xs text-muted">{logOpen ? t('log.hide', 'Hide') : t('log.show', 'Show')}</span>
+              <span className="text-xs text-muted">({log.length} lines)</span>
+            </div>
+            <span className="text-xs text-muted">{status.connected ? t('status.connected', 'Connected') : t('status.disconnected', 'Not connected')}</span>
+          </button>
+
+          {logOpen && (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="pill cursor-pointer">
-                  <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)} /> Presence
+                  <input type="checkbox" className="accent-accent" checked={liveLog} onChange={(e) => setLiveLog(e.target.checked)} /> Live log
                 </label>
-                <label className="pill cursor-pointer">
-                  <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`touchdim ${e.target.checked ? 'on' : 'off'}`)} /> TouchDim
-                </label>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-2">
-                <Button onClick={() => sendCmd('presence set me')}>
-                  <Shield className="mr-1 h-4 w-4" /> Set me
+                <Button size="sm" onClick={refreshStatus}>
+                  <RefreshCw className="mr-1 h-4 w-4" /> {t('btn.reload', 'Reload status')}
                 </Button>
-                <Button onClick={() => sendCmd('presence clear')}>Clear</Button>
-              </div>
-              <p className="text-sm text-muted">Status: {status.presence ?? '---'}</p>
-              <div className="flex gap-2">
-                <Button onClick={() => sendCmd('calibrate touch')}>Calibrate touch</Button>
-                <Button onClick={() => sendCmd('touch')}>Touch debug</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Light &amp; Music</CardTitle>
-              <div className="flex items-center gap-2">
-                <label className="pill cursor-pointer">
-                  <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`light ${e.target.checked ? 'on' : 'off'}`)} /> Light
-                </label>
-                <label className="pill cursor-pointer">
-                  <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`music ${e.target.checked ? 'on' : 'off'}`)} /> Music
-                </label>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sun className="h-4 w-4 text-muted" />
-                <Label className="m-0">Light gain</Label>
-                <Input type="number" min={0.1} max={5} step={0.1} defaultValue={1} onBlur={(e) => sendCmd(`light gain ${e.target.value}`)} className="w-24" suffix="x" />
-                <Button onClick={() => sendCmd('light calib')}>Calibrate</Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mic className="h-4 w-4 text-muted" />
-                <Label className="m-0">Music gain</Label>
-                <Input type="number" min={0.1} max={5} step={0.1} defaultValue={1} onBlur={(e) => sendCmd(`music sens ${e.target.value}`)} className="w-24" suffix="x" />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="m-0">Clap thr</Label>
-                <Input type="number" min={0.05} max={1.5} step={0.01} defaultValue={0.35} onBlur={(e) => sendCmd(`clap thr ${e.target.value}`)} className="w-24" suffix="x" />
-                <Label className="m-0">Cool</Label>
-                <Input type="number" min={200} max={5000} step={50} defaultValue={800} onBlur={(e) => sendCmd(`clap cool ${e.target.value}`)} className="w-24" suffix="ms" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Import / Export</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-2">
-                <Button onClick={() => sendCmd('cfg export')}>
-                  <Copy className="mr-1 h-4 w-4" /> cfg export
-                </Button>
-                <Input placeholder="cfg import key=val ..." value={cfgExportText} onChange={(e) => setCfgExportText(e.target.value)} />
-                <Button onClick={() => cfgExportText.trim() && sendCmd(cfgExportText)}>
-                  <ClipboardPaste className="mr-1 h-4 w-4" /> Import
+                <Button size="sm" onClick={() => sendCmd('cfg export')}>
+                  <Send className="mr-1 h-4 w-4" /> cfg export
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex flex-col items-center gap-2">
-                  <Label className="m-0">CFG QR</Label>
-                  <QRCodeSVG value={cfgExportText || 'cfg export ...'} width={128} height={128} />
-                </div>
-                <div className="flex flex-col items-center gap-2">
-                  <Label className="m-0">Profile QR</Label>
-                  <QRCodeSVG value={profileQrText || 'profile export'} width={128} height={128} />
-                  <Input placeholder="profile import text" value={profileQrText} onChange={(e) => setProfileQrText(e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Profiles &amp; Custom</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex gap-2 flex-wrap">
-                <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}>Save Profile {profileSlot}</Button>
-                <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}>Load Profile {profileSlot}</Button>
-                <Button onClick={() => sendCmd('cfg export')}>Backup Settings</Button>
-              </div>
-              <div className="flex gap-2">
-                <Input placeholder="cfg import ..." onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const val = (e.target as HTMLInputElement).value.trim();
-                    if (val) sendCmd(val);
-                  }
-                }} />
-                <Button onClick={refreshStatus}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> Refresh
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Lamp &amp; Ramps</CardTitle>
-              <div className="flex items-center gap-2">
-                <Label className="m-0">Profile</Label>
-                <select className="input" value={profileSlot} onChange={(e) => setProfileSlot(e.target.value)}>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                </select>
-                <Button onClick={() => sendCmd(`profile load ${profileSlot}`)}>Load</Button>
-                <Button onClick={() => sendCmd(`profile save ${profileSlot}`)}>Save</Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="chip-muted">Switch: {status.switchState ?? '--'}</span>
-                <span className="chip-muted">Touch: {status.touchState ?? '--'}</span>
-                <Button size="sm" onClick={() => sendCmd('sync')}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> Sync
-                </Button>
-                <Button size="sm" variant="primary" onClick={() => handleLampToggle(!lampOn)}>
-                  {lampOn ? <><Pause className="mr-1 h-4 w-4" /> Off</> : <><Flashlight className="mr-1 h-4 w-4" /> On</>}
-                </Button>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted">Brightness</span>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={brightness}
-                      onChange={(e) => setBrightness(Number(e.target.value))}
-                      onBlur={(e) => handleBrightness(Number(e.target.value))}
-                      className="w-24 text-right"
-                      suffix="%"
-                    />
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="100"
-                    value={brightness}
-                    onChange={(e) => setBrightness(Number(e.target.value))}
-                    onMouseUp={(e) => handleBrightness(Number((e.target as HTMLInputElement).value))}
-                    onTouchEnd={(e) => handleBrightness(Number((e.target as HTMLInputElement).value))}
-                    className="w-full accent-accent"
-                  />
-                  <div className="flex gap-2">
-                    <Button onClick={() => sendCmd('prev')}>
-                      <ArrowLeftCircle className="mr-1 h-4 w-4" /> Prev
-                    </Button>
-                    <select
-                      className="input"
-                      value={pattern}
-                      onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}
-                    >
-                      {patternOptions.map((p) => (
-                        <option key={p.idx} value={p.idx}>
-                          {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
-                        </option>
-                      ))}
-                    </select>
-                    <Button onClick={() => sendCmd('next')}>
-                      Next <ArrowRightCircle className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-2">
-                    <Label className="m-0 text-muted">Speed</Label>
-                    <Input
-                      type="number"
-                      min={0.1}
-                      max={5}
-                      step={0.1}
-                      value={patternSpeed}
-                      onChange={(e) => setPatternSpeed(Number(e.target.value))}
-                      onBlur={(e) => handlePatternSpeed(Number(e.target.value))}
-                      className="w-24"
-                      suffix="x"
-                      description="Pattern speed multiplier"
-                    />
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="5"
-                        step="0.1"
-                        value={patternSpeed}
-                        onChange={(e) => setPatternSpeed(Number(e.target.value))}
-                        onMouseUp={(e) => handlePatternSpeed(Number((e.target as HTMLInputElement).value))}
-                        onTouchEnd={(e) => handlePatternSpeed(Number((e.target as HTMLInputElement).value))}
-                        className="accent-accent"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0 text-muted">Fade</Label>
-                      <select
-                        className="input"
-                        value={fadeEnabled ? patternFade : 'off'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === 'off') handlePatternFade(1, false);
-                          else handlePatternFade(parseFloat(val), true);
-                        }}
-                      >
-                        <option value="off">Off</option>
-                        <option value="0.5">0.5x</option>
-                        <option value="1">1x</option>
-                        <option value="2">2x</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <label className="pill cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="accent-accent"
-                        onChange={(e) => sendCmd(`auto ${e.target.checked ? 'on' : 'off'}`)}
-                      />{' '}
-                      <span className="inline-flex items-center gap-1"><Activity className="h-4 w-4" /> AutoCycle</span>
-                    </label>
-                    <label className="pill cursor-pointer">
-                      <input type="checkbox" className="accent-accent" disabled /> Pattern Fade
-                    </label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Profile</Label>
-                  <div className="flex gap-2 text-muted text-sm">oben bei Lamp &amp; Ramps</div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <Card className="p-3">
-                  <CardTitle className="text-base text-text">Ramp On</CardTitle>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Ease</Label>
-                      <select className="input">
-                        <option>linear</option>
-                        <option>ease</option>
-                        <option>ease-in</option>
-                        <option>ease-out</option>
-                        <option>ease-in-out</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Power</Label>
-                      <Input type="number" min="0.01" max="10" step="0.01" defaultValue={2} className="w-24" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Duration</Label>
-                      <Input
-                        type="number"
-                        min={50}
-                        max={10000}
-                        step={10}
-                        value={rampOn ?? ''}
-                        onChange={(e) => setRampOn(Number(e.target.value))}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (!Number.isNaN(v)) sendCmd(`ramp on ${v}`);
-                        }}
-                        className="w-28"
-                        suffix="ms"
-                      />
-                      <div className="h-2 w-full rounded bg-border">
-                        <div
-                          className="h-2 rounded bg-accent"
-                          style={{ width: `${Math.min(100, Math.max(5, ((rampOn || 0) / 5000) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-3">
-                  <CardTitle className="text-base text-text">Ramp Off</CardTitle>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Ease</Label>
-                      <select className="input">
-                        <option>linear</option>
-                        <option>ease</option>
-                        <option>ease-in</option>
-                        <option>ease-out</option>
-                        <option>ease-in-out</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Power</Label>
-                      <Input type="number" min="0.01" max="10" step="0.01" defaultValue={2} className="w-24" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="m-0">Duration</Label>
-                      <Input
-                        type="number"
-                        min={50}
-                        max={10000}
-                        step={10}
-                        value={rampOff ?? ''}
-                        onChange={(e) => setRampOff(Number(e.target.value))}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (!Number.isNaN(v)) sendCmd(`ramp off ${v}`);
-                        }}
-                        className="w-28"
-                        suffix="ms"
-                      />
-                      <div className="h-2 w-full rounded bg-border">
-                        <div
-                          className="h-2 rounded bg-accent2"
-                          style={{ width: `${Math.min(100, Math.max(5, ((rampOff || 0) / 5000) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Notify</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Button variant="primary" onClick={() => sendCmd('sos')}>
-                  <Zap className="mr-1 h-4 w-4" /> SOS Start
-                </Button>
-                <Button variant="danger" onClick={() => sendCmd('sos stop')}>
-                  <ZapOff className="mr-1 h-4 w-4" /> SOS Stop
-                </Button>
-              </div>
-              <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                <div className="space-y-1">
-                  <Label>Sequence</Label>
-                  <Input
-                    placeholder="80 40 80 120"
-                    value={notifySeq}
-                    onChange={(e) => setNotifySeq(e.target.value)}
-                    suffix="ms"
-                  />
-                  <div className="flex items-center gap-3">
-                    <Label className="m-0 text-muted">Fade</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={500}
-                      step={10}
-                      value={notifyFade}
-                      onChange={(e) => setNotifyFade(Number(e.target.value))}
-                      className="w-24"
-                      suffix="ms"
-                    />
-                    <Label className="m-0 text-muted">Repeat</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={notifyRepeat}
-                      onChange={(e) => setNotifyRepeat(Number(e.target.value))}
-                      className="w-20"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-end gap-2">
-                  <Button variant="primary" onClick={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}>
-                    <Send className="mr-1 h-4 w-4" /> Notify
-                  </Button>
-                  <Button variant="danger" onClick={() => sendCmd('notify stop')}>
-                    <ZapOff className="mr-1 h-4 w-4" /> Stop
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Short blink', seq: '80 40 80 120', fade: 0 },
-                  { label: 'Soft alert', seq: '200 100', fade: 100 },
-                  { label: 'Triple pulse', seq: '120 80 120 80 120 200', fade: 40 },
-                  { label: 'Doorbell', seq: '200 80 200 400', fade: 30 },
-                  { label: 'Long Fade Alert', seq: '500 300', fade: 120 },
-                  { label: 'Double 60', seq: '60 60 60 200', fade: 0 },
-                  { label: 'SOS', seq: '400 400 400 800 800 800 400 400 400 1200', fade: 0 },
-                ].map((p) => (
-                  <Button
-                    key={p.label}
-                    onClick={() => {
-                      setNotifySeq(p.seq);
-                      setNotifyFade(p.fade ?? 0);
-                      setNotifyRepeat(1);
-                      handleNotify(p.seq, p.fade, 1);
-                    }}
-                  >
-                    {p.label}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Wake</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <Label>Duration (s)</Label>
-                  <Input type="number" min={1} value={wakeDuration} onChange={(e) => setWakeDuration(Number(e.target.value))} suffix="s" />
-                </div>
-                <div>
-                  <Label>Mode</Label>
-                  <select className="input" value={wakeMode} onChange={(e) => setWakeMode(e.target.value)}>
-                    <option value="">Unverändert</option>
-                    {patternOptions.slice(0, 10).map((p) => (
-                      <option key={p.idx} value={p.idx}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <Label>Brightness (%)</Label>
-                  <Input type="number" placeholder="Bri %" value={wakeBri} onChange={(e) => setWakeBri(e.target.value)} suffix="%" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="pill cursor-pointer">
-                    <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> Soft
-                  </label>
-                  <Button variant="primary" onClick={handleWake}>
-                    Wake
-                  </Button>
-                  <Button variant="danger" onClick={() => sendCmd('wake stop')}>
-                    <ZapOff className="mr-1 h-4 w-4" /> Stop
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Sleep</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-                <div>
-                  <Label>Duration (min)</Label>
-                  <Input type="number" min={1} value={sleepMinutes} onChange={(e) => setSleepMinutes(Number(e.target.value))} suffix="min" />
-                </div>
-                <Button variant="primary" onClick={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`)}>
-                  <Zap className="mr-1 h-4 w-4" /> Sleep
-                </Button>
-                <Button variant="danger" onClick={() => sendCmd('sleep stop')}>
-                  <ZapOff className="mr-1 h-4 w-4" /> Stop
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label>Brightness cap (%)</Label>
-                <div className="flex items-center gap-2">
-                  <Input type="number" min={1} max={100} value={cap} onChange={(e) => setCap(Number(e.target.value))} className="w-28" suffix="%" />
-                  <Button onClick={handleCap}>Set</Button>
-                </div>
-              </div>
-              <div>
-                <Label>Idle off (min)</Label>
-                <div className="flex items-center gap-2">
-                  <Input type="number" min={0} max={180} value={idleMinutes} onChange={(e) => setIdleMinutes(Number(e.target.value))} className="w-28" suffix="min" />
-                  <Button onClick={() => sendCmd(`idleoff ${Math.max(0, idleMinutes)}`)}>Set</Button>
-                </div>
-              </div>
-              <div>
-                <Label>PWM Curve</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0.5}
-                    max={4}
-                    step={0.1}
-                    value={pwmCurve}
-                    onChange={(e) => setPwmCurve(Number(e.target.value))}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (!Number.isNaN(v)) sendCmd(`pwm curve ${v.toFixed(2)}`);
-                    }}
-                    className="w-28"
-                    suffix="γ"
-                    description="Gamma to linearize LED brightness (0.5–4)"
-                  />
-                  <SlidersHorizontal className="h-4 w-4 text-muted" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Log</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center gap-2">
-                <label className="pill cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="accent-accent"
-                    checked={liveLog}
-                    onChange={(e) => setLiveLog(e.target.checked)}
-                  />{' '}
-                  Live log
-                </label>
-                <Button onClick={refreshStatus}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> Reload status
-                </Button>
-                <Button onClick={() => sendCmd('cfg export')}>cfg export</Button>
-              </div>
-              <div className="min-h-[160px] rounded-lg border border-border bg-[#0b0f1a] p-3 font-mono text-sm text-accent space-y-1">
-                {log.length === 0 && <p className="text-muted">Waiting for connection…</p>}
-                {log.slice(-120).map((l) => (
-                  <div key={l.ts} className="flex items-start gap-2 border-b border-border/40 pb-1 last:border-b-0 last:pb-0">
-                    <span className="rounded bg-[#10172a] px-2 py-0.5 text-xs text-muted">
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-[#0b0f1a] p-3 font-mono text-sm text-accent space-y-1">
+                {logLines.length === 0 && <p className="text-muted">Waiting for connection…</p>}
+                {logLines.map((l, idx) => (
+                  <div key={`${l.ts}-${idx}`} className="flex items-start gap-2 border-b border-border/40 pb-1 last:border-b-0 last:pb-0">
+                    <span className="rounded bg-[#10172a] px-2 py-0.5 text-[11px] text-muted">
                       {new Date(l.ts).toLocaleTimeString([], { hour12: false })}
                     </span>
-                    <span className="text-accent">{l.line}</span>
+                    <span className="text-accent whitespace-pre-wrap">{l.line}</span>
                   </div>
                 ))}
               </div>
               <div className="flex gap-2">
                 <Input
-                  placeholder="type command"
+                  placeholder={t('input.command', 'Type command')}
                   value={commandInput}
                   onChange={(e) => setCommandInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -925,74 +477,24 @@ export default function App() {
                     }
                   }}
                 />
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      const val = commandInput.trim();
-                      if (val) {
-                        sendCmd(val);
-                        setCommandInput('');
-                      }
-                    }}
-                  >
-                    <Send className="mr-1 h-4 w-4" /> Send
-                  </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    const val = commandInput.trim();
+                    if (val) {
+                      sendCmd(val);
+                      setCommandInput('');
+                    }
+                  }}
+                >
+                  <Send className="mr-1 h-4 w-4" /> {t('btn.send', 'Send')}
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>BLE GUIDs</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <table className="w-full border-collapse text-sm">
-                <tbody>
-                  {bleGuids.map((g) => (
-                    <tr key={g.label} className="border-b border-border">
-                      <td className="py-1 pr-2 text-muted">{g.label}</td>
-                      <td className="py-1 font-mono text-accent">{g.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="text-sm text-muted">
-                BLE-MIDI (optional): Service 03B80E5A-EDE8-4B33-A751-6CE34EC4C700, Char 7772E5DB-3868-4112-A1A9-F2669D106BF3 (RX-only).
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Command Reference & Links</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <table className="w-full border-collapse text-sm">
-                <tbody>
-                  {commands.map((c) => (
-                    <tr key={c.cmd} className="border-b border-border">
-                      <td className="py-1 pr-2 font-mono text-accent">{c.cmd}</td>
-                      <td className="py-1 text-muted">{c.desc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="flex flex-wrap gap-2">
-                <a className="pill" href="https://play.google.com/store/apps/details?id=net.dinglisch.android.taskerm" target="_blank" rel="noopener noreferrer">
-                  Tasker (Play Store)
-                </a>
-                <a className="pill" href="https://github.com/Haschtl/Tasker-Ble-Writer/actions" target="_blank" rel="noopener noreferrer">
-                  Tasker-BLE-Writer Actions
-                </a>
-                <a className="pill" href="https://github.com/Haschtl/Steinlampe/actions/workflows/ci.yml" target="_blank" rel="noopener noreferrer">
-                  Firmware Build (Actions)
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      </footer>
     </div>
   );
 }

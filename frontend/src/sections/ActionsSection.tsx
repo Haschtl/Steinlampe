@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Trans } from '@/i18n';
 
 type NotifyProps = {
   notifySeq: string;
@@ -35,7 +36,7 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Notify</CardTitle>
+        <CardTitle><Trans k="title.notify">Notify</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
@@ -48,12 +49,12 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
         </div>
         <div className="grid gap-2 md:grid-cols-[1fr_auto]">
           <div className="space-y-1">
-            <Label>Sequence</Label>
+            <Label><Trans k="label.sequence">Sequence</Trans></Label>
             <Input placeholder="80 40 80 120" value={notifySeq} onChange={(e) => setNotifySeq(e.target.value)} suffix="ms" />
             <div className="flex items-center gap-3">
-              <Label className="m-0 text-muted">Fade</Label>
+              <Label className="m-0 text-muted"><Trans k="label.fade">Fade</Trans></Label>
               <Input type="number" min={0} max={500} step={10} value={notifyFade} onChange={(e) => setNotifyFade(Number(e.target.value))} className="w-24" suffix="ms" />
-              <Label className="m-0 text-muted">Repeat</Label>
+              <Label className="m-0 text-muted"><Trans k="label.repeat">Repeat</Trans></Label>
               <Input type="number" min={1} max={10} step={1} value={notifyRepeat} onChange={(e) => setNotifyRepeat(Number(e.target.value))} className="w-20" />
             </div>
           </div>
@@ -105,16 +106,16 @@ export function WakeSleepCard({
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Wake</CardTitle>
+          <CardTitle><Trans k="title.wake">Wake</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <Label>Duration (s)</Label>
+              <Label><Trans k="label.duration">Duration</Trans> (s)</Label>
               <Input type="number" min={1} value={wakeDuration} onChange={(e) => setWakeDuration(Number(e.target.value))} suffix="s" />
             </div>
             <div>
-              <Label>Mode</Label>
+              <Label><Trans k="label.mode">Mode</Trans></Label>
               <select className="input" value={wakeMode} onChange={(e) => setWakeMode(e.target.value)}>
                 <option value="">Unverändert</option>
                 {patternOptions.slice(0, 10).map((p) => (
@@ -127,7 +128,7 @@ export function WakeSleepCard({
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <Label>Brightness (%)</Label>
+              <Label><Trans k="label.briPct">Brightness (%)</Trans></Label>
               <Input type="number" placeholder="Bri %" value={wakeBri} onChange={(e) => setWakeBri(e.target.value)} suffix="%" />
             </div>
             <div className="flex items-center gap-2">
@@ -147,7 +148,7 @@ export function WakeSleepCard({
 
       <Card>
         <CardHeader>
-          <CardTitle>Sleep</CardTitle>
+          <CardTitle><Trans k="title.sleep">Sleep</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
