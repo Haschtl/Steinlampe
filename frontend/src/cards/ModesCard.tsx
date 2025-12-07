@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeftCircle, ArrowRightCircle } from 'lucide-react';
+import { Activity, ArrowLeftCircle, ArrowRightCircle, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useConnection } from '@/context/connection';
 import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
+import { PatternPalette } from '@/components/PatternPalette';
 
 export function ModesCard() {
   const { status, sendCmd } = useConnection();
@@ -16,6 +17,7 @@ export function ModesCard() {
   const [patternSpeed, setPatternSpeed] = useState(1.0);
   const [patternFade, setPatternFade] = useState(1.0);
   const [fadeEnabled, setFadeEnabled] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     if (status.currentPattern) setPattern(status.currentPattern);
@@ -79,18 +81,18 @@ export function ModesCard() {
           >
             <ArrowLeftCircle className="h-4 w-4" />
           </Button>
-          <Select value={String(pattern)} onValueChange={(v) => handlePatternChange(parseInt(v, 10))}>
-            <SelectTrigger className="flex-1 min-w-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {patternOptions.map((p) => (
-                <SelectItem key={p.idx} value={String(p.idx)}>
-                  {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Button
+            variant="ghost"
+            className="flex-1 min-w-0 justify-between px-3 py-2"
+            onClick={() => setPaletteOpen(true)}
+            title="Open pattern palette"
+          >
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-xs text-muted">Pattern {pattern}</span>
+              <span className="truncate text-sm font-semibold">{patternLabel(pattern, status.patternName)}</span>
+            </div>
+            <Palette className="h-4 w-4 text-muted" />
+          </Button>
           <Button
             size="sm"
             onClick={() => {
@@ -148,6 +150,7 @@ export function ModesCard() {
             </span>
           </label>
         </div>
+        <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </CardContent>
     </Card>
   );

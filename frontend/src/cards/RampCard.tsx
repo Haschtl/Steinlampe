@@ -203,7 +203,7 @@ export function RampCard() {
                   step={10}
                   value={rampOn ?? ''}
                   onChange={(e) => handleRampOn(Number(e.target.value))}
-                  className="w-28"
+                  className="w-32"
                   suffix="ms"
                 />
               </div>
@@ -248,7 +248,7 @@ export function RampCard() {
                   step={10}
                   value={rampOff ?? ''}
                   onChange={(e) => handleRampOff(Number(e.target.value))}
-                  className="w-28"
+                  className="w-32"
                   suffix="ms"
                 />
               </div>

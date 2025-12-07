@@ -3185,6 +3185,8 @@ void handleCommand(String line)
       sleepFadeActive = false;
       wakeFadeActive = false;
       notifyActive = false;
+      notifyRestoreLamp = true;
+      notifyPrevLampOn = lampEnabled;
       setLampEnabled(true, "cmd sos");
       setBrightnessPercent(100.0f, false);
       int sosIdx = findPatternIndexByName("SOS");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap } from 'lucide-react';
@@ -80,6 +80,7 @@ export default function App() {
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
   const logLines = log.slice(-150);
+  const logRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -95,6 +96,12 @@ export default function App() {
     }, 10000);
     return () => clearInterval(id);
   }, [status.connected, refreshStatus]);
+
+  useEffect(() => {
+    if (liveLog && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logLines.length, liveLog]);
 
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
@@ -320,7 +327,10 @@ export default function App() {
                     {t('btn.clear', 'Clear')}
                   </Button>
                 </div>
-                <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg p-3 font-mono text-sm text-accent space-y-1 shadow-inner">
+                <div
+                  ref={logRef}
+                  className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg p-3 font-mono text-sm text-accent space-y-1 shadow-inner"
+                >
                   {logLines.length === 0 && (
                     <p className="text-muted">Waiting for connection…</p>
                   )}

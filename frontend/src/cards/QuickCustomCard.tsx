@@ -174,7 +174,7 @@ export function QuickCustomCard() {
               step={20}
               value={customStep}
               onChange={(e) => setCustomStep(Number(e.target.value))}
-              className="w-28"
+              className="w-32"
               suffix="ms"
               description={<Trans k="desc.customStep">Step duration for each custom value</Trans>}
             />
