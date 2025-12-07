@@ -143,6 +143,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.bleGuids": "BLE GUIDs",
     "help.bleMidiOptional": "BLE-MIDI (optional)",
     "help.receiveOnly": "Receive-only",
+    "help.midiMap": "MIDI Mapping (info, not a command)",
     "help.serviceUuid": "Service UUID",
     "help.charUuid": "Characteristic UUID",
     "help.bleMidiNote":
@@ -289,6 +290,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.bleGuids": "BLE-GUIDs",
     "help.bleMidiOptional": "BLE-MIDI (optional)",
     "help.receiveOnly": "Nur Empfang",
+    "help.midiMap": "MIDI Mapping (Info, kein Befehl)",
     "help.serviceUuid": "Service-UUID",
     "help.charUuid": "Char-UUID",
     "help.bleMidiNote":

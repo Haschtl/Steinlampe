@@ -67,6 +67,8 @@ void startWakeFade(uint32_t durationMs, bool announce = true, bool softCancel = 
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
 void syncLampToSwitch();
+void startDemo(uint32_t dwellMs);
+void stopDemo();
 void saveSettings();
 void importConfig(const String &args);
 void setPattern(size_t index, bool announce = true, bool persist = false);
@@ -155,6 +157,12 @@ float sosPrevBrightness = Settings::DEFAULT_BRIGHTNESS;
 size_t sosPrevPattern = 0;
 bool sosPrevAutoCycle = false;
 bool sosPrevLampOn = false;
+// Demo cycling
+bool demoActive = false;
+uint32_t demoDwellMs = 6000;
+std::vector<uint8_t> demoList;
+size_t demoIndex = 0;
+uint32_t demoLastSwitchMs = 0;
 
 // Switch handling
 #if ENABLE_SWITCH
@@ -243,6 +251,8 @@ String clapCmd3 = F("mode prev");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
 constexpr uint32_t CLAP_WINDOW_MS = 1200;
+bool clapTraining = false;
+uint32_t clapTrainLastLog = 0;
 #endif
 
 #if ENABLE_POTI
@@ -587,6 +597,42 @@ String quickMaskToCsv()
     }
   }
   return out.isEmpty() ? String(F("none")) : out;
+}
+
+/**
+ * @brief Build and start a demo cycle through quick-enabled modes with fixed dwell.
+ */
+void startDemo(uint32_t dwellMs)
+{
+  demoList.clear();
+  size_t total = quickModeCount();
+  for (size_t i = 0; i < total; ++i)
+  {
+    if (isQuickEnabled(i))
+      demoList.push_back((uint8_t)i);
+  }
+  if (demoList.empty())
+  {
+    demoActive = false;
+    sendFeedback(F("[Demo] Quick list empty"));
+    return;
+  }
+  demoDwellMs = dwellMs;
+  if (demoDwellMs < 500)
+    demoDwellMs = 500;
+  if (demoDwellMs > 600000)
+    demoDwellMs = 600000;
+  demoIndex = 0;
+  demoLastSwitchMs = millis();
+  demoActive = true;
+  applyQuickMode(demoList[demoIndex]);
+  sendFeedback(String(F("[Demo] Start dwell=")) + String(demoDwellMs) + F("ms list=") + quickMaskToCsv());
+}
+
+void stopDemo()
+{
+  demoActive = false;
+  sendFeedback(F("[Demo] Stopped"));
 }
 
 bool parseQuickCsv(const String &csv, uint32_t &outMask)
@@ -1377,6 +1423,13 @@ void printStatus()
   sendFeedback(line4);
   payload += line4 + '\n';
 
+  if (demoActive)
+  {
+    String demoLine = String(F("[Demo] dwell=")) + String(demoDwellMs) + F("ms list=") + quickMaskToCsv();
+    sendFeedback(demoLine);
+    payload += demoLine + '\n';
+  }
+
 #if ENABLE_BLE
   String line4b = F("Device=");
   line4b += getBLEAddress();
@@ -1534,6 +1587,8 @@ void printStatusStructured()
   line += String(customLen);
   line += F("|custom_step_ms=");
   line += String(customStepMs);
+  line += F("|demo=");
+  line += demoActive ? F("ON") : F("OFF");
   line += F("|gamma=");
   line += String(outputGamma, 2);
   line += F("|bri_min=");
@@ -1898,9 +1953,10 @@ void printHelp()
       "  pat fade on|off   - Pattern-Ausgabe glätten",
       "  pat fade amt <0.01-10> - Stärke der Glättung (größer = langsamer)",
       "  pwm curve <0.5-4> - PWM-Gamma/Linearität anpassen",
+      "  demo [Sek]        - Demo-Modus: Quick-Liste mit fester Verweildauer (Default 6s)",
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
-      "  clap on|off/thr <0..1>/cool <ms> - Klatschsteuerung (Audio)",
+      "  clap on|off/thr <0..1>/cool <ms>/train [on|off] - Klatschsteuerung (Audio)",
       "  clap <1|2|3> <cmd> - Befehl bei 1/2/3 Klatschen",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
@@ -1914,6 +1970,7 @@ void printHelp()
       "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms> - Poti-Config",
       "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",
       "  music on|off       - Music-Mode (ADC) aktivieren",
+      "  midi map           - CC7=bri, CC20=mode(1-8), Note59 toggle, Note60 prev, Note62 next, Note70-77 mode 1-8",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
       "  calibrate         - Touch-Baseline neu messen",
       "  touch             - aktuellen Touch-Rohwert anzeigen",
@@ -2339,6 +2396,28 @@ void handleCommand(String line)
       sendFeedback(F("auto on|off"));
     saveSettings();
     printStatus();
+    return;
+  }
+  if (lower.startsWith("demo"))
+  {
+    String arg = line.substring(4);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg == "off" || arg == "stop")
+    {
+      stopDemo();
+    }
+    else
+    {
+      uint32_t dwellMs = 6000;
+      if (arg.length() > 0)
+      {
+        float v = arg.toFloat();
+        if (v > 0.0f)
+          dwellMs = (uint32_t)(v * 1000.0f);
+      }
+      startDemo(dwellMs);
+    }
     return;
   }
   if (lower.startsWith("ramp"))
@@ -2933,6 +3012,27 @@ void handleCommand(String line)
         sendFeedback(F("Usage: clap cool 200-5000"));
       }
     }
+    else if (arg.startsWith("train"))
+    {
+      String mode = arg.substring(5);
+      mode.trim();
+      mode.toLowerCase();
+      if (mode == "on" || mode.length() == 0)
+      {
+        clapTraining = true;
+        clapTrainLastLog = 0;
+        sendFeedback(F("[Clap] Training ON"));
+      }
+      else if (mode == "off")
+      {
+        clapTraining = false;
+        sendFeedback(F("[Clap] Training OFF"));
+      }
+      else
+      {
+        sendFeedback(F("Usage: clap train [on|off]"));
+      }
+    }
     else if (arg.startsWith("1 ") || arg.startsWith("2 ") || arg.startsWith("3 "))
     {
       uint8_t count = arg[0] - '0';
@@ -3509,7 +3609,21 @@ void updatePatternEngine()
   }
 
   uint32_t durEff = p.durationMs > 0 ? (uint32_t)((float)p.durationMs / patternSpeedScale) : 0;
-  if (autoCycle && durEff > 0 && elapsed >= durEff)
+  if (demoActive)
+  {
+    if (demoList.empty())
+    {
+      demoActive = false;
+    }
+    else if (now - demoLastSwitchMs >= demoDwellMs)
+    {
+      demoIndex = (demoIndex + 1) % demoList.size();
+      demoLastSwitchMs = now;
+      applyQuickMode(demoList[demoIndex]);
+    }
+  }
+
+  if (!demoActive && autoCycle && durEff > 0 && elapsed >= durEff)
   {
     setPattern((currentPattern + 1) % PATTERN_COUNT, true, false);
   }
@@ -3567,6 +3681,12 @@ void updateMusicSensor()
   float val = (float)raw / 4095.0f;
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
+  if (clapTraining && (now - clapTrainLastLog) >= 200)
+  {
+    clapTrainLastLog = now;
+    sendFeedback(String(F("[ClapTrain] env=")) + String(musicFiltered, 3) + F(" thr=") + String(clapThreshold, 2) +
+                 F(" above=") + (musicFiltered >= clapThreshold ? F("1") : F("0")));
+  }
   if (clapEnabled)
   {
     if (musicFiltered >= clapThreshold)

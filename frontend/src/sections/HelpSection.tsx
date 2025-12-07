@@ -1,7 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trans } from '@/i18n';
 
-export function HelpSection({ bleGuids, commands }: { bleGuids: { label: string; value: string }[]; commands: { cmd: string; desc: string }[] }) {
+type HelpProps = {
+  bleGuids: { label: string; value: string }[];
+  commands: { cmd: string; desc: string }[];
+  midi?: { msg: string; action: string }[];
+};
+
+export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
@@ -81,6 +87,21 @@ export function HelpSection({ bleGuids, commands }: { bleGuids: { label: string;
               Firmware Build (Actions)
             </a>
           </div>
+          {midi && midi.length > 0 && (
+            <div className="mt-4 rounded-lg border border-border/60 bg-panel/70 p-3">
+              <p className="text-xs uppercase tracking-[0.08em] text-muted"><Trans k="help.midiMap">MIDI Mapping (info)</Trans></p>
+              <table className="mt-2 w-full border-collapse text-sm">
+                <tbody>
+                  {midi.map((m) => (
+                    <tr key={m.msg} className="border-b border-border/60">
+                      <td className="py-1 pr-2 font-mono text-accent">{m.msg}</td>
+                      <td className="py-1 text-muted">{m.action}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

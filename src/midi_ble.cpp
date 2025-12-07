@@ -8,12 +8,64 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 
+void handleCommand(String line);
+
 namespace
 {
   constexpr const char *MIDI_SERVICE_UUID = "03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
   constexpr const char *MIDI_CHAR_UUID = "7772E5DB-3868-4112-A1A9-F2669D106BF3";
+  // Simple MIDI→command mapping (fixed)
+  constexpr uint8_t NOTE_TOGGLE = 59;     // B3
+  constexpr uint8_t NOTE_PREV = 60;       // C4
+  constexpr uint8_t NOTE_NEXT = 62;       // D4
+  constexpr uint8_t NOTE_QUICK_BASE = 70; // F#4 -> quick slot 1
+  constexpr uint8_t CC_BRIGHTNESS = 7;    // Channel volume maps to brightness
+  constexpr uint8_t CC_MODE = 20;         // Maps to mode 1..8
 
   BLECharacteristic *midiChar = nullptr;
+
+  void dispatchCommand(const String &cmd)
+  {
+    handleCommand(cmd);
+  }
+
+  void handleMappedCC(uint8_t cc, uint8_t value)
+  {
+    if (cc == CC_BRIGHTNESS)
+    {
+      uint8_t pct = (uint8_t)((value * 100) / 127);
+      dispatchCommand(String(F("bri ")) + String(pct));
+    }
+    else if (cc == CC_MODE)
+    {
+      // Map 0..127 -> mode 1..8
+      uint8_t idx = 1 + (value * 7) / 127;
+      dispatchCommand(String(F("mode ")) + String(idx));
+    }
+  }
+
+  void handleMappedNote(uint8_t note, uint8_t vel)
+  {
+    if (vel == 0)
+      return;
+    if (note == NOTE_TOGGLE)
+    {
+      dispatchCommand(F("toggle"));
+    }
+    else if (note == NOTE_PREV)
+    {
+      dispatchCommand(F("prev"));
+    }
+    else if (note == NOTE_NEXT)
+    {
+      dispatchCommand(F("next"));
+    }
+    else if (note >= NOTE_QUICK_BASE && note < NOTE_QUICK_BASE + 8)
+    {
+      uint8_t idx = (note - NOTE_QUICK_BASE) + 1;
+      dispatchCommand(String(F("mode ")) + String(idx));
+    }
+  }
 
   void handleMidiMessage(const uint8_t *data, size_t len)
   {
@@ -48,6 +100,8 @@ namespace
         msg += F(" vel=");
         msg += String(vel);
         sendFeedback(msg);
+        if (type == 0x90 && vel > 0)
+          handleMappedNote(note, vel);
         // consume velocity byte
         ++i;
         status = 0;
@@ -60,6 +114,7 @@ namespace
         msg += F("=");
         msg += String(value);
         sendFeedback(msg);
+        handleMappedCC(b, value);
         ++i;
         status = 0;
       }

@@ -34,7 +34,8 @@ flowchart LR
 
 - Pattern sequencer (Konstant, Atmung, Atmung Warm, Sinus, Pulsierend, Funkeln, Kerze, Lagerfeuer, Stufen, Zwinkern, Gluehwuermchen, Popcorn, Weihnacht, Saber Idle, Saber Clash, Emergency Bridge, Arc Reactor, Warp Core, KITT Scanner, Tron Grid, Gewitter, Distant Storm, Rolling Thunder, Heat Lightning, Strobe Front, Sheet Lightning, Mixed Storm, Sonnenuntergang, Alert, SOS, Custom)
 - Wake fade via `wake [soft] [mode=N] [bri=XX] <seconds>` (soft: touch cancels; mode/bri optional)
-- Optional clap control via audio sensor (`clap on|off`, threshold/cooldown tunable)
+- Optional clap control via audio sensor (`clap on|off`, threshold/cooldown tunable) plus training mode
+- Optional MIDI mapping (BLE/BT) for brightness/pattern control (fixed map below)
 - Classic BT serial + BLE command channel (configurable via `ENABLE_*` flags).
 - Optional BLE-MIDI RX (receive-only) behind `ENABLE_BLE_MIDI=1` (standard BLE-MIDI service UUID; logs NoteOn/Off/CC).
 - Optional BT-MIDI RX (classic SPP) behind `ENABLE_BT_MIDI=1` (parses NoteOn/Off/CC from BT serial and logs `[MIDI-BT] ...`).
@@ -56,6 +57,19 @@ flowchart LR
 - Presence: BLE- oder SPP-Connect registriert die Peer-MAC und kann Auto-Off/On steuern (`presence`-Kommandos).
 - Optional BLE-MIDI (RX-only, if built with `ENABLE_BLE_MIDI`): Service `03B80E5A-EDE8-4B33-A751-6CE34EC4C700`, Characteristic `7772E5DB-3868-4112-A1A9-F2669D106BF3` (Write/WriteNR). NoteOn/Off und einige CCs werden als `[MIDI] ...` geloggt (Serial/BLE notify) und können für Automationen genutzt werden.
 - Optional BT-MIDI (RX-only, if built with `ENABLE_BT_MIDI`): verarbeitet NoteOn/Off/CC aus dem Classic-BT-Serial-Stream und loggt als `[MIDI-BT] ...`.
+
+### MIDI Mapping
+
+When BLE-MIDI or BT-MIDI is enabled, a fixed map triggers core actions:
+
+| Message               | Action                                |
+|-----------------------|---------------------------------------|
+| CC 7 (channel volume) | Set brightness 0–100 %                |
+| CC 20                 | Set pattern/mode 1–8 (value scaled)   |
+| Note 59 (B3)          | Toggle lamp                           |
+| Note 60 (C4)          | Previous pattern                      |
+| Note 62 (D4)          | Next pattern                          |
+| Notes 70–77 (F#4..C5) | Select pattern/mode 1–8               |
 
 ## How-to program an app for this device
 
@@ -95,6 +109,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `touch`             | Print raw touch debug info (baseline/raw/delta/thresholds) |
 | `pwm curve 0.5-4`  | Adjust PWM gamma/curve (linearization)                      |
 | `clap on/off` / `clap thr <0..1>` / `clap cool <ms>` | Audio clap toggle/threshold/cooldown (requires music build) |
+| `clap train [on/off]` | Live envelope/threshold debug for tuning (music build)    |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |
 | `calibrate`         | Re-measure touch baseline                                  |
 | `notify d1 d2 ... [fade=ms]` | Blink notification sequence (ms, optional fade per edge) |
@@ -110,6 +125,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `poti on/off` / `poti alpha <0..1>` / `poti delta <0..0.5>` / `poti off <0..0.5>` / `poti sample <ms>` | Configure optional brightness knob (ENABLE_POTI) |
 | `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
 | `music sens <f>`    | Adjust music sensitivity (if built with ENABLE_MUSIC_MODE) |
+| `demo [seconds]` / `demo off` | Cycle quick-list entries with fixed dwell (default 6s) |
 | `push on/off` / `push debounce <ms>` / `push double <ms>` / `push hold <ms>` / `push step_ms <ms>` / `push step <0..0.5>` | Configure optional momentary push button (ENABLE_PUSH_BUTTON) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |
 | `cfg import key=val ...` | Import settings (ramp, idle, touch_on/off, bri, auto, presence) |
