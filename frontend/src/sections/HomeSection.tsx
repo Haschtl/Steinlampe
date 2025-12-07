@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { LampControlsCard } from '@/cards/LampControlsCard';
+import { LampPowerCard } from '@/cards/LampPowerCard';
+import { ModesCard } from '@/cards/ModesCard';
 import { RampCard } from '@/cards/RampCard';
 
 export function HomeSection() {
@@ -7,7 +8,8 @@ export function HomeSection() {
 
   return (
     <div className="space-y-4">
-      <LampControlsCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
+      <LampPowerCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
+      <ModesCard />
       <RampCard />
     </div>
   );
