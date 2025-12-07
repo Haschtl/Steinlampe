@@ -167,12 +167,6 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-flex h-3 w-3 rounded-full ${
-                    status.connected ? "bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.6)]" : "bg-red-500/60"
-                  }`}
-                  title={status.connected ? t('status.connected', 'Connected') : t('status.disconnected', 'Not connected')}
-                />
-                <span
-                  className={`inline-flex h-3 w-3 rounded-full ${
                     status.patternCount > 0 &&
                     status.brightness !== undefined &&
                     status.cap !== undefined &&

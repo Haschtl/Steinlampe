@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
@@ -73,7 +74,11 @@ export function useSerial(): SerialApi {
 
   const sendCmd = useCallback(
     async (cmd: string) => {
-      if (!writerRef.current) throw new Error('Serial not connected');
+      if (!writerRef.current) {
+        const msg = 'Serial not connected';
+        toast.error(msg, {"toastId":msg});
+        throw new Error(msg);
+      }
       await writerRef.current.write(cmd + '\n');
       pushLog('> ' + cmd);
     },
