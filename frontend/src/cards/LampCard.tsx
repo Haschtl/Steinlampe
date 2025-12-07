@@ -15,7 +15,7 @@ const RampGraph = ({ duration, reverse }: { duration?: number; reverse?: boolean
     : 'M8 58 C 42 50 74 12 112 10';
   const gradientId = reverse ? 'rampGradOff' : 'rampGradOn';
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-[#0c1221] px-2 py-2">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-panel px-2 py-2">
       <svg viewBox="0 0 120 70" className="h-14 w-24">
         <defs>
           <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">

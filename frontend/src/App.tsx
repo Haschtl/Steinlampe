@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
+import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Zap } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useConnection } from './context/connection';
@@ -53,6 +53,13 @@ export default function App() {
   const logLines = log.slice(-150);
 
   useEffect(() => {
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const fallback = prefersDark ? 'fancy' : 'fancy-light';
+    const theme = localStorage.getItem('ql-theme') || fallback;
+    document.body.setAttribute('data-theme', theme);
+  }, []);
+
+  useEffect(() => {
     if (!status.connected) return;
     const id = setInterval(() => {
       refreshStatus();
@@ -69,133 +76,194 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-bg text-text pb-36">
-      <header className="sticky top-0 z-10 bg-gradient-to-br from-[#111a2d] via-[#0b0f1a] to-[#0b0f1a] px-4 py-3 shadow-lg shadow-black/40">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <img src={iconHref} alt="Lamp Icon" className="h-10 w-10 rounded-lg border border-border bg-[#0b0f1a] p-1.5" />
-            <div className="flex flex-1 flex-col">
-              <h1 className="text-xl font-semibold tracking-wide"><Trans k="title.app">Quarzlampe</Trans></h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {status.connected ? (
-                <Button onClick={disconnect}>
-                  <LogOut className="mr-1 h-4 w-4" /> {t('btn.disconnect', 'Disconnect')}
-                </Button>
-              ) : (
-                <>
-                  <Button variant="primary" onClick={connectBle} disabled={status.connecting}>
-                    {status.connecting ? 'Connecting…' : (
-                      <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> {t('btn.connect', 'Connect BLE')}</span>
-                    )}
-                  </Button>
-                  <Button onClick={connectSerial} disabled={status.connecting}>
-                    <Zap className="mr-1 h-4 w-4" /> <Trans k="btn.connectSerial">Connect Serial</Trans>
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {tabs.map((tab) => (
-              <Button
-                key={tab.key}
-                variant={activeTab === tab.key ? 'primary' : 'ghost'}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 ${activeTab === tab.key ? 'bg-accent/10 ring-1 ring-accent' : ''}`}
-              >
-                {tab.icon}
-                <span className="hidden sm:inline">{tab.label}</span>
-              </Button>
-            ))}
-            <div className="flex-1" />
-            <Button size="sm" onClick={refreshStatus}>
-              <RefreshCw className="mr-1 h-4 w-4" /> {t('btn.reload', 'Reload')}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl space-y-4 px-4 py-4">
-        {activeTab === 'home' && <HomeSection />}
-        {activeTab === 'settings' && <SettingsSection />}
-        {activeTab === 'advanced' && <AdvancedSection />}
-        {activeTab === 'actions' && <ActionsSection />}
-        {activeTab === 'help' && <HelpSection bleGuids={bleGuids} commands={commands} />}
-      </main>
-
-      <footer className="sticky bottom-0 z-20 border-t border-border/60 bg-[#0b0f1a]/95 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 py-2">
-          <button
-            type="button"
-            onClick={() => setLogOpen((v) => !v)}
-            className="flex w-full items-center justify-between rounded-lg border border-border bg-[#0d1425] px-3 py-2 text-left hover:border-accent"
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-semibold"><Trans k="title.log">Log</Trans></span>
-              <span className="text-xs text-muted">{logOpen ? t('log.hide', 'Hide') : t('log.show', 'Show')}</span>
-              <span className="text-xs text-muted">({log.length} lines)</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span>{status.connected ? t('status.connected', 'Connected') : t('status.disconnected', 'Not connected')}</span>
-              <span>•</span>
-              <span>{t('status.last', 'Last status')}: {status.lastStatusAt ? new Date(status.lastStatusAt).toLocaleTimeString() : '--'}</span>
-            </div>
-          </button>
-
-          {logOpen && (
-            <div className="mt-2 space-y-2">
+    <>
+      <div className="min-h-screen bg-bg text-text">
+        <header className="sticky top-0 z-10 bg-header px-4 py-3 shadow-lg shadow-black/20">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <img
+                src={iconHref}
+                alt="Lamp Icon"
+                className="h-10 w-10 rounded-lg border border-border bg-panel p-1.5"
+              />
+              <div className="flex flex-1 flex-col">
+                <h1 className="text-xl font-semibold tracking-wide">
+                  <Trans k="title.app">Quarzlampe</Trans>
+                </h1>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="pill cursor-pointer">
-                  <input type="checkbox" className="accent-accent" checked={liveLog} onChange={(e) => setLiveLog(e.target.checked)} /> Live log
-                </label>
-              </div>
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-[#0b0f1a] p-3 font-mono text-sm text-accent space-y-1">
-                {logLines.length === 0 && <p className="text-muted">Waiting for connection…</p>}
-                {logLines.map((l, idx) => (
-                  <div key={`${l.ts}-${idx}`} className="flex items-start gap-2 border-b border-border/40 pb-1 last:border-b-0 last:pb-0">
-                    <span className="rounded bg-[#10172a] px-2 py-0.5 text-[11px] text-muted">
-                      {new Date(l.ts).toLocaleTimeString([], { hour12: false })}
-                    </span>
-                    <span className="text-accent whitespace-pre-wrap">{l.line}</span>
+                {status.connected ? (
+                  <Button onClick={disconnect}>
+                    <LogOut className="mr-1 h-4 w-4" />{" "}
+                    {t("btn.disconnect", "Disconnect")}
+                  </Button>
+                ) : (
+                  <div className="flex overflow-hidden rounded-md border border-border">
+                    <Button
+                      variant="primary"
+                      className="rounded-none border-none border-r border-border"
+                      onClick={connectBle}
+                      disabled={status.connecting}
+                    >
+                      <Bluetooth className="mr-1 h-4 w-4" /> BTE
+                    </Button>
+                    <Button
+                      className="rounded-none border-none"
+                      onClick={connectSerial}
+                      disabled={status.connecting}
+                    >
+                      <Zap className="mr-1 h-4 w-4" /> Serial (BT)
+                    </Button>
                   </div>
-                ))}
+                )}
               </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder={t('input.command', 'Type command')}
-                  value={commandInput}
-                  onChange={(e) => setCommandInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {tabs.map((tab) => (
+                <Button
+                  key={tab.key}
+                  variant={activeTab === tab.key ? "primary" : "ghost"}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 ${
+                    activeTab === tab.key
+                      ? "bg-accent/10 ring-1 ring-accent"
+                      : ""
+                  }`}
+                >
+                  {tab.icon}
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </Button>
+              ))}
+              <div className="flex-1" />
+              <Button size="sm" onClick={refreshStatus}>
+                <RefreshCw className="mr-1 h-4 w-4" />{" "}
+                <span className="hidden sm:inline">
+                  {t("btn.reload", "Reload")}
+                </span>
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-6xl space-y-4 px-4 py-4">
+          {activeTab === "home" && <HomeSection />}
+          {activeTab === "settings" && <SettingsSection />}
+          {activeTab === "advanced" && <AdvancedSection />}
+          {activeTab === "actions" && <ActionsSection />}
+          {activeTab === "help" && (
+            <HelpSection bleGuids={bleGuids} commands={commands} />
+          )}
+        </main>
+
+        <footer className="sticky bottom-0 z-20 border-t border-border/60 bg-bg">
+          <div className="mx-auto max-w-6xl px-4 py-2">
+            <button
+              type="button"
+              onClick={() => setLogOpen((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-panel px-3 py-2 text-left hover:border-accent"
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">
+                  <Trans k="title.log">Log</Trans>
+                </span>
+                <span className="text-xs text-muted">
+                  {logOpen ? t("log.hide", "Hide") : t("log.show", "Show")}
+                </span>
+                <span className="text-xs text-muted">({log.length} lines)</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted">
+                <span>
+                  {status.connected
+                    ? t("status.connected", "Connected")
+                    : t("status.disconnected", "Not connected")}
+                </span>
+                <span>•</span>
+                <span>
+                  {t("status.last", "Last status")}:{" "}
+                  {status.lastStatusAt
+                    ? new Date(status.lastStatusAt).toLocaleTimeString()
+                    : "--"}
+                </span>
+              </div>
+            </button>
+
+            {logOpen && (
+              <div className="mt-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="pill cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-accent"
+                      checked={liveLog}
+                      onChange={(e) => setLiveLog(e.target.checked)}
+                    />{" "}
+                    Live log
+                  </label>
+                </div>
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-bg p-3 font-mono text-sm text-accent space-y-1 shadow-inner">
+                  {logLines.length === 0 && (
+                    <p className="text-muted">Waiting for connection…</p>
+                  )}
+                  {logLines.map((l, idx) => (
+                    <div
+                      key={`${l.ts}-${idx}`}
+                      className="flex items-start gap-2 border-b border-border/40 pb-1 last:border-b-0 last:pb-0"
+                    >
+                      <span className="rounded bg-[#10172a] px-2 py-0.5 text-[11px] text-muted">
+                        {new Date(l.ts).toLocaleTimeString([], {
+                          hour12: false,
+                        })}
+                      </span>
+                      <span className="text-accent whitespace-pre-wrap">
+                        {l.line}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={t("input.command", "Type command")}
+                    value={commandInput}
+                    onChange={(e) => setCommandInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = commandInput.trim();
+                        if (val) {
+                          sendCmd(val);
+                          setCommandInput("");
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
                       const val = commandInput.trim();
                       if (val) {
                         sendCmd(val);
-                        setCommandInput('');
+                        setCommandInput("");
                       }
-                    }
-                  }}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    const val = commandInput.trim();
-                    if (val) {
-                      sendCmd(val);
-                      setCommandInput('');
-                    }
-                  }}
-                >
-                  <Send className="mr-1 h-4 w-4" /> {t('btn.send', 'Send')}
-                </Button>
+                    }}
+                  >
+                    <Send className="mr-1 h-4 w-4" /> {t("btn.send", "Send")}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      </footer>
-      <ToastContainer position="bottom-right" newestOnTop closeOnClick pauseOnFocusLoss draggable theme="dark" />
-    </div>
+            )}
+          </div>
+        </footer>
+        <ToastContainer
+          position="bottom-right"
+          newestOnTop
+          closeOnClick
+          pauseOnFocusLoss
+          draggable
+          theme="dark"
+        />
+      </div>
+      <div className="h-36 bg-bg" />
+    </>
   );
 }

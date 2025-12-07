@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -46,7 +47,7 @@ const RampGraph = ({
   const path = `M${points}`;
   const gradientId = reverse ? 'rampGradOff' : 'rampGradOn';
   return (
-    <div className="relative rounded-lg border border-border bg-[#0c1221] overflow-hidden">
+    <div className="relative rounded-lg border border-border bg-panel overflow-hidden">
       <div className="relative w-full" style={{ paddingTop: '58.33%' }}>
         <svg viewBox="0 0 120 70" className="absolute inset-0 h-full w-full">
         <defs>
@@ -125,18 +126,17 @@ export function RampCard() {
                   <option value="ease-in-out">ease-in-out</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="m-0"><Trans k="label.pow">Power</Trans></Label>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={10}
-                  step={0.1}
-                  value={rampOnPow}
-                  onChange={(e) => handleRampPow('on', Number(e.target.value))}
-                  className="w-24"
-                />
-              </div>
+              <SliderRow
+                label={<Trans k="label.pow">Power</Trans>}
+                valueLabel={`γ = ${rampOnPow.toFixed(1)}`}
+                inputProps={{
+                  min: 0.1,
+                  max: 10,
+                  step: 0.1,
+                  value: rampOnPow,
+                }}
+                onInputChange={(v) => handleRampPow('on', v)}
+              />
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
                 <Input
@@ -166,18 +166,17 @@ export function RampCard() {
                   <option value="ease-in-out">ease-in-out</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="m-0"><Trans k="label.pow">Power</Trans></Label>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={10}
-                  step={0.1}
-                  value={rampOffPow}
-                  onChange={(e) => handleRampPow('off', Number(e.target.value))}
-                  className="w-24"
-                />
-              </div>
+              <SliderRow
+                label={<Trans k="label.pow">Power</Trans>}
+                valueLabel={`γ = ${rampOffPow.toFixed(1)}`}
+                inputProps={{
+                  min: 0.1,
+                  max: 10,
+                  step: 0.1,
+                  value: rampOffPow,
+                }}
+                onInputChange={(v) => handleRampPow('off', v)}
+              />
               <div className="flex items-center gap-2">
                 <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
                 <Input

@@ -1,11 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Trans } from '@/i18n';
 
 export function HelpSection({ bleGuids, commands }: { bleGuids: { label: string; value: string }[]; commands: { cmd: string; desc: string }[] }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>BLE GUIDs</CardTitle>
+          <CardTitle>
+            <Trans k="help.bleGuids">BLE GUIDs</Trans>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <table className="w-full border-collapse text-sm">
@@ -18,14 +21,43 @@ export function HelpSection({ bleGuids, commands }: { bleGuids: { label: string;
               ))}
             </tbody>
           </table>
-          <p className="text-sm text-muted">
-            BLE-MIDI (optional): Service 03B80E5A-EDE8-4B33-A751-6CE34EC4C700, Char 7772E5DB-3868-4112-A1A9-F2669D106BF3 (RX-only).
-          </p>
+          <div className="rounded-xl border border-border/60 bg-panel/70 p-4 text-sm shadow-inner">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.08em] text-muted">
+                  <Trans k="help.bleMidiOptional">BLE-MIDI (optional)</Trans>
+                </p>
+                <p className="text-text font-semibold">
+                  <Trans k="help.receiveOnly">Receive-only</Trans>
+                </p>
+              </div>
+              <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">RX</span>
+            </div>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border/60 bg-bg/60 p-3">
+                <dt className="text-xs uppercase tracking-[0.06em] text-muted">
+                  <Trans k="help.serviceUuid">Service UUID</Trans>
+                </dt>
+                <dd className="mt-1 font-mono text-accent break-all">03B80E5A-EDE8-4B33-A751-6CE34EC4C700</dd>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-bg/60 p-3">
+                <dt className="text-xs uppercase tracking-[0.06em] text-muted">
+                  <Trans k="help.charUuid">Characteristic UUID</Trans>
+                </dt>
+                <dd className="mt-1 font-mono text-accent break-all">7772E5DB-3868-4112-A1A9-F2669D106BF3</dd>
+              </div>
+            </dl>
+            <p className="mt-3 text-xs text-muted">
+              <Trans k="help.bleMidiNote">Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.</Trans>
+            </p>
+          </div>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Command Reference &amp; Links</CardTitle>
+          <CardTitle>
+            <Trans k="help.commandsLinks">Command Reference &amp; Links</Trans>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <table className="w-full border-collapse text-sm">

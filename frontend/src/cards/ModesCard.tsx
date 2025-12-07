@@ -101,6 +101,7 @@ export function ModesCard() {
             label={<Trans k="label.fadeMul">Pattern Fade</Trans>}
             description={<Trans k="desc.patternFade">Smooth transitions between patterns</Trans>}
             valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}
+            disabled={!fadeEnabled}
             inputProps={{
               min: 0,
               max: 2,

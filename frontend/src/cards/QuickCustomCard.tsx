@@ -15,7 +15,7 @@ function PreviewGraph({ values }: { values: number[] }) {
     return `${x},${y}`;
   });
   return (
-    <svg viewBox="0 0 100 100" className="h-24 w-full rounded border border-border bg-[#0c1221]">
+    <svg viewBox="0 0 100 100" className="h-24 w-full rounded border border-border bg-panel">
       <polyline points={points.join(' ')} fill="none" stroke="#22d3ee" strokeWidth="2" />
       {values.map((v, idx) => {
         const x = (idx / Math.max(1, values.length - 1)) * 100;

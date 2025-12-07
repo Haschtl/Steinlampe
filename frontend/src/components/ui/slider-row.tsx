@@ -22,7 +22,8 @@ export function SliderRow({ label, description, valueLabel, inputProps, onInputC
           {inputProps && (
             <Input
               type="number"
-              className="w-auto"
+              className="w-20"
+              variant="ghost"
               {...inputProps}
               onChange={(e) => {
                 inputProps.onChange?.(e);
@@ -35,7 +36,7 @@ export function SliderRow({ label, description, valueLabel, inputProps, onInputC
       )}
       <input
         type="range"
-        className="accent-accent w-full"
+        className="accent-accent w-full disabled:opacity-60 disabled:cursor-not-allowed"
         {...inputProps}
         onChange={(e) => {
           inputProps?.onChange?.(e);
