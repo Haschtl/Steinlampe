@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -66,29 +67,16 @@ export function LampPowerCard({ profileSlot, setProfileSlot }: { profileSlot: st
             )}
           </Button>
         </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted"><Trans k="label.brightness">Brightness</Trans></span>
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={brightness}
-              onChange={(e) => handleBrightness(Number(e.target.value))}
-              onBlur={(e) => handleBrightness(Number(e.target.value))}
-              className="w-24 text-right"
-              suffix="%"
-            />
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="100"
-            value={brightness}
-            onChange={(e) => handleBrightness(Number(e.target.value))}
-            className="w-full accent-accent"
-          />
-        </div>
+        <SliderRow
+          label={<Trans k="label.brightness">Brightness</Trans>}
+          description="Set output level"
+          inputProps={{
+            min: 1,
+            max: 100,
+            value: brightness,
+          }}
+          onInputChange={(val) => handleBrightness(val)}
+        />
       </CardContent>
     </Card>
   );
