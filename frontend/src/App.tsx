@@ -128,24 +128,24 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md px-3"
             >
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 transition={{ duration: 0.3, ease: 'easeOut' }}
-                className="w-full max-w-2xl rounded-3xl border border-border/80 bg-panel/90 p-8 shadow-2xl"
+                className="w-full max-w-lg rounded-3xl border border-border/80 bg-panel/90 p-6 shadow-2xl"
               >
                 <h2 className="mb-4 text-center text-2xl font-semibold text-text drop-shadow">
                   <Trans k="title.app">Quarzlampe</Trans>
                 </h2>
-                <p className="mb-6 text-center text-muted">Verbinden oder überspringen, um die App anzuschauen.</p>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <p className="mb-6 text-center text-muted text-sm">Verbinden oder überspringen, um die App anzuschauen.</p>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     size="md"
                     variant="primary"
-                    className="h-20 text-lg"
+                    className="h-16 text-base"
                     onClick={() => {
                       setShowConnectOverlay(false);
                       connectBle();
@@ -155,7 +155,7 @@ export default function App() {
                   </Button>
                   <Button
                     size="md"
-                    className="h-20 text-lg"
+                    className="h-16 text-base"
                     onClick={() => {
                       setShowConnectOverlay(false);
                       connectSerial();

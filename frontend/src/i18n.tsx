@@ -313,7 +313,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Char-UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; per optionalem Flag aktivieren. Write/WriteNR, nur RX.",
-    "help.commandsLinks": "Befehle & Links",
+    "help.commandsLinks": "Befehle",
   },
 };
 

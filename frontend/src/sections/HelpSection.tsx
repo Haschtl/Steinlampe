@@ -106,9 +106,7 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            <Trans k="help.commandsLinks">Links</Trans>
-          </CardTitle>
+          <CardTitle>Links</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
