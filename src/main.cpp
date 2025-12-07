@@ -53,6 +53,7 @@ static const float DIM_MAX = 0.95f;
 
 // Vorwärtsdeklarationen
 void handleCommand(String line);
+void executeClapCommand(uint8_t count);
 void startWakeFade(uint32_t durationMs, bool announce = true, bool softCancel = false, float targetOverride = -1.0f);
 void cancelWakeFade(bool announce = true);
 String getBLEAddress();
@@ -86,6 +87,9 @@ static const char *PREF_KEY_MUSIC_EN = "music_en";
 static const char *PREF_KEY_CLAP_EN = "clap_en";
 static const char *PREF_KEY_CLAP_THR = "clap_thr";
 static const char *PREF_KEY_CLAP_COOL = "clap_cl";
+static const char *PREF_KEY_CLAP_CMD1 = "clap_c1";
+static const char *PREF_KEY_CLAP_CMD2 = "clap_c2";
+static const char *PREF_KEY_CLAP_CMD3 = "clap_c3";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
@@ -194,6 +198,12 @@ float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
 uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
 uint32_t clapLastMs = 0;
 bool clapAbove = false;
+String clapCmd1 = F("toggle");
+String clapCmd2 = F("mode next");
+String clapCmd3 = F("mode prev");
+uint8_t clapCount = 0;
+uint32_t clapWindowStartMs = 0;
+constexpr uint32_t CLAP_WINDOW_MS = 1200;
 #endif
 bool bleWasConnected = false;
 bool btWasConnected = false;
@@ -646,6 +656,9 @@ void saveSettings()
   prefs.putBool(PREF_KEY_CLAP_EN, clapEnabled);
   prefs.putFloat(PREF_KEY_CLAP_THR, clapThreshold);
   prefs.putUInt(PREF_KEY_CLAP_COOL, clapCooldownMs);
+  prefs.putString(PREF_KEY_CLAP_CMD1, clapCmd1);
+  prefs.putString(PREF_KEY_CLAP_CMD2, clapCmd2);
+  prefs.putString(PREF_KEY_CLAP_CMD3, clapCmd3);
 #endif
   prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
   prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
@@ -760,6 +773,9 @@ void loadSettings()
   clapEnabled = prefs.getBool(PREF_KEY_CLAP_EN, Settings::CLAP_DEFAULT_ENABLED);
   clapThreshold = prefs.getFloat(PREF_KEY_CLAP_THR, Settings::CLAP_THRESHOLD_DEFAULT);
   clapCooldownMs = prefs.getUInt(PREF_KEY_CLAP_COOL, Settings::CLAP_COOLDOWN_MS_DEFAULT);
+  clapCmd1 = prefs.getString(PREF_KEY_CLAP_CMD1, clapCmd1);
+  clapCmd2 = prefs.getString(PREF_KEY_CLAP_CMD2, clapCmd2);
+  clapCmd3 = prefs.getString(PREF_KEY_CLAP_CMD3, clapCmd3);
   if (clapThreshold < 0.05f) clapThreshold = 0.05f;
   if (clapThreshold > 1.5f) clapThreshold = 1.5f;
   if (clapCooldownMs < 200) clapCooldownMs = 200;
@@ -1693,6 +1709,7 @@ void printHelp()
       "  touch hold <ms>   - Hold-Start 500..5000 ms",
       "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
       "  clap on|off/thr <0..1>/cool <ms> - Klatschsteuerung (Audio)",
+      "  clap <1|2|3> <cmd> - Befehl bei 1/2/3 Klatschen",
       "  presence on|off   - Auto-Off wenn Gerät weg",
       "  presence set <addr>/clear - Gerät binden oder löschen",
       "  presence grace <ms> - Verzögerung vor Auto-Off",
@@ -1735,6 +1752,18 @@ void syncLampToSwitch()
 {
   setLampEnabled(switchDebouncedState, "sync switch");
   sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (switchDebouncedState ? F("ON") : F("OFF")));
+}
+
+void executeClapCommand(uint8_t count)
+{
+  String cmd = (count == 1) ? clapCmd1 : (count == 2) ? clapCmd2 : clapCmd3;
+  cmd.trim();
+  if (cmd.isEmpty())
+    return;
+  sendFeedback(String(F("[Clap] ")) + count + F("x -> ") + cmd);
+  if (cmd.startsWith(F("clap ")))
+    return; // avoid recursion
+  handleCommand(cmd);
 }
 
 /**
@@ -2472,8 +2501,9 @@ void handleCommand(String line)
   if (lower.startsWith("clap"))
   {
 #if ENABLE_MUSIC_MODE
-    String arg = line.substring(4);
-    arg.trim();
+    String argRaw = line.substring(4);
+    argRaw.trim();
+    String arg = argRaw;
     arg.toLowerCase();
     if (arg == "on")
     {
@@ -2484,6 +2514,8 @@ void handleCommand(String line)
     else if (arg == "off")
     {
       clapEnabled = false;
+      clapCount = 0;
+      clapWindowStartMs = 0;
       saveSettings();
       sendFeedback(F("[Clap] Disabled"));
     }
@@ -2513,6 +2545,24 @@ void handleCommand(String line)
       else
       {
         sendFeedback(F("Usage: clap cool 200-5000"));
+      }
+    }
+    else if (arg.startsWith("1 ") || arg.startsWith("2 ") || arg.startsWith("3 "))
+    {
+      uint8_t count = arg[0] - '0';
+      String cmd = argRaw.substring(1);
+      cmd.trim();
+      if (cmd.length() == 0)
+      {
+        sendFeedback(F("Usage: clap <1|2|3> <command>"));
+      }
+      else
+      {
+        if (count == 1) clapCmd1 = cmd;
+        else if (count == 2) clapCmd2 = cmd;
+        else clapCmd3 = cmd;
+        saveSettings();
+        sendFeedback(String(F("[Clap] ")) + count + F("x -> ") + cmd);
       }
     }
     else
@@ -3134,14 +3184,26 @@ void updateMusicSensor()
       if (!clapAbove && (now - clapLastMs) >= clapCooldownMs)
       {
         clapLastMs = now;
-        setLampEnabled(!lampEnabled, "clap");
-        sendFeedback(String(F("[Clap] Toggle -> ")) + (lampEnabled ? F("ON") : F("OFF")));
+        if (clapWindowStartMs == 0)
+          clapWindowStartMs = now;
+        ++clapCount;
       }
       clapAbove = true;
     }
     else
     {
       clapAbove = false;
+    }
+
+    if (clapWindowStartMs && (now - clapWindowStartMs) >= CLAP_WINDOW_MS)
+    {
+      if (clapCount > 0)
+      {
+        uint8_t count = clapCount > 3 ? 3 : clapCount;
+        executeClapCommand(count);
+      }
+      clapCount = 0;
+      clapWindowStartMs = 0;
     }
   }
 }
