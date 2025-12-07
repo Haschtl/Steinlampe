@@ -3,6 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Activity,
+  ArrowLeftCircle,
+  ArrowRightCircle,
+  LogOut,
+  RefreshCw,
+  Send,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
+import { patternLabels } from './data/patterns';
 import { useBle } from './hooks/useBle';
 
 const bleGuids = [
@@ -25,7 +36,18 @@ const commands = [
 ];
 
 export default function App() {
-  const { status, log, liveLog, setLiveLog, connect, disconnect, refreshStatus, sendCmd } = useBle();
+  const {
+    status,
+    log,
+    liveLog,
+    setLiveLog,
+    autoReconnect,
+    setAutoReconnect,
+    connect,
+    disconnect,
+    refreshStatus,
+    sendCmd,
+  } = useBle();
   const [brightness, setBrightness] = useState(70);
   const [cap, setCap] = useState(100);
   const [pattern, setPattern] = useState(1);
@@ -54,8 +76,11 @@ export default function App() {
   }, [status.currentPattern]);
 
   const patternOptions = useMemo(() => {
-    const count = status.patternCount || 30;
-    return Array.from({ length: count }, (_, i) => i + 1);
+    const count = status.patternCount || patternLabels.length;
+    return Array.from({ length: count }, (_, i) => ({
+      idx: i + 1,
+      label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
+    }));
   }, [status.patternCount]);
 
   const handleBrightness = (value: number) => {
@@ -114,22 +139,30 @@ export default function App() {
             <h1 className="text-xl font-semibold tracking-wide">Quarzlampe Control</h1>
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" onClick={connect} disabled={status.connecting}>
-                {status.connecting ? 'Connecting…' : 'Connect'}
+                {status.connecting ? 'Connecting…' : <span className="flex items-center gap-1"><Zap className="h-4 w-4" /> Connect</span>}
               </Button>
               <Button disabled>Connect Serial</Button>
               {status.connected && (
                 <Button onClick={disconnect}>
-                  Disconnect
+                  <LogOut className="mr-1 h-4 w-4" /> Disconnect
                 </Button>
               )}
               <label className="pill cursor-pointer">
-                <input type="checkbox" className="accent-accent" defaultChecked /> Auto-reconnect
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={autoReconnect}
+                  onChange={(e) => setAutoReconnect(e.target.checked)}
+                />{' '}
+                Auto-reconnect
               </label>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="pill text-accent2">Status: {status.connected ? `Connected to ${status.deviceName}` : 'Not connected'}</span>
             <span className="pill">Last status: {status.lastStatusAt ? new Date(status.lastStatusAt).toLocaleTimeString() : '--'}</span>
+            {status.patternName && <span className="pill">Pattern: {status.patternName}</span>}
+            {typeof status.patternSpeed === 'number' && <span className="pill">Speed {status.patternSpeed.toFixed(2)}x</span>}
           </div>
         </div>
       </header>
@@ -145,7 +178,7 @@ export default function App() {
                 <span className="chip-muted">Switch: {status.switchState ?? '--'}</span>
                 <span className="chip-muted">Touch: {status.touchState ?? '--'}</span>
                 <Button size="sm" onClick={() => sendCmd('sync')}>
-                  Sync
+                  <RefreshCw className="mr-1 h-4 w-4" /> Sync
                 </Button>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
@@ -173,19 +206,23 @@ export default function App() {
                     className="w-full accent-accent"
                   />
                   <div className="flex gap-2">
-                    <Button onClick={() => sendCmd('prev')}>Prev</Button>
+                    <Button onClick={() => sendCmd('prev')}>
+                      <ArrowLeftCircle className="mr-1 h-4 w-4" /> Prev
+                    </Button>
                     <select
                       className="input"
                       value={pattern}
                       onChange={(e) => handlePatternChange(parseInt(e.target.value, 10))}
                     >
-                      {patternOptions.map((num) => (
-                        <option key={num} value={num}>
-                          {num === status.currentPattern ? `Pattern ${num} (active)` : `Pattern ${num}`}
+                      {patternOptions.map((p) => (
+                        <option key={p.idx} value={p.idx}>
+                          {p.idx === status.currentPattern ? `${p.label} (active)` : p.label}
                         </option>
                       ))}
                     </select>
-                    <Button onClick={() => sendCmd('next')}>Next</Button>
+                    <Button onClick={() => sendCmd('next')}>
+                      Next <ArrowRightCircle className="ml-1 h-4 w-4" />
+                    </Button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <label className="pill cursor-pointer">
@@ -194,7 +231,7 @@ export default function App() {
                         className="accent-accent"
                         onChange={(e) => sendCmd(`auto ${e.target.checked ? 'on' : 'off'}`)}
                       />{' '}
-                      AutoCycle
+                      <span className="inline-flex items-center gap-1"><Activity className="h-4 w-4" /> AutoCycle</span>
                     </label>
                     <label className="pill cursor-pointer">
                       <input type="checkbox" className="accent-accent" disabled /> Pattern Fade
@@ -296,10 +333,10 @@ export default function App() {
                 </div>
                 <div className="flex items-end gap-2">
                   <Button variant="primary" onClick={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}>
-                    Notify
+                    <Send className="mr-1 h-4 w-4" /> Notify
                   </Button>
                   <Button variant="danger" onClick={() => sendCmd('notify stop')}>
-                    Stop
+                    <ZapOff className="mr-1 h-4 w-4" /> Stop
                   </Button>
                 </div>
               </div>
@@ -345,9 +382,9 @@ export default function App() {
                   <Label>Mode</Label>
                   <select className="input" value={wakeMode} onChange={(e) => setWakeMode(e.target.value)}>
                     <option value="">Unverändert</option>
-                    {patternOptions.slice(0, 10).map((m) => (
-                      <option key={m} value={m}>
-                        {m}
+                    {patternOptions.slice(0, 10).map((p) => (
+                      <option key={p.idx} value={p.idx}>
+                        {p.label}
                       </option>
                     ))}
                   </select>
@@ -366,7 +403,7 @@ export default function App() {
                     Wake
                   </Button>
                   <Button variant="danger" onClick={() => sendCmd('wake stop')}>
-                    Stop
+                    <ZapOff className="mr-1 h-4 w-4" /> Stop
                   </Button>
                 </div>
               </div>
@@ -384,10 +421,10 @@ export default function App() {
                   <Input type="number" min={1} value={sleepMinutes} onChange={(e) => setSleepMinutes(Number(e.target.value))} />
                 </div>
                 <Button variant="primary" onClick={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`)}>
-                  Sleep
+                  <Zap className="mr-1 h-4 w-4" /> Sleep
                 </Button>
                 <Button variant="danger" onClick={() => sendCmd('sleep stop')}>
-                  Stop
+                  <ZapOff className="mr-1 h-4 w-4" /> Stop
                 </Button>
               </div>
             </CardContent>
@@ -432,7 +469,9 @@ export default function App() {
                   />{' '}
                   Live log
                 </label>
-                <Button onClick={refreshStatus}>Reload status</Button>
+                <Button onClick={refreshStatus}>
+                  <RefreshCw className="mr-1 h-4 w-4" /> Reload status
+                </Button>
                 <Button onClick={() => sendCmd('cfg export')}>cfg export</Button>
               </div>
               <div className="min-h-[160px] rounded-lg border border-border bg-[#0b0f1a] p-3 font-mono text-sm text-accent">
@@ -458,18 +497,18 @@ export default function App() {
                     }
                   }}
                 />
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    const val = commandInput.trim();
-                    if (val) {
-                      sendCmd(val);
-                      setCommandInput('');
-                    }
-                  }}
-                >
-                  Send
-                </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      const val = commandInput.trim();
+                      if (val) {
+                        sendCmd(val);
+                        setCommandInput('');
+                      }
+                    }}
+                  >
+                    <Send className="mr-1 h-4 w-4" /> Send
+                  </Button>
               </div>
             </CardContent>
           </Card>
