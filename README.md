@@ -77,7 +77,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `bri min/max <0..1>` | Set min/max brightness clamp                               |
 | `auto on\|off`       | Enable/disable automatic pattern cycling                   |
 | `bri <0..100>`      | Set master brightness in percent                           |
-| `bri cap <0..100>`  | Set hard brightness cap (percent, applies to all ramps)    |
+| `bri cap <0..100>`  | Set brightness cap (percent, scales output to respect limit) |
 | `wake [soft] [mode=XX] [bri=XX] <seconds>` | Wake fade with options (soft: touch cancels; mode/bri optional) |
 | `wake stop`         | Abort an active wake fade                                  |
 | `sos [stop]`        | Start SOS alert (100% brightness, SOS pattern); stop restores previous state |
@@ -117,15 +117,16 @@ Tasks or mobile workflows (e.g., Tasker) can simply send these ASCII commands.
 
 ## Web BLE UI & GitHub Pages
 
-- A static Web BLE UI is provided in `webble.html` (no build step required).
-- **New (React/Vite)**: A modern UI scaffold lives in `frontend/` (React + Tailwind). Install and run locally with:
+- Legacy static Web BLE UI: `webble.html` (no build step required, kept for reference).
+- **React/Vite app (PWA-ready)** lives in `frontend/` (React + Tailwind, partial Web-BLE hook). Install and run locally with:
   ```sh
   cd frontend
   npm install
   npm run dev   # npm run build for production
   ```
-  (This repo’s Web Bluetooth logic still needs to be ported into the new React app; current scaffold shows layout only.)
-- To host via GitHub Pages: enable Pages in repo settings and set the source to the `main` branch, root (`/`). The UI will be available at `https://haschtl.github.io/<repo>/webble.html` (replace `<repo>` with this repo name). Example: [https://haschtl.github.io/Steinlampe/webble.html](https://haschtl.github.io/Steinlampe/webble.html).
+- Production builds register a service worker and manifest automatically so the UI can be installed as a PWA (icon and manifest shipped via `frontend/public`).
+- GitHub Pages deployment is automated via `.github/workflows/pages.yml`, which builds `frontend/dist` and publishes it; the site will be available at `https://haschtl.github.io/<repo>/` (replace `<repo>` with this repo name).
+- Open the page in a Web-Bluetooth-capable browser (Chrome/Edge/Android) over HTTPS or `localhost`, click **Connect**, and control the lamp. BLE command coverage in the React app is still being expanded.
 - Open the page in a Web-Bluetooth-capable browser (Chrome/Edge/Android) over HTTPS or `localhost`, click **Connect**, and control the lamp.
 
 ## Build
