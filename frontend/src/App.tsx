@@ -178,9 +178,21 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 12, scale: 0.99 }}
-              animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, y: -8, scale: 0.995, transition: { duration: 0.25, ease: 'easeInOut' } }}
+              initial={{ opacity: 0, y: 18, scale: 0.96, rotate: -0.4 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                rotate: 0,
+                transition: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
+              }}
+              exit={{
+                opacity: 0,
+                y: -14,
+                scale: 0.985,
+                rotate: 0.35,
+                transition: { duration: 0.32, ease: [0.4, 0, 0.7, 0.2] },
+              }}
               className="space-y-4"
             >
               {activeTab === "home" && <HomeSection />}
@@ -195,12 +207,28 @@ export default function App() {
           <motion.div
             key={`${activeTab}-glow`}
             className="pointer-events-none absolute -inset-10 -z-10"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 0.6, scale: 1, transition: { duration: 0.6 } }}
-            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.3 } }}
+            initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+            animate={{ opacity: 0.75, scale: 1, rotate: 0, transition: { duration: 0.8, ease: 'easeOut' } }}
+            exit={{ opacity: 0, scale: 0.95, rotate: 1, transition: { duration: 0.35 } }}
             style={{
-              background: 'radial-gradient(60% 40% at 50% 40%, rgba(var(--accent-rgb),0.18), transparent), radial-gradient(40% 30% at 30% 60%, rgba(140,245,155,0.1), transparent)',
-              filter: 'blur(40px)',
+              background:
+                'radial-gradient(65% 45% at 50% 35%, rgba(var(--accent-rgb),0.22), transparent 60%),' +
+                'radial-gradient(40% 35% at 25% 65%, rgba(130,200,255,0.12), transparent 65%),' +
+                'radial-gradient(35% 30% at 75% 70%, rgba(255,180,120,0.12), transparent 70%)',
+              filter: 'blur(46px)',
+            }}
+          />
+          <motion.div
+            key={`${activeTab}-facet`}
+            className="pointer-events-none absolute -inset-12 -z-20"
+            initial={{ opacity: 0, scale: 1 }}
+            animate={{ opacity: 0.35, scale: 1, transition: { duration: 1.1, ease: 'easeOut' } }}
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
+            style={{
+              background:
+                'conic-gradient(from 120deg at 50% 40%, rgba(255,255,255,0.08), rgba(var(--accent-rgb),0.05), rgba(255,200,150,0.06), rgba(0,0,0,0.04), rgba(255,255,255,0.08))',
+              mixBlendMode: 'screen',
+              filter: 'blur(30px)',
             }}
           />
         </main>
