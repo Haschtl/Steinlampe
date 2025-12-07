@@ -231,35 +231,6 @@
       <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
     </div>
 
-    <div class="card" id="lightCard">
-      <h3>Light Sensor</h3>
-      <div class="row" style="align-items:center; gap:0.5rem;">
-        <label class="pill" style="cursor:pointer; margin:0;">
-          <input type="checkbox" id="lightToggle" style="margin-right:0.35rem;" />Light Auto
-        </label>
-        <button id="btnLightCalib">Calibrate</button>
-      </div>
-      <div class="slider-group">
-        <div class="slider-top">
-          <span>Gain</span>
-          <input id="lightGainNum" class="slider-number" type="number" min="0.1" max="5" step="0.1" value="1.0" />
-        </div>
-        <div class="slider-row">
-          <input id="lightGain" type="range" min="0.1" max="5" step="0.1" value="1.0" />
-        </div>
-      </div>
-    </div>
-
-    <div class="card" id="musicCard">
-      <h3>Music Mode</h3>
-      <div class="row" style="align-items:center; gap:0.5rem;">
-        <label class="pill" style="cursor:pointer; margin:0;">
-          <input type="checkbox" id="musicToggle" style="margin-right:0.35rem;" />Music
-        </label>
-      </div>
-      <p style="color:var(--muted); margin:0.2rem 0 0;">Toggles audio-reactive pattern (if built).</p>
-    </div>
-
     <div class="card">
       <h3>Settings</h3>
       <div class="row" style="align-items:flex-start; flex-direction: column;">
@@ -367,7 +338,7 @@
     </div>
 
 
-    <div class="card">
+    <div class="card"  id="lightCard">
       <h3>Light Sensor</h3>
       
       <div class="row" style="align-items:center; gap:0.5rem;">
@@ -389,7 +360,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card"  id="musicCard">
       <h3>Music Mode</h3>
       <div class="row" style="align-items:center; gap:0.5rem;">
         <label class="pill" style="cursor:pointer; margin:0;">
@@ -737,6 +708,10 @@
         if (lt) lt.checked = !line.includes('N/A') && (line.includes('en=1') || line.includes('Enabled') || line.includes('ON'));
         const lc = document.getElementById('lightCard');
         if (lc) lc.style.display = line.includes('N/A') ? 'none' : 'block';
+        // Hide duplicated status chip if card is visible
+        if (lc && lc.style.display !== 'none' && chip && chip.closest('.status-chip')) {
+          chip.closest('.status-chip').style.display = 'none';
+        }
       }
       if (line.startsWith('[Music]')) {
         const chip = document.getElementById('musicState');
@@ -753,6 +728,9 @@
         if (mt) mt.checked = line.includes('ON');
         const mc = document.getElementById('musicCard');
         if (mc) mc.style.display = line.includes('N/A') ? 'none' : 'block';
+        if (mc && mc.style.display !== 'none' && chip && chip.closest('.status-chip')) {
+          chip.closest('.status-chip').style.display = 'none';
+        }
       }
       // Presence address hint
       if (line.startsWith('Presence=')) {
