@@ -206,6 +206,69 @@ float patternAurora(uint32_t ms)
   return clamp01(slow + mid + noise + shimmer);
 }
 
+/// Polizei (DE): blau-blau / rot-rot mit kurzen Pausen
+float patternPoliceDE(uint32_t ms)
+{
+  // cycle: BB pause RR pause
+  const uint16_t durations[] = {160, 160, 240, 160, 160, 320}; // B,B,pause,R,R,pause
+  const float levels[] = {1.0f, 0.0f, 0.6f, 1.0f, 0.0f, 0.4f};
+  return evalSequence(ms, durations, levels, sizeof(durations) / sizeof(durations[0]));
+}
+
+/// Camera flash: single pop + lingering afterglow, occasional double
+float patternCameraFlash(uint32_t ms)
+{
+  const uint32_t period = 5200;
+  uint32_t t = ms % period;
+  float base = 0.08f;
+  float flash = 0.0f;
+  bool dbl = hash11(ms / period) > 0.72f; // sometimes double
+  uint32_t firstDur = 140;
+  if (t < firstDur)
+    flash = 1.0f;
+  else
+  {
+    float decay = expf(-(float)(t - firstDur) / 380.0f);
+    flash = 0.8f * decay;
+    if (dbl && t > 260 && t < 260 + firstDur)
+      flash = fmaxf(flash, 0.9f);
+  }
+  float afterglow = expf(-(float)t / 2200.0f) * 0.15f;
+  return clamp01(base + flash + afterglow);
+}
+
+/// Heartbeat alarm: bright double-beat with clear idle base
+float patternHeartbeatAlarm(uint32_t ms)
+{
+  const uint32_t period = 1700;
+  uint32_t t = ms % period;
+  float level = 0.10f;
+  auto beat = [](uint32_t dt, uint32_t width, float peak) {
+    if (dt >= width) return 0.0f;
+    float x = dt / (float)width;
+    float rise = x < 0.12f ? (x / 0.12f) : 1.0f;
+    float decay = expf(-(x > 0.12f ? (x - 0.12f) : 0.0f) * 9.0f);
+    return peak * rise * decay;
+  };
+  level += beat(t, 180, 1.0f);
+  if (t > 250) level += beat(t - 250, 160, 0.8f);
+  // clear idle line after beats
+  if (t > 500 && t < 700)
+    level = fmaxf(level, 0.18f);
+  return clamp01(level);
+}
+
+/// TV static: bright flicker with random micro-blips
+float patternTVStatic(uint32_t ms)
+{
+  float base = 0.4f + (smoothNoise(ms, 45, 0x71) - 0.5f) * 0.15f;
+  float mid = (smoothNoise(ms, 18, 0x72) - 0.5f) * 0.22f;
+  float blip = 0.0f;
+  if (hash11(ms * 3u) > 0.93f)
+    blip = 0.5f;
+  return clamp01(base + mid + blip);
+}
+
 /// Subtle sparkle via stacked sine components
 float patternSparkle(uint32_t ms)
 {
@@ -667,8 +730,12 @@ const Pattern PATTERNS[] = {
     {"Saegezahn", patternSawtooth, 9000},
     {"Pulsierend", patternPulse, 12000},
     {"Heartbeat", patternHeartbeat, 12000},
+    {"Heartbeat Alarm", patternHeartbeatAlarm, 10000},
     {"Comet", patternComet, 12000},
     {"Aurora", patternAurora, 18000},
+    {"Polizei DE", patternPoliceDE, 8000},
+    {"Camera", patternCameraFlash, 8000},
+    {"TV Static", patternTVStatic, 8000},
     {"Funkeln", patternSparkle, 12000},
     {"Kerze Soft", patternCandleSoft, 16000},
     {"Kerze", patternCandle, 16000},
