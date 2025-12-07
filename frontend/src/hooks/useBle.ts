@@ -99,6 +99,14 @@ export function useBle(): BleApi {
   const parseStatus = useCallback(
     (line: string) => {
       if (!line) return;
+      const swAny = line.match(/Switch[:=]\s*([A-Za-z0-9]+)/i);
+      const touchAny = line.match(/Touch[:=]\s*([A-Za-z0-9]+)/i);
+      if (swAny) {
+        setStatus((s) => ({ ...s, switchState: swAny[1].toUpperCase(), lastStatusAt: Date.now() }));
+      }
+      if (touchAny) {
+        setStatus((s) => ({ ...s, touchState: touchAny[1].toUpperCase(), lastStatusAt: Date.now() }));
+      }
       if (line.includes('Lamp=')) {
         const b = line.match(/Brightness=([0-9.]+)/);
         const c = line.match(/Cap=([0-9.]+)/);

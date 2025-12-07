@@ -56,7 +56,7 @@ export function ModesCard() {
     if (!enable) {
       sendCmd('pat fade off').catch((e) => console.warn(e));
     } else {
-      sendCmd(`pat fade on ${val.toFixed(2)}`).catch((e) => console.warn(e));
+      sendCmd(`pat fade amt ${val.toFixed(2)}`).catch((e) => console.warn(e));
     }
   };
 
@@ -133,7 +133,15 @@ export function ModesCard() {
             </span>
           </label>
           <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" disabled /> Pattern Fade
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={fadeEnabled}
+              onChange={(e) => handlePatternFade(patternFade || 1, e.target.checked)}
+            />{' '}
+            <span className="inline-flex items-center gap-1">
+              <Activity className="h-4 w-4" /> <Trans k="label.fadeMul">Pattern Fade</Trans>
+            </span>
           </label>
         </div>
       </CardContent>

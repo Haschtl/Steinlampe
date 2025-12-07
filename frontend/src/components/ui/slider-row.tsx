@@ -8,11 +8,12 @@ type SliderRowProps = {
   valueLabel?: ReactNode;
   inputProps?: InputHTMLAttributes<HTMLInputElement>;
   onInputChange?: (val: number) => void;
+  disabled?: boolean;
 };
 
-export function SliderRow({ label, description, valueLabel, inputProps, onInputChange }: SliderRowProps) {
+export function SliderRow({ label, description, valueLabel, inputProps, onInputChange, disabled }: SliderRowProps) {
   return (
-    <div className="space-y-1">
+    <div className={`space-y-1 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
       {(label || description || valueLabel) && (
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -25,6 +26,7 @@ export function SliderRow({ label, description, valueLabel, inputProps, onInputC
               className="w-20"
               variant="ghost"
               {...inputProps}
+              disabled={disabled || inputProps.disabled}
               onChange={(e) => {
                 inputProps.onChange?.(e);
                 if (onInputChange) onInputChange(Number(e.target.value));
@@ -38,6 +40,7 @@ export function SliderRow({ label, description, valueLabel, inputProps, onInputC
         type="range"
         className="accent-accent w-full disabled:opacity-60 disabled:cursor-not-allowed"
         {...inputProps}
+        disabled={disabled || inputProps?.disabled}
         onChange={(e) => {
           inputProps?.onChange?.(e);
           if (onInputChange) onInputChange(Number(e.target.value));
