@@ -436,13 +436,13 @@ String defaultProfileString(uint8_t slot)
   switch (slot)
   {
   case 1: // A: full brightness, constant
-    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   case 2: // B: half brightness, constant
-    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   case 3: // C: half brightness, pulsierend
-    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 ramp=400 pat_fade=off pat_fade_amt=1 ramp_on_ease=ease ramp_off_ease=ease-out ramp_on_pow=2 ramp_off_pow=5 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   default:
     break;
@@ -504,30 +504,21 @@ bool loadProfileSlot(uint8_t slot, bool announce = true)
 }
 
 /**
- * @brief Build default quick-cycle mask: first 3 patterns + music (if present).
+ * @brief Build default quick-cycle mask: the three profile slots by default.
  */
 uint32_t computeDefaultQuickMask()
 {
+  // Default: the three profile slots (mode indices PATTERN_COUNT .. PATTERN_COUNT+2)
   uint32_t mask = 0;
-  size_t base = (PATTERN_COUNT < 3) ? PATTERN_COUNT : 3;
-  for (size_t i = 0; i < base; ++i)
+  for (size_t slot = 0; slot < PROFILE_SLOTS && slot < 3; ++slot)
   {
-    if (i < 32)
-      mask |= (1u << i);
+    size_t idx = PATTERN_COUNT + slot;
+    if (idx < 32)
+      mask |= (1u << idx);
   }
-#if ENABLE_MUSIC_MODE
-  for (size_t i = 0; i < PATTERN_COUNT; ++i)
-  {
-    if (strcmp(PATTERNS[i].name, "Musik") == 0)
-    {
-      if (i < 32)
-        mask |= (1u << i);
-      break;
-    }
-  }
-#endif
+  // Fallback to first pattern if nothing set (should not happen)
   if (mask == 0 && PATTERN_COUNT > 0)
-    mask = 1u; // always allow pattern 1 as fallback
+    mask = 1u;
   return mask;
 }
 
@@ -851,18 +842,18 @@ void loadSettings()
   if (rampOffDurationMs < 50)
     rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
-  rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, 1);
-  rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, 2);
-  rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, 2.0f);
-  rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, 5.0f);
+  rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, Settings::DEFAULT_RAMP_EASE_ON);
+  rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, Settings::DEFAULT_RAMP_EASE_OFF);
+  rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, Settings::DEFAULT_RAMP_POW_ON);
+  rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, Settings::DEFAULT_RAMP_POW_OFF);
   if (rampEaseOnType > 4)
-    rampEaseOnType = 1;
+    rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
   if (rampEaseOffType > 4)
-    rampEaseOffType = 1;
+    rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
   if (rampEaseOnPower < 0.01f)
-    rampEaseOnPower = 0.01f;
+    rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
   if (rampEaseOffPower < 0.01f)
-    rampEaseOffPower = 0.01f;
+    rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
   if (rampEaseOnPower > 10.0f)
     rampEaseOnPower = 10.0f;
   if (rampEaseOffPower > 10.0f)
@@ -3309,10 +3300,12 @@ void handleCommand(String line)
     presenceAddr = "";
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
-    rampEaseOnType = 1;
-    rampEaseOffType = 2;
-    rampEaseOnPower = 2.0f;
-    rampEaseOffPower = 5.0f;
+    rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
+    rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
+    rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
+    rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
+    rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
+    rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
     briMinUser = Settings::BRI_MIN_DEFAULT;
     briMaxUser = Settings::BRI_MAX_DEFAULT;
     customLen = 0;

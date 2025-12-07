@@ -36,12 +36,12 @@ uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
 uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
-uint8_t rampEaseOnType = 1;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
-uint8_t rampEaseOffType = 2;
-float rampEaseOnPower = 2.0f;
-float rampEaseOffPower = 5.0f;
-static uint8_t rampEaseActiveType = 1;
-static float rampEaseActivePower = 2.0f;
+uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
+uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
+float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
+float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
+static uint8_t rampEaseActiveType = Settings::DEFAULT_RAMP_EASE_ON;
+static float rampEaseActivePower = Settings::DEFAULT_RAMP_POW_ON;
 
 /**
  * @brief Write a gamma-corrected PWM value to the LED driver.
