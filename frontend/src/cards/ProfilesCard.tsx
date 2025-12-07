@@ -10,9 +10,14 @@ import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
 export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmd } = useConnection();
+  const { sendCmd, log } = useConnection();
   const [cfgText, setCfgText] = useState('');
   const [exportText, setExportText] = useState('');
+
+  const grabLatestCfg = () => {
+    const line = [...log].reverse().find((l) => l.line.includes('cfg import'));
+    if (line) setExportText(line.line.trim());
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -28,7 +33,11 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => sendCmd('cfg export').then(() => setExportText(cfgText))}>
+            <Button
+              onClick={() => {
+                sendCmd('cfg export').then(() => setTimeout(grabLatestCfg, 200));
+              }}
+            >
               <Copy className="mr-1 h-4 w-4" /> <Trans k="btn.exportQr">Export to text/QR</Trans>
             </Button>
             {exportText && (

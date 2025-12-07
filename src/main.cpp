@@ -2190,10 +2190,23 @@ void handleCommand(String line)
   {
     String args = line.substring(6);
     args.trim();
+    if (args.length() == 0 || args == "export")
+    {
+      String csv;
+      for (size_t i = 0; i < customLen; ++i)
+      {
+        if (i > 0)
+          csv += ',';
+        csv += String(customPattern[i], 3);
+      }
+      String msg = String(F("CUSTOM|len=")) + String(customLen) + F("|step=") + String(customStepMs) + F("|vals=") + csv;
+      sendFeedback(msg);
+      return;
+    }
     if (args.startsWith("step"))
     {
       uint32_t v = args.substring(4).toInt();
-      if (v >= 100 && v <= 5000)
+      if (v >= 20 && v <= 5000)
       {
         customStepMs = v;
         saveSettings();
@@ -2201,7 +2214,7 @@ void handleCommand(String line)
       }
       else
       {
-        sendFeedback(F("Usage: custom step <100-5000>"));
+        sendFeedback(F("Usage: custom step <20-5000>"));
       }
       return;
     }

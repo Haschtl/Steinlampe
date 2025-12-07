@@ -45,7 +45,6 @@ export function useBle(): BleApi {
   const statusCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const deviceRef = useRef<BluetoothDevice | null>(null);
   const liveLogRef = useRef(true);
-  const filterParsedRef = useRef<boolean>(filterParsed);
   const lastLogRef = useRef<{ line: string; ms: number }>({ line: '', ms: 0 });
   const pendingLogRef = useRef<LogEntry[]>([]);
   const unsubRef = useRef<(() => void)[]>([]);
@@ -57,7 +56,7 @@ export function useBle(): BleApi {
       if (!line) return;
       // Filter out noisy status-only lines when enabled
       if (
-        filterParsedRef.current &&
+        filterParsed &&
         (
           /^Status[:=]/i.test(line) ||
           /^Lamp=/.test(line) ||
@@ -84,7 +83,7 @@ export function useBle(): BleApi {
         pendingLogRef.current = [...pendingLogRef.current.slice(-400), entry];
       }
     },
-    [],
+    [filterParsed],
   );
 
   useEffect(() => {
@@ -102,7 +101,6 @@ export function useBle(): BleApi {
   }, [autoReconnect]);
 
   useEffect(() => {
-    filterParsedRef.current = filterParsed;
     localStorage.setItem('ql-log-filter', filterParsed ? 'true' : 'false');
   }, [filterParsed]);
 
@@ -172,7 +170,7 @@ export function useBle(): BleApi {
     async (dev: BluetoothDevice, cmdChar: BluetoothRemoteGATTCharacteristic, statusChar: BluetoothRemoteGATTCharacteristic) => {
       const lineHandler = (line: string) => {
         const handled = parseStatus(line);
-        if (!handled || !filterParsedRef.current) pushLog(line);
+        if (!handled || !filterParsed) pushLog(line);
       };
 
       const unsubCmd = await subscribeToLines(cmdChar, lineHandler);
@@ -193,7 +191,7 @@ export function useBle(): BleApi {
       dev.addEventListener('gattserverdisconnected', onDisc);
       unsubRef.current.push(() => dev.removeEventListener('gattserverdisconnected', onDisc));
     },
-    [cleanup, parseStatus, pushLog],
+    [cleanup, parseStatus, pushLog, filterParsed],
   );
 
   const connectWithDevice = useCallback(

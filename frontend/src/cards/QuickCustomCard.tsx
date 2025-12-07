@@ -64,6 +64,7 @@ export function QuickCustomCard() {
   const [customCsv, setCustomCsv] = useState('');
   const [customStep, setCustomStep] = useState(400);
   const [profileSlot, setProfileSlot] = useState('1');
+  const [loadedFromStatus, setLoadedFromStatus] = useState(false);
 
   useEffect(() => {
     if (status.quickCsv) {
@@ -71,9 +72,17 @@ export function QuickCustomCard() {
         .split(',')
         .map((n) => parseInt(n.trim(), 10))
         .filter((n) => !Number.isNaN(n) && n > 0);
-      setQuickSelection(nums);
+      const maxIdx = (status.patternCount || patternLabels.length) + 3;
+      setQuickSelection(nums.filter((n) => n <= maxIdx));
     }
   }, [status.quickCsv]);
+
+  useEffect(() => {
+    if (status.customCsv && !loadedFromStatus) {
+      setCustomCsv(status.customCsv);
+      setLoadedFromStatus(true);
+    }
+  }, [status.customCsv, loadedFromStatus]);
 
   const patternOptions = useMemo(() => {
     const count = status.patternCount || patternLabels.length;
@@ -131,6 +140,7 @@ export function QuickCustomCard() {
                 </label>
               ))}
           </div>
+          <div className="text-sm text-muted">Current: {status.quickCsv || '—'}</div>
           <div className="flex gap-2">
             <Button onClick={saveQuickSelection}><Trans k="btn.saveQuick">Save quick list</Trans></Button>
             <Button onClick={refreshStatus}>
@@ -174,7 +184,7 @@ export function QuickCustomCard() {
               <Trans k="btn.apply">Apply</Trans>
             </Button>
             <Button onClick={() => setCustomCsv('')}><Trans k="btn.clear">Clear</Trans></Button>
-            <Button onClick={() => sendCmd('custom')}><Trans k="btn.reload">Reload</Trans></Button>
+            <Button onClick={() => sendCmd('custom export')}><Trans k="btn.reload">Reload</Trans></Button>
           </div>
           <p className="text-sm text-muted">
             Current: len={status.customLen ?? '--'} step={status.customStepMs ?? '--'}ms

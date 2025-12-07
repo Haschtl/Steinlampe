@@ -39,6 +39,7 @@ export type DeviceStatus = {
   rampOffPow?: number;
   customLen?: number;
   customStepMs?: number;
+  customCsv?: string;
   briMin?: number;
   briMax?: number;
   hasLight?: boolean;
@@ -300,6 +301,22 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       ...s,
       customLen: len ? parseInt(len[1], 10) : s.customLen,
       customStepMs: step ? parseInt(step[1], 10) : s.customStepMs,
+      lastStatusAt: Date.now(),
+    }));
+  }
+  if (line.startsWith('CUSTOM|')) {
+    handled = true;
+    const parts = line.split('|').slice(1);
+    const kv: Record<string, string> = {};
+    parts.forEach((p) => {
+      const eq = p.indexOf('=');
+      if (eq > 0) kv[p.slice(0, eq)] = p.slice(eq + 1);
+    });
+    setStatus((s) => ({
+      ...s,
+      customLen: kv.len ? parseInt(kv.len, 10) : s.customLen,
+      customStepMs: kv.step ? parseInt(kv.step, 10) : s.customStepMs,
+      customCsv: kv.vals ?? s.customCsv,
       lastStatusAt: Date.now(),
     }));
   }
