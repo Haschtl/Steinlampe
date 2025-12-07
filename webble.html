@@ -62,6 +62,8 @@
     .bar-row input[type=range] { flex:1; accent-color: var(--accent2); }
     .bar-row input[type=number] { width:80px; text-align:right; }
     .bar-row button { padding:0.3rem 0.6rem; }
+    .ramp-preview { width:140px; height:70px; border:1px solid var(--border); border-radius:8px; background:#0d1322; }
+    .status-chip { padding:0.35rem 0.6rem; border-radius:999px; border:1px solid var(--border); background:#0d1322; color:var(--muted); }
   </style>
 </head>
 <body>
@@ -86,6 +88,10 @@
           </label>
         </div>
       </h3>
+      <div class="row">
+        <span class="status-chip">Switch: <span id="switchState">--</span></span>
+        <span class="status-chip">Touch: <span id="touchState">--</span></span>
+      </div>
       <div class="input-group" style="max-width: 100%;">
         <button data-cmd="prev" style="border-radius:6px 0 0 6px;">Prev</button>
         <select id="modeSelect" style="min-width:170px; border-radius:0; margin:0; height:100%; margin-top: 0.125rem; padding-top:0.5rem; padding-bottom:0.35rem;"></select>
@@ -147,12 +153,13 @@
             <select id="rampEaseOn">
               <option value="linear">linear</option>
               <option value="ease">ease</option>
-              <option value="ease-in">ease-in</option>
-              <option value="ease-out">ease-out</option>
-              <option value="ease-in-out">ease-in-out</option>
+          <option value="ease-in">ease-in</option>
+          <option value="ease-out">ease-out</option>
+          <option value="ease-in-out">ease-in-out</option>
             </select>
             <input id="rampPowOn" type="number" min="0.01" max="10" step="0.01" value="2.0" style="width:90px;" />
           </div>
+          <svg id="rampPrevOn" class="ramp-preview" viewBox="0 0 100 50"></svg>
         </div>
         <div>
           <label>Ramp Off</label>
@@ -166,6 +173,7 @@
             </select>
             <input id="rampPowOff" type="number" min="0.01" max="10" step="0.01" value="2.0" style="width:90px;" />
           </div>
+          <svg id="rampPrevOff" class="ramp-preview" viewBox="0 0 100 50"></svg>
         </div>
       </div>
     </div>
@@ -177,11 +185,26 @@
           <input type="checkbox" id="presenceToggle" style="margin-right:0.35rem;" />Presence
         </label>
       </h3>
+      <div class="row" style="gap:0.6rem; align-items:center;">
+        <span id="presenceStatus" style="color:var(--muted);">Last seen: n/a</span>
+        <select id="presenceKnown" style="min-width:170px;">
+          <option value="">recent devices</option>
+        </select>
+        <button id="btnPresenceUse">Use</button>
+        <button id="btnPresenceRefresh">Refresh</button>
+      </div>
       <div class="row">
         <div class="input-group">
           <input id="presenceMac" type="text" placeholder="AA:BB:CC:DD:EE:FF" size="20" />
           <button id="btnPresenceSet">Set</button>
           <button id="btnPresenceClear" data-cmd="presence clear" style="border-radius:0 6px 6px 0;">Clear</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="input-group">
+          <input id="notifySeq" type="text" placeholder="50 20 50 30" />
+          <input id="notifyFade" type="number" min="0" max="200" step="10" value="0" style="width:80px;" />
+          <button id="btnNotify">Notify</button>
         </div>
       </div>
     </div>
@@ -215,6 +238,9 @@
           <input type="checkbox" id="touchDimToggle" style="margin-right:0.35rem;" />TouchDim
         </label>
       </h3>
+      <div class="row">
+        <span class="status-chip" id="touchDetail">base -- | raw -- | delta -- | thr --/--</span>
+      </div>
       <div class="row">
         <label>Touch hold (ms)</label>
         <div class="input-group">
@@ -293,6 +319,7 @@
           <tr><td>mode N / next / prev</td><td>Select pattern</td></tr>
           <tr><td>auto on|off</td><td>Auto-cycle patterns</td></tr>
           <tr><td>bri X</td><td>Brightness 0..100%</td></tr>
+          <tr><td>notify d1 d2 ... [fade=ms]</td><td>Blink pattern (ms)</td></tr>
           <tr><td>quick 1,2,...</td><td>Set fast-switch cycle list</td></tr>
           <tr><td>pat scale 0.1-5</td><td>Pattern speed factor</td></tr>
           <tr><td>touchdim on|off</td><td>Enable touch dimming</td></tr>
@@ -331,6 +358,8 @@
     let serialReader = null;
     let lastCmdText = '';
     let lastCmdTime = 0;
+    let lastPresenceTs = 0;
+    const presenceHistory = new Set();
 
     const logEl = document.getElementById('log');
     let lastLogLine = '';
@@ -511,25 +540,28 @@
     function updateUIFromStatus(line) {
       if (!line) return;
       // Lamp state + brightness
-      if (line.includes('Lamp=')) {
-        const m = line.match(/Brightness=([0-9.]+)/);
-        if (m) {
-          const val = Math.round(parseFloat(m[1]));
-          const bri = document.getElementById('bri');
-          const briNum = document.getElementById('briNum');
-          const briVal = document.getElementById('briVal');
-          if (!Number.isNaN(val)) {
-            bri.value = val;
-            briVal.textContent = val;
-            if (briNum) briNum.value = val;
-          }
+    if (line.includes('Lamp=')) {
+      const m = line.match(/Brightness=([0-9.]+)/);
+      if (m) {
+        const val = Math.round(parseFloat(m[1]));
+        const bri = document.getElementById('bri');
+        const briNum = document.getElementById('briNum');
+        const briVal = document.getElementById('briVal');
+        if (!Number.isNaN(val)) {
+          bri.value = val;
+          briVal.textContent = val;
+          if (briNum) briNum.value = val;
         }
-        const lampState = line.match(/Lamp=([A-Z]+)/);
-        const statusEl = document.getElementById('status');
-        if (lampState && statusEl) statusEl.textContent = `Lamp ${lampState[1]}`;
-        const lampToggle = document.getElementById('lampToggle');
-        if (lampToggle && lampState) lampToggle.checked = (lampState[1] === 'ON');
       }
+      const lampState = line.match(/Lamp=([A-Z]+)/);
+      const switchState = line.match(/Switch=([A-Z]+)/);
+      const statusEl = document.getElementById('status');
+      if (lampState && statusEl) statusEl.textContent = `Lamp ${lampState[1]}`;
+      const lampToggle = document.getElementById('lampToggle');
+      if (lampToggle && lampState) lampToggle.checked = (lampState[1] === 'ON');
+      const switchSpan = document.getElementById('switchState');
+      if (switchSpan && switchState) switchSpan.textContent = switchState[1];
+    }
       // AutoCycle toggle from pattern line
       if (line.startsWith('Pattern ')) {
         const autoChk = document.getElementById('autoToggle');
@@ -543,6 +575,14 @@
             if (inp) inp.value = v;
             if (num) num.value = v.toFixed(1);
           }
+        }
+        const modeMatch = line.match(/Pattern\s+(\d+)\/(\d+)/);
+        if (modeMatch) {
+          const idx = parseInt(modeMatch[1], 10);
+          const sel = document.getElementById('modeSelect');
+          if (sel && !Number.isNaN(idx)) sel.value = String(idx);
+          window.currentPatternIndex = idx;
+          window.patternCount = parseInt(modeMatch[2], 10);
         }
       }
       if (line.startsWith('[Quick]')) {
@@ -561,6 +601,33 @@
         }
         const pT = document.getElementById('presenceToggle');
         if (pT) pT.checked = line.includes('Presence=ON');
+        const pStatus = document.getElementById('presenceStatus');
+        const known = document.getElementById('presenceKnown');
+        if (pStatus) {
+          lastPresenceTs = Date.now();
+          pStatus.textContent = 'Last seen: just now';
+        }
+        if (addrMatch && addrMatch[1] && known) {
+          presenceHistory.add(addrMatch[1]);
+          known.innerHTML = '<option value=\"\">recent devices</option>' + Array.from(presenceHistory).map(a => `<option value="${a}">${a}</option>`).join('');
+        }
+      }
+      if (line.startsWith('[Touch]')) {
+        const baseMatch = line.match(/base=([-0-9]+)/);
+        const rawMatch = line.match(/raw=([-0-9]+)/);
+        const deltaMatch = line.match(/delta=([-0-9]+)/);
+        const thrOn = line.match(/thrOn=([-0-9]+)/);
+        const thrOff = line.match(/thrOff=([-0-9]+)/);
+        const active = line.includes('active=1');
+        const touchState = document.getElementById('touchState');
+        if (touchState) {
+          touchState.textContent = active ? 'TOUCH' : 'idle';
+          touchState.style.color = active ? '#8cf59b' : 'var(--muted)';
+        }
+        const touchDetail = document.getElementById('touchDetail');
+        if (touchDetail) {
+          touchDetail.textContent = `base ${baseMatch ? baseMatch[1] : '--'} | raw ${rawMatch ? rawMatch[1] : '--'} | delta ${deltaMatch ? deltaMatch[1] : '--'} | thr ${thrOn ? thrOn[1] : '--'}/${thrOff ? thrOff[1] : '--'}`;
+        }
       }
       // Ramp/Idle/TouchDim
       if (line.startsWith('Ramp=')) {
@@ -782,6 +849,18 @@
     document.getElementById('btnConnect').onclick = connect;
     document.querySelectorAll('button[data-cmd]').forEach(btn => {
       btn.onclick = () => sendCmd(btn.dataset.cmd);
+      btn.onmouseup = () => {
+        if (btn.dataset.cmd === 'next' || btn.dataset.cmd === 'prev') {
+          if (window.currentPatternIndex && window.patternCount) {
+            let idx = window.currentPatternIndex;
+            if (btn.dataset.cmd === 'next') idx = (idx % window.patternCount) + 1;
+            else idx = (idx - 2 + window.patternCount) % window.patternCount + 1;
+            const sel = document.getElementById('modeSelect');
+            if (sel) sel.value = String(idx);
+            window.currentPatternIndex = idx;
+          }
+        }
+      };
     });
     document.getElementById('btnSerial').onclick = connectSerial;
     document.getElementById('btnSend').onclick = () => {
@@ -818,6 +897,22 @@
       const mac = document.getElementById('presenceMac').value.trim();
       if (mac) sendCmd('presence set ' + mac);
     };
+    const btnPresenceUse = document.getElementById('btnPresenceUse');
+    if (btnPresenceUse) {
+      btnPresenceUse.onclick = () => {
+        const sel = document.getElementById('presenceKnown');
+        if (sel && sel.value) {
+          document.getElementById('presenceMac').value = sel.value;
+          sendCmd('presence set ' + sel.value);
+        }
+      };
+    }
+    const btnPresenceRefresh = document.getElementById('btnPresenceRefresh');
+    if (btnPresenceRefresh) btnPresenceRefresh.onclick = () => sendCmd('status');
+    // auto status every 10s
+    setInterval(() => {
+      if (cmdChar || serialWriter) sendCmd('status');
+    }, 10000);
     document.getElementById('btnStatus').onclick = () => sendCmd('status');
     document.getElementById('btnCfgExport').onclick = () => sendCmd('cfg export');
     document.getElementById('modeSelect').onchange = (e) => {
@@ -842,6 +937,36 @@
       patSpeedNum.oninput = (e) => syncPatSpeed(e.target.value);
       patSpeedNum.onchange = (e) => syncPatSpeed(e.target.value, true);
     }
+    const easeSample = (t, type, pow) => {
+      t = Math.max(0, Math.min(1, t));
+      switch (type) {
+        case 'linear': return t;
+        case 'ease-in': return Math.pow(t, pow);
+        case 'ease-out': return 1 - Math.pow(1 - t, pow);
+        case 'ease-in-out': {
+          const p = pow;
+          return t < 0.5 ? 0.5 * Math.pow(t * 2, p) : 1 - 0.5 * Math.pow((1 - t) * 2, p);
+        }
+        case 'ease':
+        default: return t * t * (3 - 2 * t);
+      }
+    };
+    const drawRampPreview = (svgId, typeSel, powInput) => {
+      const svg = document.getElementById(svgId);
+      const type = typeSel ? typeSel.value : 'ease';
+      const pow = powInput ? parseFloat(powInput.value || '2') : 2;
+      if (!svg) return;
+      const w = 100, h = 50;
+      let path = '';
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20;
+        const y = easeSample(t, type, pow);
+        const px = (t * w).toFixed(2);
+        const py = (h - y * h).toFixed(2);
+        path += (i === 0 ? 'M' : 'L') + px + ' ' + py + ' ';
+      }
+      svg.innerHTML = `<path d="${path}" stroke="#5be6ff" stroke-width="2" fill="none"/>`;
+    };
 
     populateModes();
     renderQuickModes();
@@ -887,10 +1012,12 @@
     const rampEaseOff = document.getElementById('rampEaseOff');
     const rampPowOn = document.getElementById('rampPowOn');
     const rampPowOff = document.getElementById('rampPowOff');
-    if (rampEaseOn) rampEaseOn.onchange = () => sendCmd(`ramp ease on ${rampEaseOn.value} ${rampPowOn ? rampPowOn.value : ''}`);
-    if (rampPowOn) rampPowOn.onchange = () => sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn.value}`);
-    if (rampEaseOff) rampEaseOff.onchange = () => sendCmd(`ramp ease off ${rampEaseOff.value} ${rampPowOff ? rampPowOff.value : ''}`);
-    if (rampPowOff) rampPowOff.onchange = () => sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff.value}`);
+    if (rampEaseOn) rampEaseOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn.value} ${rampPowOn ? rampPowOn.value : ''}`); };
+    if (rampPowOn) rampPowOn.onchange = () => { drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn); sendCmd(`ramp ease on ${rampEaseOn ? rampEaseOn.value : 'ease'} ${rampPowOn.value}`); };
+    if (rampEaseOff) rampEaseOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff.value} ${rampPowOff ? rampPowOff.value : ''}`); };
+    if (rampPowOff) rampPowOff.onchange = () => { drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff); sendCmd(`ramp ease off ${rampEaseOff ? rampEaseOff.value : 'ease'} ${rampPowOff.value}`); };
+    drawRampPreview('rampPrevOn', rampEaseOn, rampPowOn);
+    drawRampPreview('rampPrevOff', rampEaseOff, rampPowOff);
     document.getElementById('btnQuickApply').onclick = () => {
       const sel = getQuickSelection();
       sendCmd(sel.length ? ('quick ' + sel.join(',')) : 'quick default');
@@ -911,6 +1038,17 @@
       const v = document.getElementById('customStep').value;
       sendCmd('custom step ' + v);
     };
+    const btnNotify = document.getElementById('btnNotify');
+    if (btnNotify) {
+      btnNotify.onclick = () => {
+        const seq = document.getElementById('notifySeq').value.trim();
+        const fade = document.getElementById('notifyFade').value.trim();
+        let cmd = 'notify';
+        if (seq) cmd += ' ' + seq;
+        if (fade && parseInt(fade, 10) > 0) cmd += ' fade=' + fade;
+        sendCmd(cmd);
+      };
+    }
     const btnCustomSend = document.getElementById('btnCustomSend');
     if (btnCustomSend) {
       btnCustomSend.onclick = () => {

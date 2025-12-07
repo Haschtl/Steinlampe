@@ -13,6 +13,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <math.h>
+#include <vector>
 #include <ctype.h>
 
 #include "comms.h"
@@ -137,6 +138,15 @@ String lastBleAddr;
 String lastBtAddr;
 uint32_t lastPresenceSeenMs = 0;
 uint32_t lastPresenceScanMs = 0;
+// Notify blink
+std::vector<uint32_t> notifySeq = {50, 20, 50, 30};
+uint8_t notifyIdx = 0;
+uint32_t notifyStageStartMs = 0;
+bool notifyInvert = false;
+bool notifyRestoreLamp = false;
+bool notifyPrevLampOn = false;
+bool notifyActive = false;
+uint32_t notifyFadeMs = 0;
 
 // Ramping and timers
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
@@ -1208,6 +1218,7 @@ void printHelp()
       "  presence grace <ms> - Verzögerung vor Auto-Off",
       "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
       "  custom step <ms>   - Schrittzeit Custom-Pattern",
+      "  notify [on1 off1 on2 off2] - Blinksignal (ms)",
       "  light gain <f>     - Verstärkung Lichtsensor",
       "  music on|off       - Music-Mode (ADC) aktivieren",
       "  calibrate touch    - Geführte Touch-Kalibrierung",
@@ -1612,7 +1623,7 @@ void handleCommand(String line)
       {
         rampEaseOffType = etype;
         rampEaseOffPower = power;
-        sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
+      sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
       }
       saveSettings();
     }
@@ -1630,6 +1641,55 @@ void handleCommand(String line)
         sendFeedback(F("Usage: ramp <50-10000 ms>"));
       }
     }
+    return;
+  }
+  if (lower.startsWith("notify"))
+  {
+    std::vector<uint32_t> seq;
+    notifyFadeMs = 0;
+    String args = line.substring(6);
+    args.trim();
+    while (args.length() > 0)
+    {
+      int sp = args.indexOf(' ');
+      String tok = (sp >= 0) ? args.substring(0, sp) : args;
+      args = (sp >= 0) ? args.substring(sp + 1) : "";
+      args.trim();
+      if (tok.startsWith("fade"))
+      {
+        int eq = tok.indexOf('=');
+        if (eq >= 0)
+          tok = tok.substring(eq + 1);
+        uint32_t f = (uint32_t)tok.toInt();
+        if (f > 0)
+          notifyFadeMs = f;
+      }
+      else
+      {
+        uint32_t v = (uint32_t)tok.toInt();
+        if (v > 0)
+          seq.push_back(v);
+      }
+    }
+    if (seq.empty())
+      seq = {50, 20, 50, 30};
+    notifySeq = seq;
+    notifyIdx = 0;
+    notifyStageStartMs = millis();
+    notifyInvert = (masterBrightness > 0.8f);
+    notifyActive = true;
+    notifyPrevLampOn = lampEnabled;
+    notifyRestoreLamp = !lampEnabled;
+    if (notifyRestoreLamp)
+      setLampEnabled(true, "notify");
+    String seqStr;
+    for (size_t i = 0; i < notifySeq.size(); ++i)
+    {
+      if (i)
+        seqStr += F("/");
+      seqStr += String(notifySeq[i]);
+    }
+    sendFeedback(String(F("[Notify] ")) + seqStr + (notifyInvert ? F(" invert") : F("")));
     return;
   }
   if (lower.startsWith("idleoff"))
@@ -2062,6 +2122,47 @@ void updatePatternEngine()
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
+  if (notifyActive && !notifySeq.empty())
+  {
+    uint32_t dtStage = now - notifyStageStartMs;
+    uint32_t stageDur = notifySeq[notifyIdx];
+    if (dtStage >= stageDur)
+    {
+      notifyIdx++;
+      if (notifyIdx >= notifySeq.size())
+      {
+        notifyActive = false;
+        setLampEnabled(notifyPrevLampOn, "notify done");
+        notifyRestoreLamp = false;
+      }
+      else
+      {
+        notifyStageStartMs = now;
+      }
+    }
+    if (notifyActive)
+    {
+      bool onPhase = (notifyIdx % 2 == 0);
+      float scale = notifyInvert ? (onPhase ? 0.0f : 1.0f) : (onPhase ? 1.0f : 0.0f);
+      if (notifyFadeMs > 0)
+      {
+        uint32_t dt = now - notifyStageStartMs;
+        uint32_t dur = notifySeq[notifyIdx];
+        float s = 1.0f;
+        if (dt < notifyFadeMs)
+          s = (float)dt / (float)notifyFadeMs;
+        else if (dt > dur - notifyFadeMs)
+          s = (float)(dur - dt) / (float)notifyFadeMs;
+        if (s < 0.0f) s = 0.0f;
+        if (s > 1.0f) s = 1.0f;
+        if (notifyInvert)
+          scale = onPhase ? (1.0f - s) : s;
+        else
+          scale = onPhase ? s : (1.0f - s);
+      }
+      combined *= scale;
+    }
+  }
   if (patternFadeEnabled)
   {
     if (patternFilterLastMs == 0)

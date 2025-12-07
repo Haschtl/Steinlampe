@@ -83,6 +83,7 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `touch`             | Print raw touch readings for threshold calibration         |
 | `calibrate touch`   | Guided touch calibration (baseline + thresholds)           |
 | `calibrate`         | Re-measure touch baseline                                  |
+| `notify d1 d2 ... [fade=ms]` | Blink notification sequence (ms, optional fade per edge) |
 | `presence on|off`   | Enable/disable auto-off when registered device disconnects |
 | `presence set <MAC>`/`presence set me`/`presence clear` | Bind connected device or explicit MAC / clear |
 | `presence grace <ms>` | Set grace timeout before presence-off                      |
