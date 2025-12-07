@@ -172,6 +172,10 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         touchDelta: num('touch_delta') ?? s.touchDelta,
         touchActive: kv.touch_active ? kv.touch_active === '1' : s.touchActive,
         hasLight,
+        hasPoti: kv.poti ? kv.poti.toUpperCase() !== 'N/A' : s.hasPoti,
+        hasPush: kv.push ? kv.push.toUpperCase() !== 'N/A' : s.hasPush,
+        hasMusic: kv.music ? kv.music.toUpperCase() !== 'N/A' : s.hasMusic,
+        hasPresence: kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence,
       };
     });
     return true;

@@ -56,7 +56,18 @@ export function useBle(): BleApi {
       // Filter out noisy status-only lines when enabled
       if (
         filterParsedRef.current &&
-        (/^Status[:=]/i.test(line) || /^Lamp=/.test(line) || line.startsWith('[Quick]') || line.startsWith('[Touch]') || line.startsWith('Ramp='))
+        (
+          /^Status[:=]/i.test(line) ||
+          /^Lamp=/.test(line) ||
+          line.startsWith('[Quick]') ||
+          line.startsWith('[Touch]') ||
+          line.startsWith('Ramp=') ||
+          line.startsWith('Device=') ||
+          line.startsWith('[Poti]') ||
+          line.startsWith('[Push]') ||
+          line.startsWith('STATUS|') ||
+          line.startsWith('SENSORS|')
+        )
       ) {
         return;
       }

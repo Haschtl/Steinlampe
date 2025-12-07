@@ -147,7 +147,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
               {tabs.map((tab) => (
                 <Button
                   key={tab.key}
@@ -164,6 +164,28 @@ export default function App() {
                 </Button>
               ))}
               <div className="flex-1" />
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex h-3 w-3 rounded-full ${
+                    status.connected ? "bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.6)]" : "bg-red-500/60"
+                  }`}
+                  title={status.connected ? t('status.connected', 'Connected') : t('status.disconnected', 'Not connected')}
+                />
+                <span
+                  className={`inline-flex h-3 w-3 rounded-full ${
+                    status.patternCount > 0 &&
+                    status.brightness !== undefined &&
+                    status.cap !== undefined &&
+                    status.rampOnMs !== undefined &&
+                    status.rampOffMs !== undefined &&
+                    status.customLen !== undefined &&
+                    status.customStepMs !== undefined
+                      ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.7)]"
+                      : "bg-slate-500/60"
+                  }`}
+                  title="Settings loaded"
+                />
+              </div>
               <Button size="sm" onClick={refreshStatus}>
                 <RefreshCw className="mr-1 h-4 w-4" />{" "}
                 <span className="hidden sm:inline">

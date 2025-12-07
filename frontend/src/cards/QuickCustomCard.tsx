@@ -70,18 +70,23 @@ export function QuickCustomCard() {
       const nums = status.quickCsv
         .split(',')
         .map((n) => parseInt(n.trim(), 10))
-        .filter((n) => !Number.isNaN(n));
+        .filter((n) => !Number.isNaN(n) && n > 0);
       setQuickSelection(nums);
     }
   }, [status.quickCsv]);
 
   const patternOptions = useMemo(() => {
     const count = status.patternCount || patternLabels.length;
-    return Array.from({ length: count }, (_, i) => ({
+    const base = Array.from({ length: count }, (_, i) => ({
       idx: i + 1,
       label: patternLabels[i] ? `${i + 1} - ${patternLabels[i]}` : `Pattern ${i + 1}`,
     }));
-  }, [status.patternCount]);
+    const profileOpts = Array.from({ length: 3 }, (_, i) => ({
+      idx: count + i + 1,
+      label: `${t('label.profile', 'Profile')} ${i + 1}`,
+    }));
+    return [...base, ...profileOpts];
+  }, [status.patternCount, t]);
 
   const toggleQuickSelection = (idx: number) => {
     setQuickSelection((prev) => (prev.includes(idx) ? prev.filter((n) => n !== idx) : [...prev, idx].sort((a, b) => a - b)));
