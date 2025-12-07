@@ -57,6 +57,10 @@
     .slider-row input[type=range] { flex:1; accent-color: var(--accent); height: 14px; border-radius: 999px; background: linear-gradient(90deg, rgba(91,230,255,0.4) 0%, rgba(88,129,255,0.2) 100%); }
     .slider-row input[type=range]::-webkit-slider-thumb { width:22px; height:22px; border-radius:50%; background: #0b0f1a; border:2px solid var(--accent); box-shadow: 0 6px 14px rgba(0,0,0,0.4); }
     .slider-row input[type=range]::-moz-range-thumb { width:22px; height:22px; border-radius:50%; background: #0b0f1a; border:2px solid var(--accent); box-shadow: 0 6px 14px rgba(0,0,0,0.4); }
+    .bar-row { display:flex; align-items:center; gap:0.6rem; margin:0.25rem 0; }
+    .bar-row input[type=range] { flex:1; accent-color: var(--accent2); }
+    .bar-row input[type=number] { width:80px; text-align:right; }
+    .bar-row button { padding:0.3rem 0.6rem; }
   </style>
 </head>
 <body>
@@ -126,6 +130,14 @@
           <input id="patFadeAmt" type="range" min="0.01" max="5" step="0.01" value="1.00" />
         </div>
       </div>
+
+      <div class="row">
+        <label>Ramp (ms)</label>
+        <div class="input-group">
+          <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
+          <button id="btnRamp">Set</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -150,13 +162,6 @@
         <label style="min-width:120px;">Quick tap modes:</label>
         <div id="quickList" class="row" style="flex:1; gap:0.05rem;"></div>
         <button id="btnQuickApply" title="Applies selection for fast switch tap cycling">Apply</button>
-      </div>
-      <div class="row">
-        <label>Ramp (ms)</label>
-        <div class="input-group">
-          <input id="rampMs" type="number" min="50" max="5000" step="50" value="400" />
-          <button id="btnRamp">Set</button>
-        </div>
       </div>
       <div class="row">
         <label>IdleOff (min, 0=off)</label>
@@ -213,9 +218,15 @@
           <button id="btnCustomStep">Set Step</button>
         </div>
       </div>
+      <h4 style="margin-bottom:0.3rem;">Pattern Editor</h4>
+      <div id="customEditor"></div>
+      <div class="row" style="gap:0.5rem;">
+        <button id="btnCustomAdd">Add Point</button>
+        <button id="btnCustomClear">Clear</button>
+        <button id="btnCustomSend">Send Custom</button>
+      </div>
       <label>CSV values (0..1)</label>
       <textarea id="customCsv" rows="4" style="width:100%;"></textarea>
-      <button id="btnCustomSend">Send Custom</button>
     </div>
 
   </div>
@@ -288,9 +299,19 @@
     let serialPort = null;
     let serialWriter = null;
     let serialReader = null;
+    let lastCmdText = '';
+    let lastCmdTime = 0;
 
     const logEl = document.getElementById('log');
+    let lastLogLine = '';
+    let lastLogMs = 0;
     function log(msg) {
+      const now = Date.now();
+      if (msg === lastLogLine && (now - lastLogMs) < 400) {
+        return; // dedupe bursts
+      }
+      lastLogLine = msg;
+      lastLogMs = now;
       const line = `[${new Date().toLocaleTimeString()}] ${msg}\n`;
       logEl.textContent += line;
       logEl.scrollTop = logEl.scrollHeight;
@@ -366,11 +387,14 @@
           }
         }
 
-        // Attach notifications on statusChar
+        // Attach notifications on statusChar (UI updates only, no log to avoid duplicates)
         if (statusChar && statusChar.properties && statusChar.properties.notify) {
           try {
             await statusChar.startNotifications();
-            statusChar.addEventListener('characteristicvaluechanged', onNotify);
+            statusChar.addEventListener('characteristicvaluechanged', (ev) => {
+              const txt = new TextDecoder().decode(ev.target.value || new DataView());
+              txt.split(/\r?\n/).forEach(line => updateUIFromStatus(line.trim()));
+            });
             log('Status notify enabled');
             notified = true;
           } catch (e) {
@@ -383,7 +407,8 @@
         if (statusChar && !notified) {
           try {
             const val = await statusChar.readValue();
-            onNotify({ target: { value: val } });
+            const txt = new TextDecoder().decode(val || new DataView());
+            txt.split(/\r?\n/).forEach(line => updateUIFromStatus(line.trim()));
           } catch (e2) {
             log('Status read failed: ' + e2);
           }
@@ -535,16 +560,88 @@
       }
     }
 
-    function populateModes() {
-      const sel = document.getElementById('modeSelect');
-      sel.innerHTML = '';
-      MODE_NAMES.forEach((name, idx) => {
-        const opt = document.createElement('option');
-        opt.value = (idx + 1).toString();
-        opt.textContent = `${idx + 1} - ${name}`;
-        sel.appendChild(opt);
-      });
+  function populateModes() {
+    const sel = document.getElementById('modeSelect');
+    sel.innerHTML = '';
+    MODE_NAMES.forEach((name, idx) => {
+      const opt = document.createElement('option');
+      opt.value = (idx + 1).toString();
+      opt.textContent = `${idx + 1} - ${name}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  // --- Custom pattern editor ---
+  let customPoints = [];
+
+  function syncCustomCsvFromPoints() {
+    const csv = customPoints.map(v => v.toFixed(3)).join(',');
+    const area = document.getElementById('customCsv');
+    if (area) area.value = csv;
+  }
+
+  function renderCustomEditor() {
+    const wrap = document.getElementById('customEditor');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    customPoints.forEach((v, idx) => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = '0';
+      range.max = '1';
+      range.step = '0.01';
+      range.value = v.toFixed(2);
+      const num = document.createElement('input');
+      num.type = 'number';
+      num.min = '0';
+      num.max = '1';
+      num.step = '0.01';
+      num.value = v.toFixed(2);
+      const del = document.createElement('button');
+      del.textContent = 'X';
+      del.onclick = () => {
+        customPoints.splice(idx, 1);
+        renderCustomEditor();
+        syncCustomCsvFromPoints();
+      };
+      const syncVal = (nv) => {
+        let val = parseFloat(nv);
+        if (Number.isNaN(val)) val = 0;
+        if (val < 0) val = 0;
+        if (val > 1) val = 1;
+        customPoints[idx] = val;
+        range.value = val;
+        num.value = val.toFixed(2);
+        syncCustomCsvFromPoints();
+      };
+      range.oninput = (e) => syncVal(e.target.value);
+      num.oninput = (e) => syncVal(e.target.value);
+      row.appendChild(range);
+      row.appendChild(num);
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  function loadPointsFromCsv() {
+    const area = document.getElementById('customCsv');
+    if (!area) return;
+    const csv = area.value.trim();
+    if (!csv) {
+      customPoints = [];
+      renderCustomEditor();
+      return;
     }
+    const vals = csv.split(',').map(s => parseFloat(s));
+    customPoints = vals.filter(v => !Number.isNaN(v)).map(v => {
+      if (v < 0) return 0;
+      if (v > 1) return 1;
+      return v;
+    });
+    renderCustomEditor();
+  }
 
     function populateGuids() {
       const rows = [
@@ -612,12 +709,14 @@
       });
     }
 
-    async function sendCmd(text) {
-      if (serialWriter) {
-        try {
-          await serialWriter.write(text + "\n");
-          log('> ' + text + ' (serial)');
-          return;
+  async function sendCmd(text) {
+      lastCmdText = text;
+      lastCmdTime = Date.now();
+    if (serialWriter) {
+      try {
+        await serialWriter.write(text + "\n");
+        log('> ' + text + ' (serial)');
+        return;
         } catch (e) {
           log('Serial send error: ' + e);
         }
@@ -648,6 +747,14 @@
     const briRange = document.getElementById('bri');
     const briNum = document.getElementById('briNum');
     const briVal = document.getElementById('briVal');
+    document.getElementById('btnStatus').onclick = () => {
+      const now = Date.now();
+      if (lastCmdText === 'off' && now - lastCmdTime < 300) {
+        setTimeout(() => sendCmd('status'), 250);
+      } else {
+        sendCmd('status');
+      }
+    };
     const syncBri = (v, send = false) => {
       if (briRange) briRange.value = v;
       if (briNum) briNum.value = v;
@@ -695,13 +802,16 @@
     populateModes();
     renderQuickModes();
     populateGuids();
+    loadPointsFromCsv();
     const tdToggle = document.getElementById('touchDimToggle');
     if (tdToggle) {
       tdToggle.onchange = (e) => sendCmd(e.target.checked ? 'touchdim on' : 'touchdim off');
     }
     const lampToggle = document.getElementById('lampToggle');
     if (lampToggle) {
-      lampToggle.onchange = (e) => sendCmd(e.target.checked ? 'on' : 'off');
+      const lampHandler = (e) => sendCmd(e.target.checked ? 'on' : 'off');
+      lampToggle.oninput = lampHandler;
+      lampToggle.onclick = lampHandler;
     }
     const presToggle = document.getElementById('presenceToggle');
     if (presToggle) {
@@ -749,10 +859,34 @@
       const v = document.getElementById('customStep').value;
       sendCmd('custom step ' + v);
     };
-    document.getElementById('btnCustomSend').onclick = () => {
-      const csv = document.getElementById('customCsv').value.trim();
-      if (csv) sendCmd('custom ' + csv);
-    };
+    const btnCustomSend = document.getElementById('btnCustomSend');
+    if (btnCustomSend) {
+      btnCustomSend.onclick = () => {
+        syncCustomCsvFromPoints();
+        const csv = document.getElementById('customCsv').value.trim();
+        if (csv) sendCmd('custom ' + csv);
+      };
+    }
+    const btnCustomAdd = document.getElementById('btnCustomAdd');
+    if (btnCustomAdd) {
+      btnCustomAdd.onclick = () => {
+        customPoints.push(0.5);
+        renderCustomEditor();
+        syncCustomCsvFromPoints();
+      };
+    }
+    const btnCustomClear = document.getElementById('btnCustomClear');
+    if (btnCustomClear) {
+      btnCustomClear.onclick = () => {
+        customPoints = [];
+        renderCustomEditor();
+        syncCustomCsvFromPoints();
+      };
+    }
+    const customCsvArea = document.getElementById('customCsv');
+    if (customCsvArea) {
+      customCsvArea.onchange = loadPointsFromCsv;
+    }
     document.getElementById('btnExport').onclick = () => sendCmd('cfg export');
     document.getElementById('btnImport').onclick = () => {
       const cfg = document.getElementById('importArea').value.trim();
