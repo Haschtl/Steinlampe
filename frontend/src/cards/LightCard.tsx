@@ -15,6 +15,8 @@ export function LightCard() {
   const [clampMin, setClampMin] = useState(0.2);
   const [clampMax, setClampMax] = useState(1.0);
   const [raw, setRaw] = useState<number | undefined>();
+  const [rawMin, setRawMin] = useState<number | undefined>();
+  const [rawMax, setRawMax] = useState<number | undefined>();
 
   useEffect(() => {
     if (typeof status.lightEnabled === 'boolean') setEnabled(status.lightEnabled);
@@ -23,7 +25,9 @@ export function LightCard() {
     if (typeof status.lightClampMin === 'number') setClampMin(status.lightClampMin);
     if (typeof status.lightClampMax === 'number') setClampMax(status.lightClampMax);
     if (typeof status.lightRaw === 'number') setRaw(status.lightRaw);
-  }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax, status.lightRaw]);
+    if (typeof status.lightRawMin === 'number') setRawMin(status.lightRawMin);
+    if (typeof status.lightRawMax === 'number') setRawMax(status.lightRawMax);
+  }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax, status.lightRaw, status.lightRawMin, status.lightRawMax]);
 
   return (
     <Card>
@@ -72,8 +76,24 @@ export function LightCard() {
               onBlur={(e) => sendCmd(`light alpha ${e.target.value}`)}
               className="w-24"
             />
-            {raw !== undefined && <span className="text-xs text-muted">raw: {raw.toFixed(0)}</span>}
-            <Button onClick={() => sendCmd('light calib')}><Trans k="btn.calibrate">Calibrate</Trans></Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => sendCmd('light calib min')}>
+                <Trans k="btn.calibrateMin">Calib min</Trans>
+              </Button>
+              <Button size="sm" onClick={() => sendCmd('light calib max')}>
+                <Trans k="btn.calibrateMax">Calib max</Trans>
+              </Button>
+            </div>
+            <p className="text-xs text-muted leading-snug">
+              <Trans k="desc.lightCalib">
+                Tip: First press “Calib min” while covering the sensor (dark), then “Calib max” under bright light so slow sensors get a clean span.
+              </Trans>
+            </p>
+            <div className="text-xs text-foreground/80">
+              <strong>Raw:</strong> {raw !== undefined ? raw.toFixed(2) : '—'}{' '}
+              <strong>Min:</strong> {rawMin !== undefined ? rawMin.toFixed(2) : '—'}{' '}
+              <strong>Max:</strong> {rawMax !== undefined ? rawMax.toFixed(2) : '—'}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Label className="m-0"><Trans k="label.clamp">Dim-Limits</Trans></Label>

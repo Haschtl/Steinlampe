@@ -2791,13 +2791,34 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(F("[Light] Disabled"));
     }
-    else if (arg == "calib")
+    else if (arg.startsWith("calib"))
     {
+      String which = arg.substring(5);
+      which.trim();
       int raw = analogRead(Settings::LIGHT_PIN);
-      lightFiltered = raw;
-      lightMinRaw = raw;
-      lightMaxRaw = raw;
-      sendFeedback(String(F("[Light] Calibrated raw=")) + String(raw));
+      if (which == "min")
+      {
+        lightFiltered = raw;
+        lightMinRaw = raw;
+        if ((int)lightMaxRaw <= (int)lightMinRaw)
+          lightMaxRaw = (uint16_t)min(4095, lightMinRaw + 50);
+        sendFeedback(String(F("[Light] Calibrated min raw=")) + String(raw) + F(" max=") + String((int)lightMaxRaw));
+      }
+      else if (which == "max")
+      {
+        lightFiltered = raw;
+        lightMaxRaw = raw;
+        if ((int)lightMinRaw >= (int)lightMaxRaw)
+          lightMinRaw = (uint16_t)((lightMaxRaw > 50) ? (lightMaxRaw - 50) : 0);
+        sendFeedback(String(F("[Light] Calibrated max raw=")) + String(raw) + F(" min=") + String((int)lightMinRaw));
+      }
+      else
+      {
+        lightFiltered = raw;
+        lightMinRaw = raw;
+        lightMaxRaw = raw;
+        sendFeedback(String(F("[Light] Calibrated raw=")) + String(raw));
+      }
     }
     else if (arg.startsWith("gain"))
     {

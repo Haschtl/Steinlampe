@@ -129,6 +129,10 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.status": "Status",
     "btn.scan": "Scan",
     "btn.calibrate": "Calibrate",
+    "btn.calibrateMin": "Calibrate min",
+    "btn.calibrateMax": "Calibrate max",
+    "desc.lightCalib":
+      "Tip: First press “Calib min” while covering the sensor (dark), then “Calib max” under bright light so slow sensors get a clean span.",
     "btn.debug": "Debug",
     "btn.factory": "Factory reset",
     "btn.confirm": "Confirm",
@@ -300,6 +304,10 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.status": "Status",
     "btn.scan": "Scannen",
     "btn.calibrate": "Kalibrieren",
+    "btn.calibrateMin": "Min kalibrieren",
+    "btn.calibrateMax": "Max kalibrieren",
+    "desc.lightCalib":
+      "Tipp: Erst „Min kalibrieren“ mit abgedecktem Sensor, dann „Max kalibrieren“ bei viel Licht drücken, damit träge Sensoren einen sauberen Bereich bekommen.",
     "btn.debug": "Debug",
     "btn.factory": "Factory Reset",
     "btn.confirm": "Bestätigen",

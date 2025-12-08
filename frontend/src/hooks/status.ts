@@ -49,6 +49,8 @@ export type DeviceStatus = {
   lightClampMin?: number;
   lightClampMax?: number;
   lightRaw?: number;
+  lightRawMin?: number;
+  lightRawMax?: number;
   hasMusic?: boolean;
   musicEnabled?: boolean;
   musicGain?: number;
@@ -117,6 +119,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     setStatus((s) => {
       const hasLight = kv.light ? isAvailable('light') : s.hasLight;
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
+      const lightRawMin = kv.light_min ? asNum('light_min') : s.lightRawMin;
+      const lightRawMax = kv.light_max ? asNum('light_max') : s.lightRawMax;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
@@ -161,6 +165,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lightClampMin: asNum('light_min') ?? s.lightClampMin,
         lightClampMax: asNum('light_max') ?? s.lightClampMax,
         lightRaw,
+        lightRawMin,
+        lightRawMax,
         hasMusic,
         musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
         musicGain: asNum('music_gain') ?? s.musicGain,
@@ -362,9 +368,30 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       lastStatusAt: Date.now(),
     }));
   }
-  if (line.startsWith('[Light]') || line.startsWith('[Music]')) {
+  if (line.startsWith('[Music]')) {
     handled = true;
     setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
   }
+  if (line.startsWith("[Light]")) {
+    const rawMatch = line.match(/raw=([0-9.]+)/i);
+    const minMatch = line.match(/min=([0-9.]+)/i);
+    const maxMatch = line.match(/max=([0-9.]+)/i);
+    const rawVal = rawMatch ? parseFloat(rawMatch[1]) : undefined;
+    const minVal = minMatch ? parseFloat(minMatch[1]) : undefined;
+    const maxVal = maxMatch ? parseFloat(maxMatch[1]) : undefined;
+    setStatus((s) => ({
+      ...s,
+      lightRaw: Number.isFinite(rawVal ?? NaN) ? rawVal : s.lightRaw,
+      lightRawMin: Number.isFinite(minVal ?? NaN) ? minVal : s.lightRawMin,
+      lightRawMax: Number.isFinite(maxVal ?? NaN) ? maxVal : s.lightRawMax,
+      hasLight: line.toUpperCase().includes("N/A") ? false : s.hasLight ?? true,
+      lightEnabled: line.toUpperCase().includes("N/A")
+        ? false
+        : s.lightEnabled ?? true,
+      lastStatusAt: Date.now(),
+    }));
+    handled =true;
+  }
+
   return handled;
 }
