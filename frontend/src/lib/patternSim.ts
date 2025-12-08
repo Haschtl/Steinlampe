@@ -589,6 +589,58 @@ const patternTronGrid = (ms: number) => {
   return clamp01(step + digitalNoise);
 };
 
+const patternOilLantern = (ms: number) => {
+  const base = 0.65;
+  const sway = (smoothNoise(ms, 900, 0x1d) - 0.5) * 0.1;
+  const flicker = (smoothNoise(ms, 120, 0x2d) - 0.5) * 0.12;
+  let gust = 0;
+  if (hash11(Math.floor(ms / 1400)) > 0.92) {
+    const x = (ms % 320) / 320;
+    gust = -0.22 * Math.exp(-x * 6);
+  }
+  return clamp01(base + sway + flicker + gust);
+};
+
+const patternGaslight = (ms: number) => {
+  const base = 0.72;
+  const ripple = (smoothNoise(ms, 40, 0x3d) - 0.5) * 0.05;
+  const slow = (smoothNoise(ms, 900, 0x4d) - 0.5) * 0.04;
+  return clamp01(base + ripple + slow);
+};
+
+const patternNeonSign = (ms: number) => {
+  const t = ms / 1000;
+  let hum = 0.62 + 0.05 * Math.sin(t * TWO_PI * 2);
+  hum += (smoothNoise(ms, 35, 0x5d) - 0.5) * 0.04;
+  let sputter = 0;
+  if (hash11(Math.floor(ms / 2800)) > 0.94) {
+    const x = (ms % 360) / 360;
+    sputter = -0.25 * Math.exp(-x * 7) + (smoothNoise(ms, 22, 0x6d) - 0.5) * 0.12;
+  }
+  return clamp01(hum + sputter);
+};
+
+let dimmerLast = 0;
+const patternDimmerGlow = (ms: number) => {
+  const target = 0.78 + 0.08 * Math.sin((ms / 1000) * 0.2 * TWO_PI);
+  const ripple = (smoothNoise(ms, 20, 0x7d) - 0.5) * 0.04;
+  const dt = 0.016;
+  dimmerLast += (target - dimmerLast) * (1 - Math.exp(-dt * 2.8));
+  return clamp01(dimmerLast + ripple);
+};
+
+const patternTorch = (ms: number) => {
+  const base = 0.5;
+  const wave = (smoothNoise(ms, 450, 0x8d) - 0.5) * 0.25;
+  const flicker = (smoothNoise(ms, 85, 0x9d) - 0.5) * 0.22;
+  let gust = 0;
+  if (hash11(Math.floor(ms / 900)) > 0.9) {
+    const x = (ms % 220) / 220;
+    gust = 0.25 * Math.exp(-x * 6);
+  }
+  return clamp01(base + wave + flicker + gust);
+};
+
 const patternSunset = (ms: number) => {
   const period = 42000;
   const base = 0.12;
@@ -628,7 +680,7 @@ const patternMusic = (ms: number) => clamp01(0.5 + 0.25 * Math.sin((ms / 400) * 
 
 // Exported pattern table (must mirror firmware order)
 export const patternFns: ((ms: number) => number)[] = [
-  patternConstant, // 1
+  patternConstant,
   patternBreathing,
   patternBreathingWarm,
   patternBreathing2,
@@ -662,6 +714,11 @@ export const patternFns: ((ms: number) => number)[] = [
   patternWarpCore,
   patternKittScanner,
   patternTronGrid,
+  patternOilLantern,
+  patternGaslight,
+  patternNeonSign,
+  patternDimmerGlow,
+  patternTorch,
   patternThunder,
   patternDistantStorm,
   patternRollingThunder,

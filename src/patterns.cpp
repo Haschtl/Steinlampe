@@ -730,6 +730,73 @@ float patternTronGrid(uint32_t ms)
   return clamp01(step + digitalNoise);
 }
 
+/// Oil lantern: warm flame with soft sway and mild dips
+float patternOilLantern(uint32_t ms)
+{
+  float base = 0.65f;
+  float sway = (smoothNoise(ms, 900, 0x1D) - 0.5f) * 0.10f;  // slow air movement
+  float flicker = (smoothNoise(ms, 120, 0x2D) - 0.5f) * 0.12f; // flame flicker
+  float gust = 0.0f;
+  if (hash11(ms / 1400u) > 0.92f)
+  {
+    float x = (ms % 320u) / 320.0f;
+    gust = -0.22f * expf(-x * 6.0f); // brief dip when wind hits
+  }
+  return clamp01(base + sway + flicker + gust);
+}
+
+/// Gaslight mantle: steady warm glow with fine ripple
+float patternGaslight(uint32_t ms)
+{
+  float base = 0.72f;
+  float ripple = (smoothNoise(ms, 40, 0x3D) - 0.5f) * 0.05f;   // mains ripple feel
+  float slow = (smoothNoise(ms, 900, 0x4D) - 0.5f) * 0.04f;    // slow drift
+  return clamp01(base + ripple + slow);
+}
+
+/// Neon sign: discharge hum with rare sputter
+float patternNeonSign(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float hum = 0.62f + 0.05f * sinf(t * TWO_PI * 2.0f) + (smoothNoise(ms, 35, 0x5D) - 0.5f) * 0.04f;
+  float sputter = 0.0f;
+  if (hash11(ms / 2800u) > 0.94f)
+  {
+    float x = (ms % 360u) / 360.0f;
+    sputter = -0.25f * expf(-x * 7.0f) + (smoothNoise(ms, 22, 0x6D) - 0.5f) * 0.12f;
+  }
+  return clamp01(hum + sputter);
+}
+
+/// Dimmer glow: filament with ripple and slow response
+float patternDimmerGlow(uint32_t ms)
+{
+  float target = 0.78f + 0.08f * sinf((ms / 1000.0f) * 0.2f * TWO_PI); // slow user fade
+  float ripple = (smoothNoise(ms, 20, 0x7D) - 0.5f) * 0.04f;           // mains ripple
+  float inertia = 0.0f;
+  // simple RC-ish ease toward target
+  static float last = 0.0f;
+  float dt = 0.016f; // assume ~60fps
+  last += (target - last) * (1.0f - expf(-dt * 2.8f));
+  inertia = last;
+  return clamp01(inertia + ripple);
+}
+
+/// Torch: wavy flame with turbulent flicker
+float patternTorch(uint32_t ms)
+{
+  float base = 0.5f;
+  float wave = (smoothNoise(ms, 450, 0x8D) - 0.5f) * 0.25f;   // body sway
+  float flicker = (smoothNoise(ms, 85, 0x9D) - 0.5f) * 0.22f; // turbulent tip
+  float gust = 0.0f;
+  if (hash11(ms / 900u) > 0.9f)
+  {
+    float x = (ms % 220u) / 220.0f;
+    gust = 0.25f * expf(-x * 6.0f);
+  }
+  return clamp01(base + wave + flicker + gust);
+}
+
 /// Sunset fade: slow warm rise then gentle fall
 float patternSunset(uint32_t ms)
 {
@@ -858,6 +925,11 @@ const Pattern PATTERNS[] = {
     {"Warp Core", patternWarpCore, 0},
     {"KITT Scanner", patternKittScanner, 0},
     {"Tron Grid", patternTronGrid, 0},
+    {"Oellaterne", patternOilLantern, 0},
+    {"Gaslicht", patternGaslight, 0},
+    {"Neon", patternNeonSign, 0},
+    {"Dimmer Glow", patternDimmerGlow, 0},
+    {"Fackel", patternTorch, 0},
     {"Gewitter", patternThunder, 0},
     {"Distant Storm", patternDistantStorm, 0},
     {"Rolling Thunder", patternRollingThunder, 0},
