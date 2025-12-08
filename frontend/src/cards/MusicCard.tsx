@@ -154,7 +154,8 @@ export function MusicCard() {
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}
             <strong>Thr:</strong> {status.musicAutoThr !== undefined ? status.musicAutoThr.toFixed(2) : "—"}{" "}
             <strong>Mode:</strong> {status.musicMode ?? "—"}{" "}
-            <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}
+            <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}{" "}
+            <strong>Level:</strong> {status.musicLevel !== undefined ? status.musicLevel.toFixed(3) : "—"}
           </div>
         </div>
         <div className="space-y-3 rounded-lg border border-border/70 bg-panel/70 p-3">

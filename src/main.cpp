@@ -243,6 +243,7 @@ float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
+float musicRawLevel = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
 bool musicAutoLamp = false;
@@ -257,9 +258,9 @@ float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
 uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
 uint32_t clapLastMs = 0;
 bool clapAbove = false;
-String clapCmd1 = F("toggle");
-String clapCmd2 = F("mode next");
-String clapCmd3 = F("mode prev");
+String clapCmd1 = F("");
+String clapCmd2 = F("toggle");
+String clapCmd3 = F("");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
 constexpr uint32_t CLAP_WINDOW_MS = 1200;
@@ -1692,6 +1693,8 @@ void printStatusStructured()
   line += String(musicModScale, 3);
   line += F("|music_env=");
   line += String(musicFiltered, 3);
+  line += F("|music_level=");
+  line += String(musicRawLevel, 3);
   line += F("|clap=");
   line += clapEnabled ? F("ON") : F("OFF");
   line += F("|clap_thr=");
@@ -3872,6 +3875,7 @@ void updateMusicSensor()
   // crude envelope: high-pass-ish by subtracting filtered baseline
   static float env = 0.0f;
   float val = (float)raw / 4095.0f;
+  musicRawLevel = clamp01(val);
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
   // Modulate brightness scale based on mode
