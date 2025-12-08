@@ -140,6 +140,8 @@ static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
 static const char *PREF_KEY_PAT_FADE_AMT = "pat_fade_amt";
+static const char *PREF_KEY_PAT_LO = "pat_lo";
+static const char *PREF_KEY_PAT_HI = "pat_hi";
 static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
 static const char *PREF_KEY_RAMP_EASE_OFF = "ramp_e_off";
 static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
@@ -178,6 +180,8 @@ uint64_t quickMask = 0; // bitmask of modes used for quick switch tap cycling (s
 size_t currentModeIndex = 0; // tracks current mode (patterns + profile slots)
 bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
+float patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
+float patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
 float patternFilteredLevel = 0.0f;
 uint32_t patternFilterLastMs = 0;
 // SOS shortcut snapshot
@@ -440,6 +444,10 @@ String buildProfileString()
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
   cfg += String(patternFadeStrength, 2);
+  cfg += F(" pat_lo=");
+  cfg += String(patternMarginLow, 3);
+  cfg += F(" pat_hi=");
+  cfg += String(patternMarginHigh, 3);
   cfg += F(" bri_cap=");
   cfg += String(brightnessCap, 3);
   cfg += F(" ramp_on_ease=");
@@ -494,13 +502,13 @@ String defaultProfileString(uint8_t slot)
   switch (slot)
   {
   case 1: // A: full brightness, constant
-    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   case 2: // B: half brightness, constant
-    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   case 3: // C: half brightness, pulsierend
-    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
     break;
   default:
     break;
@@ -749,6 +757,10 @@ void exportConfig()
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
   cfg += String(patternFadeStrength, 2);
+  cfg += F(" pat_lo=");
+  cfg += String(patternMarginLow, 3);
+  cfg += F(" pat_hi=");
+  cfg += String(patternMarginHigh, 3);
   cfg += F(" ramp_on_ease=");
   cfg += easeToString(rampEaseOnType);
   cfg += F(" ramp_off_ease=");
@@ -794,6 +806,8 @@ void saveSettings()
   prefs.putUChar(PREF_KEY_RAMP_EASE_OFF, rampEaseOffType);
   prefs.putFloat(PREF_KEY_RAMP_POW_ON, rampEaseOnPower);
   prefs.putFloat(PREF_KEY_RAMP_POW_OFF, rampEaseOffPower);
+  prefs.putFloat(PREF_KEY_PAT_LO, patternMarginLow);
+  prefs.putFloat(PREF_KEY_PAT_HI, patternMarginHigh);
 #if ENABLE_LIGHT_SENSOR
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   lightMinRaw = 4095;
@@ -895,6 +909,14 @@ void loadSettings()
     patternFadeStrength = 0.01f;
   if (patternFadeStrength > 10.0f)
     patternFadeStrength = 10.0f;
+  patternMarginLow = prefs.getFloat(PREF_KEY_PAT_LO, Settings::PATTERN_MARGIN_LOW_DEFAULT);
+  patternMarginHigh = prefs.getFloat(PREF_KEY_PAT_HI, Settings::PATTERN_MARGIN_HIGH_DEFAULT);
+  if (patternMarginLow < 0.0f)
+    patternMarginLow = 0.0f;
+  if (patternMarginHigh > 1.0f)
+    patternMarginHigh = 1.0f;
+  if (patternMarginHigh < patternMarginLow)
+    patternMarginHigh = patternMarginLow;
   presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
   presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
   brightnessCap = prefs.getFloat(PREF_KEY_BRI_CAP, Settings::BRI_CAP_DEFAULT);
@@ -1676,6 +1698,10 @@ void printStatusStructured()
   line += String(patternSpeedScale, 2);
   line += F("|pat_fade=");
   line += patternFadeEnabled ? String(patternFadeStrength, 2) : F("off");
+  line += F("|pat_lo=");
+  line += String(patternMarginLow, 3);
+  line += F("|pat_hi=");
+  line += String(patternMarginHigh, 3);
   line += F("|quick=");
   line += quickMaskToCsv();
   line += F("|presence=");
@@ -1870,6 +1896,20 @@ void importConfig(const String &args)
       float v = val.toFloat();
       if (v >= 0.01f && v <= 10.0f)
         patternFadeStrength = v;
+    }
+    else if (key == "pat_lo")
+    {
+      float v = clamp01(val.toFloat());
+      patternMarginLow = v;
+      if (patternMarginHigh < patternMarginLow)
+        patternMarginHigh = patternMarginLow;
+    }
+    else if (key == "pat_hi")
+    {
+      float v = clamp01(val.toFloat());
+      patternMarginHigh = v;
+      if (patternMarginHigh < patternMarginLow)
+        patternMarginHigh = patternMarginLow;
     }
     else if (key == "bri")
     {
@@ -2472,6 +2512,31 @@ void handleCommand(String line)
       {
         sendFeedback(F("Usage: pat fade on|off|amt"));
       }
+    }
+    return;
+  }
+  if (lower.startsWith("pat margin") || lower.startsWith("pattern margin"))
+  {
+    int pos = lower.indexOf("margin");
+    String arg = line.substring(pos + 6);
+    arg.trim();
+    int space = arg.indexOf(' ');
+    if (space > 0)
+    {
+      float lo = arg.substring(0, space).toFloat();
+      float hi = arg.substring(space + 1).toFloat();
+      lo = clamp01(lo);
+      hi = clamp01(hi);
+      if (hi < lo)
+        hi = lo;
+      patternMarginLow = lo;
+      patternMarginHigh = hi;
+      saveSettings();
+      sendFeedback(String(F("[Pattern] margin lo=")) + String(lo, 3) + F(" hi=") + String(hi, 3));
+    }
+    else
+    {
+      sendFeedback(F("Usage: pat margin <low 0-1> <high 0-1>"));
     }
     return;
   }
@@ -3633,6 +3698,8 @@ void handleCommand(String line)
     patternFadeStrength = 1.0f;
     patternFilteredLevel = 0.0f;
     patternFilterLastMs = 0;
+    patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
+    patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));
     return;
@@ -3854,6 +3921,15 @@ void updatePatternEngine()
   uint32_t elapsed = now - patternStartMs;
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
+  float span = patternMarginHigh - patternMarginLow;
+  if (span < 0.0f)
+    span = 0.0f;
+  float adjusted = patternMarginLow + clamp01(relative) * span;
+  if (adjusted < 0.0f)
+    adjusted = 0.0f;
+  if (adjusted > 1.0f)
+    adjusted = 1.0f;
+  relative = adjusted;
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
   if (musicEnabled)
     combined *= musicModScale;

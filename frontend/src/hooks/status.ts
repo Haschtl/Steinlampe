@@ -28,6 +28,8 @@ export type DeviceStatus = {
   idleOffMin?: number;
   idleMinutes?: number;
   pwmCurve?: number;
+  patternMarginLow?: number;
+  patternMarginHigh?: number;
   presence?: string;
   hasPresence?: boolean;
   quickCsv?: string;
@@ -165,6 +167,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
         patternFade: kv.pat_fade ? (kv.pat_fade === 'off' ? 0 : parseFloat(kv.pat_fade)) : s.patternFade,
+        patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
+        patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,
         presence: kv.presence ?? s.presence,
         hasPresence,

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SliderRow } from '@/components/ui/slider-row';
+import { RangeSliderRow } from '@/components/ui/range-slider-row';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabel, patternLabels } from '@/data/patterns';
@@ -18,6 +19,7 @@ export function ModesCard() {
   const [patternFade, setPatternFade] = useState(1.0);
   const [fadeEnabled, setFadeEnabled] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [margin, setMargin] = useState<[number, number]>([0, 1]);
 
   useEffect(() => {
     if (status.currentPattern) setPattern(status.currentPattern);
@@ -33,6 +35,14 @@ export function ModesCard() {
       setFadeEnabled(status.patternFade > 0);
     }
   }, [status.patternFade]);
+
+  useEffect(() => {
+    const lo = typeof status.patternMarginLow === 'number' ? status.patternMarginLow : undefined;
+    const hi = typeof status.patternMarginHigh === 'number' ? status.patternMarginHigh : undefined;
+    if (lo !== undefined || hi !== undefined) {
+      setMargin([lo ?? margin[0], hi ?? margin[1]]);
+    }
+  }, [status.patternMarginLow, status.patternMarginHigh]);
 
   const patternOptions = useMemo(() => {
     const count = status.patternCount || patternLabels.length;
@@ -65,6 +75,11 @@ export function ModesCard() {
     }
     sendCmd('pat fade on').catch((e) => console.warn(e));
     sendCmd(`pat fade amt ${nextVal.toFixed(2)}`).catch((e) => console.warn(e));
+  };
+
+  const handleMargin = (vals: [number, number]) => {
+    setMargin(vals);
+    sendCmd(`pat margin ${vals[0].toFixed(2)} ${vals[1].toFixed(2)}`).catch((e) => console.warn(e));
   };
 
   return (
@@ -131,6 +146,15 @@ export function ModesCard() {
             onInputChange={(val) => {
               handlePatternFade(val || 1, val > 0);
             }}
+          />
+          <RangeSliderRow
+            label={<Trans k="label.patternMargin">Pattern Margin</Trans>}
+            description={<Trans k="desc.patternMargin">Clamp pattern output between two levels</Trans>}
+            min={0}
+            max={1}
+            step={0.01}
+            values={margin}
+            onChange={handleMargin}
           />
         </div>
         <div className="flex flex-wrap gap-2">
