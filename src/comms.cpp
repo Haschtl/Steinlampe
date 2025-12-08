@@ -32,6 +32,15 @@ void blePresenceUpdate(bool connected, const String &addr);
 
     namespace
 {
+bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
+inline bool feedbackAllowed()
+{
+  return !Settings::FEEDBACK_NEEDS_HANDSHAKE || feedbackArmed;
+}
+inline void armFeedback()
+{
+  feedbackArmed = true;
+}
 /**
  * @brief Append a character to the line buffer and dispatch full commands.
  */
@@ -43,7 +52,10 @@ void processInputChar(String &buffer, char c)
   {
     buffer.trim();
     if (!buffer.isEmpty())
+    {
+      armFeedback();
       handleCommand(buffer);
+    }
     buffer = "";
   }
   else if (buffer.length() < 64)
@@ -76,26 +88,34 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     if (param)
     {
       lastSppAddr = formatMac(param->srv_open.rem_bda);
-      Serial.print(F("[BT] Client connected: "));
-      Serial.println(lastSppAddr);
-      sendFeedback(String(F("[BT] Client connected ")) + lastSppAddr);
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BT] Client connected: "));
+        Serial.println(lastSppAddr);
+        sendFeedback(String(F("[BT] Client connected ")) + lastSppAddr);
+      }
     }
     else
     {
-      Serial.println(F("[BT] Client connected"));
+      if (feedbackAllowed())
+        Serial.println(F("[BT] Client connected"));
     }
     break;
   case ESP_SPP_CLOSE_EVT:
     if (param)
     {
       String addr = lastSppAddr;
-      Serial.print(F("[BT] Client disconnected: "));
-      Serial.println(addr);
-      sendFeedback(String(F("[BT] Client disconnected ")) + addr);
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BT] Client disconnected: "));
+        Serial.println(addr);
+        sendFeedback(String(F("[BT] Client disconnected ")) + addr);
+      }
     }
     else
     {
-      Serial.println(F("[BT] Client disconnected"));
+      if (feedbackAllowed())
+        Serial.println(F("[BT] Client disconnected"));
     }
     break;
   default:
@@ -136,8 +156,11 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     bleClientConnected = true;
     String addr = formatAddr(param->connect.remote_bda);
     bleLastAddr = addr;
-    Serial.print(F("[BLE] Verbunden: "));
-    Serial.println(addr);
+    if (feedbackAllowed())
+    {
+      Serial.print(F("[BLE] Verbunden: "));
+      Serial.println(addr);
+    }
     blePresenceUpdate(true, addr);
   }
 
@@ -153,8 +176,11 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   {
     bleClientConnected = false;
     String addr = formatAddr(param->disconnect.remote_bda);
-    Serial.print(F("[BLE] Getrennt: "));
-    Serial.println(addr);
+    if (feedbackAllowed())
+    {
+      Serial.print(F("[BLE] Getrennt: "));
+      Serial.println(addr);
+    }
     bleLastAddr = addr;
     blePresenceUpdate(false, addr);
     BLEDevice::startAdvertising();
@@ -179,6 +205,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
         line.trim();
         if (!line.isEmpty())
         {
+          armFeedback();
           handleCommand(line);
         }
         line = "";
@@ -256,7 +283,8 @@ void setupCommunications()
 #if ENABLE_BLE
   startBle();
 #else
-  Serial.println(F("[BLE] deaktiviert (ENABLE_BLE=0)."));
+  if (feedbackAllowed())
+    Serial.println(F("[BLE] deaktiviert (ENABLE_BLE=0)."));
 #endif
 }
 
@@ -291,6 +319,8 @@ void pollCommunications()
  */
 void sendFeedback(const String &line)
 {
+  if (!feedbackAllowed())
+    return;
   Serial.println(line);
 #if ENABLE_BT_SERIAL
   if (serialBt.hasClient())

@@ -40,6 +40,11 @@ constexpr float BRI_MIN_DEFAULT = 0.05f;
 constexpr float BRI_MAX_DEFAULT = 0.95f;
 constexpr float BRI_CAP_DEFAULT = 1.0f;       ///< Hard cap for brightness (0..1)
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
+// Require an incoming command before any feedback is printed/sent (set via -DREQUIRE_FEEDBACK_HANDSHAKE=1)
+#ifndef REQUIRE_FEEDBACK_HANDSHAKE
+#define REQUIRE_FEEDBACK_HANDSHAKE 1
+#endif
+constexpr bool FEEDBACK_NEEDS_HANDSHAKE = REQUIRE_FEEDBACK_HANDSHAKE;
 
 #if ENABLE_POTI
 constexpr int POTI_PIN = 39;                    ///< ADC pin for optional brightness knob
