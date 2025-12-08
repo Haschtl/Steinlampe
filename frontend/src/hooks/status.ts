@@ -77,6 +77,22 @@ export type DeviceStatus = {
  */
 export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction<DeviceStatus>>): boolean {
   if (!line) return false;
+  // Parse clap summary lines: "[Clap] ON thr=0.35 cool=800"
+  if (line.startsWith('[Clap]')) {
+    const lower = line.toLowerCase();
+    const enabled = lower.includes('on');
+    const thrMatch = lower.match(/thr=([0-9.]+)/);
+    const coolMatch = lower.match(/cool=([0-9]+)/);
+    const thrVal = thrMatch ? parseFloat(thrMatch[1]) : undefined;
+    const coolVal = coolMatch ? parseInt(coolMatch[1] ?? '', 10) : undefined;
+    setStatus((s) => ({
+      ...s,
+      clapEnabled: enabled,
+      clapThreshold: Number.isFinite(thrVal ?? NaN) ? thrVal : s.clapThreshold,
+      clapCooldownMs: Number.isFinite(coolVal ?? NaN) ? coolVal : s.clapCooldownMs,
+    }));
+    return true;
+  }
   if (line.startsWith('STATUS|')) {
     const parts = line.split('|').slice(1);
     const kv: Record<string, string> = {};
@@ -97,6 +113,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
     setStatus((s) => {
       const hasLight = kv.light ? isAvailable('light') : s.hasLight;
+      const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
@@ -140,6 +157,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lightAlpha: asNum('light_alpha') ?? s.lightAlpha,
         lightClampMin: asNum('light_min') ?? s.lightClampMin,
         lightClampMax: asNum('light_max') ?? s.lightClampMax,
+        lightRaw,
         hasMusic,
         musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
         musicGain: asNum('music_gain') ?? s.musicGain,

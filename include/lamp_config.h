@@ -14,11 +14,11 @@
 #endif
 
 #ifndef ENABLE_LIGHT_SENSOR
-#define ENABLE_LIGHT_SENSOR 0
+#define ENABLE_LIGHT_SENSOR 1
 #endif
 
 #ifndef ENABLE_MUSIC_MODE
-#define ENABLE_MUSIC_MODE 0
+#define ENABLE_MUSIC_MODE 1
 #endif
 
 #ifndef ENABLE_BLE_MIDI

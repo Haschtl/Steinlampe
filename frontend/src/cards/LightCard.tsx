@@ -14,6 +14,7 @@ export function LightCard() {
   const [alpha, setAlpha] = useState(0.1);
   const [clampMin, setClampMin] = useState(0.2);
   const [clampMax, setClampMax] = useState(1.0);
+  const [raw, setRaw] = useState<number | undefined>();
 
   useEffect(() => {
     if (typeof status.lightEnabled === 'boolean') setEnabled(status.lightEnabled);
@@ -21,7 +22,8 @@ export function LightCard() {
     if (typeof status.lightAlpha === 'number') setAlpha(status.lightAlpha);
     if (typeof status.lightClampMin === 'number') setClampMin(status.lightClampMin);
     if (typeof status.lightClampMax === 'number') setClampMax(status.lightClampMax);
-  }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax]);
+    if (typeof status.lightRaw === 'number') setRaw(status.lightRaw);
+  }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax, status.lightRaw]);
 
   return (
     <Card>
@@ -70,6 +72,7 @@ export function LightCard() {
               onBlur={(e) => sendCmd(`light alpha ${e.target.value}`)}
               className="w-24"
             />
+            {raw !== undefined && <span className="text-xs text-muted">raw: {raw.toFixed(0)}</span>}
             <Button onClick={() => sendCmd('light calib')}><Trans k="btn.calibrate">Calibrate</Trans></Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">

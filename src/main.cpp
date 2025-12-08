@@ -967,6 +967,7 @@ void loadSettings()
   if (outputGamma < 0.5f || outputGamma > 4.0f)
     outputGamma = Settings::PWM_GAMMA_DEFAULT;
   touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
+#if ENABLE_LIGHT_SENSOR
   lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
   lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
   lightClampMax = prefs.getFloat(PREF_KEY_LCLAMP_MAX, Settings::LIGHT_CLAMP_MAX_DEFAULT);
@@ -979,6 +980,7 @@ void loadSettings()
     lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
     lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
   }
+#endif
   briMinUser = prefs.getFloat(PREF_KEY_BRI_MIN, Settings::BRI_MIN_DEFAULT);
   briMaxUser = prefs.getFloat(PREF_KEY_BRI_MAX, Settings::BRI_MAX_DEFAULT);
   presenceGraceMs = prefs.getUInt(PREF_KEY_PRES_GRACE, Settings::PRESENCE_GRACE_MS_DEFAULT);
@@ -1823,32 +1825,40 @@ void importConfig(const String &args)
     }
     else if (key == "light_gain")
     {
+#if ENABLE_LIGHT_SENSOR
       lightGain = val.toFloat();
       if (lightGain < 0.1f)
         lightGain = 0.1f;
       if (lightGain > 5.0f)
         lightGain = 5.0f;
+#endif
     }
     else if (key == "light_alpha")
     {
+#if ENABLE_LIGHT_SENSOR
       float v = val.toFloat();
       if (v < 0.001f)
         v = 0.001f;
       if (v > 0.8f)
         v = 0.8f;
       lightAlpha = v;
+#endif
     }
     else if (key == "light_min")
     {
+#if ENABLE_LIGHT_SENSOR
       float v = val.toFloat();
       if (v >= 0.0f && v <= 1.0f)
         lightClampMin = v;
+#endif
     }
     else if (key == "light_max")
     {
+#if ENABLE_LIGHT_SENSOR
       float v = val.toFloat();
       if (v >= 0.0f && v <= 1.5f)
         lightClampMax = v;
+#endif
     }
     else if (key == "bri_min")
     {
@@ -3426,11 +3436,11 @@ void handleCommand(String line)
     customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
 #if ENABLE_LIGHT_SENSOR
     lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
-#endif
     lightGain = Settings::LIGHT_GAIN_DEFAULT;
     lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
     lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
     lightAlpha = Settings::LIGHT_ALPHA;
+#endif
 #if ENABLE_MUSIC_MODE
     musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
     musicGain = Settings::MUSIC_GAIN_DEFAULT;
