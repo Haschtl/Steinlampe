@@ -35,6 +35,7 @@ constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default s
 constexpr uint32_t PRESENCE_GRACE_MS_DEFAULT = 3000; ///< Wait before presence-off triggers
 constexpr bool TOUCH_DIM_DEFAULT_ENABLED = false;
 constexpr uint32_t TOUCH_HOLD_MS_DEFAULT = 1000; ///< Default touch hold start (ms)
+constexpr float TOUCH_DIM_STEP_DEFAULT = 0.005f; ///< Default step for touch-dimming per tick
 constexpr float LIGHT_GAIN_DEFAULT = 1.0f;
 constexpr float LIGHT_CLAMP_MIN_DEFAULT = 0.2f;
 constexpr float LIGHT_CLAMP_MAX_DEFAULT = 1.0f;

@@ -130,6 +130,7 @@ static const char *PREF_KEY_MUSIC_MODE = "mus_mode";
 static const char *PREF_KEY_MUSIC_SMOOTH = "mus_sm";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
+static const char *PREF_KEY_TOUCH_DIM_STEP = "touch_dim_step";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
 static const char *PREF_KEY_BRI_MIN = "bri_min";
 static const char *PREF_KEY_BRI_MAX = "bri_max";
@@ -221,6 +222,7 @@ int touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
 int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 uint32_t touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
+float touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
 
 #if ENABLE_PUSH_BUTTON
 bool pushEnabled = true;
@@ -741,6 +743,8 @@ void exportConfig()
   cfg += touchDimEnabled ? F("on") : F("off");
   cfg += F(" touch_hold=");
   cfg += touchHoldStartMs;
+  cfg += F(" touch_dim_step=");
+  cfg += String(touchDimStep, 3);
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
   cfg += F(" light_min=");
@@ -848,6 +852,7 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_PUSH_STEP, pushStep);
 #endif
   prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
+  prefs.putFloat(PREF_KEY_TOUCH_DIM_STEP, touchDimStep);
   prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
   prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
   prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
@@ -897,6 +902,11 @@ void loadSettings()
     touchHoldStartMs = 500;
   else if (touchHoldStartMs > 5000)
     touchHoldStartMs = 5000;
+  touchDimStep = prefs.getFloat(PREF_KEY_TOUCH_DIM_STEP, Settings::TOUCH_DIM_STEP_DEFAULT);
+  if (touchDimStep < 0.001f)
+    touchDimStep = 0.001f;
+  if (touchDimStep > 0.05f)
+    touchDimStep = 0.05f;
   {
     uint64_t lo = prefs.getUInt(PREF_KEY_QUICK_MASK, (uint32_t)(computeDefaultQuickMask() & 0xFFFFFFFFULL));
     uint64_t hi = prefs.getUInt(PREF_KEY_QUICK_MASK_HI, 0);
@@ -1341,7 +1351,7 @@ void updateTouchBrightness()
   {
     touchLastRampMs = now;
     lastActivityMs = now;
-    float newLevel = masterBrightness + (dimRampUp ? DIM_RAMP_STEP : -DIM_RAMP_STEP);
+    float newLevel = masterBrightness + (dimRampUp ? touchDimStep : -touchDimStep);
     if (newLevel >= DIM_MAX)
     {
       newLevel = DIM_MAX;
@@ -1486,6 +1496,9 @@ void printStatus()
   }
   line3 += F(" | TouchDim=");
   line3 += touchDimEnabled ? F("ON") : F("OFF");
+  line3 += F(" (step=");
+  line3 += String(touchDimStep, 3);
+  line3 += F(")");
   line3 += F(" | PatFade=");
   if (patternFadeEnabled)
   {
@@ -1680,6 +1693,8 @@ void printStatusStructured()
 #endif
   line += F("|touch_dim=");
   line += touchDimEnabled ? F("1") : F("0");
+  line += F("|touch_dim_step=");
+  line += String(touchDimStep, 3);
   line += F("|ramp_on_ms=");
   line += String(rampOnDurationMs);
   line += F("|ramp_off_ms=");
@@ -1933,16 +1948,23 @@ void importConfig(const String &args)
     {
       presenceAddr = val;
     }
-    else if (key == "touch_dim")
-    {
-      bool v;
-      if (parseBool(val, v))
-        touchDimEnabled = v;
-    }
-    else if (key == "light_gain")
-    {
+  else if (key == "touch_dim")
+  {
+    bool v;
+    if (parseBool(val, v))
+      touchDimEnabled = v;
+  }
+  else if (key == "touch_dim_step")
+  {
+    float v = val.toFloat();
+    if (v < 0.001f) v = 0.001f;
+    if (v > 0.05f) v = 0.05f;
+    touchDimStep = v;
+  }
+  else if (key == "light_gain")
+  {
 #if ENABLE_LIGHT_SENSOR
-      lightGain = val.toFloat();
+    lightGain = val.toFloat();
       if (lightGain < 0.1f)
         lightGain = 0.1f;
       if (lightGain > 5.0f)
@@ -2359,6 +2381,18 @@ void handleCommand(String line)
     touchDimEnabled = false;
     saveSettings();
     sendFeedback(F("[TouchDim] Disabled"));
+    return;
+  }
+  if (lower.startsWith("touch dim speed") || lower.startsWith("touchdim speed"))
+  {
+    float v = line.substring(line.indexOf("speed") + 5).toFloat();
+    if (v < 0.001f)
+      v = 0.001f;
+    if (v > 0.05f)
+      v = 0.05f;
+    touchDimStep = v;
+    saveSettings();
+    sendFeedback(String(F("[TouchDim] speed=")) + String(v, 3));
     return;
   }
   if (lower.startsWith("custom"))
@@ -3698,6 +3732,7 @@ void handleCommand(String line)
     patternFadeStrength = 1.0f;
     patternFilteredLevel = 0.0f;
     patternFilterLastMs = 0;
+    touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
     saveSettings();

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RangeSliderRow } from '@/components/ui/range-slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -49,34 +50,38 @@ export function LightCard() {
           Light
         </label>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Sun className="h-4 w-4 text-muted" />
-            <Label className="m-0"><Trans k="label.gain">Gain</Trans></Label>
-            <Input
-              type="number"
-              min={0.1}
-              max={5}
-              step={0.1}
-              value={gain}
-              onChange={(e) => setGain(Number(e.target.value))}
-              onBlur={(e) => sendCmd(`light gain ${e.target.value}`)}
-              className="w-24"
-              suffix="x"
-            />
-            <Label className="m-0"><Trans k="label.alpha">Glättung</Trans></Label>
-            <Input
-              type="number"
-              min={0.001}
-              max={0.8}
-              step={0.01}
-              value={alpha}
-              onChange={(e) => setAlpha(Number(e.target.value))}
-              onBlur={(e) => sendCmd(`light alpha ${e.target.value}`)}
-              className="w-24"
-            />
-            <div className="flex gap-2">
+      <CardContent className="space-y-4">
+        <div className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Sun className="h-4 w-4 text-muted" />
+              <Label className="m-0"><Trans k="label.gain">Gain</Trans></Label>
+              <Input
+                type="number"
+                min={0.1}
+                max={5}
+                step={0.1}
+                value={gain}
+                onChange={(e) => setGain(Number(e.target.value))}
+                onBlur={(e) => sendCmd(`light gain ${e.target.value}`)}
+                className="w-24"
+                suffix="x"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="m-0"><Trans k="label.alpha">Glättung</Trans></Label>
+              <Input
+                type="number"
+                min={0.001}
+                max={0.8}
+                step={0.01}
+                value={alpha}
+                onChange={(e) => setAlpha(Number(e.target.value))}
+                onBlur={(e) => sendCmd(`light alpha ${e.target.value}`)}
+                className="w-24"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => sendCmd('light calib min')}>
                 <Trans k="btn.calibrateMin">Calib min</Trans>
               </Button>
@@ -84,50 +89,37 @@ export function LightCard() {
                 <Trans k="btn.calibrateMax">Calib max</Trans>
               </Button>
             </div>
-            <p className="text-xs text-muted leading-snug">
-              <Trans k="desc.lightCalib">
-                Tip: First press “Calib min” while covering the sensor (dark), then “Calib max” under bright light so slow sensors get a clean span.
-              </Trans>
-            </p>
-            <div className="text-xs text-foreground/80">
-              <strong>Raw:</strong> {raw !== undefined ? raw.toFixed(2) : '—'}{' '}
-              <strong>Min:</strong> {rawMin !== undefined ? rawMin.toFixed(2) : '—'}{' '}
-              <strong>Max:</strong> {rawMax !== undefined ? rawMax.toFixed(2) : '—'}
-            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Label className="m-0"><Trans k="label.clamp">Dim-Limits</Trans></Label>
-            <Input
-              type="number"
-              min={0}
-              max={1.5}
-              step={0.01}
-              value={clampMin}
-              onChange={(e) => setClampMin(Number(e.target.value))}
-              onBlur={(e) => {
-                const mn = Number(e.target.value);
-                sendCmd(`light clamp ${mn} ${clampMax}`);
-              }}
-              className="w-30"
-              suffix="min"
-            />
-            <Input
-              type="number"
-              min={0}
-              max={1.5}
-              step={0.01}
-              value={clampMax}
-              onChange={(e) => setClampMax(Number(e.target.value))}
-              onBlur={(e) => {
-                const mx = Number(e.target.value);
-                sendCmd(`light clamp ${clampMin} ${mx}`);
-              }}
-              className="w-30"
-              suffix="max"
-            />
-            <span className="text-sm text-muted"><Trans k="desc.clamp">Min/Max Zielhelligkeit aus Lichtsensor</Trans></span>
+          <p className="text-xs text-muted leading-snug">
+            <Trans k="desc.lightCalib">
+              Tip: First press “Calib min” while covering the sensor (dark), then “Calib max” under bright light so slow sensors get a clean span.
+            </Trans>
+          </p>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-foreground/80">
+            <span className="chip-muted">
+              <strong>Raw:</strong> {raw !== undefined ? raw.toFixed(2) : '—'}
+            </span>
+            <span className="chip-muted">
+              <strong>Min:</strong> {rawMin !== undefined ? rawMin.toFixed(2) : '—'}
+            </span>
+            <span className="chip-muted">
+              <strong>Max:</strong> {rawMax !== undefined ? rawMax.toFixed(2) : '—'}
+            </span>
           </div>
         </div>
+        <RangeSliderRow
+          label={<Trans k="label.clamp">Dim-Limits</Trans>}
+          description={<Trans k="desc.clamp">Min/Max Zielhelligkeit aus Lichtsensor</Trans>}
+          min={0}
+          max={1.5}
+          step={0.01}
+          values={[clampMin, clampMax]}
+          onChange={([mn, mx]) => {
+            setClampMin(mn);
+            setClampMax(mx);
+            sendCmd(`light clamp ${mn} ${mx}`);
+          }}
+        />
       </CardContent>
     </Card>
   );

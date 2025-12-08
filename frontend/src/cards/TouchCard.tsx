@@ -12,13 +12,15 @@ export function TouchCard() {
   const [touchOn, setTouchOn] = useState(10);
   const [touchOff, setTouchOff] = useState(6);
   const [touchHold, setTouchHold] = useState(800);
+  const [touchStep, setTouchStep] = useState(0.005);
   const [lastLine, setLastLine] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (typeof status.touchThrOn === 'number') setTouchOn(status.touchThrOn);
     if (typeof status.touchThrOff === 'number') setTouchOff(status.touchThrOff);
+    if (typeof status.touchDimStep === 'number') setTouchStep(status.touchDimStep);
     if (typeof status.lastTouchLine === 'string') setLastLine(status.lastTouchLine);
-  }, [status.lastTouchLine, status.touchThrOff, status.touchThrOn]);
+  }, [status.lastTouchLine, status.touchThrOff, status.touchThrOn, status.touchDimStep]);
 
   return (
     <Card>
@@ -121,6 +123,19 @@ export function TouchCard() {
               onBlur={(e) => sendCmd(`touch hold ${e.target.value}`)}
               className="w-28"
               suffix="ms"
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted"><Trans k="touch.dimSpeed">Touch dim speed</Trans></p>
+            <Input
+              type="number"
+              min={0.001}
+              max={0.05}
+              step={0.001}
+              value={touchStep}
+              onChange={(e) => setTouchStep(Number(e.target.value))}
+              onBlur={(e) => sendCmd(`touch dim speed ${e.target.value}`)}
+              className="w-28"
             />
           </div>
         </div>

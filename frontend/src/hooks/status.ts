@@ -22,6 +22,7 @@ export type DeviceStatus = {
   touchThrOff?: number;
   touchActive?: boolean;
   lastTouchLine?: string;
+  touchDimStep?: number;
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
@@ -157,6 +158,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
             ? 'TOUCHDIM'
             : 'OFF'
           : s.touchState,
+        touchDimStep: asNum('touch_dim_step') ?? s.touchDimStep,
         rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
         rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
         rampOnEase: kv.ramp_on_ease ?? s.rampOnEase,
@@ -350,13 +352,14 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       touchState: active ? 'TOUCH' : 'idle',
       touchBase: base ? parseInt(base[1], 10) : s.touchBase,
       touchRaw: raw ? parseInt(raw[1], 10) : s.touchRaw,
-      touchDelta: delta ? parseInt(delta[1], 10) : s.touchDelta,
-      touchThrOn: thrOn ? parseInt(thrOn[1], 10) : s.touchThrOn,
-      touchThrOff: thrOff ? parseInt(thrOff[1], 10) : s.touchThrOff,
-      touchActive: active,
-      lastTouchLine: line,
-      lastStatusAt: Date.now(),
-    }));
+        touchDelta: delta ? parseInt(delta[1], 10) : s.touchDelta,
+        touchThrOn: thrOn ? parseInt(thrOn[1], 10) : s.touchThrOn,
+        touchThrOff: thrOff ? parseInt(thrOff[1], 10) : s.touchThrOff,
+        touchActive: active,
+        lastTouchLine: line,
+        touchDimStep: s.touchDimStep,
+        lastStatusAt: Date.now(),
+      }));
   }
   if (line.startsWith('Ramp=')) {
     handled = true;
