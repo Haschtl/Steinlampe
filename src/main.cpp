@@ -102,6 +102,7 @@ static const char *PREF_KEY_CLAP_CMD2 = "clap_c2";
 static const char *PREF_KEY_CLAP_CMD3 = "clap_c3";
 static const char *PREF_KEY_MUSIC_AUTOLAMP = "mus_auto";
 static const char *PREF_KEY_MUSIC_AUTOTHR = "mus_thr";
+static const char *PREF_KEY_MUSIC_MODE = "mus_mode";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
@@ -246,6 +247,11 @@ uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
 bool musicAutoLamp = false;
 float musicAutoThr = 0.4f;
+uint8_t musicMode = 0; // 0=direct,1=beat
+float musicModScale = 1.0f;
+float musicBeatEnv = 0.0f;
+float musicBeatIntervalMs = 600.0f;
+uint32_t musicLastBeatMs = 0;
 bool clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
 float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
 uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
@@ -772,6 +778,7 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_MUSIC_GAIN, musicGain);
   prefs.putBool(PREF_KEY_MUSIC_AUTOLAMP, musicAutoLamp);
   prefs.putFloat(PREF_KEY_MUSIC_AUTOTHR, musicAutoThr);
+  prefs.putUChar(PREF_KEY_MUSIC_MODE, musicMode);
   prefs.putBool(PREF_KEY_CLAP_EN, clapEnabled);
   prefs.putFloat(PREF_KEY_CLAP_THR, clapThreshold);
   prefs.putUInt(PREF_KEY_CLAP_COOL, clapCooldownMs);
@@ -920,6 +927,8 @@ void loadSettings()
   musicAutoThr = prefs.getFloat(PREF_KEY_MUSIC_AUTOTHR, 0.4f);
   if (musicAutoThr < 0.05f) musicAutoThr = 0.05f;
   if (musicAutoThr > 1.5f) musicAutoThr = 1.5f;
+  musicMode = prefs.getUChar(PREF_KEY_MUSIC_MODE, 0);
+  if (musicMode > 1) musicMode = 0;
   clapEnabled = prefs.getBool(PREF_KEY_CLAP_EN, Settings::CLAP_DEFAULT_ENABLED);
   clapThreshold = prefs.getFloat(PREF_KEY_CLAP_THR, Settings::CLAP_THRESHOLD_DEFAULT);
   clapCooldownMs = prefs.getUInt(PREF_KEY_CLAP_COOL, Settings::CLAP_COOLDOWN_MS_DEFAULT);
@@ -1575,6 +1584,10 @@ void printSensorsStructured()
   line += musicAutoLamp ? F("ON") : F("OFF");
   line += F("|music_thr=");
   line += String(musicAutoThr, 2);
+  line += F("|music_mode=");
+  line += (musicMode == 1) ? F("beat") : F("direct");
+  line += F("|music_mod=");
+  line += String(musicModScale, 3);
 #else
   line += F("|music_env=N/A");
 #endif
@@ -3046,6 +3059,18 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Music] gain=")) + String(g, 2));
     }
+    else if (arg.startsWith("mode"))
+    {
+      String m = arg.substring(4);
+      m.trim();
+      m.toLowerCase();
+      if (m == "beat")
+        musicMode = 1;
+      else
+        musicMode = 0;
+      saveSettings();
+      sendFeedback(String(F("[Music] mode=")) + (musicMode == 1 ? F("beat") : F("direct")));
+    }
     else if (arg.startsWith("auto"))
     {
       String rest = arg.substring(4);
@@ -3671,6 +3696,8 @@ void updatePatternEngine()
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
+  if (musicEnabled)
+    combined *= musicModScale;
   if (notifyActive && !notifySeq.empty())
   {
     uint32_t dtStage = now - notifyStageStartMs;
@@ -3807,6 +3834,38 @@ void updateMusicSensor()
   float val = (float)raw / 4095.0f;
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
+  // Modulate brightness scale based on mode
+  if (musicEnabled)
+  {
+    if (musicMode == 0)
+    {
+      float target = 0.2f + 0.8f * musicFiltered;
+      musicModScale = 0.8f * musicModScale + 0.2f * target;
+    }
+    else // beat mode
+    {
+      bool rising = (musicFiltered > musicAutoThr) && (musicBeatEnv <= musicAutoThr);
+      musicBeatEnv = musicFiltered;
+      uint32_t nowMs = millis();
+      if (rising)
+      {
+        if (musicLastBeatMs > 0)
+        {
+          float interval = (float)(nowMs - musicLastBeatMs);
+          if (interval > 200.0f && interval < 2000.0f)
+            musicBeatIntervalMs = 0.8f * musicBeatIntervalMs + 0.2f * interval;
+        }
+        musicLastBeatMs = nowMs;
+        musicModScale = 1.0f; // kick on beat
+      }
+      else
+      {
+        float decayMs = fmaxf(250.0f, musicBeatIntervalMs * 0.6f);
+        float k = expf(-(Settings::MUSIC_SAMPLE_MS) / decayMs);
+        musicModScale = 0.3f + (musicModScale - 0.3f) * k;
+      }
+    }
+  }
   // Auto lamp on when switch is ON and ambient loud
   if (musicAutoLamp && switchDebouncedState && musicFiltered >= musicAutoThr)
   {

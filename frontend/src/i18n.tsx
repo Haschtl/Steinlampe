@@ -105,6 +105,15 @@ const translations: Record<Lang, Record<string, string>> = {
     "status.connected": "Connected",
     "status.disconnected": "Not connected",
     "status.last": "Last status",
+    "music.autoLamp": "Auto Lamp",
+    "music.clapActions": "Clap actions (send command on 1/2/3 claps)",
+    "music.modeInfo":
+      "Direct: brightness follows the level. Beat: peaks trigger short pulses with decay. Auto Lamp can turn on the lamp whenever the signal crosses the threshold (even if music is off).",
+    "music.modeDirect":
+      "Direct: brightness follows the level. Auto Lamp can additionally switch on with loud signal.",
+    "music.modeBeat":
+      "Beat: peaks trigger short flashes, decay holds until the next beat. Auto Lamp shares the threshold.",
+    "label.clap": "Clap",
     "btn.load": "Load",
     "btn.save": "Save",
     "btn.sync": "Sync",
@@ -267,6 +276,15 @@ const translations: Record<Lang, Record<string, string>> = {
     "status.connected": "Verbunden",
     "status.disconnected": "Nicht verbunden",
     "status.last": "Letzter Status",
+    "music.autoLamp": "Auto-Lampe",
+    "music.clapActions": "Klatsch-Aktionen (1/2/3 Klatscher senden Befehl)",
+    "music.modeInfo":
+      "Direkt: Helligkeit folgt dem Pegel. Beat: Peaks triggern kurze Lichtstöße mit Decay. Auto-Lampe kann auch ohne Musik die Lampe einschalten, wenn die Schwelle überschritten wird.",
+    "music.modeDirect":
+      "Direkt: Helligkeit folgt dem Pegel. Auto-Lampe kann bei lautem Signal zusätzlich einschalten.",
+    "music.modeBeat":
+      "Beat: Peaks triggern kurze Lichtstöße, Decay hält bis zum nächsten Beat. Auto-Lampe nutzt dieselbe Schwelle.",
+    "label.clap": "Klatschen",
     "btn.load": "Laden",
     "btn.save": "Speichern",
     "btn.sync": "Sync",

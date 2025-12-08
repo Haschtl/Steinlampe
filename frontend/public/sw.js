@@ -1,4 +1,4 @@
-const CACHE = 'quarzlampe-pwa-v1';
+const CACHE = 'quarzlampe-pwa-v2';
 const PRE_CACHE = ['./', './index.html', './manifest.webmanifest', './icon-lamp.svg'];
 
 self.addEventListener('install', (event) => {

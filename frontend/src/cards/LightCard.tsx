@@ -88,7 +88,7 @@ export function LightCard() {
                 const mn = Number(e.target.value);
                 sendCmd(`light clamp ${mn} ${clampMax}`);
               }}
-              className="w-20"
+              className="w-30"
               suffix="min"
             />
             <Input
@@ -102,7 +102,7 @@ export function LightCard() {
                 const mx = Number(e.target.value);
                 sendCmd(`light clamp ${clampMin} ${mx}`);
               }}
-              className="w-20"
+              className="w-30"
               suffix="max"
             />
             <span className="text-sm text-muted"><Trans k="desc.clamp">Min/Max Zielhelligkeit aus Lichtsensor</Trans></span>

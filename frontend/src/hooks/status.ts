@@ -48,11 +48,14 @@ export type DeviceStatus = {
   lightAlpha?: number;
   lightClampMin?: number;
   lightClampMax?: number;
+  lightRaw?: number;
   hasMusic?: boolean;
   musicEnabled?: boolean;
   musicGain?: number;
   musicAuto?: boolean;
   musicAutoThr?: number;
+  musicMode?: string;
+  musicMod?: number;
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
@@ -163,6 +166,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         musicGain: asNum('music_gain') ?? s.musicGain,
         musicAuto: kv.music_auto ? kv.music_auto.toUpperCase() === 'ON' : s.musicAuto,
         musicAutoThr: asNum('music_thr') ?? s.musicAutoThr,
+        musicMode: kv.music_mode ?? s.musicMode,
+        musicMod: asNum('music_mod') ?? s.musicMod,
         clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
         clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
         clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
