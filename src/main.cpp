@@ -3089,6 +3089,10 @@ void handleCommand(String line)
     else if (arg == "off")
     {
       musicEnabled = false;
+      musicModScale = 1.0f;
+      musicBeatEnv = 0.0f;
+      musicBeatIntervalMs = 600.0f;
+      musicLastBeatMs = 0;
       saveSettings();
       sendFeedback(F("[Music] Disabled"));
     }
@@ -3110,6 +3114,11 @@ void handleCommand(String line)
         musicMode = 1;
       else
         musicMode = 0;
+      // Reset beat tracking when changing mode
+      musicModScale = 1.0f;
+      musicBeatEnv = 0.0f;
+      musicBeatIntervalMs = 600.0f;
+      musicLastBeatMs = 0;
       saveSettings();
       sendFeedback(String(F("[Music] mode=")) + (musicMode == 1 ? F("beat") : F("direct")));
     }
@@ -3865,7 +3874,12 @@ void updateLightSensor()
 #if ENABLE_MUSIC_MODE
 void updateMusicSensor()
 {
+  // If no feature needs audio, bail after updating envelope/status fields
   if (!musicEnabled && !clapEnabled && !musicAutoLamp)
+  musicModScale = 1.0f;
+  musicBeatEnv = 0.0f;
+  musicBeatIntervalMs = 600.0f;
+  musicLastBeatMs = 0;
     return;
   uint32_t now = millis();
   if (now - lastMusicSampleMs < Settings::MUSIC_SAMPLE_MS)
@@ -3946,6 +3960,7 @@ void updateMusicSensor()
       {
         uint8_t count = clapCount > 3 ? 3 : clapCount;
         executeClapCommand(count);
+        sendFeedback(String(F("[Clap] detected ")) + String(count) + F("x"));
       }
       clapCount = 0;
       clapWindowStartMs = 0;
