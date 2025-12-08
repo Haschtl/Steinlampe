@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'react-toastify';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,16 +67,17 @@ export function QuickCustomCard() {
   const [profileSlot, setProfileSlot] = useState('1');
   const [loadedFromStatus, setLoadedFromStatus] = useState(false);
 
+  const quickMax = useMemo(() => Math.min((status.patternCount || patternLabels.length) + 3, 64), [status.patternCount]);
+
   useEffect(() => {
     if (status.quickCsv) {
       const nums = status.quickCsv
         .split(',')
         .map((n) => parseInt(n.trim(), 10))
         .filter((n) => !Number.isNaN(n) && n > 0);
-      const maxIdx = (status.patternCount || patternLabels.length) + 3;
-      setQuickSelection(nums.filter((n) => n <= maxIdx));
+      setQuickSelection(nums.filter((n) => n <= quickMax));
     }
-  }, [status.quickCsv]);
+  }, [status.quickCsv, quickMax]);
 
   useEffect(() => {
     if (status.customCsv && !loadedFromStatus) {
@@ -94,8 +96,8 @@ export function QuickCustomCard() {
       idx: count + i + 1,
       label: `${t('label.profile', 'Profile')} ${i + 1}`,
     }));
-    return [...base, ...profileOpts];
-  }, [status.patternCount, t]);
+    return [...base, ...profileOpts].filter((p) => p.idx <= quickMax);
+  }, [status.patternCount, t, quickMax]);
 
   const toggleQuickSelection = (idx: number) => {
     setQuickSelection((prev) => (prev.includes(idx) ? prev.filter((n) => n !== idx) : [...prev, idx].sort((a, b) => a - b)));
@@ -103,7 +105,16 @@ export function QuickCustomCard() {
 
   const saveQuickSelection = () => {
     if (quickSelection.length === 0) return;
-    sendCmd(`quick ${quickSelection.join(',')}`).catch((e) => console.warn(e));
+    const filtered = quickSelection.filter((n) => n <= quickMax);
+    if (filtered.length === 0) {
+      toast.error('Quick list contains only invalid entries');
+      return;
+    }
+    if (filtered.length !== quickSelection.length) {
+      toast.warn('Some quick entries were removed (out of range)');
+      setQuickSelection(filtered);
+    }
+    sendCmd(`quick ${filtered.join(',')}`).catch((e) => console.warn(e));
   };
 
   const applyCustom = () => {

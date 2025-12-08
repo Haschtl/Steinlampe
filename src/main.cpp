@@ -109,6 +109,7 @@ static const char *PREF_KEY_PRES_GRACE = "pres_grace";
 static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
+static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
 static const char *PREF_KEY_PAT_FADE_AMT = "pat_fade_amt";
 static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
@@ -144,7 +145,7 @@ uint32_t patternStartMs = 0;
 // General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 float patternSpeedScale = 1.0f;
-uint32_t quickMask = 0; // bitmask of modes used for quick switch tap cycling
+uint64_t quickMask = 0; // bitmask of modes used for quick switch tap cycling (supports up to 64 entries)
 size_t currentModeIndex = 0; // tracks current mode (patterns + profile slots)
 bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
@@ -510,19 +511,19 @@ bool loadProfileSlot(uint8_t slot, bool announce = true)
 /**
  * @brief Build default quick-cycle mask: the three profile slots by default.
  */
-uint32_t computeDefaultQuickMask()
+uint64_t computeDefaultQuickMask()
 {
   // Default: the three profile slots (mode indices PATTERN_COUNT .. PATTERN_COUNT+2)
-  uint32_t mask = 0;
+  uint64_t mask = 0;
   for (size_t slot = 0; slot < PROFILE_SLOTS && slot < 3; ++slot)
   {
     size_t idx = PATTERN_COUNT + slot;
-    if (idx < 32)
-      mask |= (1u << idx);
+    if (idx < 64)
+      mask |= (1ULL << idx);
   }
   // Fallback to first pattern if nothing set (should not happen)
   if (mask == 0 && PATTERN_COUNT > 0)
-    mask = 1u;
+    mask = 1ULL;
   return mask;
 }
 
@@ -532,7 +533,7 @@ uint32_t computeDefaultQuickMask()
 void sanitizeQuickMask()
 {
   size_t total = quickModeCount();
-  uint32_t limitMask = (total >= 32) ? 0xFFFFFFFFu : ((1u << total) - 1u);
+  uint64_t limitMask = (total >= 64) ? 0xFFFFFFFFFFFFFFFFULL : ((1ULL << total) - 1ULL);
   quickMask &= limitMask;
   if (quickMask == 0)
     quickMask = computeDefaultQuickMask() & limitMask;
@@ -541,7 +542,7 @@ void sanitizeQuickMask()
 bool isQuickEnabled(size_t idx)
 {
   size_t total = quickModeCount();
-  return idx < total && idx < 32 && (quickMask & (1u << idx));
+  return idx < total && idx < 64 && (quickMask & (1ULL << idx));
 }
 
 size_t nextQuickMode(size_t from)
@@ -629,7 +630,7 @@ void stopDemo()
   sendFeedback(F("[Demo] Stopped"));
 }
 
-bool parseQuickCsv(const String &csv, uint32_t &outMask)
+bool parseQuickCsv(const String &csv, uint64_t &outMask)
 {
   String tmp = csv;
   tmp.replace(',', ' ');
@@ -647,8 +648,8 @@ bool parseQuickCsv(const String &csv, uint32_t &outMask)
       end++;
     String tok = tmp.substring(start, end);
     int idx = tok.toInt();
-    if (idx >= 1 && idx <= (int)total && idx <= 32)
-      outMask |= (1u << (idx - 1));
+    if (idx >= 1 && idx <= (int)total && idx <= 64)
+      outMask |= (1ULL << (idx - 1));
     start = end + 1;
   }
   return outMask != 0;
@@ -781,7 +782,8 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_PRES_GRACE, presenceGraceMs);
   prefs.putBool(PREF_KEY_PAT_FADE, patternFadeEnabled);
   prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
-  prefs.putUInt(PREF_KEY_QUICK_MASK, quickMask);
+  prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
+  prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
   prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
   lastLoggedBrightness = masterBrightness;
   
@@ -823,7 +825,11 @@ void loadSettings()
     touchHoldStartMs = 500;
   else if (touchHoldStartMs > 5000)
     touchHoldStartMs = 5000;
-  quickMask = prefs.getUInt(PREF_KEY_QUICK_MASK, computeDefaultQuickMask());
+  {
+    uint64_t lo = prefs.getUInt(PREF_KEY_QUICK_MASK, (uint32_t)(computeDefaultQuickMask() & 0xFFFFFFFFULL));
+    uint64_t hi = prefs.getUInt(PREF_KEY_QUICK_MASK_HI, 0);
+    quickMask = (hi << 32) | lo;
+  }
   sanitizeQuickMask();
   patternFadeEnabled = prefs.getBool(PREF_KEY_PAT_FADE, false);
   patternFadeStrength = prefs.getFloat(PREF_KEY_PAT_FADE_AMT, 1.0f);
@@ -1893,7 +1899,7 @@ void importConfig(const String &args)
     }
     else if (key == "quick")
     {
-      uint32_t mask = 0;
+      uint64_t mask = 0;
       if (val.equalsIgnoreCase(F("default")) || val.equalsIgnoreCase(F("none")))
       {
         mask = computeDefaultQuickMask();
@@ -2074,7 +2080,7 @@ void handleCommand(String line)
       sendFeedback(String(F("[Quick] default -> ")) + quickMaskToCsv());
       return;
     }
-    uint32_t mask = 0;
+    uint64_t mask = 0;
     if (parseQuickCsv(args, mask))
     {
       quickMask = mask;
