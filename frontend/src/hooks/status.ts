@@ -122,16 +122,16 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const v = parseInt(kv[k] ?? '', 10);
       return Number.isFinite(v) ? v : undefined;
     };
-    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
-    setStatus((s) => {
-      const hasLight = kv.light ? isAvailable('light') : s.hasLight;
+  const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+  setStatus((s) => {
+    const hasLight = kv.light ? isAvailable('light') : s.hasLight;
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
       const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
       const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
-      const hasPresence = kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence;
+    const hasPresence = kv.presence ? !kv.presence.toUpperCase().includes('N/A') : s.hasPresence;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
       return {
         ...s,

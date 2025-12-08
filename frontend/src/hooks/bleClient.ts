@@ -28,8 +28,34 @@ export async function requestDevice(): Promise<BluetoothDevice> {
 }
 
 export async function connectDevice(device: BluetoothDevice): Promise<BleHandles> {
-  const server = await device.gatt!.connect();
-  const svc = await server.getPrimaryService(SERVICE);
+  console.log('BLE connecting to', device.name || device.id);
+  // ensure fresh session
+  if (device.gatt?.connected) {
+    try { device.gatt.disconnect(); } catch (e) { console.warn('BLE disconnect before connect failed', e); }
+  }
+  let server: BluetoothRemoteGATTServer;
+  try {
+    server = await device.gatt!.connect();
+  } catch (e) {
+    console.error('BLE GATT connect failed', e);
+    throw new Error(`GATT connect failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  let svc: BluetoothRemoteGATTService | null = null;
+  try {
+    svc = await server.getPrimaryService(SERVICE);
+  } catch (e) {
+    const services = await server.getPrimaryServices();
+    const targetNoDash = SERVICE.replace(/-/g, '').toLowerCase();
+    svc =
+      services.find((s) => {
+        const u = (s.uuid || '').toLowerCase();
+        return u.includes(SERVICE.toLowerCase()) || u.replace(/-/g, '').includes(targetNoDash);
+      }) || null;
+    if (!svc) {
+      console.warn('BLE: no matching service; available:', services.map((s) => s.uuid));
+      throw e;
+    }
+  }
   const cmdChar = await svc.getCharacteristic(CMD_CHAR);
   const statusChar = await svc.getCharacteristic(STATUS_CHAR);
   return { device, cmdChar, statusChar };

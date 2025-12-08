@@ -916,9 +916,9 @@ void loadSettings()
   rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, Settings::DEFAULT_RAMP_EASE_OFF);
   rampEaseOnPower = prefs.getFloat(PREF_KEY_RAMP_POW_ON, Settings::DEFAULT_RAMP_POW_ON);
   rampEaseOffPower = prefs.getFloat(PREF_KEY_RAMP_POW_OFF, Settings::DEFAULT_RAMP_POW_OFF);
-  if (rampEaseOnType > 5)
+  if (rampEaseOnType > 7)
     rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
-  if (rampEaseOffType > 5)
+  if (rampEaseOffType > 7)
     rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
   if (rampEaseOnPower < 0.01f)
     rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;

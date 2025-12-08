@@ -209,6 +209,7 @@ export function useBle(): BleApi {
       if (!dev) return;
       deviceRef.current = dev;
       try {
+        console.log(dev)
         const { cmdChar, statusChar } = await connectDevice(dev);
         cmdCharRef.current = cmdChar;
         statusCharRef.current = statusChar;
