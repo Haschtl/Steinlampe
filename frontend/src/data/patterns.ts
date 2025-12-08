@@ -1,5 +1,4 @@
 export const patternLabels = [
-  // Soft / Ambient
   'Konstant',
   'Atmung',
   'Atmung Warm',
@@ -8,34 +7,30 @@ export const patternLabels = [
   'Zig-Zag',
   'Saegezahn',
   'Pulsierend',
-  'Comet',
-  'Aurora',
-  'Funkeln',
-  'Gluehwuermchen',
-  'Sonnenuntergang',
-  // Pulse / Alert
   'Heartbeat',
   'Heartbeat Alarm',
-  'Alert',
-  'SOS',
-  'Stufen',
-  'Zwinkern',
-  'Popcorn',
-  // Fire / Candle
+  'Comet',
+  'Aurora',
+  'Polizei DE',
+  'Camera',
+  'TV Static',
+  'HAL-9000',
+  'Funkeln',
   'Kerze Soft',
   'Kerze',
   'Lagerfeuer',
-  // Sci-Fi / Media
-  'TV Static',
-  'HAL-9000',
+  'Stufen',
+  'Zwinkern',
+  'Gluehwuermchen',
+  'Popcorn',
+  'Weihnacht',
+  'Saber Idle',
+  'Saber Clash',
   'Emergency Bridge',
   'Arc Reactor',
   'Warp Core',
   'KITT Scanner',
   'Tron Grid',
-  'Saber Idle',
-  'Saber Clash',
-  // Weather
   'Gewitter',
   'Distant Storm',
   'Rolling Thunder',
@@ -43,11 +38,9 @@ export const patternLabels = [
   'Strobe Front',
   'Sheet Lightning',
   'Mixed Storm',
-  // Culture / Signals
-  'Polizei DE',
-  'Camera',
-  'Weihnacht',
-  // Utility
+  'Sonnenuntergang',
+  'Alert',
+  'SOS',
   'Custom',
   'Musik',
 ];
@@ -57,3 +50,13 @@ export function patternLabel(idx: number, name?: string) {
   const label = patternLabels[idx - 1];
   return label || `Pattern ${idx}`;
 }
+
+export const patternGroups: { title: string; indices: number[] }[] = [
+  { title: 'Ambient', indices: [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 17, 23, 40] },
+  { title: 'Pulse / Alert', indices: [9, 10, 21, 22, 24, 41, 42] },
+  { title: 'Fire', indices: [18, 19, 20] },
+  { title: 'Sci-Fi / Media', indices: [14, 15, 16, 26, 27, 28, 29, 30, 31, 32] },
+  { title: 'Weather', indices: [33, 34, 35, 36, 37, 38, 39] },
+  { title: 'Culture / Signals', indices: [13, 25] },
+  { title: 'Utility', indices: [43, 44] },
+];

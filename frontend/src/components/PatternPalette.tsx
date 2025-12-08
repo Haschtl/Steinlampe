@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useConnection } from '@/context/connection';
-import { patternLabel, patternLabels } from '@/data/patterns';
+import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
 import { getPatternBrightness } from '@/lib/patternSim';
 
 export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
@@ -57,16 +57,8 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
           <DialogTitle>Pattern Palette</DialogTitle>
         </DialogHeader>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto">
-          {[
-            { title: 'Ambient', range: [1, 13] },
-            { title: 'Pulse / Alert', range: [14, 20] },
-            { title: 'Fire', range: [21, 23] },
-            { title: 'Sci-Fi / Media', range: [24, 32] },
-            { title: 'Weather', range: [33, 39] },
-            { title: 'Signals', range: [40, 42] },
-            { title: 'Utility', range: [43, 999] },
-          ].map((group) => {
-            const items = patternOptions.filter((p) => p.idx >= group.range[0] && p.idx <= group.range[1]);
+          {patternGroups.map((group) => {
+            const items = patternOptions.filter((p) => group.indices.includes(p.idx));
             if (items.length === 0) return null;
             return (
               <div key={group.title} className="space-y-2">
