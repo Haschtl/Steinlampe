@@ -8,7 +8,7 @@ import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-type EaseType = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'flash';
+type EaseType = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'flash' | 'wave' | 'blink';
 
 const easeSample = (t: number, ease: EaseType, pow: number) => {
   switch (ease) {
@@ -23,6 +23,34 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       return t * t * (3 - 2 * t);
     case 'flash':
       return Math.min(1, Math.pow(t, pow > 0 ? 1 / pow : 1));
+    case 'wave': {
+      if (t < 0.45) {
+        const u = t / 0.45;
+        const s = u * u * (3 - 2 * u);
+        return s;
+      }
+      if (t < 0.75) {
+        const u = (t - 0.45) / 0.3;
+        const s = u * u * (3 - 2 * u);
+        return 1 - 0.5 * s;
+      }
+      const u = (t - 0.75) / 0.25;
+      const s = u * u * (3 - 2 * u);
+      return 0.5 + 0.5 * s;
+    }
+    case 'blink': {
+      const smooth = (u: number) => {
+        const s = Math.max(0, Math.min(1, u));
+        return s * s * (3 - 2 * s);
+      };
+      if (t < 0.1) return smooth(t / 0.1);
+      if (t < 0.2) return 1 - smooth((t - 0.1) / 0.1);
+      if (t < 0.3) return smooth((t - 0.2) / 0.1);
+      if (t < 0.4) return 1 - smooth((t - 0.3) / 0.1);
+      const u = (t - 0.4) / 0.6;
+      const p = pow > 0.1 ? pow : 2;
+      return Math.pow(Math.max(0, Math.min(1, u)), 1 / p);
+    }
     default:
       return t;
   }
@@ -175,7 +203,7 @@ export function RampCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash'].map((v) => (
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash', 'wave', 'blink'].map((v) => (
                       <SelectItem key={v} value={v}>
                         {v}
                       </SelectItem>
@@ -220,7 +248,7 @@ export function RampCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash'].map((v) => (
+                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash', 'wave', 'blink'].map((v) => (
                       <SelectItem key={v} value={v}>
                         {v}
                       </SelectItem>

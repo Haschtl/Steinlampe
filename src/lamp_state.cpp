@@ -142,6 +142,56 @@ static float applyEase(float t, uint8_t type, float power)
       v = 1.0f;
     return v;
   }
+  case 6: // wave up-down-up (for ramp on; off is complement)
+  {
+    float y = 0.0f;
+    if (t < 0.45f)
+    {
+      float u = t / 0.45f;
+      u = u * u * (3.0f - 2.0f * u);
+      y = u; // rise to 1
+    }
+    else if (t < 0.75f)
+    {
+      float u = (t - 0.45f) / 0.30f;
+      u = u * u * (3.0f - 2.0f * u);
+      y = 1.0f - 0.5f * u; // fall to ~0.5
+    }
+    else
+    {
+      float u = (t - 0.75f) / 0.25f;
+      u = u * u * (3.0f - 2.0f * u);
+      y = 0.5f + 0.5f * u; // rise back to 1
+    }
+    return clamp01(y);
+  }
+  case 7: // blink-blink then fade up
+  {
+    // segments: on, off, on, off, ramp
+    if (t < 0.1f)
+    {
+      float u = t / 0.1f;
+      return u * u * (3.0f - 2.0f * u);
+    }
+    if (t < 0.2f)
+    {
+      float u = (t - 0.1f) / 0.1f;
+      return 1.0f - u * u * (3.0f - 2.0f * u);
+    }
+    if (t < 0.3f)
+    {
+      float u = (t - 0.2f) / 0.1f;
+      return u * u * (3.0f - 2.0f * u);
+    }
+    if (t < 0.4f)
+    {
+      float u = (t - 0.3f) / 0.1f;
+      return 1.0f - u * u * (3.0f - 2.0f * u);
+    }
+    float u = (t - 0.4f) / 0.6f;
+    float p = power > 0.1f ? power : 2.0f;
+    return powf(u, 1.0f / p); // smooth fade to 1
+  }
   case 1: // smooth ease (default)
   default:
     return t * t * (3.0f - 2.0f * t);

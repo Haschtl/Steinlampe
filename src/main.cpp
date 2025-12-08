@@ -342,6 +342,10 @@ uint8_t easeFromString(const String &s)
     return 4;
   if (l == "flash")
     return 5;
+  if (l == "wave")
+    return 6;
+  if (l == "blink")
+    return 7;
   return 1;
 }
 
@@ -359,6 +363,10 @@ String easeToString(uint8_t t)
     return F("ease-in-out");
   case 5:
     return F("flash");
+  case 6:
+    return F("wave");
+  case 7:
+    return F("blink");
   case 1:
   default:
     return F("ease");
