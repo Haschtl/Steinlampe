@@ -68,6 +68,7 @@ export function useBle(): BleApi {
           line.startsWith('[Push]') ||
           line.startsWith('STATUS|') ||
           line.startsWith('SENSORS|') ||
+          line.startsWith('> custom export') ||
           line.startsWith('> status')
         )
       ) {

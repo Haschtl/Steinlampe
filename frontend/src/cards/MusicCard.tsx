@@ -152,8 +152,6 @@ export function MusicCard() {
           </div>
           <div className="text-xs text-foreground/80">
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}
-            <strong>Thr:</strong> {status.musicAutoThr !== undefined ? status.musicAutoThr.toFixed(2) : "—"}{" "}
-            <strong>Mode:</strong> {status.musicMode ?? "—"}{" "}
             <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}{" "}
             <strong>Level:</strong> {status.musicLevel !== undefined ? status.musicLevel.toFixed(3) : "—"}
           </div>
@@ -174,7 +172,7 @@ export function MusicCard() {
               value={thr}
               onChange={(e) => setThr(Number(e.target.value))}
               onBlur={(e) => sendCmd(`clap thr ${e.target.value}`)}
-              className="w-24"
+              className="w-30"
               suffix="x"
             />
             <Label className="m-0">
@@ -188,7 +186,7 @@ export function MusicCard() {
               value={cool}
               onChange={(e) => setCool(Number(e.target.value))}
               onBlur={(e) => sendCmd(`clap cool ${e.target.value}`)}
-              className="w-24"
+              className="w-34"
               suffix="ms"
             />
           </div>

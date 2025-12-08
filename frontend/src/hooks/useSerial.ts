@@ -42,21 +42,20 @@ export function useSerial(): SerialApi {
       if (!line) return;
       if (
         filterParsed &&
-        (
-          /^Status[:=]/i.test(line) ||
+        (/^Status[:=]/i.test(line) ||
           /^Lamp=/.test(line) ||
           /^Ramp=/.test(line) ||
           /^RampOn/i.test(line) ||
           /^RampOff/i.test(line) ||
-          line.startsWith('[Quick]') ||
-          line.startsWith('[Touch]') ||
-          line.startsWith('Device=') ||
-          line.startsWith('[Poti]') ||
-          line.startsWith('[Push]') ||
-          line.startsWith('STATUS|') ||
-          line.startsWith('SENSORS|') ||
-          line.startsWith('> status')
-        )
+          line.startsWith("[Quick]") ||
+          line.startsWith("[Touch]") ||
+          line.startsWith("Device=") ||
+          line.startsWith("[Poti]") ||
+          line.startsWith("[Push]") ||
+          line.startsWith("STATUS|") ||
+          line.startsWith("SENSORS|") ||
+          line.startsWith("> custom export") ||
+          line.startsWith("> status"))
       ) {
         return;
       }
