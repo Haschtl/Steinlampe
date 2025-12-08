@@ -3874,24 +3874,33 @@ void updateLightSensor()
 #if ENABLE_MUSIC_MODE
 void updateMusicSensor()
 {
-  // If no feature needs audio, bail after updating envelope/status fields
-  if (!musicEnabled && !clapEnabled && !musicAutoLamp)
-  musicModScale = 1.0f;
-  musicBeatEnv = 0.0f;
-  musicBeatIntervalMs = 600.0f;
-  musicLastBeatMs = 0;
+  bool active = musicEnabled || clapEnabled || musicAutoLamp;
+  if (!active)
+  {
+    // Reset any lingering modulation state and skip ADC when audio features are off
+    musicModScale = 1.0f;
+    musicBeatEnv = 0.0f;
+    musicBeatIntervalMs = 600.0f;
+    musicLastBeatMs = 0;
     return;
+  }
   uint32_t now = millis();
   if (now - lastMusicSampleMs < Settings::MUSIC_SAMPLE_MS)
     return;
   lastMusicSampleMs = now;
   int raw = analogRead(Settings::MUSIC_PIN);
+  // clamp ADC to valid range (some boards return negative when floating)
+  if (raw < 0)
+    raw = 0;
+  if (raw > 4095)
+    raw = 4095;
   // crude envelope: high-pass-ish by subtracting filtered baseline
   static float env = 0.0f;
   float val = (float)raw / 4095.0f;
   musicRawLevel = clamp01(val);
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
+  // If no feature needs audio, reset modifiers and bail after updating status fields
   // Modulate brightness scale based on mode
   if (musicEnabled)
   {
