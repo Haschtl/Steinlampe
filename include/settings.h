@@ -62,6 +62,10 @@ constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custo
 #endif
 constexpr bool FEEDBACK_NEEDS_HANDSHAKE = REQUIRE_FEEDBACK_HANDSHAKE;
 
+#ifndef ENABLE_FILTERS
+#define ENABLE_FILTERS 1
+#endif
+
 #if ENABLE_POTI
 constexpr int POTI_PIN = 39;                    ///< ADC pin for optional brightness knob
 constexpr uint32_t POTI_SAMPLE_MS = 80;

@@ -169,3 +169,8 @@ void filtersGetState(FilterState &out)
 {
   out = st;
 }
+
+#endif // ENABLE_FILTERS
+#include "filters.h"
+
+#if ENABLE_FILTERS

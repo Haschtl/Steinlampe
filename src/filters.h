@@ -26,6 +26,7 @@ struct FilterState
   uint32_t sparkLastMs;
 };
 
+#if ENABLE_FILTERS
 void filtersInit();
 float filtersApply(float in, uint32_t nowMs);
 
@@ -35,3 +36,12 @@ void filtersSetTrem(bool en, float rateHz, float depth, uint8_t wave);
 void filtersSetSpark(bool en, float density, float intensity, uint32_t decayMs);
 
 void filtersGetState(FilterState &out);
+#else
+inline void filtersInit() {}
+inline float filtersApply(float in, uint32_t) { return in; }
+inline void filtersSetIir(bool, float) {}
+inline void filtersSetClip(bool, float, uint8_t) {}
+inline void filtersSetTrem(bool, float, float, uint8_t) {}
+inline void filtersSetSpark(bool, float, float, uint32_t) {}
+inline void filtersGetState(FilterState &out) { (void)out; }
+#endif
