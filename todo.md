@@ -1,4 +1,0 @@
-- musik testen
-- midi testen
-- ambient-light testen
-- alle settings testen
