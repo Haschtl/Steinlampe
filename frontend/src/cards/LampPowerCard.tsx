@@ -19,6 +19,10 @@ export function LampPowerCard() {
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
   const [tick, setTick] = useState(0);
   const [patternAnchor, setPatternAnchor] = useState(0);
+  const lightActive = status.lightEnabled && status.hasLight !== false;
+  const musicActive = status.musicEnabled && status.hasMusic !== false;
+  const touchDimActive = status.touchState === 'TOUCHDIM' || status.touchState === 'DIM';
+  const presenceActive = status.hasPresence && status.presence && status.presence !== 'OFF';
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
@@ -99,6 +103,10 @@ export function LampPowerCard() {
             </Button>
           </span>
           <span className="chip-muted">Touch: {status.touchState ?? "--"}</span>
+          {lightActive && <span className="chip-muted"><Trans k="title.light">Light</Trans></span>}
+          {musicActive && <span className="chip-muted"><Trans k="title.music">Music</Trans></span>}
+          {touchDimActive && <span className="chip-muted">Touch-Dim</span>}
+          {presenceActive && <span className="chip-muted"><Trans k="title.presence">Presence</Trans></span>}
         </div>
 
         <motion.button
