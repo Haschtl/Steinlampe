@@ -122,17 +122,18 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const v = parseInt(kv[k] ?? '', 10);
       return Number.isFinite(v) ? v : undefined;
     };
-  const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
-  setStatus((s) => {
-    const hasLight = kv.light ? isAvailable('light') : s.hasLight;
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasLight = kv.light ? isAvailable('light') : s.hasLight;
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
       const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
       const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
-    const hasPresence = kv.presence ? !kv.presence.toUpperCase().includes('N/A') : s.hasPresence;
+      const hasPresence = kv.presence ? isAvailable('presence') : s.hasPresence;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
+      const hasTouch = kv.touch ? isAvailable('touch') : s.hasTouch;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -146,8 +147,14 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lampState: kv.lamp ?? s.lampState,
         switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
         hasSwitch,
-        hasTouch: true,
-        touchState: kv.touch_dim ? (kv.touch_dim === '1' ? 'TOUCHDIM' : s.touchState) : s.touchState,
+        hasTouch,
+        touchState: kv.touch
+          ? kv.touch.toUpperCase()
+          : kv.touch_dim
+          ? ['1', 'ON'].includes(kv.touch_dim.toUpperCase())
+            ? 'TOUCHDIM'
+            : 'OFF'
+          : s.touchState,
         rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
         rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
         rampOnEase: kv.ramp_on_ease ?? s.rampOnEase,
@@ -243,6 +250,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasPush: kv.push ? kv.push.toUpperCase() !== 'N/A' : s.hasPush,
         hasMusic: kv.music ? kv.music.toUpperCase() !== 'N/A' : s.hasMusic,
         hasPresence: kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence,
+        touchState: kv.touch ? kv.touch.toUpperCase() : s.touchState,
         musicEnv,
         musicLevel,
         musicSmooth,
@@ -310,6 +318,18 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       currentPattern: num ? parseInt(num[1], 10) : s.currentPattern,
       patternCount: total ? parseInt(total[1], 10) : s.patternCount,
       patternName: name || s.patternName,
+      lastStatusAt: Date.now(),
+    }));
+  }
+  if (line.startsWith('[Presence]')) {
+    handled = true;
+    const enabled = line.toLowerCase().includes('enabled');
+    // const disabled = line.toLowerCase().includes("disabled");
+    const unavailable = line.toUpperCase().includes("N/A");
+    setStatus((s) => ({
+      ...s,
+      hasPresence: unavailable ? false : true,
+      presence: enabled ? 'ON' : 'OFF',
       lastStatusAt: Date.now(),
     }));
   }

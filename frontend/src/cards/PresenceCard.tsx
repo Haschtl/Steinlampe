@@ -19,7 +19,7 @@ export function PresenceCard() {
             <input
               type="checkbox"
               className="accent-accent"
-              checked={status.presence?.toUpperCase().includes('ON') ?? false}
+              checked={status.presence?.toUpperCase().startsWith('ON') ?? false}
               onChange={(e) => sendCmd(`presence ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="title.presence">Presence</Trans>

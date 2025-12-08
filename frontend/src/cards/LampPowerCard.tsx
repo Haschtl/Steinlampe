@@ -22,7 +22,7 @@ export function LampPowerCard() {
   const lightActive = status.lightEnabled && status.hasLight !== false;
   const musicActive = status.musicEnabled && status.hasMusic !== false;
   const touchDimActive = status.touchState === 'TOUCHDIM' || status.touchState === 'DIM';
-  const presenceActive = status.hasPresence && status.presence && status.presence !== 'OFF';
+  const presenceActive = !!(status.presence && status.presence.toUpperCase().startsWith('ON'));
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
