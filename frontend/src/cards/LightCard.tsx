@@ -11,11 +11,17 @@ export function LightCard() {
   const { status, sendCmd } = useConnection();
   const [enabled, setEnabled] = useState(true);
   const [gain, setGain] = useState(1);
+  const [alpha, setAlpha] = useState(0.1);
+  const [clampMin, setClampMin] = useState(0.2);
+  const [clampMax, setClampMax] = useState(1.0);
 
   useEffect(() => {
     if (typeof status.lightEnabled === 'boolean') setEnabled(status.lightEnabled);
     if (typeof status.lightGain === 'number') setGain(status.lightGain);
-  }, [status.lightEnabled, status.lightGain]);
+    if (typeof status.lightAlpha === 'number') setAlpha(status.lightAlpha);
+    if (typeof status.lightClampMin === 'number') setClampMin(status.lightClampMin);
+    if (typeof status.lightClampMax === 'number') setClampMax(status.lightClampMax);
+  }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax]);
 
   return (
     <Card>
@@ -38,21 +44,66 @@ export function LightCard() {
         </label>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Sun className="h-4 w-4 text-muted" />
-          <Label className="m-0">Light gain</Label>
-          <Input
-            type="number"
-            min={0.1}
-            max={5}
-            step={0.1}
-            value={gain}
-            onChange={(e) => setGain(Number(e.target.value))}
-            onBlur={(e) => sendCmd(`light gain ${e.target.value}`)}
-            className="w-24"
-            suffix="x"
-          />
-          <Button onClick={() => sendCmd('light calib')}>Calibrate</Button>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Sun className="h-4 w-4 text-muted" />
+            <Label className="m-0"><Trans k="label.gain">Gain</Trans></Label>
+            <Input
+              type="number"
+              min={0.1}
+              max={5}
+              step={0.1}
+              value={gain}
+              onChange={(e) => setGain(Number(e.target.value))}
+              onBlur={(e) => sendCmd(`light gain ${e.target.value}`)}
+              className="w-24"
+              suffix="x"
+            />
+            <Label className="m-0"><Trans k="label.alpha">Glättung</Trans></Label>
+            <Input
+              type="number"
+              min={0.001}
+              max={0.8}
+              step={0.01}
+              value={alpha}
+              onChange={(e) => setAlpha(Number(e.target.value))}
+              onBlur={(e) => sendCmd(`light alpha ${e.target.value}`)}
+              className="w-24"
+            />
+            <Button onClick={() => sendCmd('light calib')}><Trans k="btn.calibrate">Calibrate</Trans></Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="m-0"><Trans k="label.clamp">Dim-Limits</Trans></Label>
+            <Input
+              type="number"
+              min={0}
+              max={1.5}
+              step={0.01}
+              value={clampMin}
+              onChange={(e) => setClampMin(Number(e.target.value))}
+              onBlur={(e) => {
+                const mn = Number(e.target.value);
+                sendCmd(`light clamp ${mn} ${clampMax}`);
+              }}
+              className="w-24"
+              suffix="min"
+            />
+            <Input
+              type="number"
+              min={0}
+              max={1.5}
+              step={0.01}
+              value={clampMax}
+              onChange={(e) => setClampMax(Number(e.target.value))}
+              onBlur={(e) => {
+                const mx = Number(e.target.value);
+                sendCmd(`light clamp ${clampMin} ${mx}`);
+              }}
+              className="w-24"
+              suffix="max"
+            />
+            <span className="text-sm text-muted"><Trans k="desc.clamp">Min/Max Zielhelligkeit aus Lichtsensor</Trans></span>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -45,6 +45,7 @@ export type DeviceStatus = {
   hasLight?: boolean;
   lightEnabled?: boolean;
   lightGain?: number;
+  lightAlpha?: number;
   lightClampMin?: number;
   lightClampMax?: number;
   hasMusic?: boolean;
@@ -134,6 +135,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
         lightGain: asNum('light_gain') ?? s.lightGain,
+        lightAlpha: asNum('light_alpha') ?? s.lightAlpha,
         lightClampMin: asNum('light_min') ?? s.lightClampMin,
         lightClampMax: asNum('light_max') ?? s.lightClampMax,
         hasMusic,

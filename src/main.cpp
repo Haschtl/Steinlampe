@@ -118,6 +118,7 @@ static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
 static const char *PREF_KEY_RAMP_POW_OFF = "ramp_p_off";
 static const char *PREF_KEY_LCLAMP_MIN = "lcl_min";
 static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
+static const char *PREF_KEY_LIGHT_ALPHA = "light_a";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
@@ -230,6 +231,7 @@ float lightFiltered = 0.0f;
 uint32_t lastLightSampleMs = 0;
 uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
+float lightAlpha = Settings::LIGHT_ALPHA;
 #endif
 float lightGain = Settings::LIGHT_GAIN_DEFAULT;
 float lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
@@ -422,6 +424,8 @@ String buildProfileString()
   cfg += String(lightClampMin, 2);
   cfg += F(" light_max=");
   cfg += String(lightClampMax, 2);
+  cfg += F(" light_alpha=");
+  cfg += String(lightAlpha, 3);
   cfg += F(" light=");
   cfg += lightSensorEnabled ? F("on") : F("off");
 #endif
@@ -755,6 +759,7 @@ void saveSettings()
   lightMaxRaw = 0;
   prefs.putFloat(PREF_KEY_LCLAMP_MIN, lightClampMin);
   prefs.putFloat(PREF_KEY_LCLAMP_MAX, lightClampMax);
+  prefs.putFloat(PREF_KEY_LIGHT_ALPHA, lightAlpha);
 #endif
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
@@ -955,6 +960,9 @@ void loadSettings()
   lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
   lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
   lightClampMax = prefs.getFloat(PREF_KEY_LCLAMP_MAX, Settings::LIGHT_CLAMP_MAX_DEFAULT);
+  lightAlpha = prefs.getFloat(PREF_KEY_LIGHT_ALPHA, Settings::LIGHT_ALPHA);
+  if (lightAlpha < 0.001f) lightAlpha = 0.001f;
+  if (lightAlpha > 0.8f) lightAlpha = 0.8f;
   if (lightClampMin < 0.0f) lightClampMin = 0.0f;
   if (lightClampMax > 1.5f) lightClampMax = 1.0f;
   if (lightClampMin >= lightClampMax) {
@@ -1476,7 +1484,7 @@ void printStatus()
   if (lightSensorEnabled)
   {
     lightLine += String(F("raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
-                 F(" max=") + String((int)lightMaxRaw);
+                 F(" max=") + String((int)lightMaxRaw) + F(" alpha=") + String(lightAlpha, 3);
   }
   else
   {
@@ -1627,6 +1635,8 @@ void printStatusStructured()
   line += String(lightClampMin, 2);
   line += F("|light_max=");
   line += String(lightClampMax, 2);
+  line += F("|light_alpha=");
+  line += String(lightAlpha, 3);
 #else
   line += F("|light=N/A");
 #endif
@@ -1804,6 +1814,15 @@ void importConfig(const String &args)
         lightGain = 0.1f;
       if (lightGain > 5.0f)
         lightGain = 5.0f;
+    }
+    else if (key == "light_alpha")
+    {
+      float v = val.toFloat();
+      if (v < 0.001f)
+        v = 0.001f;
+      if (v > 0.8f)
+        v = 0.8f;
+      lightAlpha = v;
     }
     else if (key == "light_min")
     {
@@ -2754,6 +2773,17 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Light] gain=")) + String(g, 2));
     }
+    else if (arg.startsWith("alpha"))
+    {
+      float a = arg.substring(5).toFloat();
+      if (a < 0.001f)
+        a = 0.001f;
+      if (a > 0.8f)
+        a = 0.8f;
+      lightAlpha = a;
+      saveSettings();
+      sendFeedback(String(F("[Light] alpha=")) + String(a, 3));
+    }
     else if (arg.startsWith("clamp"))
     {
       int pos = arg.indexOf(' ');
@@ -3355,6 +3385,7 @@ void handleCommand(String line)
     lightGain = Settings::LIGHT_GAIN_DEFAULT;
     lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
     lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+    lightAlpha = Settings::LIGHT_ALPHA;
 #if ENABLE_MUSIC_MODE
     musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
     musicGain = Settings::MUSIC_GAIN_DEFAULT;
@@ -3681,7 +3712,8 @@ void updateLightSensor()
     return;
   lastLightSampleMs = now;
   int raw = analogRead(Settings::LIGHT_PIN);
-  lightFiltered = (1.0f - Settings::LIGHT_ALPHA) * lightFiltered + Settings::LIGHT_ALPHA * (float)raw;
+  float a = clamp01(lightAlpha);
+  lightFiltered = (1.0f - a) * lightFiltered + a * (float)raw;
   if (raw < (int)lightMinRaw)
     lightMinRaw = raw;
   if (raw > (int)lightMaxRaw)
