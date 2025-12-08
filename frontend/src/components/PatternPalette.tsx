@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,11 @@ import { useConnection } from '@/context/connection';
 import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
 import { getPatternBrightness } from '@/lib/patternSim';
 
-const UPDATE_INTERVAL=5
+const UPDATE_INTERVAL = 50;
 export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const { sendCmd, status } = useConnection();
   const [tick, setTick] = useState(0);
+  const energyCache = useRef<Record<string, number>>({});
 
   useEffect(() => {
     let raf: number;
@@ -71,7 +72,14 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((p) => {
                     const bg = patternPreview(p.idx);
-                    const energy = getPatternBrightness(p.idx, tick);
+                    const speed = status.patternSpeed ?? 1;
+                    const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
+                    const raw = getPatternBrightness(p.idx, tick * speed);
+                    const key = `p${p.idx}`;
+                    const prev = energyCache.current[key] ?? raw;
+                    const alpha = fade ? Math.min(1, UPDATE_INTERVAL / (400 * fade)) : 1;
+                    const energy = prev + (raw - prev) * alpha;
+                    energyCache.current[key] = energy;
                     return (
                       <button
                         key={p.idx}

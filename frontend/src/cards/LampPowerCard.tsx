@@ -10,6 +10,7 @@ import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
 import { getPatternBrightness } from '@/lib/patternSim';
 
+const UPDATE_INTERVAL = 5;
 export function LampPowerCard() {
   const { status, sendCmd } = useConnection();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -32,15 +33,34 @@ export function LampPowerCard() {
 
   useEffect(() => {
     let raf: number;
+    let last = 0;
     const loop = (t: number) => {
-      setTick(t);
+      if (t - last > UPDATE_INTERVAL) {
+        setTick(t);
+        last = t;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const energy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, tick % 12000) : 0;
+  const speed = status.patternSpeed ?? 1;
+  const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
+  const rawEnergy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, tick * speed) : 0;
+  const [energy, setEnergy] = useState(0);
+
+  useEffect(() => {
+    if (!fade) {
+      setEnergy(rawEnergy);
+      return;
+    }
+    const base = 400;
+    setEnergy((prev) => {
+      const alpha = Math.min(1, 50 / (base * fade));
+      return prev + (rawEnergy - prev) * alpha;
+    });
+  }, [rawEnergy, fade]);
 
   const handleBrightness = (value: number) => {
     const clamped = Math.min(100, Math.max(1, Math.round(value)));
