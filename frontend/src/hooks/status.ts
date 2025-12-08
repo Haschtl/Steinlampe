@@ -61,6 +61,7 @@ export type DeviceStatus = {
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
+  patternElapsedMs?: number;
   hasPoti?: boolean;
   potiEnabled?: boolean;
   potiAlpha?: number;
@@ -132,6 +133,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternCount: asInt('pattern_total') ?? s.patternCount,
         currentPattern: asInt('pattern') ?? s.currentPattern,
         patternName: kv.pattern_name ?? s.patternName,
+        patternElapsedMs: asInt('pat_ms') ?? s.patternElapsedMs,
         autoCycle: kv.auto ? kv.auto === '1' : s.autoCycle,
         brightness: asNum('bri') ?? s.brightness,
         cap: asNum('cap') ?? s.cap,

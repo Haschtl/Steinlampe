@@ -18,6 +18,7 @@ export function LampPowerCard() {
   const [lampOn, setLampOn] = useState(false);
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
   const [tick, setTick] = useState(0);
+  const [patternAnchor, setPatternAnchor] = useState(0);
 
   useEffect(() => {
     if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
@@ -45,9 +46,17 @@ export function LampPowerCard() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  useEffect(() => {
+    if (typeof status.patternElapsedMs === 'number') {
+      // Align UI simulation clock with controller pattern time
+      setPatternAnchor(performance.now() - status.patternElapsedMs);
+    }
+  }, [status.patternElapsedMs, status.currentPattern]);
+
   const speed = status.patternSpeed ?? 1;
   const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
-  const rawEnergy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, tick * speed) : 0;
+  const simMs = Math.max(0, tick - patternAnchor);
+  const rawEnergy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, simMs * speed) : 0;
   const [energy, setEnergy] = useState(0);
 
   useEffect(() => {

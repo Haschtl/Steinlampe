@@ -12,6 +12,7 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
   const { sendCmd, status } = useConnection();
   const [tick, setTick] = useState(0);
   const energyCache = useRef<Record<string, number>>({});
+  const [patternAnchor, setPatternAnchor] = useState(0);
 
   useEffect(() => {
     let raf: number;
@@ -26,6 +27,12 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (typeof status.patternElapsedMs === 'number') {
+      setPatternAnchor(performance.now() - status.patternElapsedMs);
+    }
+  }, [status.patternElapsedMs, status.currentPattern]);
 
   const patternOptions = useMemo(() => {
     const count = status.patternCount || patternLabels.length;
@@ -74,7 +81,8 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                     const bg = patternPreview(p.idx);
                     const speed = status.patternSpeed ?? 1;
                     const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
-                    const raw = getPatternBrightness(p.idx, tick * speed);
+                    const simMs = Math.max(0, tick - patternAnchor);
+                    const raw = getPatternBrightness(p.idx, simMs * speed);
                     const key = `p${p.idx}`;
                     const prev = energyCache.current[key] ?? raw;
                     const alpha = fade ? Math.min(1, UPDATE_INTERVAL / (400 * fade)) : 1;

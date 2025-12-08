@@ -1605,6 +1605,8 @@ void printStatusStructured()
   line += String(PATTERN_COUNT);
   line += F("|pattern_name=");
   line += PATTERNS[currentPattern].name;
+  line += F("|pat_ms=");
+  line += String(millis() - patternStartMs);
   line += F("|auto=");
   line += autoCycle ? F("1") : F("0");
   line += F("|bri=");
