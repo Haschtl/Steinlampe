@@ -18,6 +18,7 @@
 #include <esp_system.h>
 
 #include "comms.h"
+#include "filters.h"
 #include "lamp_state.h"
 #include "patterns.h"
 #include "settings.h"
@@ -169,6 +170,19 @@ static const char *PREF_KEY_PUSH_STEP = "push_step";
 static const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
 static const uint8_t PROFILE_SLOTS = 3;
 static const char *PREF_KEY_PWM_GAMMA = "pwm_g";
+static const char *PREF_KEY_FILTER_IIR_EN = "fil_iir_en";
+static const char *PREF_KEY_FILTER_IIR_A = "fil_iir_a";
+static const char *PREF_KEY_FILTER_CLIP_EN = "fil_cl_en";
+static const char *PREF_KEY_FILTER_CLIP_AMT = "fil_cl_amt";
+static const char *PREF_KEY_FILTER_CLIP_CURVE = "fil_cl_cv";
+static const char *PREF_KEY_FILTER_TREM_EN = "fil_tr_en";
+static const char *PREF_KEY_FILTER_TREM_RATE = "fil_tr_rt";
+static const char *PREF_KEY_FILTER_TREM_DEPTH = "fil_tr_dp";
+static const char *PREF_KEY_FILTER_TREM_WAVE = "fil_tr_wv";
+static const char *PREF_KEY_FILTER_SPARK_EN = "fil_sp_en";
+static const char *PREF_KEY_FILTER_SPARK_DENS = "fil_sp_dn";
+static const char *PREF_KEY_FILTER_SPARK_INT = "fil_sp_in";
+static const char *PREF_KEY_FILTER_SPARK_DECAY = "fil_sp_dc";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -745,6 +759,34 @@ void exportConfig()
   cfg += touchHoldStartMs;
   cfg += F(" touch_dim_step=");
   cfg += String(touchDimStep, 3);
+  FilterState filt;
+  filtersGetState(filt);
+  cfg += F(" filter_iir=");
+  cfg += filt.iirEnabled ? F("on") : F("off");
+  cfg += F(" filter_iir_a=");
+  cfg += String(filt.iirAlpha, 3);
+  cfg += F(" filter_clip=");
+  cfg += filt.clipEnabled ? F("on") : F("off");
+  cfg += F(" filter_clip_amt=");
+  cfg += String(filt.clipAmount, 2);
+  cfg += F(" filter_clip_curve=");
+  cfg += filt.clipCurve;
+  cfg += F(" filter_trem=");
+  cfg += filt.tremEnabled ? F("on") : F("off");
+  cfg += F(" filter_trem_rate=");
+  cfg += String(filt.tremRateHz, 2);
+  cfg += F(" filter_trem_depth=");
+  cfg += String(filt.tremDepth, 2);
+  cfg += F(" filter_trem_wave=");
+  cfg += filt.tremWave;
+  cfg += F(" filter_spark=");
+  cfg += filt.sparkEnabled ? F("on") : F("off");
+  cfg += F(" filter_spark_dens=");
+  cfg += String(filt.sparkDensity, 2);
+  cfg += F(" filter_spark_int=");
+  cfg += String(filt.sparkIntensity, 2);
+  cfg += F(" filter_spark_decay=");
+  cfg += String(filt.sparkDecayMs);
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
   cfg += F(" light_min=");
@@ -863,6 +905,23 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
   prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
   lastLoggedBrightness = masterBrightness;
+
+  // Filters
+  FilterState filt;
+  filtersGetState(filt);
+  prefs.putBool(PREF_KEY_FILTER_IIR_EN, filt.iirEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_IIR_A, filt.iirAlpha);
+  prefs.putBool(PREF_KEY_FILTER_CLIP_EN, filt.clipEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_CLIP_AMT, filt.clipAmount);
+  prefs.putUChar(PREF_KEY_FILTER_CLIP_CURVE, filt.clipCurve);
+  prefs.putBool(PREF_KEY_FILTER_TREM_EN, filt.tremEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_TREM_RATE, filt.tremRateHz);
+  prefs.putFloat(PREF_KEY_FILTER_TREM_DEPTH, filt.tremDepth);
+  prefs.putUChar(PREF_KEY_FILTER_TREM_WAVE, filt.tremWave);
+  prefs.putBool(PREF_KEY_FILTER_SPARK_EN, filt.sparkEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_SPARK_DENS, filt.sparkDensity);
+  prefs.putFloat(PREF_KEY_FILTER_SPARK_INT, filt.sparkIntensity);
+  prefs.putUInt(PREF_KEY_FILTER_SPARK_DECAY, filt.sparkDecayMs);
   
 }
 
@@ -886,6 +945,14 @@ void loadSettings()
     patternSpeedScale = 0.1f;
   else if (patternSpeedScale > 5.0f)
     patternSpeedScale = 5.0f;
+  patternMarginLow = prefs.getFloat(PREF_KEY_PAT_LO, Settings::PATTERN_MARGIN_LOW_DEFAULT);
+  patternMarginHigh = prefs.getFloat(PREF_KEY_PAT_HI, Settings::PATTERN_MARGIN_HIGH_DEFAULT);
+  if (patternMarginLow < 0.0f)
+    patternMarginLow = 0.0f;
+  if (patternMarginHigh > 1.0f)
+    patternMarginHigh = 1.0f;
+  if (patternMarginHigh < patternMarginLow)
+    patternMarginHigh = patternMarginLow;
   touchDeltaOn = prefs.getShort(PREF_KEY_THR_ON, TOUCH_DELTA_ON_DEFAULT);
   touchDeltaOff = prefs.getShort(PREF_KEY_THR_OFF, TOUCH_DELTA_OFF_DEFAULT);
   if (touchDeltaOn < 1)
@@ -963,6 +1030,24 @@ void loadSettings()
 #if ENABLE_LIGHT_SENSOR
   lightSensorEnabled = prefs.getBool(PREF_KEY_LS_EN, Settings::LIGHT_SENSOR_DEFAULT_ENABLED);
 #endif
+  filtersInit();
+  bool iirEn = prefs.getBool(PREF_KEY_FILTER_IIR_EN, Settings::FILTER_IIR_DEFAULT);
+  float iirA = prefs.getFloat(PREF_KEY_FILTER_IIR_A, Settings::FILTER_IIR_ALPHA_DEFAULT);
+  filtersSetIir(iirEn, iirA);
+  bool clipEn = prefs.getBool(PREF_KEY_FILTER_CLIP_EN, Settings::FILTER_CLIP_DEFAULT);
+  float clipAmt = prefs.getFloat(PREF_KEY_FILTER_CLIP_AMT, Settings::FILTER_CLIP_AMT_DEFAULT);
+  uint8_t clipCurve = prefs.getUChar(PREF_KEY_FILTER_CLIP_CURVE, Settings::FILTER_CLIP_CURVE_DEFAULT);
+  filtersSetClip(clipEn, clipAmt, clipCurve);
+  bool tremEn = prefs.getBool(PREF_KEY_FILTER_TREM_EN, Settings::FILTER_TREM_DEFAULT);
+  float tremRate = prefs.getFloat(PREF_KEY_FILTER_TREM_RATE, Settings::FILTER_TREM_RATE_DEFAULT);
+  float tremDepth = prefs.getFloat(PREF_KEY_FILTER_TREM_DEPTH, Settings::FILTER_TREM_DEPTH_DEFAULT);
+  uint8_t tremWave = prefs.getUChar(PREF_KEY_FILTER_TREM_WAVE, Settings::FILTER_TREM_WAVE_DEFAULT);
+  filtersSetTrem(tremEn, tremRate, tremDepth, tremWave);
+  bool spEn = prefs.getBool(PREF_KEY_FILTER_SPARK_EN, Settings::FILTER_SPARK_DEFAULT);
+  float spDens = prefs.getFloat(PREF_KEY_FILTER_SPARK_DENS, Settings::FILTER_SPARK_DENS_DEFAULT);
+  float spInt = prefs.getFloat(PREF_KEY_FILTER_SPARK_INT, Settings::FILTER_SPARK_INT_DEFAULT);
+  uint32_t spDec = prefs.getUInt(PREF_KEY_FILTER_SPARK_DECAY, Settings::FILTER_SPARK_DECAY_DEFAULT);
+  filtersSetSpark(spEn, spDens, spInt, spDec);
   customStepMs = prefs.getUInt(PREF_KEY_CUSTOM_MS, Settings::CUSTOM_STEP_MS_DEFAULT);
   if (customStepMs < 100)
     customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
@@ -1523,6 +1608,38 @@ void printStatus()
   sendFeedback(line3);
   payload += line3 + '\n';
 
+  // Filters
+  FilterState filt;
+  filtersGetState(filt);
+  String filtLine = F("[Filter] ");
+  filtLine += F("iir=");
+  filtLine += filt.iirEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.iirAlpha, 3);
+  filtLine += F(") clip=");
+  filtLine += filt.clipEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.clipAmount, 2);
+  filtLine += F(")");
+  filtLine += F(" trem=");
+  filtLine += filt.tremEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.tremRateHz, 2);
+  filtLine += F("Hz/");
+  filtLine += String(filt.tremDepth, 2);
+  filtLine += F(")");
+  filtLine += F(" spark=");
+  filtLine += filt.sparkEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.sparkDensity, 2);
+  filtLine += F("/");
+  filtLine += String(filt.sparkIntensity, 2);
+  filtLine += F("/");
+  filtLine += String(filt.sparkDecayMs);
+  filtLine += F("ms)");
+  sendFeedback(filtLine);
+  payload += filtLine + '\n';
+
   String line4 = F("Presence=");
   if (presenceEnabled)
   {
@@ -1817,6 +1934,36 @@ void printStatusStructured()
 #else
   line += F("|push=N/A");
 #endif
+  {
+    FilterState filt;
+    filtersGetState(filt);
+    line += F("|filter_iir=");
+    line += filt.iirEnabled ? F("ON") : F("OFF");
+    line += F("|filter_alpha=");
+    line += String(filt.iirAlpha, 3);
+    line += F("|filter_clip=");
+    line += filt.clipEnabled ? F("ON") : F("OFF");
+    line += F("|filter_clip_amt=");
+    line += String(filt.clipAmount, 2);
+    line += F("|filter_clip_curve=");
+    line += filt.clipCurve;
+    line += F("|filter_trem=");
+    line += filt.tremEnabled ? F("ON") : F("OFF");
+    line += F("|filter_trem_rate=");
+    line += String(filt.tremRateHz, 2);
+    line += F("|filter_trem_depth=");
+    line += String(filt.tremDepth, 2);
+    line += F("|filter_trem_wave=");
+    line += filt.tremWave;
+    line += F("|filter_spark=");
+    line += filt.sparkEnabled ? F("ON") : F("OFF");
+    line += F("|filter_spark_dens=");
+    line += String(filt.sparkDensity, 2);
+    line += F("|filter_spark_int=");
+    line += String(filt.sparkIntensity, 2);
+    line += F("|filter_spark_decay=");
+    line += String(filt.sparkDecayMs);
+  }
   sendFeedback(line);
 }
 
@@ -1960,6 +2107,109 @@ void importConfig(const String &args)
     if (v < 0.001f) v = 0.001f;
     if (v > 0.05f) v = 0.05f;
     touchDimStep = v;
+  }
+  else if (key == "filter_iir")
+  {
+    bool v;
+    if (parseBool(val, v))
+      filtersSetIir(v, Settings::FILTER_IIR_ALPHA_DEFAULT);
+  }
+  else if (key == "filter_iir_a")
+  {
+    float v = val.toFloat();
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetIir(f.iirEnabled, v);
+  }
+  else if (key == "filter_clip")
+  {
+    bool v;
+    if (parseBool(val, v))
+    {
+      FilterState f; filtersGetState(f);
+      filtersSetClip(v, f.clipAmount, f.clipCurve);
+    }
+  }
+  else if (key == "filter_clip_amt")
+  {
+    float v = val.toFloat();
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetClip(f.clipEnabled, v, f.clipCurve);
+  }
+  else if (key == "filter_clip_curve")
+  {
+    uint8_t v = (uint8_t)val.toInt();
+    if (v > 1) v = 0;
+    FilterState f; filtersGetState(f);
+    filtersSetClip(f.clipEnabled, f.clipAmount, v);
+  }
+  else if (key == "filter_trem")
+  {
+    bool v;
+    if (parseBool(val, v))
+    {
+      FilterState f; filtersGetState(f);
+      filtersSetTrem(v, f.tremRateHz, f.tremDepth, f.tremWave);
+    }
+  }
+  else if (key == "filter_trem_rate")
+  {
+    float v = val.toFloat();
+    if (v < 0.05f) v = 0.05f;
+    if (v > 20.0f) v = 20.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetTrem(f.tremEnabled, v, f.tremDepth, f.tremWave);
+  }
+  else if (key == "filter_trem_depth")
+  {
+    float v = val.toFloat();
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetTrem(f.tremEnabled, f.tremRateHz, v, f.tremWave);
+  }
+  else if (key == "filter_trem_wave")
+  {
+    uint8_t v = (uint8_t)val.toInt();
+    if (v > 1) v = 0;
+    FilterState f; filtersGetState(f);
+    filtersSetTrem(f.tremEnabled, f.tremRateHz, f.tremDepth, v);
+  }
+  else if (key == "filter_spark")
+  {
+    bool v;
+    if (parseBool(val, v))
+    {
+      FilterState f; filtersGetState(f);
+      filtersSetSpark(v, f.sparkDensity, f.sparkIntensity, f.sparkDecayMs);
+    }
+  }
+  else if (key == "filter_spark_dens")
+  {
+    float v = val.toFloat();
+    if (v < 0.0f) v = 0.0f;
+    if (v > 20.0f) v = 20.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetSpark(f.sparkEnabled, v, f.sparkIntensity, f.sparkDecayMs);
+  }
+  else if (key == "filter_spark_int")
+  {
+    float v = val.toFloat();
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    FilterState f; filtersGetState(f);
+    filtersSetSpark(f.sparkEnabled, f.sparkDensity, v, f.sparkDecayMs);
+  }
+  else if (key == "filter_spark_decay")
+  {
+    uint32_t v = val.toInt();
+    if (v < 10) v = 10;
+    if (v > 5000) v = 5000;
+    FilterState f; filtersGetState(f);
+    filtersSetSpark(f.sparkEnabled, f.sparkDensity, f.sparkIntensity, v);
   }
   else if (key == "light_gain")
   {
@@ -2571,6 +2821,116 @@ void handleCommand(String line)
     else
     {
       sendFeedback(F("Usage: pat margin <low 0-1> <high 0-1>"));
+    }
+    return;
+  }
+  if (lower.startsWith("filter"))
+  {
+    String arg = line.substring(line.indexOf("filter") + 6);
+    arg.trim();
+    if (arg.startsWith("iir"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      int pos = arg.indexOf(' ');
+      float a = (pos > 0) ? arg.substring(pos + 1).toFloat() : Settings::FILTER_IIR_ALPHA_DEFAULT;
+      if (a < 0.0f)
+        a = 0.0f;
+      if (a > 1.0f)
+        a = 1.0f;
+      filtersSetIir(en, a);
+      saveSettings();
+      sendFeedback(String(F("[Filter] IIR ")) + (en ? F("ON ") : F("OFF ")) + F("alpha=") + String(a, 3));
+    }
+    else if (arg.startsWith("clip"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      float amt = Settings::FILTER_CLIP_AMT_DEFAULT;
+      uint8_t curve = Settings::FILTER_CLIP_CURVE_DEFAULT;
+      int pos = arg.indexOf(' ');
+      if (pos > 0)
+      {
+        String rest = arg.substring(pos + 1);
+        rest.trim();
+        amt = rest.toFloat();
+        if (amt < 0.0f) amt = 0.0f;
+        if (amt > 1.0f) amt = 1.0f;
+        if (rest.indexOf("soft") >= 0) curve = 1;
+        else if (rest.indexOf("tanh") >= 0) curve = 0;
+      }
+      filtersSetClip(en, amt, curve);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Clip ")) + (en ? F("ON ") : F("OFF ")) + F("amt=") + String(amt, 2) + F(" curve=") + (curve ? F("soft") : F("tanh")));
+    }
+    else if (arg.startsWith("trem"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      float rate = Settings::FILTER_TREM_RATE_DEFAULT;
+      float depth = Settings::FILTER_TREM_DEPTH_DEFAULT;
+      uint8_t wave = Settings::FILTER_TREM_WAVE_DEFAULT;
+      // parse numbers
+      int pos = arg.indexOf(' ');
+      if (pos > 0)
+      {
+        String rest = arg.substring(pos + 1);
+        rest.trim();
+        int pos2 = rest.indexOf(' ');
+        if (pos2 > 0)
+        {
+          rate = rest.substring(0, pos2).toFloat();
+          String rest2 = rest.substring(pos2 + 1);
+          depth = rest2.toFloat();
+          if (rest2.indexOf("tri") >= 0) wave = 1;
+          else wave = 0;
+        }
+        else
+        {
+          rate = rest.toFloat();
+        }
+      }
+      if (rate < 0.05f) rate = 0.05f;
+      if (rate > 20.0f) rate = 20.0f;
+      if (depth < 0.0f) depth = 0.0f;
+      if (depth > 1.0f) depth = 1.0f;
+      filtersSetTrem(en, rate, depth, wave);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Trem ")) + (en ? F("ON ") : F("OFF ")) + F(" rate=") + String(rate, 2) + F(" depth=") + String(depth, 2));
+    }
+    else if (arg.startsWith("spark"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      float dens = Settings::FILTER_SPARK_DENS_DEFAULT;
+      float inten = Settings::FILTER_SPARK_INT_DEFAULT;
+      uint32_t dec = Settings::FILTER_SPARK_DECAY_DEFAULT;
+      int pos = arg.indexOf(' ');
+      if (pos > 0)
+      {
+        String rest = arg.substring(pos + 1);
+        rest.trim();
+        int p1 = rest.indexOf(' ');
+        int p2 = p1 > 0 ? rest.indexOf(' ', p1 + 1) : -1;
+        if (p1 > 0)
+        {
+          dens = rest.substring(0, p1).toFloat();
+          if (p2 > 0)
+          {
+            inten = rest.substring(p1 + 1, p2).toFloat();
+            dec = rest.substring(p2 + 1).toInt();
+          }
+        }
+      }
+      if (dens < 0.0f) dens = 0.0f;
+      if (dens > 20.0f) dens = 20.0f;
+      if (inten < 0.0f) inten = 0.0f;
+      if (inten > 1.0f) inten = 1.0f;
+      if (dec < 10) dec = 10;
+      if (dec > 5000) dec = 5000;
+      filtersSetSpark(en, dens, inten, dec);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Spark ")) + (en ? F("ON ") : F("OFF ")) + F(" dens=") + String(dens, 2) + F(" int=") + String(inten, 2) + F(" dec=") + String(dec) + F("ms"));
+    }
+    else
+    {
+      sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs>"));
     }
     return;
   }
@@ -3730,11 +4090,12 @@ void handleCommand(String line)
 #endif
     patternFadeEnabled = false;
     patternFadeStrength = 1.0f;
-    patternFilteredLevel = 0.0f;
+  patternFilteredLevel = 0.0f;
     patternFilterLastMs = 0;
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
+    filtersInit();
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));
     return;
@@ -4021,13 +4382,15 @@ void updatePatternEngine()
     float base = (float)(rampDurationMs > 0 ? rampDurationMs : 1);
     float alpha = clamp01((float)dt / (base * patternFadeStrength));
     patternFilteredLevel += (combined - patternFilteredLevel) * alpha;
-    applyPwmLevel(patternFilteredLevel);
+    float out = filtersApply(patternFilteredLevel, now);
+    applyPwmLevel(out);
   }
   else
   {
     patternFilteredLevel = combined;
     patternFilterLastMs = now;
-    applyPwmLevel(combined);
+    float out = filtersApply(combined, now);
+    applyPwmLevel(out);
   }
 
   uint32_t durEff = p.durationMs > 0 ? (uint32_t)((float)p.durationMs / patternSpeedScale) : 0;

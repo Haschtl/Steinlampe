@@ -29,6 +29,19 @@ constexpr float DEFAULT_RAMP_POW_ON = 7.0f;     ///< easing power for on-ramp
 constexpr float DEFAULT_RAMP_POW_OFF = 2.0f;    ///< easing power for off-ramp
 constexpr float PATTERN_MARGIN_LOW_DEFAULT = 0.0f;  ///< lower bound for pattern output
 constexpr float PATTERN_MARGIN_HIGH_DEFAULT = 1.0f; ///< upper bound for pattern output
+constexpr bool FILTER_IIR_DEFAULT = false;
+constexpr float FILTER_IIR_ALPHA_DEFAULT = 0.2f;
+constexpr bool FILTER_CLIP_DEFAULT = false;
+constexpr float FILTER_CLIP_AMT_DEFAULT = 0.15f;
+constexpr uint8_t FILTER_CLIP_CURVE_DEFAULT = 0; // 0=tanh,1=soft
+constexpr bool FILTER_TREM_DEFAULT = false;
+constexpr float FILTER_TREM_RATE_DEFAULT = 1.5f;
+constexpr float FILTER_TREM_DEPTH_DEFAULT = 0.3f;
+constexpr uint8_t FILTER_TREM_WAVE_DEFAULT = 0; // 0=sin,1=tri
+constexpr bool FILTER_SPARK_DEFAULT = false;
+constexpr float FILTER_SPARK_DENS_DEFAULT = 0.6f; // events per second
+constexpr float FILTER_SPARK_INT_DEFAULT = 0.25f;
+constexpr uint32_t FILTER_SPARK_DECAY_DEFAULT = 200; // ms
 constexpr float WAKE_START_LEVEL = 0.02f;      ///< Start level for wake fade
 constexpr float WAKE_MIN_TARGET = 0.65f;       ///< Minimal target brightness for wake
 constexpr bool PRESENCE_DEFAULT_ENABLED = false;///< Presence auto-off default state
