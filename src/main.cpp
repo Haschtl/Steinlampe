@@ -1509,7 +1509,7 @@ void printStatus()
   }
   else
   {
-    lightLine += F("N/A");
+    lightLine += F("off");
   }
   sendFeedback(lightLine);
   payload += lightLine + '\n';
