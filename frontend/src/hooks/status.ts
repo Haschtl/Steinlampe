@@ -58,6 +58,7 @@ export type DeviceStatus = {
   musicAutoThr?: number;
   musicMode?: string;
   musicMod?: number;
+  musicEnv?: number;
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
@@ -120,8 +121,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     setStatus((s) => {
       const hasLight = kv.light ? isAvailable('light') : s.hasLight;
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
-      const lightRawMin = kv.light_min ? asNum('light_min') : s.lightRawMin;
-      const lightRawMax = kv.light_max ? asNum('light_max') : s.lightRawMax;
+      const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
+      const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
@@ -172,6 +173,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasMusic,
         musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
         musicGain: asNum('music_gain') ?? s.musicGain,
+        musicEnv: asNum('music_env') ?? s.musicEnv,
         musicAuto: kv.music_auto ? kv.music_auto.toUpperCase() === 'ON' : s.musicAuto,
         musicAutoThr: asNum('music_thr') ?? s.musicAutoThr,
         musicMode: kv.music_mode ?? s.musicMode,
@@ -213,6 +215,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const lightRawVal = num('light_raw') ?? s.lightRaw;
       const lightMinVal = num('light_min') ?? s.lightRawMin;
       const lightMaxVal = num('light_max') ?? s.lightRawMax;
+      const musicEnv = num('music_env') ?? s.musicEnv;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -228,6 +231,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasPush: kv.push ? kv.push.toUpperCase() !== 'N/A' : s.hasPush,
         hasMusic: kv.music ? kv.music.toUpperCase() !== 'N/A' : s.hasMusic,
         hasPresence: kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence,
+        musicEnv,
       };
     });
     return true;

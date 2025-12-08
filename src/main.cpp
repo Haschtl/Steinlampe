@@ -1668,6 +1668,12 @@ void printStatusStructured()
   line += String(lightClampMax, 2);
   line += F("|light_alpha=");
   line += String(lightAlpha, 3);
+  line += F("|light_raw=");
+  line += String((int)lightFiltered);
+  line += F("|light_raw_min=");
+  line += String((int)lightMinRaw);
+  line += F("|light_raw_max=");
+  line += String((int)lightMaxRaw);
 #else
   line += F("|light=N/A");
 #endif
@@ -1676,6 +1682,16 @@ void printStatusStructured()
   line += musicEnabled ? F("ON") : F("OFF");
   line += F("|music_gain=");
   line += String(musicGain, 2);
+  line += F("|music_auto=");
+  line += musicAutoLamp ? F("ON") : F("OFF");
+  line += F("|music_thr=");
+  line += String(musicAutoThr, 2);
+  line += F("|music_mode=");
+  line += (musicMode == 1 ? F("beat") : F("direct"));
+  line += F("|music_mod=");
+  line += String(musicModScale, 3);
+  line += F("|music_env=");
+  line += String(musicFiltered, 3);
   line += F("|clap=");
   line += clapEnabled ? F("ON") : F("OFF");
   line += F("|clap_thr=");

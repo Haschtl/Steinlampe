@@ -150,6 +150,12 @@ export function MusicCard() {
                   "Beat: peaks trigger short flashes, decay holds until the next beat. Auto-Lamp shares the threshold."
                 )}
           </div>
+          <div className="text-xs text-foreground/80">
+            <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}
+            <strong>Thr:</strong> {status.musicAutoThr !== undefined ? status.musicAutoThr.toFixed(2) : "—"}{" "}
+            <strong>Mode:</strong> {status.musicMode ?? "—"}{" "}
+            <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}
+          </div>
         </div>
         <div className="space-y-3 rounded-lg border border-border/70 bg-panel/70 p-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-muted">
