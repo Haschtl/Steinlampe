@@ -7,14 +7,19 @@ import { useConnection } from '@/context/connection';
 import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
 import { getPatternBrightness } from '@/lib/patternSim';
 
+const UPDATE_INTERVAL=5
 export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const { sendCmd, status } = useConnection();
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let raf: number;
+    let last = 0;
     const loop = (t: number) => {
-      setTick(t);
+      if (t - last > UPDATE_INTERVAL) {
+        setTick(t);
+        last = t;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -66,7 +71,7 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((p) => {
                     const bg = patternPreview(p.idx);
-                    const energy = getPatternBrightness(p.idx, tick % 12000);
+                    const energy = getPatternBrightness(p.idx, tick);
                     return (
                       <button
                         key={p.idx}
@@ -75,11 +80,11 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                           sendCmd(`mode ${p.idx}`);
                           setOpen(false);
                         }}
-                        className="relative overflow-hidden rounded-2xl border border-border/70 p-4 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                      >
-                        <motion.div
-                          className="absolute inset-0"
-                          style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
+                    className="relative overflow-hidden rounded-2xl border border-border/70 p-4 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <motion.div
+                      className="absolute inset-0"
+                      style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
                         />
                         <motion.div
                           className="absolute inset-0"
@@ -87,11 +92,11 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                         />
                         <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
                         <div className="relative flex items-center justify-between">
-                          <div>
-                            <div className="text-xs uppercase tracking-wide text-muted">Mode {p.idx}</div>
-                            <div className="text-lg font-semibold text-text drop-shadow">{p.label}</div>
-                          </div>
                           <div className="h-10 w-10 rounded-full bg-white/10 shadow-inner" />
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 bg-black/40 px-3 py-2 backdrop-blur-sm">
+                          <div className="text-xs uppercase tracking-wide text-muted">Mode {p.idx}</div>
+                          <div className="text-base font-semibold text-text drop-shadow-sm">{p.label}</div>
                         </div>
                       </button>
                     );
