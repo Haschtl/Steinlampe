@@ -239,6 +239,19 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     const csv = line.replace('[Quick]', '').trim();
     setStatus((s) => ({ ...s, quickCsv: csv, lastStatusAt: Date.now() }));
   }
+  if (line.startsWith('[Mode]')) {
+    handled = true;
+    const num = line.match(/Mode\]\s*([0-9]+)/i);
+    const total = line.match(/\/\s*([0-9]+)/);
+    const name = line.split('-').slice(1).join('-').trim();
+    setStatus((s) => ({
+      ...s,
+      currentPattern: num ? parseInt(num[1], 10) : s.currentPattern,
+      patternCount: total ? parseInt(total[1], 10) : s.patternCount,
+      patternName: name || s.patternName,
+      lastStatusAt: Date.now(),
+    }));
+  }
   if (line.startsWith('[Touch]')) {
     handled = true;
     const active = line.includes('active=1');
