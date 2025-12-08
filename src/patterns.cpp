@@ -80,22 +80,26 @@ float patternBreathing(uint32_t ms)
 float patternBreathingWarm(uint32_t ms)
 {
   const float base = 0.28f;
-  const float peak = 0.92f;
-  const float risePortion = 0.6f; // percent of cycle spent rising
-  const uint32_t period = 8200;
+  const float peak = 0.9f;
+  const float risePortion = 0.62f; // percent of cycle spent rising
+  const uint32_t period = 8800;
   float phase = (ms % period) / (float)period;
   float t = 0.0f;
   if (phase < risePortion)
   {
+    // ease-in-out rise for a soft inhale
     t = phase / risePortion;
-    t = t * t * (3.0f - 2.0f * t); // smooth ease
+    t = t * t * (3.0f - 2.0f * t);
   }
   else
   {
-    t = 1.0f - ((phase - risePortion) / (1.0f - risePortion));
-    t = 1.0f - t * t; // faster fall
+    // gentle, curved exhale without a hard cut
+    float x = (phase - risePortion) / (1.0f - risePortion);
+    t = 1.0f - (x * x * (3.0f - 2.0f * x));
   }
-  return clamp01(base + (peak - base) * t);
+  // tiny drift to avoid mechanical repetition
+  float drift = (smoothNoise(ms, 1400, 0x17) - 0.5f) * 0.03f;
+  return clamp01(base + (peak - base) * t + drift);
 }
 
 /// Clean sine wave
@@ -168,9 +172,10 @@ float patternZigZag(uint32_t ms)
 {
   const uint32_t period = 5200;
   float phase = (ms % period) / (float)period;
-  float tri = (phase < 0.5f) ? (phase * 2.0f) : (1.0f - (phase - 0.5f) * 2.0f);
-  float sparkle = 0.05f * sinf(TWO_PI * phase * 5.0f); // tiny texture to avoid flatness
-  return clamp01(0.18f + 0.8f * tri + sparkle);
+  float tri = 1.0f - fabsf(2.0f * phase - 1.0f); // perfect 0..1..0 triangle
+  // smooth the corners slightly to avoid stepping artifacts
+  tri = tri * tri * (3.0f - 2.0f * tri);
+  return clamp01(0.08f + 0.92f * tri);
 }
 
 /// Steep ramp with hard drop: sawtooth shape
@@ -204,6 +209,47 @@ float patternAurora(uint32_t ms)
   float noise = (smoothNoise(ms, 900, 0x4C) - 0.5f) * 0.10f;
   float shimmer = (smoothNoise(ms, 140, 0x5C) - 0.5f) * 0.05f;
   return clamp01(slow + mid + noise + shimmer);
+}
+
+/// High-speed strobe with light jitter to avoid aliasing
+float patternStrobe(uint32_t ms)
+{
+  const uint32_t basePeriod = 90; // ~11 Hz
+  uint32_t period = basePeriod + (uint32_t)((hash11(ms / basePeriod + 0x33u) - 0.5f) * 16.0f); // slight jitter
+  if (period < 60)
+    period = 60;
+  uint32_t t = ms % period;
+  uint32_t onMs = (uint32_t)(period * 0.16f);
+  float flash = (t < onMs) ? 1.0f : 0.02f;
+  float shimmer = (smoothNoise(ms, 18, 0x7Fu) - 0.5f) * 0.08f;
+  return clamp01(flash + shimmer);
+}
+
+/// Gamma probe: cycles through three fixed levels with eased ramps
+float patternGammaProbe(uint32_t ms)
+{
+  static const float levels[] = {0.10f, 0.40f, 0.80f, 0.40f};
+  static const uint32_t rampMs = 240;
+  static const uint32_t holdMs = 1100;
+  const size_t count = sizeof(levels) / sizeof(levels[0]);
+  uint32_t segLen = rampMs + holdMs;
+  size_t seg = (ms / segLen) % count;
+  uint32_t local = ms % segLen;
+  float from = levels[seg];
+  float to = levels[(seg + 1) % count];
+  float level;
+  if (local < rampMs)
+  {
+    float t = local / (float)rampMs;
+    t = t * t * (3.0f - 2.0f * t);
+    level = from + (to - from) * t;
+  }
+  else
+  {
+    level = to;
+  }
+  float micro = (smoothNoise(ms, 420, 0x6Du) - 0.5f) * 0.02f;
+  return clamp01(level + micro);
 }
 
 /// Polizei (DE): blau-blau / rot-rot mit kurzen Pausen
@@ -341,13 +387,26 @@ float patternCampfire(uint32_t ms)
 /// Linear interpolation between preset levels
 float patternStepFade(uint32_t ms)
 {
-  static const float stops[] = {0.15f, 0.45f, 0.9f, 0.35f};
-  static const uint32_t segmentMs = 2500;
-  size_t seg = (ms / segmentMs) % (sizeof(stops) / sizeof(stops[0]));
-  float progress = (ms % segmentMs) / (float)segmentMs;
-  float start = stops[seg];
-  float end = stops[(seg + 1) % (sizeof(stops) / sizeof(stops[0]))];
-  return start + (end - start) * progress;
+  // Pure steps: climb up, then back down
+  static const float steps[] = {0.15f, 0.32f, 0.5f, 0.68f, 0.9f, 0.68f, 0.5f, 0.32f};
+  static const uint32_t holdMs = 900;
+  size_t idx = (ms / holdMs) % (sizeof(steps) / sizeof(steps[0]));
+  float level = steps[idx];
+  // light smoothing over 10% of the window to avoid audible PWM clicks
+  float prog = (ms % holdMs) / (float)holdMs;
+  if (prog < 0.08f)
+  {
+    float prev = steps[(idx + sizeof(steps) / sizeof(steps[0]) - 1) % (sizeof(steps) / sizeof(steps[0]))];
+    float t = prog / 0.08f;
+    level = prev + (level - prev) * (t * t * (3.0f - 2.0f * t));
+  }
+  else if (prog > 0.92f)
+  {
+    float next = steps[(idx + 1) % (sizeof(steps) / sizeof(steps[0]))];
+    float t = (prog - 0.92f) / 0.08f;
+    level = level + (next - level) * (t * t * (3.0f - 2.0f * t));
+  }
+  return level;
 }
 
 /// Starry twinkle: slow base wave + two flicker layers
@@ -485,28 +544,56 @@ float patternMixedStorm(uint32_t ms)
 /// Fireflies: dark base with rare, soft pulses
 float patternFireflies(uint32_t ms)
 {
-  float base = 0.05f + (smoothNoise(ms, 900, 0xD1) - 0.5f) * 0.04f;
-  const uint32_t window = 1100;
+  float base = 0.06f + (smoothNoise(ms, 1300, 0xD1) - 0.5f) * 0.03f;
+  const uint32_t window = 1300;
   uint32_t idx = ms / window;
   uint32_t start = idx * window;
   float flash = 0.0f;
-  // multiple small pulses possible per window
-  for (int k = 0; k < 2; ++k)
+  // multiple small pulses possible per window, but softer
+  for (int k = 0; k < 3; ++k)
   {
     uint32_t salt = idx * 0x9E37u + (uint32_t)k * 0x45u;
     float chance = hash11(salt);
-    if (chance < 0.35f)
+    if (chance < 0.5f)
       continue;
     uint32_t offset = (uint32_t)(hash11(salt ^ 0xAAu) * (window - 280));
     uint32_t t = ms - start;
     if (t >= offset && t < offset + 280)
     {
       uint32_t dt = t - offset;
-      float env = expf(-(float)dt / 140.0f);
-      flash += 0.75f * env * (0.7f + 0.3f * hash11(salt ^ 0x11u));
+      float env = expf(-(float)dt / 190.0f);
+      float rise = (dt < 70) ? (dt / 70.0f) : 1.0f;
+      flash += 0.55f * rise * env * (0.65f + 0.35f * hash11(salt ^ 0x11u));
     }
   }
   return clamp01(base + flash);
+}
+
+/// Leuchtstoffröhre: mains ripple with occasional brief sputter
+float patternFluorescent(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  // mains ripple around a base level
+  float ripple = 0.05f * sinf(t * TWO_PI * 2.0f) + 0.03f * sinf(t * TWO_PI * 6.0f);
+  float shimmer = (smoothNoise(ms, 22, 0xC1) - 0.5f) * 0.05f;
+  float base = 0.70f + ripple + shimmer;
+
+  // occasional sputter/dropout
+  const uint32_t window = 4200;
+  uint32_t idx = ms / window;
+  if (hash11(idx * 0xE7u) > 0.82f)
+  {
+    uint32_t start = idx * window;
+    uint32_t off = (uint32_t)(hash11(idx * 0x5Fu) * (window - 520));
+    uint32_t dt = ms - start;
+    if (dt >= off && dt < off + 520)
+    {
+      float x = (dt - off) / 520.0f;
+      float dip = 0.35f * expf(-x * 4.5f) * (0.6f + 0.4f * sinf(x * TWO_PI * 3.0f));
+      base -= dip;
+    }
+  }
+  return clamp01(base);
 }
 
 /// Popcorn: dark base with quick popping spikes
@@ -540,20 +627,21 @@ float patternPopcorn(uint32_t ms)
 float patternChristmas(uint32_t ms)
 {
   float t = ms / 1000.0f;
-  float wave = 0.25f + 0.25f * sinf(t * 0.35f * TWO_PI);
-  float shimmer = (smoothNoise(ms, 120, 0xD4) - 0.5f) * 0.12f;
+  float wave = 0.25f + 0.23f * sinf(t * 0.22f * TWO_PI);
+  float shimmer = (smoothNoise(ms, 180, 0xD4) - 0.5f) * 0.08f;
   float burst = 0.0f;
-  const uint32_t window = 1600;
+  const uint32_t window = 2300;
   uint32_t idx = ms / window;
-  if (hash11(idx * 0xABu) > 0.6f)
+  if (hash11(idx * 0xABu) > 0.72f)
   {
     uint32_t start = idx * window;
-    uint32_t off = (uint32_t)(hash11(idx * 0x37u) * (window - 400));
+    uint32_t off = (uint32_t)(hash11(idx * 0x37u) * (window - 520));
     uint32_t dt = ms - start;
-    if (dt >= off && dt < off + 400)
+    if (dt >= off && dt < off + 520)
     {
-      float x = (dt - off) / 400.0f;
-      burst = (1.0f - (x - 0.5f) * (x - 0.5f) * 4.0f) * 0.5f; // parabola-ish pulse
+      float x = (dt - off) / 520.0f;
+      float env = sinf(x * PI); // soft bell
+      burst = 0.38f * env * env;
     }
   }
   return clamp01(wave + shimmer + burst);
@@ -748,6 +836,7 @@ const Pattern PATTERNS[] = {
     {"Heartbeat Alarm", patternHeartbeatAlarm, 10000},
     {"Comet", patternComet, 12000},
     {"Aurora", patternAurora, 18000},
+    {"Strobo", patternStrobe, 0},
     {"Polizei DE", patternPoliceDE, 8000},
     {"Camera", patternCameraFlash, 8000},
     {"TV Static", patternTVStatic, 8000},
@@ -760,6 +849,7 @@ const Pattern PATTERNS[] = {
     {"Zwinkern", patternTwinkle, 16000},
     {"Gluehwuermchen", patternFireflies, 12000},
     {"Popcorn", patternPopcorn, 10000},
+    {"Leuchtstoffroehre", patternFluorescent, 12000},
     {"Weihnacht", patternChristmas, 12000},
     {"Saber Idle", patternSaberIdle, 12000},
     {"Saber Clash", patternSaberClash, 10000},
@@ -776,6 +866,7 @@ const Pattern PATTERNS[] = {
     {"Sheet Lightning", patternSheetLightning, 0},
     {"Mixed Storm", patternMixedStorm, 0},
     {"Sonnenuntergang", patternSunset, 0},
+    {"Gamma Probe", patternGammaProbe, 0},
     {"Alert", patternAlert, 0},
     {"SOS", patternSOS, 0},
     {"Custom", patternCustom, 0},

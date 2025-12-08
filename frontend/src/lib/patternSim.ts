@@ -37,19 +37,20 @@ const patternBreathing = (ms: number) => {
 
 const patternBreathingWarm = (ms: number) => {
   const base = 0.28;
-  const peak = 0.92;
-  const risePortion = 0.6;
-  const period = 8200;
+  const peak = 0.9;
+  const risePortion = 0.62;
+  const period = 8800;
   const phase = (ms % period) / period;
   let t = 0;
   if (phase < risePortion) {
     t = phase / risePortion;
     t = t * t * (3 - 2 * t);
   } else {
-    t = 1 - ((phase - risePortion) / (1 - risePortion));
-    t = 1 - t * t;
+    const x = (phase - risePortion) / (1 - risePortion);
+    t = 1 - (x * x * (3 - 2 * x));
   }
-  return clamp01(base + (peak - base) * t);
+  const drift = (smoothNoise(ms, 1400, 0x17) - 0.5) * 0.03;
+  return clamp01(base + (peak - base) * t + drift);
 };
 
 const patternBreathing2 = (ms: number) => {
@@ -79,9 +80,9 @@ const patternSinus = (ms: number) => {
 const patternZigZag = (ms: number) => {
   const period = 5200;
   const phase = (ms % period) / period;
-  const tri = phase < 0.5 ? phase * 2 : 1 - (phase - 0.5) * 2;
-  const sparkle = 0.05 * Math.sin(TWO_PI * phase * 5);
-  return clamp01(0.18 + 0.8 * tri + sparkle);
+  let tri = 1 - Math.abs(2 * phase - 1);
+  tri = tri * tri * (3 - 2 * tri);
+  return clamp01(0.08 + 0.92 * tri);
 };
 
 const patternSawtooth = (ms: number) => {
@@ -151,6 +152,17 @@ const patternAurora = (ms: number) => {
   const noise = (smoothNoise(ms, 900, 0x4c) - 0.5) * 0.1;
   const shimmer = (smoothNoise(ms, 140, 0x5c) - 0.5) * 0.05;
   return clamp01(slow + mid + noise + shimmer);
+};
+
+const patternStrobe = (ms: number) => {
+  const basePeriod = 90;
+  let period = basePeriod + Math.floor((hash11(Math.floor(ms / basePeriod) + 0x33) - 0.5) * 16);
+  if (period < 60) period = 60;
+  const t = ms % period;
+  const onMs = Math.floor(period * 0.16);
+  const flash = t < onMs ? 1 : 0.02;
+  const shimmer = (smoothNoise(ms, 18, 0x7f) - 0.5) * 0.08;
+  return clamp01(flash + shimmer);
 };
 
 const patternPoliceDE = (ms: number) => {
@@ -246,13 +258,25 @@ const patternCampfire = (ms: number) => {
 };
 
 const patternStepFade = (ms: number) => {
-  const stops = [0.15, 0.45, 0.9, 0.35];
-  const segmentMs = 2500;
-  const seg = Math.floor(ms / segmentMs) % stops.length;
-  const progress = (ms % segmentMs) / segmentMs;
-  const start = stops[seg];
-  const end = stops[(seg + 1) % stops.length];
-  return start + (end - start) * progress;
+  const steps = [0.15, 0.32, 0.5, 0.68, 0.9, 0.68, 0.5, 0.32];
+  const holdMs = 900;
+  const len = steps.length;
+  const idx = Math.floor(ms / holdMs) % len;
+  const level = steps[idx];
+  const prog = (ms % holdMs) / holdMs;
+  let out = level;
+  if (prog < 0.08) {
+    const prev = steps[(idx + len - 1) % len];
+    let t = prog / 0.08;
+    t = t * t * (3 - 2 * t);
+    out = prev + (level - prev) * t;
+  } else if (prog > 0.92) {
+    const next = steps[(idx + 1) % len];
+    let t = (prog - 0.92) / 0.08;
+    t = t * t * (3 - 2 * t);
+    out = level + (next - level) * t;
+  }
+  return clamp01(out);
 };
 
 const patternTwinkle = (ms: number) => {
@@ -354,20 +378,21 @@ const patternMixedStorm = (ms: number) => {
 };
 
 const patternFireflies = (ms: number) => {
-  const base = 0.05 + (smoothNoise(ms, 900, 0xd1) - 0.5) * 0.04;
-  const window = 1100;
+  const base = 0.06 + (smoothNoise(ms, 1300, 0xd1) - 0.5) * 0.03;
+  const window = 1300;
   const idx = Math.floor(ms / window);
   const start = idx * window;
   let flash = 0;
-  for (let k = 0; k < 2; k += 1) {
+  for (let k = 0; k < 3; k += 1) {
     const salt = idx * 0x9e37 + k * 0x45;
-    if (hash11(salt) < 0.35) continue;
+    if (hash11(salt) < 0.5) continue;
     const offset = Math.floor(hash11(salt ^ 0xaa) * (window - 280));
     const t = ms - start;
     if (t >= offset && t < offset + 280) {
       const dt = t - offset;
-      const env = Math.exp(-dt / 140);
-      flash += 0.75 * env * (0.7 + 0.3 * hash11(salt ^ 0x11));
+      const env = Math.exp(-dt / 190);
+      const rise = dt < 70 ? dt / 70 : 1;
+      flash += 0.55 * rise * env * (0.65 + 0.35 * hash11(salt ^ 0x11));
     }
   }
   return clamp01(base + flash);
@@ -390,6 +415,25 @@ const patternPopcorn = (ms: number) => {
     }
   }
   return clamp01(base + pop);
+};
+
+const patternFluorescent = (ms: number) => {
+  const t = ms / 1000;
+  const ripple = 0.05 * Math.sin(t * TWO_PI * 2) + 0.03 * Math.sin(t * TWO_PI * 6);
+  const shimmer = (smoothNoise(ms, 22, 0xc1) - 0.5) * 0.05;
+  let base = 0.7 + ripple + shimmer;
+  const window = 4200;
+  const idx = Math.floor(ms / window);
+  if (hash11(idx * 0xe7) > 0.82) {
+    const off = Math.floor(hash11(idx * 0x5f) * (window - 520));
+    const dt = ms - idx * window;
+    if (dt >= off && dt < off + 520) {
+      const x = (dt - off) / 520;
+      const dip = 0.35 * Math.exp(-x * 4.5) * (0.6 + 0.4 * Math.sin(x * TWO_PI * 3));
+      base -= dip;
+    }
+  }
+  return clamp01(base);
 };
 
 const patternSunset = (ms: number) => {
@@ -471,13 +515,47 @@ const patternSaberClash = (ms: number) => {
 };
 
 const patternHoliday = (ms: number) => {
-  const wave = 0.4 + 0.3 * Math.sin((ms / 1000) * TWO_PI);
-  const flicker = (smoothNoise(ms, 120, 0x12) - 0.5) * 0.08;
-  return clamp01(wave + flicker);
+  const t = ms / 1000;
+  const wave = 0.25 + 0.23 * Math.sin(t * 0.22 * TWO_PI);
+  const flicker = (smoothNoise(ms, 180, 0x12) - 0.5) * 0.08;
+  const window = 2300;
+  const idx = Math.floor(ms / window);
+  let burst = 0;
+  if (hash11(idx * 0xab) > 0.72) {
+    const off = Math.floor(hash11(idx * 0x37) * (window - 520));
+    const dt = ms - idx * window;
+    if (dt >= off && dt < off + 520) {
+      const x = (dt - off) / 520;
+      const env = Math.sin(x * Math.PI);
+      burst = 0.38 * env * env;
+    }
+  }
+  return clamp01(wave + flicker + burst);
 };
 
 const patternCustom = (ms: number) => {
   return clamp01(0.5 + 0.4 * Math.sin((ms / 1000) * TWO_PI));
+};
+
+const patternGammaProbe = (ms: number) => {
+  const levels = [0.1, 0.4, 0.8, 0.4];
+  const rampMs = 240;
+  const holdMs = 1100;
+  const segLen = rampMs + holdMs;
+  const seg = Math.floor(ms / segLen) % levels.length;
+  const local = ms % segLen;
+  const from = levels[seg];
+  const to = levels[(seg + 1) % levels.length];
+  let level: number;
+  if (local < rampMs) {
+    let t = local / rampMs;
+    t = t * t * (3 - 2 * t);
+    level = from + (to - from) * t;
+  } else {
+    level = to;
+  }
+  const micro = (smoothNoise(ms, 420, 0x6d) - 0.5) * 0.02;
+  return clamp01(level + micro);
 };
 
 const patternMusic = (ms: number) => {
@@ -493,30 +571,32 @@ export const patternFns: ((ms: number) => number)[] = [
   patternZigZag,
   patternSawtooth,
   patternPulse,
-  patternComet,
-  patternAurora,
-  patternSparkle,
-  patternFireflies,
-  patternSunset,
   patternHeartbeat,
   patternHeartbeatAlarm,
-  patternAlert,
-  patternSOS,
-  patternStepFade,
-  patternTwinkle,
-  patternPopcorn,
+  patternComet,
+  patternAurora,
+  patternStrobe,
+  patternPoliceDE,
+  patternCameraFlash,
+  patternTVStatic,
+  patternHal9000,
+  patternSparkle,
   patternCandleSoft,
   patternCandle,
   patternCampfire,
-  patternTVStatic,
-  patternHal9000,
+  patternStepFade,
+  patternTwinkle,
+  patternFireflies,
+  patternPopcorn,
+  patternFluorescent,
+  patternHoliday,
+  patternSaberIdle,
+  patternSaberClash,
   patternEmergencyBridge,
   patternArcReactor,
   patternWarpCore,
   patternKitt,
   patternTronGrid,
-  patternSaberIdle,
-  patternSaberClash,
   patternThunder,
   patternDistantStorm,
   patternRollingThunder,
@@ -524,9 +604,10 @@ export const patternFns: ((ms: number) => number)[] = [
   patternStrobeFront,
   patternSheetLightning,
   patternMixedStorm,
-  patternPoliceDE,
-  patternCameraFlash,
-  patternHoliday,
+  patternSunset,
+  patternGammaProbe,
+  patternAlert,
+  patternSOS,
   patternCustom,
   patternMusic,
 ];
@@ -536,4 +617,3 @@ export function getPatternBrightness(idx: number, ms: number): number {
   if (!fn) return 0;
   return fn(ms);
 }
-
