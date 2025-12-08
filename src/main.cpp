@@ -521,9 +521,9 @@ uint64_t computeDefaultQuickMask()
     if (idx < 64)
       mask |= (1ULL << idx);
   }
-  // Fallback to first pattern if nothing set (should not happen)
-  if (mask == 0 && PATTERN_COUNT > 0)
-    mask = 1ULL;
+  // Fallback to the first profile bit if nothing set (should not happen)
+  if (mask == 0 && PROFILE_SLOTS > 0 && PATTERN_COUNT < 64)
+    mask = (1ULL << PATTERN_COUNT);
   return mask;
 }
 

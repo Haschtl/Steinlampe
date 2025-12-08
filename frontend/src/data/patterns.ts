@@ -56,10 +56,10 @@ export function patternLabel(idx: number, name?: string) {
 
 export const patternGroups: { title: string; indices: number[] }[] = [
   { title: 'Ambient', indices: [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 18, 23, 26, 42] },
-  { title: 'Pulse / Alert', indices: [9, 10, 13, 22, 44, 45] },
+  { title: 'Pulse / Alert', indices: [9, 10, 13, 14, 22, 44, 45] },
   { title: 'Fire', indices: [19, 20, 21] },
-  { title: 'Sci-Fi / Media', indices: [14, 15, 16, 17, 28, 29, 30, 31, 32, 33, 34] },
+  { title: 'Sci-Fi / Media', indices: [15, 16, 17, 28, 29, 30, 31, 32, 33, 34] },
   { title: 'Weather', indices: [35, 36, 37, 38, 39, 40, 41] },
-  { title: 'Culture / Signals', indices: [14, 27, 45] },
+  { title: 'Culture / Signals', indices: [27, 45] },
   { title: 'Utility', indices: [43, 46, 47] },
 ];
