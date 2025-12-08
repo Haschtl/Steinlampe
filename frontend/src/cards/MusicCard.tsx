@@ -12,6 +12,8 @@ export function MusicCard() {
   const [gain, setGain] = useState(1);
   const [thr, setThr] = useState(0.35);
   const [cool, setCool] = useState(800);
+  const [autoOn, setAutoOn] = useState(false);
+  const [autoThr, setAutoThr] = useState(0.4);
   const [clap1, setClap1] = useState('mode next');
   const [clap2, setClap2] = useState('toggle');
   const [clap3, setClap3] = useState('mode prev');
@@ -21,7 +23,9 @@ export function MusicCard() {
     if (typeof status.musicGain === 'number') setGain(status.musicGain);
     if (typeof status.clapThreshold === 'number') setThr(status.clapThreshold);
     if (typeof status.clapCooldownMs === 'number') setCool(status.clapCooldownMs);
-  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain]);
+    if (typeof status.musicAuto === 'boolean') setAutoOn(status.musicAuto);
+    if (typeof status.musicAutoThr === 'number') setAutoThr(status.musicAutoThr);
+  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr]);
 
   return (
     <Card>
@@ -46,7 +50,7 @@ export function MusicCard() {
       <CardContent className="space-y-3">
         <div className="flex items-center gap-2">
           <Mic className="h-4 w-4 text-muted" />
-          <Label className="m-0">Music gain</Label>
+          <Label className="m-0"><Trans k="label.musicGain">Music gain</Trans></Label>
           <Input
             type="number"
             min={0.1}
@@ -57,6 +61,30 @@ export function MusicCard() {
             onBlur={(e) => sendCmd(`music sens ${e.target.value}`)}
             className="w-24"
             suffix="x"
+          />
+          <label className="pill cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={autoOn}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setAutoOn(next);
+                sendCmd(`music auto ${next ? 'on' : 'off'}`);
+              }}
+            />{' '}
+            <Trans k="music.autoLamp">Auto Lamp</Trans>
+          </label>
+          <Label className="m-0"><Trans k="label.threshold">Thr</Trans></Label>
+          <Input
+            type="number"
+            min={0.05}
+            max={1.5}
+            step={0.01}
+            value={autoThr}
+            onChange={(e) => setAutoThr(Number(e.target.value))}
+            onBlur={(e) => sendCmd(`music auto thr ${e.target.value}`)}
+            className="w-20"
           />
         </div>
         <div className="flex items-center gap-2">

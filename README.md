@@ -28,7 +28,7 @@ flowchart LR
 
 - Old toggle switch: one pole to GPIO32, other pole to GND (internal pull-up).
 - Touch: lever isolated from switch contact, wired via 1 MΩ to GPIO27; optional 2–5 MΩ bleeder to GND.
-- Optional sensors: GPIO35 for ambient light, GPIO36 for music/audio (only if built with `ENABLE_LIGHT_SENSOR` / `ENABLE_MUSIC_MODE`).
+- Optional sensors: GPIO35 (or override) for ambient light, GPIO36/SVP (or override) for music/audio (only if built with `ENABLE_LIGHT_SENSOR` / `ENABLE_MUSIC_MODE`).
 
 ## Features
 
@@ -121,10 +121,10 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `custom v1,v2,...`  | Set custom pattern values (0..1)                           |
 | `custom step <ms>`  | Set custom pattern step duration                           |
 | `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
-| `light gain <f>` / `light clamp <min> <max>` | Adjust sensor gain and clamp (if built with ENABLE_LIGHT_SENSOR) |
+| `light gain <f>` / `light clamp <min> <max>` / `light alpha <f>` | Adjust sensor gain, clamp and LPF smoothing (if built with ENABLE_LIGHT_SENSOR) |
 | `poti on/off` / `poti alpha <0..1>` / `poti delta <0..0.5>` / `poti off <0..0.5>` / `poti sample <ms>` | Configure optional brightness knob (ENABLE_POTI) |
 | `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
-| `music sens <f>`    | Adjust music sensitivity (if built with ENABLE_MUSIC_MODE) |
+| `music sens <f>` / `music auto on|off` / `music auto thr <f>` | Adjust music sensitivity; auto-lamp (switch ON + loudness > thr) |
 | `demo [seconds]` / `demo off` | Cycle quick-list entries with fixed dwell (default 6s) |
 | `push on/off` / `push debounce <ms>` / `push double <ms>` / `push hold <ms>` / `push step_ms <ms>` / `push step <0..0.5>` | Configure optional momentary push button (ENABLE_PUSH_BUTTON) |
 | `cfg export`        | Dump as `cfg import ...` line you can paste back in          |

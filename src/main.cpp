@@ -100,6 +100,8 @@ static const char *PREF_KEY_CLAP_COOL = "clap_cl";
 static const char *PREF_KEY_CLAP_CMD1 = "clap_c1";
 static const char *PREF_KEY_CLAP_CMD2 = "clap_c2";
 static const char *PREF_KEY_CLAP_CMD3 = "clap_c3";
+static const char *PREF_KEY_MUSIC_AUTOLAMP = "mus_auto";
+static const char *PREF_KEY_MUSIC_AUTOTHR = "mus_thr";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
@@ -242,6 +244,8 @@ bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
+bool musicAutoLamp = false;
+float musicAutoThr = 0.4f;
 bool clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
 float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
 uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
@@ -766,6 +770,8 @@ void saveSettings()
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
   prefs.putFloat(PREF_KEY_MUSIC_GAIN, musicGain);
+  prefs.putBool(PREF_KEY_MUSIC_AUTOLAMP, musicAutoLamp);
+  prefs.putFloat(PREF_KEY_MUSIC_AUTOTHR, musicAutoThr);
   prefs.putBool(PREF_KEY_CLAP_EN, clapEnabled);
   prefs.putFloat(PREF_KEY_CLAP_THR, clapThreshold);
   prefs.putUInt(PREF_KEY_CLAP_COOL, clapCooldownMs);
@@ -910,6 +916,10 @@ void loadSettings()
   musicGain = prefs.getFloat(PREF_KEY_MUSIC_GAIN, Settings::MUSIC_GAIN_DEFAULT);
   if (musicGain < 0.1f) musicGain = 0.1f;
   if (musicGain > 5.0f) musicGain = 5.0f;
+  musicAutoLamp = prefs.getBool(PREF_KEY_MUSIC_AUTOLAMP, false);
+  musicAutoThr = prefs.getFloat(PREF_KEY_MUSIC_AUTOTHR, 0.4f);
+  if (musicAutoThr < 0.05f) musicAutoThr = 0.05f;
+  if (musicAutoThr > 1.5f) musicAutoThr = 1.5f;
   clapEnabled = prefs.getBool(PREF_KEY_CLAP_EN, Settings::CLAP_DEFAULT_ENABLED);
   clapThreshold = prefs.getFloat(PREF_KEY_CLAP_THR, Settings::CLAP_THRESHOLD_DEFAULT);
   clapCooldownMs = prefs.getUInt(PREF_KEY_CLAP_COOL, Settings::CLAP_COOLDOWN_MS_DEFAULT);
@@ -1559,6 +1569,10 @@ void printSensorsStructured()
 #if ENABLE_MUSIC_MODE
   line += F("|music_env=");
   line += String(musicFiltered, 3);
+  line += F("|music_auto=");
+  line += musicAutoLamp ? F("ON") : F("OFF");
+  line += F("|music_thr=");
+  line += String(musicAutoThr, 2);
 #else
   line += F("|music_env=N/A");
 #endif
@@ -3022,6 +3036,37 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Music] gain=")) + String(g, 2));
     }
+    else if (arg.startsWith("auto"))
+    {
+      String rest = arg.substring(4);
+      rest.trim();
+      rest.toLowerCase();
+      if (rest == "on")
+      {
+        musicAutoLamp = true;
+        saveSettings();
+        sendFeedback(F("[Music] auto lamp ON"));
+      }
+      else if (rest == "off")
+      {
+        musicAutoLamp = false;
+        saveSettings();
+        sendFeedback(F("[Music] auto lamp OFF"));
+      }
+      else if (rest.startsWith("thr"))
+      {
+        float v = rest.substring(3).toFloat();
+        if (v < 0.05f) v = 0.05f;
+        if (v > 1.5f) v = 1.5f;
+        musicAutoThr = v;
+        saveSettings();
+        sendFeedback(String(F("[Music] auto thr=")) + String(v, 2));
+      }
+      else
+      {
+        sendFeedback(F("Usage: music auto on|off|thr <val>"));
+      }
+    }
     else
     {
       sendFeedback(String(F("[Music] level=")) + String(musicFiltered, 3) + F(" en=") + (musicEnabled ? F("1") : F("0")));
@@ -3740,7 +3785,7 @@ void updateLightSensor()
 #if ENABLE_MUSIC_MODE
 void updateMusicSensor()
 {
-  if (!musicEnabled && !clapEnabled)
+  if (!musicEnabled && !clapEnabled && !musicAutoLamp)
     return;
   uint32_t now = millis();
   if (now - lastMusicSampleMs < Settings::MUSIC_SAMPLE_MS)
@@ -3752,6 +3797,12 @@ void updateMusicSensor()
   float val = (float)raw / 4095.0f;
   env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
   musicFiltered = clamp01(env * musicGain);
+  // Auto lamp on when switch is ON and ambient loud
+  if (musicAutoLamp && switchDebouncedState && musicFiltered >= musicAutoThr)
+  {
+    setLampEnabled(true, "music auto");
+    lastActivityMs = now;
+  }
   if (clapTraining && (now - clapTrainLastLog) >= 200)
   {
     clapTrainLastLog = now;

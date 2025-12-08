@@ -72,7 +72,7 @@ export function LightCard() {
             />
             <Button onClick={() => sendCmd('light calib')}><Trans k="btn.calibrate">Calibrate</Trans></Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Label className="m-0"><Trans k="label.clamp">Dim-Limits</Trans></Label>
             <Input
               type="number"
@@ -85,7 +85,7 @@ export function LightCard() {
                 const mn = Number(e.target.value);
                 sendCmd(`light clamp ${mn} ${clampMax}`);
               }}
-              className="w-24"
+              className="w-20"
               suffix="min"
             />
             <Input
@@ -99,7 +99,7 @@ export function LightCard() {
                 const mx = Number(e.target.value);
                 sendCmd(`light clamp ${clampMin} ${mx}`);
               }}
-              className="w-24"
+              className="w-20"
               suffix="max"
             />
             <span className="text-sm text-muted"><Trans k="desc.clamp">Min/Max Zielhelligkeit aus Lichtsensor</Trans></span>
