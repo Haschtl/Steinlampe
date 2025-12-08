@@ -799,6 +799,8 @@ void loadSettings()
   if (idx >= PATTERN_COUNT)
     idx = 0;
   currentPattern = idx;
+  if (strcmp(PATTERNS[currentPattern].name, "SOS") == 0)
+    currentPattern = 0;
   autoCycle = prefs.getBool(PREF_KEY_AUTO, Settings::DEFAULT_AUTOCYCLE);
   patternSpeedScale = prefs.getFloat(PREF_KEY_PAT_SCALE, 1.0f);
   if (patternSpeedScale < 0.1f)
@@ -3193,7 +3195,6 @@ void handleCommand(String line)
       if (sosIdx >= 0)
         setPattern((size_t)sosIdx, true, false);
       sosModeActive = true;
-      saveSettings();
       sendFeedback(F("[SOS] aktiv (100% Helligkeit)"));
     }
     return;

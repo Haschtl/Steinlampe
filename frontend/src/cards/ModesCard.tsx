@@ -44,7 +44,9 @@ export function ModesCard() {
 
   const handlePatternChange = (val: number) => {
     setPattern(val);
-    sendCmd(`mode ${val}`).catch((e) => console.warn(e));
+    sendCmd(`mode ${val}`)
+      .then(() => sendCmd('status'))
+      .catch((e) => console.warn(e));
   };
 
   const handlePatternSpeed = (val: number) => {

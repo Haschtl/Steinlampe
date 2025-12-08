@@ -136,6 +136,14 @@ export function useBle(): BleApi {
         toast.error('Status error: ' + msg);
         lastToast.current = msg;
       }
+      cleanup();
+      if (autoReconnectRef.current && deviceRef.current) {
+        setTimeout(() => {
+          if (deviceRef.current && !deviceRef.current.gatt?.connected) {
+            connectWithDevice(deviceRef.current, true).catch(() => undefined);
+          }
+        }, 800);
+      }
     }
   }, [pushLog, sendCmd]);
 

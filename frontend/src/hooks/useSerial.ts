@@ -101,8 +101,9 @@ export function useSerial(): SerialApi {
       await sendCmd('custom export');
     } catch (e) {
       pushLog('Status error: ' + e);
+      disconnect();
     }
-  }, [pushLog, sendCmd]);
+  }, [disconnect, pushLog, sendCmd]);
 
   const connect = useCallback(async () => {
     if (!('serial' in navigator)) {
