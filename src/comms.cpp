@@ -7,6 +7,8 @@
 #endif
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 #include "midi_ble.h"
+// // UUID duplicated here so we can place it into scan response only.
+// static constexpr const char *BLE_MIDI_SERVICE_UUID = "03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
 #endif
 
 #if ENABLE_BT_SERIAL
@@ -16,9 +18,11 @@
 
 #if ENABLE_BLE
 #include <BLEAdvertising.h>
+// #include <BLEAdvertisementData.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <BLE2902.h>
 #endif
 
 /**
@@ -234,14 +238,32 @@ void startBle()
   BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
   bleCommandCharacteristic = service->createCharacteristic(
       Settings::BLE_COMMAND_CHAR_UUID,
-      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR | BLECharacteristic::PROPERTY_NOTIFY);
+      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
   bleStatusCharacteristic = service->createCharacteristic(
       Settings::BLE_STATUS_CHAR_UUID,
-      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
+  auto *cccStat = new BLE2902();
+  cccStat->setNotifications(true);
+  cccStat->setIndications(true);
+  bleStatusCharacteristic->addDescriptor(cccStat);
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
+
+  // Keep lamp service in the primary advertisement (for WebBLE filters).
+//   BLEAdvertisementData advData;
+//   advData.setName(Settings::BLE_DEVICE_NAME);
+//   advData.addServiceUUID(BLEUUID(Settings::BLE_SERVICE_UUID));
+//   advertising->setAdvertisementData(advData);
+
+//   // Put optional/extra services into the scan response to avoid overflowing the adv payload.
+//   BLEAdvertisementData scanData;
+// #if ENABLE_BLE_MIDI
+  // scanData.addServiceUUID(BLEUUID(BLE_MIDI_SERVICE_UUID));
+//   setupBleMidi(bleServer, advertising);
+// #endif
+//   advertising->setScanResponseData(scanData);
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);
@@ -329,10 +351,11 @@ void sendFeedback(const String &line)
   }
 #endif
 #if ENABLE_BLE
-  if (bleClientConnected && bleCommandCharacteristic)
+  // Send feedback only via status characteristic (notify/indicate) to keep GATT simple for clients.
+  if (bleClientConnected && bleStatusCharacteristic)
   {
-    bleCommandCharacteristic->setValue(line.c_str());
-    bleCommandCharacteristic->notify();
+    bleStatusCharacteristic->setValue(line.c_str());
+    bleStatusCharacteristic->notify();
   }
 #endif
 }

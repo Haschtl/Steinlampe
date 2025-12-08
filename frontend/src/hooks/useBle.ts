@@ -183,9 +183,9 @@ export function useBle(): BleApi {
         if (!handled || !filterParsed) pushLog(line);
       };
 
-      const unsubCmd = await subscribeToLines(cmdChar, lineHandler);
+      // Only subscribe to the status characteristic; command char stays write-only.
       const unsubStat = await subscribeToLines(statusChar, lineHandler);
-      unsubRef.current = [unsubCmd, unsubStat];
+      unsubRef.current = [unsubStat];
 
       const onDisc = () => {
         pushLog('Disconnected');

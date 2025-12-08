@@ -34,10 +34,10 @@ async def main():
         #     await client.start_notify(CHAR_UUID, on_notify)
         # except Exception as e:
         #     print("Hinweis: command notify start fehlgeschlagen:", e)
-        # try:
-        #     await client.start_notify(STATUS_UUID, on_notify)
-        # except Exception:
-        #     pass
+        try:
+            await client.start_notify(STATUS_UUID, on_notify)
+        except Exception:
+            pass
         print("Verbunden. Tippe Befehle (z.B. 'wake 180'), leer oder Ctrl+C zum Beenden.")
         while True:
             try:

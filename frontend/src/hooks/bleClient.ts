@@ -40,19 +40,37 @@ export async function connectDevice(device: BluetoothDevice): Promise<BleHandles
     console.error('BLE GATT connect failed', e);
     throw new Error(`GATT connect failed: ${e instanceof Error ? e.message : String(e)}`);
   }
+  const fetchService = async (): Promise<BluetoothRemoteGATTService> => {
+    try {
+      return await server.getPrimaryService(SERVICE);
+    } catch (e) {
+      // fallback: scan all services for a partial match
+      const services = await server.getPrimaryServices();
+      const targetNoDash = SERVICE.replace(/-/g, '').toLowerCase();
+      const match =
+        services.find((s) => {
+          const u = (s.uuid || '').toLowerCase();
+          return u.includes(SERVICE.toLowerCase()) || u.replace(/-/g, '').includes(targetNoDash);
+        }) || null;
+      if (match) return match;
+      console.warn('BLE: no matching service; available:', services.map((s) => s.uuid));
+      throw e;
+    }
+  };
+
   let svc: BluetoothRemoteGATTService | null = null;
   try {
-    svc = await server.getPrimaryService(SERVICE);
+    svc = await fetchService();
   } catch (e) {
-    const services = await server.getPrimaryServices();
-    const targetNoDash = SERVICE.replace(/-/g, '').toLowerCase();
-    svc =
-      services.find((s) => {
-        const u = (s.uuid || '').toLowerCase();
-        return u.includes(SERVICE.toLowerCase()) || u.replace(/-/g, '').includes(targetNoDash);
-      }) || null;
-    if (!svc) {
-      console.warn('BLE: no matching service; available:', services.map((s) => s.uuid));
+    // If discovery failed due to a stale/disconnected server, retry a fresh connect once.
+    if (!server.connected) {
+      try {
+        server = await device.gatt!.connect();
+        svc = await fetchService();
+      } catch (e2) {
+        throw e2;
+      }
+    } else {
       throw e;
     }
   }
