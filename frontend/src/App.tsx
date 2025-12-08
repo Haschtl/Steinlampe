@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap } from 'lucide-react';
@@ -77,6 +77,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [showConnectOverlay, setShowConnectOverlay] = useState(true);
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
@@ -113,6 +114,18 @@ export default function App() {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [logLines.length, liveLog]);
+
+  const handleCommandSend = useCallback(
+    (val: string) => {
+      const trimmed = val.trim();
+      if (!trimmed) return;
+      sendCmd(trimmed);
+      setCommandHistory((prev) => [...prev.slice(-99), trimmed]);
+      // History position stays at "end" after send; next ArrowUp starts from latest
+      setCommandInput('');
+    },
+    [sendCmd],
+  );
 
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
@@ -428,35 +441,41 @@ export default function App() {
                 </div>
                 <div className="flex items-stretch overflow-hidden rounded-md border border-border">
                   <Input
-                    className="w-full border-none"
-                    placeholder={t("input.command", "Type command")}
-                    value={commandInput}
-                    onChange={(e) => setCommandInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const val = commandInput.trim();
-                        if (val) {
-                          sendCmd(val);
-                          setCommandInput("");
-                        }
-                      }
-                    }}
-                  />
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="rounded-none border-l border-border"
-                    onClick={() => {
-                      const val = commandInput.trim();
-                      if (val) {
-                        sendCmd(val);
-                        setCommandInput("");
-                      }
-                    }}
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
+                  className="w-full border-none"
+                  placeholder={t("input.command", "Type command")}
+                  value={commandInput}
+                  onChange={(e) => setCommandInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleCommandSend(commandInput);
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      // up: walk backward through history
+                      setCommandInput((current) => {
+                        const idx = commandHistory.lastIndexOf(current);
+                        const startIdx = idx >= 0 ? idx - 1 : commandHistory.length - 1;
+                        const nextIdx = Math.max(startIdx, 0);
+                        return commandHistory[nextIdx] ?? current;
+                      });
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      // down: walk forward; if past the end, clear
+                      const idx = commandHistory.indexOf(commandInput);
+                      const nextIdx = idx >= 0 ? idx + 1 : commandHistory.length;
+                      setCommandInput(commandHistory[nextIdx] ?? '');
+                    }
+                  }}
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="rounded-none border-l border-border"
+                  onClick={() => handleCommandSend(commandInput)}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
               </div>
             )}
           </div>

@@ -121,7 +121,7 @@ export function MusicCard() {
               value={autoThr}
               onChange={(e) => setAutoThr(Number(e.target.value))}
               onBlur={(e) => sendCmd(`music auto thr ${e.target.value}`)}
-              className="w-20"
+              className="w-30"
             />
             <Label className="m-0">
               <Trans k="label.mode">Mode</Trans>

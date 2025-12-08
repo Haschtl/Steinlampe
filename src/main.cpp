@@ -3122,6 +3122,11 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Music] mode=")) + (musicMode == 1 ? F("beat") : F("direct")));
     }
+    else if (arg == "raw")
+    {
+      int raw = analogRead(Settings::MUSIC_PIN);
+      sendFeedback(String(F("[Music] raw=")) + String(raw));
+    }
     else if (arg.startsWith("auto"))
     {
       String rest = arg.substring(4);
@@ -4135,7 +4140,7 @@ void setup()
 #endif
   calibrateTouchBaseline();
 
-#if ENABLE_LIGHT_SENSOR || ENABLE_POTI
+#if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE
   analogReadResolution(12);
 #endif
 #if ENABLE_LIGHT_SENSOR
@@ -4145,6 +4150,10 @@ void setup()
 #if ENABLE_POTI
   analogSetPinAttenuation(PIN_POTI, ADC_11db);
   pinMode(PIN_POTI, INPUT);
+#endif
+#if ENABLE_MUSIC_MODE
+  analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
+  pinMode(Settings::MUSIC_PIN, INPUT);
 #endif
 #if ENABLE_PUSH_BUTTON
   pinMode(PIN_PUSHBTN, INPUT_PULLUP);
