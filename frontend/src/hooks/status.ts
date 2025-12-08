@@ -64,6 +64,9 @@ export type DeviceStatus = {
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
+  clapCmd1?: string;
+  clapCmd2?: string;
+  clapCmd3?: string;
   patternElapsedMs?: number;
   hasPoti?: boolean;
   potiEnabled?: boolean;
@@ -185,6 +188,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
         clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
         clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
+        clapCmd1: kv.clap_cmd1 ?? s.clapCmd1,
+        clapCmd2: kv.clap_cmd2 ?? s.clapCmd2,
+        clapCmd3: kv.clap_cmd3 ?? s.clapCmd3,
         hasPoti,
         potiEnabled: kv.poti ? kv.poti.toUpperCase() === 'ON' : hasPoti === false ? false : s.potiEnabled,
         potiAlpha: asNum('poti_alpha') ?? s.potiAlpha,

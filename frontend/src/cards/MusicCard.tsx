@@ -32,7 +32,10 @@ export function MusicCard() {
     if (typeof status.musicAutoThr === 'number') setAutoThr(status.musicAutoThr);
     if (status.musicMode) setMode(status.musicMode === 'beat' ? 'beat' : 'direct');
     if (typeof status.musicSmooth === 'number') setSmooth(status.musicSmooth);
-  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicMode, status.musicSmooth]);
+    if (typeof status.clapCmd1 === 'string') setClap1(status.clapCmd1);
+    if (typeof status.clapCmd2 === 'string') setClap2(status.clapCmd2);
+    if (typeof status.clapCmd3 === 'string') setClap3(status.clapCmd3);
+  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicMode, status.musicSmooth, status.clapCmd1, status.clapCmd2, status.clapCmd3]);
 
   return (
     <Card>

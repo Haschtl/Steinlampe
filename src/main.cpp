@@ -1737,6 +1737,12 @@ void printStatusStructured()
   line += String(clapThreshold, 2);
   line += F("|clap_cool=");
   line += String(clapCooldownMs);
+  line += F("|clap_cmd1=");
+  line += clapCmd1;
+  line += F("|clap_cmd2=");
+  line += clapCmd2;
+  line += F("|clap_cmd3=");
+  line += clapCmd3;
 #else
   line += F("|music=N/A|clap=N/A");
 #endif

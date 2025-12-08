@@ -13,10 +13,18 @@ export type BleHandles = {
 export type LineHandler = (line: string) => void;
 
 export async function requestDevice(): Promise<BluetoothDevice> {
-  return navigator.bluetooth.requestDevice({
-    filters: [{ services: [SERVICE] }],
-    optionalServices: [SERVICE],
-  });
+  try {
+    return await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE] }],
+      optionalServices: [SERVICE],
+    });
+  } catch (e) {
+    // Some devices might not advertise the UUID in the scan response; fallback to acceptAllDevices
+    return navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SERVICE],
+    });
+  }
 }
 
 export async function connectDevice(device: BluetoothDevice): Promise<BleHandles> {
