@@ -1,10 +1,24 @@
-// Lightweight TypeScript clones of the firmware patterns for UI previews/animations.
+// TypeScript clones of the firmware patterns for UI previews/animations.
 // Each function returns a normalized brightness 0..1 for a given elapsed ms.
 
 const TWO_PI = Math.PI * 2;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
+// Evaluate a simple on/off sequence defined by durations and levels.
+function evalSequence(ms: number, durations: number[], levels: number[]): number {
+  if (!durations.length || !levels.length) return 0;
+  const total = durations.reduce((a, b) => a + b, 0);
+  const t = ms % total;
+  let acc = 0;
+  for (let i = 0; i < durations.length; i++) {
+    acc += durations[i];
+    if (t < acc) return levels[i];
+  }
+  return 0;
+}
+
+// --- Simple hash-based noise helpers (deterministic, non-repeating for very long ranges) ---
 function hash11(x: number): number {
   let n = x >>> 0;
   n ^= (n * 0x27d4eb2d) >>> 0;
@@ -14,6 +28,7 @@ function hash11(x: number): number {
   return (n & 0x00ffffff) / 16777215;
 }
 
+// Smooth noise: sample every stepMs and crossfade, giving organic randomness without short repeats.
 function smoothNoise(ms: number, stepMs: number, salt: number): number {
   const step = stepMs || 50;
   const aIdx = Math.floor(ms / step);
@@ -25,14 +40,45 @@ function smoothNoise(ms: number, stepMs: number, salt: number): number {
   return fa + (fb - fa) * t;
 }
 
-// -- Patterns --
+// Forward declaration used in mixed storm
+const patternThunder = (ms: number): number => {
+  const base = 0.05;
+  const ambient = (smoothNoise(ms, 520, 0xc1) - 0.5) * 0.06;
+
+  const windowMs = 6500;
+  const winIdx = Math.floor(ms / windowMs);
+  const winStart = winIdx * windowMs;
+  const chance = hash11((winIdx * 0x9e3779b9) >>> 0 ^ 0x77);
+  let flash = 0;
+  if (chance > 0.32) {
+    const offset = Math.floor(hash11((winIdx * 0xa5b35705) >>> 0 ^ 0x44) * (windowMs - 950));
+    const t = ms - winStart;
+    if (t >= offset && t < offset + 950) {
+      const dt = t - offset;
+      if (dt < 120) {
+        flash = 1;
+      } else {
+        const decay = Math.exp(-(dt - 120) / 240);
+        const micro = (Math.sin(dt * 0.09) + 1) * 0.08;
+        flash = 0.8 * decay + micro * decay;
+      }
+      if (dt > 220 && dt < 460 && hash11((winIdx * 0x51f19e7d) >>> 0 ^ 0x12) > 0.58) {
+        const af = Math.exp(-(dt - 220) / 120) * 0.5;
+        flash = Math.max(flash, af);
+      }
+    }
+  }
+  return clamp01(base + ambient + flash);
+};
+
+// --- Patterns ---
 const patternConstant = () => 1;
 
 const patternBreathing = (ms: number) => {
   const phase = (ms % 7000) / 7000;
   const wave = (1 - Math.cos(TWO_PI * phase)) * 0.5;
   const eased = wave * wave * (3 - 2 * wave);
-  return clamp01(0.25 + 0.7 * eased);
+  return 0.25 + 0.7 * eased;
 };
 
 const patternBreathingWarm = (ms: number) => {
@@ -95,7 +141,7 @@ const patternPulse = (ms: number) => {
   const phase = (ms % 4200) / 4200;
   const wave = Math.sin(TWO_PI * phase);
   const env = Math.pow(Math.abs(wave), 1.6);
-  return clamp01(0.25 + 0.7 * env);
+  return 0.25 + 0.7 * env;
 };
 
 const patternHeartbeat = (ms: number) => {
@@ -165,17 +211,31 @@ const patternStrobe = (ms: number) => {
   return clamp01(flash + shimmer);
 };
 
+const patternGammaProbe = (ms: number) => {
+  const levels = [0.1, 0.4, 0.8, 0.4];
+  const rampMs = 240;
+  const holdMs = 1100;
+  const segLen = rampMs + holdMs;
+  const seg = Math.floor(ms / segLen) % levels.length;
+  const local = ms % segLen;
+  const from = levels[seg];
+  const to = levels[(seg + 1) % levels.length];
+  let level: number;
+  if (local < rampMs) {
+    let t = local / rampMs;
+    t = t * t * (3 - 2 * t);
+    level = from + (to - from) * t;
+  } else {
+    level = to;
+  }
+  const micro = (smoothNoise(ms, 420, 0x6d) - 0.5) * 0.02;
+  return clamp01(level + micro);
+};
+
 const patternPoliceDE = (ms: number) => {
   const durations = [160, 160, 240, 160, 160, 320];
   const levels = [1, 0, 0.6, 1, 0, 0.4];
-  const total = durations.reduce((a, b) => a + b, 0);
-  const t = ms % total;
-  let acc = 0;
-  for (let i = 0; i < durations.length; i += 1) {
-    acc += durations[i];
-    if (t < acc) return levels[i];
-  }
-  return 0;
+  return evalSequence(ms, durations, levels);
 };
 
 const patternCameraFlash = (ms: number) => {
@@ -217,7 +277,10 @@ const patternHal9000 = (ms: number) => {
 const patternSparkle = (ms: number) => {
   const t = ms / 1000;
   const slow = 0.55 + 0.18 * Math.sin(t * 0.35 * TWO_PI);
-  const ripple = 0.15 * Math.sin(t * 3.6 * TWO_PI) + 0.1 * Math.sin(t * 5.9 * TWO_PI + 1.1) + 0.05 * Math.sin(t * 11 * TWO_PI + 2);
+  const ripple =
+    0.15 * Math.sin(t * 3.6 * TWO_PI) +
+    0.1 * Math.sin(t * 5.9 * TWO_PI + 1.1) +
+    0.05 * Math.sin(t * 11 * TWO_PI + 2);
   return clamp01(slow + ripple);
 };
 
@@ -276,7 +339,7 @@ const patternStepFade = (ms: number) => {
     t = t * t * (3 - 2 * t);
     out = level + (next - level) * t;
   }
-  return clamp01(out);
+  return out;
 };
 
 const patternTwinkle = (ms: number) => {
@@ -299,7 +362,10 @@ const patternDistantStorm = (ms: number) => {
     if (t >= offset && t < offset + 1100) {
       const dt = t - offset;
       if (dt < 120) flash = 0.9;
-      else flash = 0.7 * Math.exp(-(dt - 120) / 420);
+      else {
+        const decay = Math.exp(-(dt - 120) / 420);
+        flash = 0.7 * decay;
+      }
     }
   }
   return clamp01(base + flash);
@@ -314,10 +380,12 @@ const patternRollingThunder = (ms: number) => {
   if (hash11(idx * 0x99) > 0.5) {
     const baseOff = Math.floor(hash11(idx * 0x21) * (window - 900));
     const t = ms - start;
-    if (t >= baseOff && t < baseOff + 400) flash = 1;
-    else if (t >= baseOff + 420 && t < baseOff + 900) {
+    if (t >= baseOff && t < baseOff + 400) {
+      flash = 1;
+    } else if (t >= baseOff + 420 && t < baseOff + 900) {
       const dt = t - (baseOff + 420);
-      flash = 0.9 * Math.exp(-dt / 250);
+      const decay = Math.exp(-dt / 250);
+      flash = 0.9 * decay;
     }
   }
   return clamp01(swell + flash);
@@ -328,8 +396,10 @@ const patternHeatLightning = (ms: number) => {
   const period = 6200;
   const phase = (ms % period) / period;
   let env = 0;
-  if (phase < 0.3) env = (phase / 0.3) ** 2;
-  else if (phase < 0.8) {
+  if (phase < 0.3) {
+    const t = phase / 0.3;
+    env = t * t;
+  } else if (phase < 0.8) {
     const t = 1 - (phase - 0.3) / 0.5;
     env = t * t;
   }
@@ -344,7 +414,7 @@ const patternStrobeFront = (ms: number) => {
     const mod = t % 180;
     return mod < 60 ? 1 : 0.15;
   }
-  return 0.05 + (smoothNoise(ms, 800, 0x5e) - 0.5) * 0.03;
+  return clamp01(0.05 + (smoothNoise(ms, 800, 0x5e) - 0.5) * 0.03);
 };
 
 const patternSheetLightning = (ms: number) => {
@@ -355,16 +425,11 @@ const patternSheetLightning = (ms: number) => {
     const t = phase / 0.5;
     pulse = t * t * 0.9;
   } else {
-    const t = 1 - ((phase - 0.5) / 0.5);
+    const t = 1 - (phase - 0.5) / 0.5;
     pulse = t * 0.9;
   }
   const flicker = (smoothNoise(ms, 55, 0x7c) - 0.5) * 0.12;
   return clamp01(0.08 + pulse + flicker);
-};
-
-const patternThunder = (ms: number) => {
-  // reuse rolling thunder flashes for a strong strike
-  return Math.max(patternRollingThunder(ms), patternStrobeFront(ms));
 };
 
 const patternMixedStorm = (ms: number) => {
@@ -383,7 +448,7 @@ const patternFireflies = (ms: number) => {
   const idx = Math.floor(ms / window);
   const start = idx * window;
   let flash = 0;
-  for (let k = 0; k < 3; k += 1) {
+  for (let k = 0; k < 3; k++) {
     const salt = idx * 0x9e37 + k * 0x45;
     if (hash11(salt) < 0.5) continue;
     const offset = Math.floor(hash11(salt ^ 0xaa) * (window - 280));
@@ -396,25 +461,6 @@ const patternFireflies = (ms: number) => {
     }
   }
   return clamp01(base + flash);
-};
-
-const patternPopcorn = (ms: number) => {
-  const base = 0.04 + (smoothNoise(ms, 800, 0xc5) - 0.5) * 0.03;
-  const window = 900;
-  const idx = Math.floor(ms / window);
-  const start = idx * window;
-  let pop = 0;
-  for (let k = 0; k < 3; k += 1) {
-    const salt = idx * 0x6d + k * 0x23;
-    if (hash11(salt) < 0.4 - k * 0.12) continue;
-    const offset = Math.floor(hash11(salt ^ 0x77) * (window - 180));
-    const t = ms - start;
-    if (t >= offset && t < offset + 140) {
-      const dt = t - offset;
-      pop += Math.exp(-dt / 70) * (0.7 + 0.3 * hash11(salt ^ 0x99));
-    }
-  }
-  return clamp01(base + pop);
 };
 
 const patternFluorescent = (ms: number) => {
@@ -436,91 +482,34 @@ const patternFluorescent = (ms: number) => {
   return clamp01(base);
 };
 
-const patternSunset = (ms: number) => {
-  const period = 12000;
-  const phase = (ms % period) / period;
-  const warm = 0.2 + 0.7 * (1 - Math.cos(phase * Math.PI));
-  const flicker = (smoothNoise(ms, 600, 0x123) - 0.5) * 0.05;
-  return clamp01(warm + flicker);
-};
-
-const patternAlert = (ms: number) => {
-  const t = (ms % 900) / 900;
-  return t < 0.5 ? 1 : 0.15;
-};
-
-const patternSOS = (ms: number) => {
-  const unit = 150;
-  const seq = [1, 1, 1, 3, 3, 3, 1, 1, 1];
-  const total = seq.reduce((a, b) => a + b, 0) * unit * 2;
-  const t = ms % total;
-  let acc = 0;
-  for (const s of seq) {
-    const on = unit * s;
-    if (t < acc + on) return 1;
-    acc += on + unit;
-    if (t < acc) return 0.2;
+const patternPopcorn = (ms: number) => {
+  const base = 0.04 + (smoothNoise(ms, 800, 0xc5) - 0.5) * 0.03;
+  const window = 900;
+  const idx = Math.floor(ms / window);
+  const start = idx * window;
+  let pop = 0;
+  for (let k = 0; k < 3; k++) {
+    const salt = idx * 0x812 + k * 0x3d;
+    if (hash11(salt) < 0.45 - 0.1 * k) continue;
+    const offset = Math.floor(hash11(salt ^ 0x55) * (window - 180));
+    const t = ms - start;
+    if (t >= offset && t < offset + 180) {
+      const dt = t - offset;
+      const rise = dt < 40 ? dt / 40 : 1;
+      const decay = Math.exp(-(dt > 40 ? dt - 40 : 0) / 90);
+      pop += (0.6 + 0.4 * hash11(salt ^ 0x99)) * rise * decay;
+    }
   }
-  return 0;
+  return clamp01(base + pop);
 };
 
-const patternEmergencyBridge = (ms: number) => {
-  const period = 2600;
-  const phase = (ms % period) / period;
-  return clamp01(0.2 + Math.sin(phase * TWO_PI * 3) * 0.6 + (smoothNoise(ms, 120, 0x45) - 0.5) * 0.1);
-};
-
-const patternArcReactor = (ms: number) => {
-  const t = ms / 1000;
-  const core = 0.6 + 0.15 * Math.sin(t * 1.2 * TWO_PI);
-  const hum = 0.08 * Math.sin(t * 12 * TWO_PI);
-  return clamp01(core + hum);
-};
-
-const patternWarpCore = (ms: number) => {
-  const t = ms / 1000;
-  const swell = 0.4 + 0.25 * Math.sin(t * 0.35 * TWO_PI);
-  const pulse = 0.18 * Math.sin(t * 4 * TWO_PI + Math.sin(t * 0.4 * TWO_PI));
-  return clamp01(swell + pulse);
-};
-
-const patternKitt = (ms: number) => {
-  const t = ms / 1000;
-  const sweep = 0.5 + 0.45 * Math.sin(t * 0.8 * TWO_PI);
-  const blink = (smoothNoise(ms, 80, 0x88) - 0.5) * 0.08;
-  return clamp01(0.2 + sweep + blink);
-};
-
-const patternTronGrid = (ms: number) => {
-  const t = ms / 1000;
-  const wave = 0.5 + 0.4 * Math.sin(t * 1.8 * TWO_PI);
-  const glitch = (smoothNoise(ms, 40, 0x66) - 0.5) * 0.12;
-  return clamp01(0.15 + wave + glitch);
-};
-
-const patternSaberIdle = (ms: number) => {
-  const t = ms / 1000;
-  const hum = 0.65 + 0.08 * Math.sin(t * 5 * TWO_PI);
-  const jitter = (smoothNoise(ms, 70, 0x35) - 0.5) * 0.05;
-  return clamp01(hum + jitter);
-};
-
-const patternSaberClash = (ms: number) => {
-  const period = 1600;
-  const t = ms % period;
-  if (t < 120) return 1;
-  const decay = Math.exp(-(t - 120) / 260);
-  const after = 0.3 + 0.2 * Math.sin(t / 400);
-  return clamp01(decay + after);
-};
-
-const patternHoliday = (ms: number) => {
+const patternChristmas = (ms: number) => {
   const t = ms / 1000;
   const wave = 0.25 + 0.23 * Math.sin(t * 0.22 * TWO_PI);
-  const flicker = (smoothNoise(ms, 180, 0x12) - 0.5) * 0.08;
+  const shimmer = (smoothNoise(ms, 180, 0xd4) - 0.5) * 0.08;
+  let burst = 0;
   const window = 2300;
   const idx = Math.floor(ms / window);
-  let burst = 0;
   if (hash11(idx * 0xab) > 0.72) {
     const off = Math.floor(hash11(idx * 0x37) * (window - 520));
     const dt = ms - idx * window;
@@ -530,40 +519,116 @@ const patternHoliday = (ms: number) => {
       burst = 0.38 * env * env;
     }
   }
-  return clamp01(wave + flicker + burst);
+  return clamp01(wave + shimmer + burst);
 };
 
-const patternCustom = (ms: number) => {
-  return clamp01(0.5 + 0.4 * Math.sin((ms / 1000) * TWO_PI));
+const patternSaberIdle = (ms: number) => {
+  const t = ms / 1000;
+  const pulse = 0.15 * Math.sin(t * TWO_PI * 0.9) + 0.45;
+  const shimmer = (smoothNoise(ms, 55, 0x77) - 0.5) * 0.05;
+  const drift = (smoothNoise(ms, 1200, 0x91) - 0.5) * 0.05;
+  return clamp01(pulse + shimmer + drift);
 };
 
-const patternGammaProbe = (ms: number) => {
-  const levels = [0.1, 0.4, 0.8, 0.4];
-  const rampMs = 240;
-  const holdMs = 1100;
-  const segLen = rampMs + holdMs;
-  const seg = Math.floor(ms / segLen) % levels.length;
-  const local = ms % segLen;
-  const from = levels[seg];
-  const to = levels[(seg + 1) % levels.length];
-  let level: number;
-  if (local < rampMs) {
-    let t = local / rampMs;
-    t = t * t * (3 - 2 * t);
-    level = from + (to - from) * t;
-  } else {
-    level = to;
+const patternSaberClash = (ms: number) => {
+  const base = 0.16 + (smoothNoise(ms, 1100, 0x42) - 0.5) * 0.05;
+  const window = 1400;
+  const idx = Math.floor(ms / window);
+  const start = idx * window;
+  let flare = 0;
+  if (hash11(idx * 0x1337) > 0.45) {
+    const off = Math.floor(hash11(idx * 0x51) * (window - 380));
+    const dt = ms - start;
+    if (dt >= off && dt < off + 380) {
+      const x = dt - off;
+      const rise = x < 30 ? x / 30 : 1;
+      const decay = Math.exp(-((x > 30 ? x - 30 : 0) / 95));
+      const spark = (smoothNoise(ms, 22, 0xa5) - 0.5) * 0.18;
+      const crack = (smoothNoise(ms, 11, 0xb3) - 0.5) * 0.1;
+      flare = (1.05 + spark + crack) * rise * decay;
+    }
   }
-  const micro = (smoothNoise(ms, 420, 0x6d) - 0.5) * 0.02;
-  return clamp01(level + micro);
+  return clamp01(base + flare);
 };
 
-const patternMusic = (ms: number) => {
-  return clamp01(0.5 + 0.25 * Math.sin((ms / 400) * TWO_PI));
+const patternEmergencyBridge = (ms: number) => {
+  const durations = [160, 160, 160, 780];
+  const levels = [1, 0, 1, 0.05];
+  return evalSequence(ms, durations, levels);
 };
 
+const patternArcReactor = (ms: number) => {
+  const phase = (ms % 5200) / 5200;
+  const wave = 0.55 + 0.08 * Math.sin(phase * TWO_PI);
+  const micro = (smoothNoise(ms, 85, 0x3c) - 0.5) * 0.04;
+  return clamp01(wave + micro);
+};
+
+const patternWarpCore = (ms: number) => {
+  const period = 850;
+  const t = ms % period;
+  let env = t < 320 ? t / 320 : 1 - (t - 320) / 530;
+  if (env < 0) env = 0;
+  const wobble = (smoothNoise(ms, 70, 0x59) - 0.5) * 0.06;
+  return clamp01(0.25 + 0.5 * env * env + wobble);
+};
+
+const patternKittScanner = (ms: number) => {
+  const phase = (ms % 2800) / 2800;
+  const tri = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+  const glow = 0.08 + 0.65 * tri * tri;
+  const tail = (smoothNoise(ms, 120, 0x6d) - 0.5) * 0.05;
+  return clamp01(glow + tail);
+};
+
+const patternTronGrid = (ms: number) => {
+  const beat = 500;
+  const t = ms % beat;
+  const step = t < 120 ? 1 : t < 240 ? 0.55 : t < 320 ? 0.3 : 0.08;
+  const digitalNoise = (smoothNoise(ms, 65, 0x2e) - 0.5) * 0.06;
+  return clamp01(step + digitalNoise);
+};
+
+const patternSunset = (ms: number) => {
+  const period = 42000;
+  const base = 0.12;
+  const peak = 0.95;
+  const phase = (ms % period) / period;
+  let t: number;
+  if (phase < 0.4) {
+    t = phase / 0.4;
+    t = t * t * (3 - 2 * t);
+  } else {
+    t = 1 - (phase - 0.4) / 0.6;
+    t = t * t;
+  }
+  return clamp01(base + (peak - base) * t);
+};
+
+const patternAlert = (ms: number) => {
+  const durations = [320, 220, 320, 780];
+  const levels = [1, 0, 1, 0];
+  return evalSequence(ms, durations, levels);
+};
+
+const patternSOS = (ms: number) => {
+  const durations = [
+    200, 200, 200, 200, 200, 600, // S
+    600, 200, 600, 200, 600, 600, // O
+    200, 200, 200, 200, 200, 1400, // S
+  ];
+  const levels = [
+    1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+  ];
+  return evalSequence(ms, durations, levels);
+};
+
+const patternCustom = (ms: number) => clamp01(0.5 + 0.4 * Math.sin((ms / 1000) * TWO_PI));
+const patternMusic = (ms: number) => clamp01(0.5 + 0.25 * Math.sin((ms / 400) * TWO_PI));
+
+// Exported pattern table (must mirror firmware order)
 export const patternFns: ((ms: number) => number)[] = [
-  patternConstant,
+  patternConstant, // 1
   patternBreathing,
   patternBreathingWarm,
   patternBreathing2,
@@ -589,13 +654,13 @@ export const patternFns: ((ms: number) => number)[] = [
   patternFireflies,
   patternPopcorn,
   patternFluorescent,
-  patternHoliday,
+  patternChristmas,
   patternSaberIdle,
   patternSaberClash,
   patternEmergencyBridge,
   patternArcReactor,
   patternWarpCore,
-  patternKitt,
+  patternKittScanner,
   patternTronGrid,
   patternThunder,
   patternDistantStorm,
