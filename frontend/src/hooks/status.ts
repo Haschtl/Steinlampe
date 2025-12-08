@@ -208,6 +208,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     setStatus((s) => {
       const lightRaw = kv.light_raw;
       const hasLight = lightRaw ? lightRaw.toUpperCase() !== 'N/A' : s.hasLight;
+      const lightRawVal = num('light_raw') ?? s.lightRaw;
+      const lightMinVal = num('light_min') ?? s.lightRawMin;
+      const lightMaxVal = num('light_max') ?? s.lightRawMax;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -216,6 +219,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         touchDelta: num('touch_delta') ?? s.touchDelta,
         touchActive: kv.touch_active ? kv.touch_active === '1' : s.touchActive,
         hasLight,
+        lightRaw: lightRawVal,
+        lightRawMin: lightMinVal,
+        lightRawMax: lightMaxVal,
         hasPoti: kv.poti ? kv.poti.toUpperCase() !== 'N/A' : s.hasPoti,
         hasPush: kv.push ? kv.push.toUpperCase() !== 'N/A' : s.hasPush,
         hasMusic: kv.music ? kv.music.toUpperCase() !== 'N/A' : s.hasMusic,

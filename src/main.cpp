@@ -3836,7 +3836,8 @@ void updateLightSensor()
   if (target > lightClampMax)
     target = lightClampMax;
   target = clamp01(target);
-  ambientScale = 0.85f * ambientScale + 0.15f * target;
+  // Heavier smoothing to avoid visible steps when dimming by ambient light
+  ambientScale = 0.92f * ambientScale + 0.08f * target;
 #endif
 }
 
