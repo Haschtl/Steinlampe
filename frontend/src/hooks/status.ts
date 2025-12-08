@@ -54,6 +54,7 @@ export type DeviceStatus = {
   hasMusic?: boolean;
   musicEnabled?: boolean;
   musicGain?: number;
+  musicSmooth?: number;
   musicAuto?: boolean;
   musicAutoThr?: number;
   musicMode?: string;
@@ -174,6 +175,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasMusic,
         musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
         musicGain: asNum('music_gain') ?? s.musicGain,
+        musicSmooth: asNum('music_smooth') ?? s.musicSmooth,
         musicEnv: asNum('music_env') ?? s.musicEnv,
         musicLevel: asNum('music_level') ?? s.musicLevel,
         musicAuto: kv.music_auto ? kv.music_auto.toUpperCase() === 'ON' : s.musicAuto,
@@ -219,6 +221,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const lightMaxVal = num('light_max') ?? s.lightRawMax;
       const musicEnv = num('music_env') ?? s.musicEnv;
       const musicLevel = num('music_level') ?? s.musicLevel;
+      const musicSmooth = num('music_smooth') ?? s.musicSmooth;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -236,6 +239,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasPresence: kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence,
         musicEnv,
         musicLevel,
+        musicSmooth,
       };
     });
     return true;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Mic } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,7 @@ export function MusicCard() {
   const [autoOn, setAutoOn] = useState(false);
   const [autoThr, setAutoThr] = useState(0.4);
   const [mode, setMode] = useState<'direct' | 'beat'>('direct');
+  const [smooth, setSmooth] = useState(0);
   const [clap1, setClap1] = useState('mode next');
   const [clap2, setClap2] = useState('toggle');
   const [clap3, setClap3] = useState('mode prev');
@@ -29,7 +31,8 @@ export function MusicCard() {
     if (typeof status.musicAuto === 'boolean') setAutoOn(status.musicAuto);
     if (typeof status.musicAutoThr === 'number') setAutoThr(status.musicAutoThr);
     if (status.musicMode) setMode(status.musicMode === 'beat' ? 'beat' : 'direct');
-  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicMode]);
+    if (typeof status.musicSmooth === 'number') setSmooth(status.musicSmooth);
+  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicMode, status.musicSmooth]);
 
   return (
     <Card>
@@ -94,6 +97,12 @@ export function MusicCard() {
                 signal crosses the threshold (even if music is off).
               </Trans>
             </span>
+            <Button variant="ghost" size="sm" onClick={() => sendCmd("music calib")}>
+              <Trans k="btn.calibrate">Calibrate</Trans>
+            </Button>
+            <span className="text-xs text-muted italic">
+              <Trans k="music.calibHint">Start quiet, then clap once during calibration.</Trans>
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Label className="m-0">
@@ -123,6 +132,23 @@ export function MusicCard() {
               onBlur={(e) => sendCmd(`music auto thr ${e.target.value}`)}
               className="w-30"
             />
+            {mode === "direct" && (
+              <>
+                <Label className="m-0">
+                  <Trans k="label.smoothing">Smooth</Trans>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={smooth}
+                  onChange={(e) => setSmooth(Number(e.target.value))}
+                  onBlur={(e) => sendCmd(`music smooth ${e.target.value}`)}
+                  className="w-24"
+                />
+              </>
+            )}
             <Label className="m-0">
               <Trans k="label.mode">Mode</Trans>
             </Label>
@@ -153,6 +179,7 @@ export function MusicCard() {
           <div className="text-xs text-foreground/80">
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}
             <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}{" "}
+            <strong>Smooth:</strong> {status.musicSmooth !== undefined ? status.musicSmooth.toFixed(2) : "—"}{" "}
             <strong>Level:</strong> {status.musicLevel !== undefined ? status.musicLevel.toFixed(3) : "—"}
           </div>
         </div>

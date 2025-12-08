@@ -127,6 +127,7 @@ static const char *PREF_KEY_CLAP_CMD3 = "clap_c3";
 static const char *PREF_KEY_MUSIC_AUTOLAMP = "mus_auto";
 static const char *PREF_KEY_MUSIC_AUTOTHR = "mus_thr";
 static const char *PREF_KEY_MUSIC_MODE = "mus_mode";
+static const char *PREF_KEY_MUSIC_SMOOTH = "mus_sm";
 #endif
 static const char *PREF_KEY_TOUCH_DIM = "touch_dim";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
@@ -272,6 +273,7 @@ float musicEnv = 0.0f;
 float musicRawLevel = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
+float musicSmoothing = 0.4f; // 0..1 low-pass for direct mode
 bool musicAutoLamp = false;
 float musicAutoThr = 0.4f;
 uint8_t musicMode = 0; // 0=direct,1=beat
@@ -290,7 +292,7 @@ String clapCmd2 = F("toggle");
 String clapCmd3 = F("");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
-constexpr uint32_t CLAP_WINDOW_MS = 1200;
+constexpr uint32_t CLAP_WINDOW_MS = 900;
 constexpr float CLAP_RISE_MIN = 0.02f;
 bool clapTraining = false;
 uint32_t clapTrainLastLog = 0;
@@ -805,6 +807,7 @@ void saveSettings()
 #if ENABLE_MUSIC_MODE
   prefs.putBool(PREF_KEY_MUSIC_EN, musicEnabled);
   prefs.putFloat(PREF_KEY_MUSIC_GAIN, musicGain);
+  prefs.putFloat(PREF_KEY_MUSIC_SMOOTH, musicSmoothing);
   prefs.putBool(PREF_KEY_MUSIC_AUTOLAMP, musicAutoLamp);
   prefs.putFloat(PREF_KEY_MUSIC_AUTOTHR, musicAutoThr);
   prefs.putUChar(PREF_KEY_MUSIC_MODE, musicMode);
@@ -951,7 +954,10 @@ void loadSettings()
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
   musicGain = prefs.getFloat(PREF_KEY_MUSIC_GAIN, Settings::MUSIC_GAIN_DEFAULT);
   if (musicGain < 0.1f) musicGain = 0.1f;
-  if (musicGain > 5.0f) musicGain = 5.0f;
+  if (musicGain > 12.0f) musicGain = 12.0f;
+  musicSmoothing = prefs.getFloat(PREF_KEY_MUSIC_SMOOTH, 0.4f);
+  if (musicSmoothing < 0.0f) musicSmoothing = 0.0f;
+  if (musicSmoothing > 1.0f) musicSmoothing = 1.0f;
   musicAutoLamp = prefs.getBool(PREF_KEY_MUSIC_AUTOLAMP, false);
   musicAutoThr = prefs.getFloat(PREF_KEY_MUSIC_AUTOTHR, 0.4f);
   if (musicAutoThr < 0.05f) musicAutoThr = 0.05f;
@@ -1723,6 +1729,8 @@ void printStatusStructured()
   line += String(musicFiltered, 3);
   line += F("|music_level=");
   line += String(musicRawLevel, 3);
+  line += F("|music_smooth=");
+  line += String(musicSmoothing, 2);
   line += F("|clap=");
   line += clapEnabled ? F("ON") : F("OFF");
   line += F("|clap_thr=");
@@ -3133,6 +3141,66 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Music] gain=")) + String(g, 2));
     }
+    else if (arg.startsWith("smooth"))
+    {
+      float s = arg.substring(6).toFloat();
+      if (s < 0.0f) s = 0.0f;
+      if (s > 1.0f) s = 1.0f;
+      musicSmoothing = s;
+      saveSettings();
+      sendFeedback(String(F("[Music] smooth=")) + String(s, 2));
+    }
+    else if (arg == "calib")
+    {
+      sendFeedback(F("[Music] Calibrating... stay quiet, then clap once"));
+      // Baseline: 500ms
+      uint32_t t0 = millis();
+      float dc = 0.0f;
+      uint32_t n = 0;
+      while (millis() - t0 < 500)
+      {
+        dc += (float)analogRead(Settings::MUSIC_PIN);
+        ++n;
+        delay(10);
+      }
+      if (n == 0) n = 1;
+      dc /= (float)n;
+      float dcNorm = dc / 4095.0f;
+      // Peak detect for 1200ms
+      float peak = 0.0f;
+      float env = 0.0f;
+      t0 = millis();
+      const float dcAlpha = 0.01f;
+      float dcTrack = dcNorm;
+      while (millis() - t0 < 1200)
+      {
+        float v = (float)analogRead(Settings::MUSIC_PIN) / 4095.0f;
+        dcTrack = (1.0f - dcAlpha) * dcTrack + dcAlpha * v;
+        float d = fabsf(v - dcTrack);
+        const float envAlpha = 0.2f;
+        env = (1.0f - envAlpha) * env + envAlpha * d;
+        if (env > peak) peak = env;
+        delay(10);
+      }
+      if (peak < 0.05f) peak = 0.05f; // avoid zero
+      // derive gain so peak lands near 0.6
+      float targetEnv = 0.6f;
+      float g = targetEnv / peak;
+      if (g < 0.1f) g = 0.1f;
+      if (g > 12.0f) g = 12.0f;
+      musicGain = g;
+      // threshold at ~35% of peak
+      float thr = peak * g * 0.35f;
+      if (thr < 0.05f) thr = 0.05f;
+      if (thr > 1.0f) thr = 1.0f;
+      clapThreshold = thr;
+      musicDc = dcNorm;
+      musicEnv = 0.0f;
+      musicFiltered = 0.0f;
+      musicSmoothing = 0.4f;
+      saveSettings();
+      sendFeedback(String(F("[Music] calib gain=")) + String(musicGain, 2) + F(" thr=") + String(clapThreshold, 2));
+    }
     else if (arg.startsWith("mode"))
     {
       String m = arg.substring(4);
@@ -3188,7 +3256,8 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(String(F("[Music] level=")) + String(musicFiltered, 3) + F(" en=") + (musicEnabled ? F("1") : F("0")));
+      sendFeedback(String(F("[Music] level=")) + String(musicFiltered, 3) + F(" en=") + (musicEnabled ? F("1") : F("0")) +
+                   F(" smooth=") + String(musicSmoothing, 2));
     }
     return;
   }
@@ -3969,17 +4038,24 @@ void updateMusicSensor()
             musicBeatIntervalMs = 0.8f * musicBeatIntervalMs + 0.2f * interval;
         }
         musicLastBeatMs = nowMs;
-        musicModScale = 1.0f; // kick on beat
+        musicModScale = 0.8f; // kick on beat but avoid full current spike
       }
       else
       {
         float decayMs = fmaxf(250.0f, musicBeatIntervalMs * 0.6f);
         float k = expf(-(Settings::MUSIC_SAMPLE_MS) / decayMs);
         // decay toward a low floor; keep a neutral baseline so patterns remain visible
-        const float floor = 0.2f;
+        const float floor = 0.15f;
         musicModScale = floor + (musicModScale - floor) * k;
       }
     }
+  }
+  // hard clamp modulation to avoid overdriving LEDs (helps prevent brownouts)
+  musicModScale = clamp01(musicModScale);
+  // Apply additional smoothing in direct mode (after modulation) to emulate afterglow
+  if (musicEnabled && musicMode == 0 && musicSmoothing > 0.0f)
+  {
+    musicModScale = (1.0f - musicSmoothing) * musicModScale + musicSmoothing * musicFiltered;
   }
   // Auto lamp on when switch is ON and audio crosses threshold (rising edge)
   static bool musicAutoAbove = false;
@@ -4000,7 +4076,8 @@ void updateMusicSensor()
   {
     float clapDelta = musicEnv - clapPrevEnv;
     clapPrevEnv = musicEnv;
-    bool risingEdge = (musicEnv >= clapThreshold) && (clapDelta >= CLAP_RISE_MIN);
+    float riseNeeded = std::max(CLAP_RISE_MIN, clapThreshold * 0.3f);
+    bool risingEdge = (musicEnv >= clapThreshold) && (clapDelta >= riseNeeded);
     if (risingEdge && (now - clapLastMs) >= clapCooldownMs)
     {
       clapLastMs = now;
@@ -4012,7 +4089,7 @@ void updateMusicSensor()
     else
     {
       // reset latch when sufficiently below threshold
-      if (musicEnv < clapThreshold * 0.6f)
+      if (musicEnv < clapThreshold * 0.3f)
         clapAbove = false;
     }
 

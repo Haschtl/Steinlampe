@@ -68,6 +68,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.clapThr": "Clap thr",
     "label.threshold": "Threshold",
     "label.cool": "Cooldown",
+    "label.smoothing": "Smoothing",
     "label.delta": "Delta",
     "label.offThresh": "Off threshold",
     "label.sampleMs": "Sample (ms)",
@@ -83,6 +84,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.clamp": "Min/Max target brightness from ambient light",
     "desc.clap":
       "Threshold: envelope level to count a clap. Cooldown: minimum delay before a new clap window starts. Actions fire on 1/2/3 claps within the window.",
+    "desc.musicSmooth": "Afterglow for direct mode: higher = softer/slower response.",
+    "music.calibHint": "Start quiet, then clap once during calibration.",
     "desc.alpha": "Low-pass filter for sensor noise",
     "desc.brightness": "Set output level",
     "desc.tapSwitch":
@@ -245,6 +248,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.clapThr": "Klatsch-Schwelle",
     "label.threshold": "Schwelle",
     "label.cool": "Cooldown",
+    "label.smoothing": "Glättung",
     "label.delta": "Delta",
     "label.offThresh": "Ausschalt-Schwelle",
     "label.sampleMs": "Sample (ms)",
@@ -260,6 +264,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.clamp": "Min/Max Zielhelligkeit aus Umgebungslicht",
     "desc.clap":
       "Schwelle: Envelope-Level für einen Klatscher. Cooldown: Mindestabstand, bevor ein neues Klatsch-Fenster startet. Aktionen feuern bei 1/2/3 Klatschern im Fenster.",
+    "desc.musicSmooth": "Nachglühen im Direkt-Modus: höher = weicher/langsamer.",
+    "music.calibHint": "Erst leise bleiben, dann einmal klatschen während der Kalibrierung.",
     "desc.alpha": "Tiefpass gegen Sensorausreißer",
     "desc.brightness": "Ausgangspegel einstellen",
     "desc.tapSwitch":
