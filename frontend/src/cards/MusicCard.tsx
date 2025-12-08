@@ -102,7 +102,7 @@ export function MusicCard() {
             <Input
               type="number"
               min={0.1}
-              max={5}
+              max={12}
               step={0.1}
               value={gain}
               onChange={(e) => setGain(Number(e.target.value))}
@@ -190,6 +190,11 @@ export function MusicCard() {
               suffix="ms"
             />
           </div>
+          <div className="text-xs text-muted leading-snug">
+            <Trans k="desc.clap">
+              Threshold: envelope level to count a clap. Cooldown: minimum delay before a new clap window starts. Actions fire on 1/2/3 claps within the window.
+            </Trans>
+          </div>
           <div className="space-y-2">
             <p className="text-sm text-muted">
               <Trans k="music.clapActions">
@@ -199,34 +204,28 @@ export function MusicCard() {
             <div className="grid gap-2 md:grid-cols-3">
               <div className="space-y-1">
                 <Label className="m-0 text-muted">1x Clap</Label>
-                <Input
-                  value={clap1}
-                  onChange={(e) => setClap1(e.target.value)}
-                  onBlur={(e) =>
-                    e.target.value && sendCmd(`clap 1 ${e.target.value}`)
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="m-0 text-muted">2x Clap</Label>
-                <Input
-                  value={clap2}
-                  onChange={(e) => setClap2(e.target.value)}
-                  onBlur={(e) =>
-                    e.target.value && sendCmd(`clap 2 ${e.target.value}`)
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="m-0 text-muted">3x Clap</Label>
-                <Input
-                  value={clap3}
-                  onChange={(e) => setClap3(e.target.value)}
-                  onBlur={(e) =>
-                    e.target.value && sendCmd(`clap 3 ${e.target.value}`)
-                  }
-                />
-              </div>
+              <Input
+                value={clap1}
+                onChange={(e) => setClap1(e.target.value)}
+                onBlur={(e) => sendCmd(`clap 1 ${e.target.value.trim()}`)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="m-0 text-muted">2x Clap</Label>
+              <Input
+                value={clap2}
+                onChange={(e) => setClap2(e.target.value)}
+                onBlur={(e) => sendCmd(`clap 2 ${e.target.value.trim()}`)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="m-0 text-muted">3x Clap</Label>
+              <Input
+                value={clap3}
+                onChange={(e) => setClap3(e.target.value)}
+                onBlur={(e) => sendCmd(`clap 3 ${e.target.value.trim()}`)}
+              />
+            </div>
             </div>
           </div>
         </div>

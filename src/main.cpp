@@ -15,6 +15,7 @@
 #include <math.h>
 #include <vector>
 #include <ctype.h>
+#include <esp_system.h>
 
 #include "comms.h"
 #include "lamp_state.h"
@@ -73,6 +74,29 @@ void importConfig(const String &args);
 void setPattern(size_t index, bool announce = true, bool persist = false);
 void printStatus();
 void printStatusStructured();
+bool ensureBaseMac();
+
+bool ensureBaseMac()
+{
+#if defined(ARDUINO_ARCH_ESP32)
+  uint8_t mac[6] = {0};
+  esp_err_t err = esp_efuse_mac_get_default(mac);
+  if (err == ESP_OK)
+    return true;
+  // fallback: locally administered MAC derived from chip ID + random byte
+  uint32_t chip = (uint32_t)ESP.getEfuseMac();
+  mac[0] = 0x02; // locally administered unicast
+  mac[1] = 0x00;
+  mac[2] = (chip >> 16) & 0xFF;
+  mac[3] = (chip >> 8) & 0xFF;
+  mac[4] = chip & 0xFF;
+  mac[5] = (uint8_t)(esp_random() & 0xFF);
+  esp_base_mac_addr_set(mac);
+  return false;
+#else
+  return true;
+#endif
+}
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -243,6 +267,8 @@ float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
 float musicFiltered = 0.0f;
+float musicDc = 0.5f;
+float musicEnv = 0.0f;
 float musicRawLevel = 0.0f;
 uint32_t lastMusicSampleMs = 0;
 float musicGain = Settings::MUSIC_GAIN_DEFAULT;
@@ -253,6 +279,7 @@ float musicModScale = 1.0f;
 float musicBeatEnv = 0.0f;
 float musicBeatIntervalMs = 600.0f;
 uint32_t musicLastBeatMs = 0;
+float clapPrevEnv = 0.0f;
 bool clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
 float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
 uint32_t clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
@@ -264,6 +291,7 @@ String clapCmd3 = F("");
 uint8_t clapCount = 0;
 uint32_t clapWindowStartMs = 0;
 constexpr uint32_t CLAP_WINDOW_MS = 1200;
+constexpr float CLAP_RISE_MIN = 0.02f;
 bool clapTraining = false;
 uint32_t clapTrainLastLog = 0;
 #endif
@@ -3100,7 +3128,7 @@ void handleCommand(String line)
     {
       float g = arg.substring(4).toFloat();
       if (g < 0.1f) g = 0.1f;
-      if (g > 5.0f) g = 5.0f;
+      if (g > 12.0f) g = 12.0f;
       musicGain = g;
       saveSettings();
       sendFeedback(String(F("[Music] gain=")) + String(g, 2));
@@ -3899,20 +3927,33 @@ void updateMusicSensor()
     raw = 0;
   if (raw > 4095)
     raw = 4095;
-  // crude envelope: high-pass-ish by subtracting filtered baseline
-  static float env = 0.0f;
+  // envelope with DC removal: track slow baseline, then rectify delta
   float val = (float)raw / 4095.0f;
   musicRawLevel = clamp01(val);
-  env = Settings::MUSIC_ALPHA * val + (1.0f - Settings::MUSIC_ALPHA) * env;
-  musicFiltered = clamp01(env * musicGain);
+  static bool musicEnvInit = false;
+  if (!musicEnvInit)
+  {
+    musicDc = val;
+    musicEnv = 0.0f;
+    musicEnvInit = true;
+  }
+  const float dcAlpha = 0.01f; // slow baseline for bias removal
+  musicDc = (1.0f - dcAlpha) * musicDc + dcAlpha * val;
+  float delta = fabsf(val - musicDc);
+  const float envAlpha = Settings::MUSIC_ALPHA; // faster attack/decay for percussive signals
+  musicEnv = (1.0f - envAlpha) * musicEnv + envAlpha * delta;
+  // Boost envelope a bit for visibility
+  musicFiltered = clamp01(musicEnv * musicGain * 1.5f);
   // If no feature needs audio, reset modifiers and bail after updating status fields
   // Modulate brightness scale based on mode
   if (musicEnabled)
   {
     if (musicMode == 0)
     {
-      float target = 0.2f + 0.8f * musicFiltered;
-      musicModScale = 0.8f * musicModScale + 0.2f * target;
+      // Direct mode: map envelope to a wider modulation range for visibility
+      float target = 0.25f + 2.2f * musicFiltered; // up to ~1.5 before clamp
+      target = target > 1.5f ? 1.5f : target;
+      musicModScale = 0.6f * musicModScale + 0.4f * target;
     }
     else // beat mode
     {
@@ -3934,16 +3975,21 @@ void updateMusicSensor()
       {
         float decayMs = fmaxf(250.0f, musicBeatIntervalMs * 0.6f);
         float k = expf(-(Settings::MUSIC_SAMPLE_MS) / decayMs);
-        musicModScale = 0.3f + (musicModScale - 0.3f) * k;
+        // decay toward a low floor; keep a neutral baseline so patterns remain visible
+        const float floor = 0.2f;
+        musicModScale = floor + (musicModScale - floor) * k;
       }
     }
   }
-  // Auto lamp on when switch is ON and ambient loud
-  if (musicAutoLamp && switchDebouncedState && musicFiltered >= musicAutoThr)
+  // Auto lamp on when switch is ON and audio crosses threshold (rising edge)
+  static bool musicAutoAbove = false;
+  const bool above = musicFiltered >= musicAutoThr;
+  if (musicAutoLamp && switchDebouncedState && above && !musicAutoAbove)
   {
     setLampEnabled(true, "music auto");
     lastActivityMs = now;
   }
+  musicAutoAbove = above && musicAutoLamp;
   if (clapTraining && (now - clapTrainLastLog) >= 200)
   {
     clapTrainLastLog = now;
@@ -3952,20 +3998,22 @@ void updateMusicSensor()
   }
   if (clapEnabled)
   {
-    if (musicFiltered >= clapThreshold)
+    float clapDelta = musicEnv - clapPrevEnv;
+    clapPrevEnv = musicEnv;
+    bool risingEdge = (musicEnv >= clapThreshold) && (clapDelta >= CLAP_RISE_MIN);
+    if (risingEdge && (now - clapLastMs) >= clapCooldownMs)
     {
-      if (!clapAbove && (now - clapLastMs) >= clapCooldownMs)
-      {
-        clapLastMs = now;
-        if (clapWindowStartMs == 0)
-          clapWindowStartMs = now;
-        ++clapCount;
-      }
+      clapLastMs = now;
+      if (clapWindowStartMs == 0)
+        clapWindowStartMs = now;
+      ++clapCount;
       clapAbove = true;
     }
     else
     {
-      clapAbove = false;
+      // reset latch when sufficiently below threshold
+      if (musicEnv < clapThreshold * 0.6f)
+        clapAbove = false;
     }
 
     if (clapWindowStartMs && (now - clapWindowStartMs) >= CLAP_WINDOW_MS)
@@ -4129,6 +4177,7 @@ void setup()
   delay(200);
   Serial.println();
   Serial.println(F("Quarzlampe PWM-Demo"));
+  ensureBaseMac();
 
 #if ENABLE_SWITCH
   pinMode(PIN_SWITCH, INPUT_PULLUP);

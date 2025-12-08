@@ -81,6 +81,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.patternSpeed": "Pattern speed multiplier",
     "desc.patternFade": "Smooth transitions between patterns",
     "desc.clamp": "Min/Max target brightness from ambient light",
+    "desc.clap":
+      "Threshold: envelope level to count a clap. Cooldown: minimum delay before a new clap window starts. Actions fire on 1/2/3 claps within the window.",
     "desc.alpha": "Low-pass filter for sensor noise",
     "desc.brightness": "Set output level",
     "desc.tapSwitch":
@@ -256,6 +258,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.patternSpeed": "Geschwindigkeits-Multiplikator",
     "desc.patternFade": "Weiche Übergänge zwischen Mustern",
     "desc.clamp": "Min/Max Zielhelligkeit aus Umgebungslicht",
+    "desc.clap":
+      "Schwelle: Envelope-Level für einen Klatscher. Cooldown: Mindestabstand, bevor ein neues Klatsch-Fenster startet. Aktionen feuern bei 1/2/3 Klatschern im Fenster.",
     "desc.alpha": "Tiefpass gegen Sensorausreißer",
     "desc.brightness": "Ausgangspegel einstellen",
     "desc.tapSwitch":
