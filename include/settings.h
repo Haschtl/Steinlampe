@@ -79,6 +79,10 @@ constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custo
 #endif
 constexpr bool FEEDBACK_NEEDS_HANDSHAKE = REQUIRE_FEEDBACK_HANDSHAKE;
 
+#ifndef ENABLE_HELP_TEXT
+#define ENABLE_HELP_TEXT 0
+#endif
+
 #ifndef ENABLE_FILTERS
 #define ENABLE_FILTERS 1
 #endif

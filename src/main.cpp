@@ -324,6 +324,7 @@ float musicModScale = 1.0f;
 float musicBeatEnv = 0.0f;
 float musicBeatIntervalMs = 600.0f;
 uint32_t musicLastBeatMs = 0;
+uint32_t musicLastKickMs = 0;
 float clapPrevEnv = 0.0f;
 bool clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
 float clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
@@ -339,6 +340,7 @@ constexpr uint32_t CLAP_WINDOW_MS = 900;
 constexpr float CLAP_RISE_MIN = 0.02f;
 bool clapTraining = false;
 uint32_t clapTrainLastLog = 0;
+bool musicPatternActive = false; // true when a Music pattern is selected
 #endif
 
 #if ENABLE_POTI
@@ -381,7 +383,6 @@ float patternCustom(uint32_t ms)
 #if ENABLE_MUSIC_MODE
 float patternMusicDirect(uint32_t) { return 1.0f; }
 float patternMusicBeat(uint32_t) { return 1.0f; }
-bool musicPatternActive = false; // true when a Music pattern is selected
 #endif
 
 bool wakeFadeActive = false;
@@ -1304,6 +1305,7 @@ void setPattern(size_t index, bool announce, bool persist)
       musicMode = 0;
       musicPatternActive = true;
       musicModScale = 1.0f;
+      musicLastKickMs = 0;
     }
     else if (name.indexOf(F("music beat")) >= 0)
     {
@@ -1313,12 +1315,14 @@ void setPattern(size_t index, bool announce, bool persist)
       musicModScale = 1.0f;
       musicBeatEnv = 0.0f;
       musicLastBeatMs = 0;
+      musicLastKickMs = 0;
     }
     else
     {
       musicPatternActive = false;
       musicEnabled = false;
       musicModScale = 1.0f;
+      musicLastKickMs = 0;
     }
   }
 #endif
@@ -1897,6 +1901,10 @@ void printSensorsStructured()
   line += (musicMode == 1) ? F("beat") : F("direct");
   line += F("|music_mod=");
   line += String(musicModScale, 3);
+  line += F("|music_kick_ms=");
+  line += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
+  line += F("|music_level=");
+  line += String(musicRawLevel, 3);
 #else
   line += F("|music_env=N/A");
 #endif
@@ -2007,6 +2015,8 @@ void printStatusStructured()
   line += (musicMode == 1 ? F("beat") : F("direct"));
   line += F("|music_mod=");
   line += String(musicModScale, 3);
+  line += F("|music_kick_ms=");
+  line += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
   line += F("|music_env=");
   line += String(musicFiltered, 3);
   line += F("|music_level=");
@@ -2631,6 +2641,7 @@ void importConfig(const String &args)
  */
 void printHelp()
 {
+#if ENABLE_HELP_TEXT
   const char *lines[] = {
       "Serien-Kommandos:",
       "  list              - verfügbare Muster",
@@ -2684,6 +2695,9 @@ void printHelp()
   };
   for (auto l : lines)
     sendFeedback(String(l));
+#else
+  sendFeedback(F("[Help] disabled to save flash. Commands in README."));
+#endif
 }
 
 /**
@@ -2779,7 +2793,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: quick <idx,idx,...> or quick default"));
+      sendFeedback(F("Usage: quick <idx,...> | quick default"));
     }
     return;
   }
@@ -2850,7 +2864,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: touch tune <on> <off> (on>off>0)"));
+      sendFeedback(F("Usage: touch tune <on> <off>"));
     }
     return;
   }
@@ -2865,7 +2879,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: touch hold <500-5000>"));
+      sendFeedback(F("Usage: touch hold 500-5000"));
     }
     return;
   }
@@ -2923,7 +2937,7 @@ void handleCommand(String line)
       }
       else
       {
-        sendFeedback(F("Usage: custom step <20-5000>"));
+        sendFeedback(F("Usage: custom step 20-5000"));
       }
       return;
     }
@@ -2964,7 +2978,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: custom v1,v2,... or custom step <ms>"));
+      sendFeedback(F("Usage: custom v1,v2,... | custom step <ms>"));
     }
     return;
   }
@@ -3030,7 +3044,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: pat fade amt 0.01-10.0"));
+      sendFeedback(F("Usage: pat fade amt 0.01-10"));
     }
   }
     else
@@ -3070,7 +3084,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: pat margin <low 0-1> <high 0-1>"));
+      sendFeedback(F("Usage: pat margin <low> <high>"));
     }
     return;
   }
@@ -3321,7 +3335,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("Usage: pwm curve 0.5-4.0"));
+      sendFeedback(F("Usage: pwm curve 0.5-4"));
     }
     return;
   }
@@ -4919,6 +4933,7 @@ void updateMusicSensor()
     musicBeatEnv = 0.0f;
     musicBeatIntervalMs = 600.0f;
     musicLastBeatMs = 0;
+    musicLastKickMs = 0;
     return;
   }
   uint32_t now = millis();
@@ -4948,6 +4963,7 @@ void updateMusicSensor()
   musicEnv = (1.0f - envAlpha) * musicEnv + envAlpha * delta;
   // Boost envelope a bit for visibility
   musicFiltered = clamp01(musicEnv * musicGain * 1.5f);
+  bool kickDetected = false;
   // If no feature needs audio, reset modifiers and bail after updating status fields
   // Modulate brightness scale based on mode
   if (musicEnabled)
@@ -4958,6 +4974,8 @@ void updateMusicSensor()
       float target = 0.25f + 2.2f * musicFiltered; // up to ~1.5 before clamp
       target = target > 1.5f ? 1.5f : target;
       musicModScale = 0.6f * musicModScale + 0.4f * target;
+      if (musicFiltered > musicAutoThr * 1.2f)
+        kickDetected = true;
     }
     else // beat mode
     {
@@ -4974,6 +4992,7 @@ void updateMusicSensor()
         }
         musicLastBeatMs = nowMs;
         musicModScale = 0.8f; // kick on beat but avoid full current spike
+        kickDetected = true;
       }
       else
       {
@@ -4992,6 +5011,8 @@ void updateMusicSensor()
   {
     musicModScale = (1.0f - musicSmoothing) * musicModScale + musicSmoothing * musicFiltered;
   }
+  if (kickDetected)
+    musicLastKickMs = now;
   // Auto lamp on when switch is ON and audio crosses threshold (rising edge)
   static bool musicAutoAbove = false;
   const bool above = musicFiltered >= musicAutoThr;

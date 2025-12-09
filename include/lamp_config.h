@@ -22,7 +22,7 @@
 #endif
 
 #ifndef ENABLE_BLE_MIDI
-#define ENABLE_BLE_MIDI 1
+#define ENABLE_BLE_MIDI 0
 #endif
 
 #ifndef ENABLE_BT_MIDI

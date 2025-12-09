@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Sparkline } from '@/components/ui/sparkline';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -14,13 +15,21 @@ export function TouchCard() {
   const [touchHold, setTouchHold] = useState(800);
   const [touchStep, setTouchStep] = useState(0.005);
   const [lastLine, setLastLine] = useState<string | undefined>(undefined);
+  const [rawHistory, setRawHistory] = useState<number[]>([]);
 
   useEffect(() => {
     if (typeof status.touchThrOn === 'number') setTouchOn(status.touchThrOn);
     if (typeof status.touchThrOff === 'number') setTouchOff(status.touchThrOff);
     if (typeof status.touchDimStep === 'number') setTouchStep(status.touchDimStep);
     if (typeof status.lastTouchLine === 'string') setLastLine(status.lastTouchLine);
-  }, [status.lastTouchLine, status.touchThrOff, status.touchThrOn, status.touchDimStep]);
+    if (typeof status.touchRaw === 'number') {
+      setRawHistory((prev) => {
+        const next = [...prev, status.touchRaw];
+        if (next.length > 80) next.shift();
+        return next;
+      });
+    }
+  }, [status.lastTouchLine, status.touchThrOff, status.touchThrOn, status.touchDimStep, status.touchRaw]);
 
   return (
     <Card>
@@ -82,6 +91,7 @@ export function TouchCard() {
             <Trans k="btn.debug">Debug</Trans>
           </Button>
         </div>
+        <Sparkline data={rawHistory} />
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <p className="text-sm text-muted"><Trans k="touch.onThr">Touch On threshold</Trans></p>

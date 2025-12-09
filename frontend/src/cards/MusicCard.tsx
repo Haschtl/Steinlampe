@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Sparkline } from '@/components/ui/sparkline';
 import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
 
@@ -19,6 +20,8 @@ export function MusicCard() {
   const [clap1, setClap1] = useState('mode next');
   const [clap2, setClap2] = useState('toggle');
   const [clap3, setClap3] = useState('mode prev');
+  const [envHistory, setEnvHistory] = useState<number[]>([]);
+  const [levelHistory, setLevelHistory] = useState<number[]>([]);
   const clapEnabled = status.clapEnabled ?? false;
 
   useEffect(() => {
@@ -31,7 +34,38 @@ export function MusicCard() {
     if (typeof status.clapCmd1 === 'string') setClap1(status.clapCmd1);
     if (typeof status.clapCmd2 === 'string') setClap2(status.clapCmd2);
     if (typeof status.clapCmd3 === 'string') setClap3(status.clapCmd3);
-  }, [status.clapCooldownMs, status.clapThreshold, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicSmooth, status.clapCmd1, status.clapCmd2, status.clapCmd3]);
+    if (typeof status.musicEnv === 'number') {
+      setEnvHistory((prev) => {
+        const next = [...prev, status.musicEnv];
+        if (next.length > 80) next.shift();
+        return next;
+      });
+    }
+    if (typeof status.musicLevel === 'number') {
+      setLevelHistory((prev) => {
+        const next = [...prev, status.musicLevel];
+        if (next.length > 80) next.shift();
+        return next;
+      });
+    }
+  }, [
+    status.clapCooldownMs,
+    status.clapThreshold,
+    status.musicGain,
+    status.musicAuto,
+    status.musicAutoThr,
+    status.musicSmooth,
+    status.clapCmd1,
+    status.clapCmd2,
+    status.clapCmd3,
+    status.musicEnv,
+    status.musicLevel,
+  ]);
+
+  const kickAgo = useMemo(() => {
+    if (typeof status.musicKickMs !== 'number' || status.musicKickMs < 0) return '—';
+    return `${status.musicKickMs} ms`;
+  }, [status.musicKickMs]);
 
   return (
     <Card>
@@ -136,6 +170,24 @@ export function MusicCard() {
               "music.modeDirect",
               "Patterns “Music Direct” and “Music Beat” control modulation; adjust smoothing/gain/threshold here."
             )}
+          </div>
+          <div className="grid gap-2 rounded-lg border border-border/60 bg-panel/60 p-3">
+            <div className="flex flex-wrap items-center justify-between text-xs text-muted">
+              <span>Level</span>
+              <span>{status.musicLevel !== undefined ? status.musicLevel.toFixed(3) : '—'}</span>
+            </div>
+            <Sparkline data={levelHistory} min={0} max={1} />
+            <div className="flex flex-wrap items-center justify-between text-xs text-muted">
+              <span>Env</span>
+              <span>{status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : '—'}</span>
+            </div>
+            <Sparkline data={envHistory} min={0} max={1} color="var(--accent-color, #5be6ff)" />
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span className="chip-muted">Kick: {kickAgo}</span>
+              <span className="chip-muted">
+                Smooth: {status.musicSmooth !== undefined ? status.musicSmooth.toFixed(2) : '—'}
+              </span>
+            </div>
           </div>
           <div className="text-xs text-foreground/80">
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}

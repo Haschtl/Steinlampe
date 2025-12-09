@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Knob } from '@/components/ui/knob';
 import { SliderRow } from '@/components/ui/slider-row';
+import { Button } from '@/components/ui/button';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -13,8 +14,63 @@ export function FilterSection() {
   const waveLabel = useMemo(() => (status.filterTremWave === 1 ? 'triangle' : 'sine'), [status.filterTremWave]);
   const curveLabel = useMemo(() => (status.filterClipCurve === 1 ? 'soft' : 'tanh'), [status.filterClipCurve]);
 
+  const presets: { name: string; commands: string[] }[] = [
+    {
+      name: 'Soft Glow',
+      commands: [
+        'filter iir on 0.20',
+        'filter clip on 0.18 tanh',
+        'filter spark off',
+        'filter trem off',
+        'filter comp off',
+        'filter env off',
+        'filter fold off',
+        'filter delay off',
+      ],
+    },
+    {
+      name: 'Punchy',
+      commands: [
+        'filter clip on 0.35 tanh',
+        'filter comp on 0.70 3.0 20 160',
+        'filter iir on 0.10',
+        'filter trem off',
+      ],
+    },
+    {
+      name: 'Motion',
+      commands: [
+        'filter trem on 2.0 0.4 sine',
+        'filter env on 30 220',
+        'filter delay on 240 0.25 0.2',
+      ],
+    },
+  ];
+
+  const applyPreset = async (cmds: string[]) => {
+    for (const c of cmds) {
+      try {
+        await sendCmd(c);
+      } catch (err) {
+        console.warn(err);
+      }
+    }
+  };
+
   return (
     <div className="grid gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle><Trans k="filter.presets">Presets</Trans></CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {presets.map((p) => (
+            <Button key={p.name} variant="secondary" size="sm" onClick={() => applyPreset(p.commands)}>
+              {p.name}
+            </Button>
+          ))}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">

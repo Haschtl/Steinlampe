@@ -93,6 +93,7 @@ export type DeviceStatus = {
   musicMod?: number;
   musicEnv?: number;
   musicLevel?: number;
+  musicKickMs?: number;
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
@@ -257,6 +258,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         musicAutoThr: asNum('music_thr') ?? s.musicAutoThr,
         musicMode: kv.music_mode ?? s.musicMode,
         musicMod: asNum('music_mod') ?? s.musicMod,
+        musicKickMs: asNum('music_kick_ms') ?? s.musicKickMs,
         clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
         clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
         clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
@@ -316,6 +318,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const musicSmooth = num('music_smooth') ?? s.musicSmooth;
       const lightAmbMult = num('light_amb_mult') ?? s.lightAmbMult;
       const rampAmb = num('ramp_amb') ?? s.rampAmbient;
+      const musicKickMs = num('music_kick_ms') ?? s.musicKickMs;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -335,6 +338,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         musicEnv,
         musicLevel,
         musicSmooth,
+        musicKickMs,
         lightAmbMult,
         rampAmbient: rampAmb,
       };

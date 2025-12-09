@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RangeSliderRow } from '@/components/ui/range-slider-row';
+import { Sparkline } from '@/components/ui/sparkline';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -18,6 +19,7 @@ export function LightCard() {
   const [raw, setRaw] = useState<number | undefined>();
   const [rawMin, setRawMin] = useState<number | undefined>();
   const [rawMax, setRawMax] = useState<number | undefined>();
+  const [history, setHistory] = useState<number[]>([]);
 
   useEffect(() => {
     if (typeof status.lightEnabled === 'boolean') setEnabled(status.lightEnabled);
@@ -28,6 +30,13 @@ export function LightCard() {
     if (typeof status.lightRaw === 'number') setRaw(status.lightRaw);
     if (typeof status.lightRawMin === 'number') setRawMin(status.lightRawMin);
     if (typeof status.lightRawMax === 'number') setRawMax(status.lightRawMax);
+    if (typeof status.lightRaw === 'number') {
+      setHistory((prev) => {
+        const next = [...prev, status.lightRaw];
+        if (next.length > 80) next.shift();
+        return next;
+      });
+    }
   }, [status.lightEnabled, status.lightGain, status.lightAlpha, status.lightClampMin, status.lightClampMax, status.lightRaw, status.lightRawMin, status.lightRawMax]);
 
   return (
@@ -106,6 +115,7 @@ export function LightCard() {
               <strong>Max:</strong> {rawMax !== undefined ? rawMax.toFixed(2) : '—'}
             </span>
           </div>
+          <Sparkline data={history} min={0} max={4095} />
         </div>
         <RangeSliderRow
           label={<Trans k="label.clamp">Dim-Limits</Trans>}
