@@ -8,8 +8,13 @@
 
 // ---------- LEDC ----------
 const int LEDC_CH = 0;
-const int LEDC_FREQ = 2000;
-const int LEDC_RES = 15; // 15-bit resolution @2 kHz still fits LEDC clock
+// more conservative
+// const int LEDC_FREQ = 2000;
+// const int LEDC_RES = 15; // 15-bit resolution @2 kHz still fits LEDC clock
+
+// Lower PWM frequency to gain one more bit of resolution (quieter LEDs).
+const int LEDC_FREQ = 1000;
+const int LEDC_RES = 16; // 16-bit @1 kHz fits LEDC clock
 const int PWM_MAX = (1 << LEDC_RES) - 1;
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 

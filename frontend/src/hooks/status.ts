@@ -111,6 +111,8 @@ export type DeviceStatus = {
   pushHoldMs?: number;
   pushStepMs?: number;
   pushStep?: number;
+  trustedBle?: string[];
+  trustedBt?: string[];
 };
 
 /**
@@ -273,6 +275,20 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         pushStep: asNum('push_step') ?? s.pushStep,
       };
     });
+    return true;
+  }
+  if (line.startsWith('[Trust]')) {
+    const lower = line.toLowerCase();
+    const isBle = lower.includes('ble');
+    const isBt = lower.includes('bt');
+    const parts = line.split(':');
+    const list = parts.length > 1 ? parts[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+    setStatus((s) => ({
+      ...s,
+      trustedBle: isBle ? list : s.trustedBle,
+      trustedBt: isBt ? list : s.trustedBt,
+      lastStatusAt: Date.now(),
+    }));
     return true;
   }
   if (line.startsWith('SENSORS|')) {

@@ -20,7 +20,6 @@
 
 #if ENABLE_BLE
 #include <BLEAdvertising.h>
-// #include <BLEAdvertisementData.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -38,49 +37,30 @@ void blePresenceUpdate(bool connected, const String &addr);
 void saveSettings();
 void sendFeedback(const String &line);
 
-    namespace
-{
-bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
-inline bool feedbackAllowed()
-{
-  return !Settings::FEEDBACK_NEEDS_HANDSHAKE || feedbackArmed;
-}
-inline void armFeedback()
-{
-  feedbackArmed = true;
-}
-/**
- * @brief Append a character to the line buffer and dispatch full commands.
- */
-void processInputChar(String &buffer, char c)
-{
-  if (c == '\r')
-    return;
-  if (c == '\n')
-  {
-    buffer.trim();
-    if (!buffer.isEmpty())
-    {
-      armFeedback();
-      handleCommand(buffer);
-    }
-    buffer = "";
-  }
-  else if (buffer.length() < 64)
-  {
-    buffer += c;
-  }
-}
-
-// Line buffer for USB serial input
-String bufferUsb;
-
-// Trusted devices (BLE + BT)
+// Trusted device storage (shared across helpers)
 static std::vector<String> trustedBle;
 static std::vector<String> trustedBt;
 static uint32_t trustBootMs = 0;
 static const uint32_t TRUST_GRACE_MS = 60000; // 1 minute open window
 static const size_t TRUST_MAX = 12;
+
+static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
+static String bleName = Settings::BLE_NAME_DEFAULT;
+static String btName = Settings::BT_NAME_DEFAULT;
+
+// Line buffers
+static String bufferUsb;
+#if ENABLE_BT_SERIAL
+static String bufferBt;
+static String lastSppAddr;
+BluetoothSerial serialBt;
+#endif
+
+inline bool feedbackAllowed()
+{
+  return !Settings::FEEDBACK_NEEDS_HANDSHAKE || feedbackArmed;
+}
+inline void armFeedback() { feedbackArmed = true; }
 
 String normalizeAddr(const String &in)
 {
@@ -163,65 +143,6 @@ bool withinGrace()
   return (millis() - trustBootMs) < TRUST_GRACE_MS;
 }
 
-void trustSetBootMs(uint32_t ms) { trustBootMs = ms; }
-
-void trustSetLists(const String &bleCsv, const String &btCsv)
-{
-  parseList(bleCsv, trustedBle);
-  parseList(btCsv, trustedBt);
-}
-
-String trustGetBleCsv() { return joinList(trustedBle); }
-String trustGetBtCsv() { return joinList(trustedBt); }
-
-bool trustAddBle(const String &addr, bool persist)
-{
-  if (addToList(trustedBle, addr))
-  {
-    if (persist)
-      saveSettings();
-    return true;
-  }
-  return false;
-}
-bool trustAddBt(const String &addr, bool persist)
-{
-  if (addToList(trustedBt, addr))
-  {
-    if (persist)
-      saveSettings();
-    return true;
-  }
-  return false;
-}
-
-bool trustRemoveBle(const String &addr, bool persist)
-{
-  if (removeFromList(trustedBle, addr))
-  {
-    if (persist)
-      saveSettings();
-    return true;
-  }
-  return false;
-}
-bool trustRemoveBt(const String &addr, bool persist)
-{
-  if (removeFromList(trustedBt, addr))
-  {
-    if (persist)
-      saveSettings();
-    return true;
-  }
-  return false;
-}
-
-void trustListFeedback()
-{
-  sendFeedback(String(F("[Trust] BLE: ")) + trustGetBleCsv());
-  sendFeedback(String(F("[Trust] BT : ")) + trustGetBtCsv());
-}
-
 bool allowBleAddr(const String &addr)
 {
   if (addr.isEmpty())
@@ -240,11 +161,70 @@ bool allowBtAddr(const String &addr)
   return listContains(trustedBt, addr);
 }
 
+/**
+ * @brief Append a character to the line buffer and dispatch full commands.
+ */
+void processInputChar(String &buffer, char c)
+{
+  if (c == '\r')
+    return;
+  if (c == '\n')
+  {
+    buffer.trim();
+    if (!buffer.isEmpty())
+    {
+      armFeedback();
+      handleCommand(buffer);
+    }
+    buffer = "";
+  }
+  else if (buffer.length() < 64)
+  {
+    buffer += c;
+  }
+}
+
+void setBleName(const String &name)
+{
+#if ENABLE_BLE
+  if (name.length() >= 2)
+  {
+    bleName = name;
+    // Live rename of advertisement can be flaky; store for next restart.
+    if (BLEDevice::getInitialized())
+    {
+      auto *adv = BLEDevice::getAdvertising();
+      if (adv)
+      {
+        adv->stop();
+        adv->start();
+      }
+    }
+  }
+#else
+  (void)name;
+#endif
+}
+
+void setBtName(const String &name)
+{
 #if ENABLE_BT_SERIAL
-BluetoothSerial serialBt;
-// Line buffer for BT serial input
-String bufferBt;
-String lastSppAddr;
+  if (name.length() < 2)
+    return;
+  btName = name;
+  if (serialBt.hasClient())
+    serialBt.disconnect();
+  serialBt.end();
+  serialBt.begin(btName);
+#else
+  (void)name;
+#endif
+}
+
+String getBleName() { return bleName; }
+String getBtName() { return btName; }
+
+#if ENABLE_BT_SERIAL
 
 String formatMac(const uint8_t bda[6])
 {
@@ -261,6 +241,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     if (param)
     {
       lastSppAddr = formatMac(param->srv_open.rem_bda);
+      // Trust check moved to global helper, forward-declared above.
       if (!allowBtAddr(lastSppAddr))
       {
         if (feedbackAllowed())
@@ -424,7 +405,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
  */
 void startBle()
 {
-  BLEDevice::init(Settings::BLE_DEVICE_NAME);
+  BLEDevice::init(bleName.c_str());
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new LampBleServerCallbacks());
   BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
@@ -442,6 +423,9 @@ void startBle()
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
+  advertising->setAppearance(0);
+  advertising->setScanResponse(true);
+  advertising->start();
 
   // Keep lamp service in the primary advertisement (for WebBLE filters).
 //   BLEAdvertisementData advData;
@@ -473,21 +457,82 @@ void startBle()
  */
 void startBtSerial()
 {
-  if (!serialBt.begin(Settings::BT_SERIAL_NAME))
+  if (!serialBt.begin(btName))
   {
     Serial.println(F("[BT] Classic Serial konnte nicht gestartet werden."));
   }
   else
   {
     Serial.print(F("[BT] Classic Serial aktiv als '"));
-    Serial.print(Settings::BT_SERIAL_NAME);
+    Serial.print(btName);
     Serial.println(F("'"));
     serialBt.register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
                               { sppCallbackLocal(event, param); });
   }
 }
-} // namespace
 #endif
+
+
+void trustSetBootMs(uint32_t ms) { trustBootMs = ms; }
+
+void trustSetLists(const String &bleCsv, const String &btCsv)
+{
+  parseList(bleCsv, trustedBle);
+  parseList(btCsv, trustedBt);
+}
+
+String trustGetBleCsv() { return joinList(trustedBle); }
+String trustGetBtCsv() { return joinList(trustedBt); }
+
+bool trustAddBle(const String &addr, bool persist)
+{
+  if (addToList(trustedBle, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+bool trustAddBt(const String &addr, bool persist)
+{
+  if (addToList(trustedBt, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+
+bool trustRemoveBle(const String &addr, bool persist)
+{
+  if (removeFromList(trustedBle, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+bool trustRemoveBt(const String &addr, bool persist)
+{
+  if (removeFromList(trustedBt, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+
+void trustListFeedback()
+{
+  sendFeedback(String(F("[Trust] BLE: ")) + trustGetBleCsv());
+  sendFeedback(String(F("[Trust] BT : ")) + trustGetBtCsv());
+}
+
+
 
 void setupCommunications()
 {

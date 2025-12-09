@@ -71,6 +71,9 @@ void syncLampToSwitch();
 void startDemo(uint32_t dwellMs);
 void stopDemo();
 void saveSettings();
+
+void setBleName(const String &name);
+void setBtName(const String &name);
 void importConfig(const String &args);
 void setPattern(size_t index, bool announce = true, bool persist = false);
 void printStatus();
@@ -119,6 +122,8 @@ static const char *PREF_KEY_CUSTOM = "cust";
 static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
 static const char *PREF_KEY_TRUST_BLE = "trust_ble";
 static const char *PREF_KEY_TRUST_BT = "trust_bt";
+static const char *PREF_KEY_BLE_NAME = "ble_name";
+static const char *PREF_KEY_BT_NAME = "bt_name";
 #if ENABLE_MUSIC_MODE
 static const char *PREF_KEY_MUSIC_EN = "music_en";
 static const char *PREF_KEY_CLAP_EN = "clap_en";
@@ -361,6 +366,7 @@ static const size_t CUSTOM_MAX = 32;
 float customPattern[CUSTOM_MAX];
 size_t customLen = 0;
 uint32_t customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+void setBtName(const String &name);
 
 float patternCustom(uint32_t ms)
 {
@@ -4362,6 +4368,47 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("name"))
+  {
+    String args = line.substring(4);
+    args.trim();
+    if (args.isEmpty())
+    {
+      sendFeedback(String(F("[Name] BLE=")) + getBleName() + F(" BT=") + getBtName());
+      return;
+    }
+    int sp = args.indexOf(' ');
+    if (sp < 0)
+    {
+      sendFeedback(F("Usage: name ble <text> | name bt <text>"));
+      return;
+    }
+    String kind = args.substring(0, sp);
+    String val = args.substring(sp + 1);
+    val.trim();
+    if (val.length() < 2 || val.length() > 24)
+    {
+      sendFeedback(F("Name length 2-24 chars"));
+      return;
+    }
+    if (kind.equalsIgnoreCase(F("ble")))
+    {
+      setBleName(val);
+      saveSettings();
+      sendFeedback(String(F("[Name] BLE set to ")) + val);
+    }
+    else if (kind.equalsIgnoreCase(F("bt")))
+    {
+      setBtName(val);
+      saveSettings();
+      sendFeedback(String(F("[Name] BT set to ")) + val);
+    }
+    else
+    {
+      sendFeedback(F("Usage: name ble <text> | name bt <text>"));
+    }
+    return;
+  }
   if (lower.startsWith("trust"))
   {
     String args = line.substring(5);
@@ -4453,6 +4500,8 @@ void handleCommand(String line)
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
     trustSetLists("", "");
+    setBleName(Settings::BLE_NAME_DEFAULT);
+    setBtName(Settings::BT_NAME_DEFAULT);
     filtersInit();
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));

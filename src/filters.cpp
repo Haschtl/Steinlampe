@@ -122,7 +122,11 @@ float filtersApply(float in, uint32_t nowMs)
   // Compressor
   if (st.compEnabled && st.compRatio > 1.0f)
   {
-    float level = out <= 0.0001f ? 0.0001f : out;
+    float level = fabsf(out) * 1.3f; // drive a bit harder so effect is noticeable
+    if (level < 0.0001f)
+      level = 0.0001f;
+    if (level > 1.0f)
+      level = 1.0f;
     float thr = st.compThr;
     float ratio = st.compRatio;
     float targetGain = 1.0f;
@@ -131,6 +135,8 @@ float filtersApply(float in, uint32_t nowMs)
       float compOut = thr + (level - thr) / ratio;
       targetGain = compOut / level;
     }
+    if (targetGain < 0.05f)
+      targetGain = 0.05f;
     uint32_t dt = nowMs - st.compLastMs;
     st.compLastMs = nowMs;
     if (dt > 1000) dt = 1000;
@@ -140,7 +146,8 @@ float filtersApply(float in, uint32_t nowMs)
                       ? 1.0f - expf(-(float)dt / aMs)
                       : 1.0f - expf(-(float)dt / rMs);
     st.compGain = st.compGain + (targetGain - st.compGain) * alpha;
-    out *= st.compGain;
+    float makeup = 1.0f + (1.0f - st.compGain) * 0.4f; // slight makeup to keep perceived brightness
+    out *= st.compGain * makeup;
   }
 
   // IIR low-pass on the final output
@@ -172,8 +179,11 @@ float filtersApply(float in, uint32_t nowMs)
   {
     float depth = clamp01(st.tremDepth);
     float phase = 2.0f * (float)M_PI * st.tremRateHz * ((nowMs - st.tremStartMs) / 1000.0f);
-    float m = waveValue(st.tremWave, phase);
-    float mod = (1.0f - depth) + depth * m;
+    float m = waveValue(st.tremWave, phase); // 0..1
+    float centered = (m - 0.5f) * 2.0f;      // -1..1
+    float mod = 1.0f + depth * centered;      // swing around 1.0
+    if (mod < 0.0f)
+      mod = 0.0f;
     out *= mod;
   }
 

@@ -372,17 +372,14 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent>
-          <SliderRow
+        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
+          <Knob
             label={<Trans k="filter.amount">Amount</Trans>}
-            description={<Trans k="filter.foldDesc">Adds harmonics by folding the waveform</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1,
-              step: 0.05,
-              value: status.filterFoldAmt ?? 0.2,
-            }}
-            onInputChange={(val) => sendCmd(`filter fold on ${val.toFixed(2)}`)}
+            min={0}
+            max={1}
+            step={0.05}
+            value={status.filterFoldAmt ?? 0.2}
+            onChange={(val) => sendCmd(`filter fold on ${val.toFixed(2)}`)}
             disabled={!status.filterFold}
           />
         </CardContent>

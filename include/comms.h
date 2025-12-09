@@ -44,6 +44,10 @@ bool trustRemoveBle(const String &addr, bool persist = true);
 bool trustRemoveBt(const String &addr, bool persist = true);
 void trustListFeedback();
 
+// Device names
+String getBleName();
+String getBtName();
+
 // Presence hooks
 void blePresenceUpdate(bool connected, const String &addr);
 
