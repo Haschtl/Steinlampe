@@ -3097,6 +3097,16 @@ void handleCommand(String line)
       {
         String rest = arg.substring(pos + 1);
         rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
         amt = rest.toFloat();
         if (amt < 0.0f) amt = 0.0f;
         if (amt > 1.0f) amt = 1.0f;
@@ -3113,25 +3123,34 @@ void handleCommand(String line)
       float rate = Settings::FILTER_TREM_RATE_DEFAULT;
       float depth = Settings::FILTER_TREM_DEPTH_DEFAULT;
       uint8_t wave = Settings::FILTER_TREM_WAVE_DEFAULT;
-      // parse numbers
-      int pos = arg.indexOf(' ');
-      if (pos > 0)
+      // strip leading "trem"
+      String rest = arg.substring(4);
+      rest.trim();
+      // drop leading on/off token if present
+      if (rest.startsWith("on"))
       {
-        String rest = arg.substring(pos + 1);
+        rest = rest.substring(2);
         rest.trim();
-        int pos2 = rest.indexOf(' ');
-        if (pos2 > 0)
-        {
-          rate = rest.substring(0, pos2).toFloat();
-          String rest2 = rest.substring(pos2 + 1);
-          depth = rest2.toFloat();
-          if (rest2.indexOf("tri") >= 0) wave = 1;
-          else wave = 0;
-        }
-        else
-        {
-          rate = rest.toFloat();
-        }
+      }
+      else if (rest.startsWith("off"))
+      {
+        rest = rest.substring(3);
+        rest.trim();
+      }
+      // parse numbers
+      int pos2 = rest.indexOf(' ');
+      if (pos2 > 0)
+      {
+        rate = rest.substring(0, pos2).toFloat();
+        String rest2 = rest.substring(pos2 + 1);
+        rest2.trim();
+        depth = rest2.toFloat();
+        if (rest2.indexOf("tri") >= 0) wave = 1;
+        else wave = 0;
+      }
+      else if (rest.length())
+      {
+        rate = rest.toFloat();
       }
       if (rate < 0.05f) rate = 0.05f;
       if (rate > 20.0f) rate = 20.0f;
@@ -3152,6 +3171,16 @@ void handleCommand(String line)
       {
         String rest = arg.substring(pos + 1);
         rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
         int p1 = rest.indexOf(' ');
         int p2 = p1 > 0 ? rest.indexOf(' ', p1 + 1) : -1;
         if (p1 > 0)
@@ -3187,6 +3216,16 @@ void handleCommand(String line)
       {
         String rest = arg.substring(p1 + 1);
         rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
         int p2 = rest.indexOf(' ');
         int p3 = p2 > 0 ? rest.indexOf(' ', p2 + 1) : -1;
         int p4 = p3 > 0 ? rest.indexOf(' ', p3 + 1) : -1;
@@ -3226,6 +3265,16 @@ void handleCommand(String line)
       {
         String rest = arg.substring(p1 + 1);
         rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
         int p2 = rest.indexOf(' ');
         if (p2 > 0)
         {
@@ -3245,7 +3294,23 @@ void handleCommand(String line)
     {
       bool en = arg.indexOf("off") == -1;
       int p1 = arg.indexOf(' ');
-      float amt = (p1 > 0) ? arg.substring(p1 + 1).toFloat() : Settings::FILTER_FOLD_AMT_DEFAULT;
+      float amt = Settings::FILTER_FOLD_AMT_DEFAULT;
+      if (p1 > 0)
+      {
+        String rest = arg.substring(p1 + 1);
+        rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
+        amt = rest.toFloat();
+      }
       if (amt < 0.0f) amt = 0.0f;
       if (amt > 1.0f) amt = 1.0f;
       filtersSetFold(en, amt);
@@ -3264,6 +3329,16 @@ void handleCommand(String line)
       {
         String rest = arg.substring(p1 + 1);
         rest.trim();
+        if (rest.startsWith("on"))
+        {
+          rest = rest.substring(2);
+          rest.trim();
+        }
+        else if (rest.startsWith("off"))
+        {
+          rest = rest.substring(3);
+          rest.trim();
+        }
         int p2 = rest.indexOf(' ');
         int p3 = p2 > 0 ? rest.indexOf(' ', p2 + 1) : -1;
         if (p2 > 0)

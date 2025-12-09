@@ -19,7 +19,8 @@ export const Sparkline = memo(function Sparkline({
   min,
   max,
 }: SparklineProps) {
-  const clipId = useId();
+  const rawId = useId();
+  const clipId = useMemo(() => rawId.replace(/[:]/g, ''), [rawId]);
   const samples = data.length === 0 ? [0, 0] : data.length === 1 ? [data[0], data[0]] : data;
   const { path, area } = useMemo(() => {
     if (!samples.length) return { path: '', area: '' };
