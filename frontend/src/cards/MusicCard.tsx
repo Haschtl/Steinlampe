@@ -10,13 +10,11 @@ import { Trans, useI18n } from '@/i18n';
 export function MusicCard() {
   const { status, sendCmd } = useConnection();
   const { t } = useI18n();
-  const [musicEnabled, setMusicEnabled] = useState(false);
   const [gain, setGain] = useState(1);
   const [thr, setThr] = useState(0.35);
   const [cool, setCool] = useState(800);
   const [autoOn, setAutoOn] = useState(false);
   const [autoThr, setAutoThr] = useState(0.4);
-  const [mode, setMode] = useState<'direct' | 'beat'>('direct');
   const [smooth, setSmooth] = useState(0);
   const [clap1, setClap1] = useState('mode next');
   const [clap2, setClap2] = useState('toggle');
@@ -24,18 +22,16 @@ export function MusicCard() {
   const clapEnabled = status.clapEnabled ?? false;
 
   useEffect(() => {
-    if (typeof status.musicEnabled === 'boolean') setMusicEnabled(status.musicEnabled);
     if (typeof status.musicGain === 'number') setGain(status.musicGain);
     if (typeof status.clapThreshold === 'number') setThr(status.clapThreshold);
     if (typeof status.clapCooldownMs === 'number') setCool(status.clapCooldownMs);
     if (typeof status.musicAuto === 'boolean') setAutoOn(status.musicAuto);
     if (typeof status.musicAutoThr === 'number') setAutoThr(status.musicAutoThr);
-    if (status.musicMode) setMode(status.musicMode === 'beat' ? 'beat' : 'direct');
     if (typeof status.musicSmooth === 'number') setSmooth(status.musicSmooth);
     if (typeof status.clapCmd1 === 'string') setClap1(status.clapCmd1);
     if (typeof status.clapCmd2 === 'string') setClap2(status.clapCmd2);
     if (typeof status.clapCmd3 === 'string') setClap3(status.clapCmd3);
-  }, [status.clapCooldownMs, status.clapThreshold, status.musicEnabled, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicMode, status.musicSmooth, status.clapCmd1, status.clapCmd2, status.clapCmd3]);
+  }, [status.clapCooldownMs, status.clapThreshold, status.musicGain, status.musicAuto, status.musicAutoThr, status.musicSmooth, status.clapCmd1, status.clapCmd2, status.clapCmd3]);
 
   return (
     <Card>
@@ -45,19 +41,6 @@ export function MusicCard() {
             <Trans k="title.music">Music</Trans>
           </CardTitle>
           <div>
-            <label className="pill cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={musicEnabled}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setMusicEnabled(next);
-                  sendCmd(`music ${next ? "on" : "off"}`);
-                }}
-              />{" "}
-              <Trans k="title.music">Music</Trans>
-            </label>
             <label className="pill cursor-pointer">
               <input
                 type="checkbox"
@@ -95,8 +78,7 @@ export function MusicCard() {
             <Mic className="h-4 w-4 text-muted" />
             <span>
               <Trans k="music.modeInfo">
-                Direct: brightness follows the level. Beat: peaks trigger short
-                pulses with decay. Auto Lamp can turn on the lamp whenever the
+                Use the patterns “Music Direct” or “Music Beat” to drive the lamp. Auto Lamp can turn on the lamp whenever the
                 signal crosses the threshold (even if music is off).
               </Trans>
             </span>
@@ -135,49 +117,25 @@ export function MusicCard() {
               onBlur={(e) => sendCmd(`music auto thr ${e.target.value}`)}
               className="w-30"
             />
-            {mode === "direct" && (
-              <>
-                <Label className="m-0">
-                  <Trans k="label.smoothing">Smooth</Trans>
-                </Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={smooth}
-                  onChange={(e) => setSmooth(Number(e.target.value))}
-                  onBlur={(e) => sendCmd(`music smooth ${e.target.value}`)}
-                  className="w-24"
-                />
-              </>
-            )}
             <Label className="m-0">
-              <Trans k="label.mode">Mode</Trans>
+              <Trans k="label.smoothing">Smooth</Trans>
             </Label>
-            <select
-              value={mode}
-              onChange={(e) => {
-                const v = e.target.value === "beat" ? "beat" : "direct";
-                setMode(v);
-                sendCmd(`music mode ${v}`);
-              }}
-              className="rounded-md border border-border bg-panel px-2 py-1 text-sm"
-            >
-              <option value="direct">Direct</option>
-              <option value="beat">Beat</option>
-            </select>
+            <Input
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={smooth}
+              onChange={(e) => setSmooth(Number(e.target.value))}
+              onBlur={(e) => sendCmd(`music smooth ${e.target.value}`)}
+              className="w-24"
+            />
           </div>
           <div className="text-xs text-muted leading-snug">
-            {mode === "direct"
-              ? t(
-                  "music.modeDirect",
-                  "Direct: brightness follows the level. Auto-Lamp can additionally switch on with loud signal."
-                )
-              : t(
-                  "music.modeBeat",
-                  "Beat: peaks trigger short flashes, decay holds until the next beat. Auto-Lamp shares the threshold."
-                )}
+            {t(
+              "music.modeDirect",
+              "Patterns “Music Direct” and “Music Beat” control modulation; adjust smoothing/gain/threshold here."
+            )}
           </div>
           <div className="text-xs text-foreground/80">
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}

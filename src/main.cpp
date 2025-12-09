@@ -379,11 +379,9 @@ float patternCustom(uint32_t ms)
 }
 
 #if ENABLE_MUSIC_MODE
-float patternMusic(uint32_t)
-{
-  // musicFiltered is normalized in updateMusicSensor to 0..1
-  return clamp01(musicFiltered);
-}
+float patternMusicDirect(uint32_t) { return 1.0f; }
+float patternMusicBeat(uint32_t) { return 1.0f; }
+bool musicPatternActive = false; // true when a Music pattern is selected
 #endif
 
 bool wakeFadeActive = false;
@@ -1217,7 +1215,7 @@ void loadSettings()
   lightMinRaw = 4095;
   lightMaxRaw = 0;
 #endif
-  currentModeIndex = currentPattern;
+  setPattern(currentPattern, false, false);
 }
 
 #if ENABLE_SWITCH
@@ -1296,6 +1294,34 @@ void setPattern(size_t index, bool announce, bool persist)
   }
   currentPattern = index;
   currentModeIndex = index;
+#if ENABLE_MUSIC_MODE
+  {
+    String name = PATTERNS[currentPattern].name;
+    name.toLowerCase();
+    if (name.indexOf(F("music direct")) >= 0)
+    {
+      musicEnabled = true;
+      musicMode = 0;
+      musicPatternActive = true;
+      musicModScale = 1.0f;
+    }
+    else if (name.indexOf(F("music beat")) >= 0)
+    {
+      musicEnabled = true;
+      musicMode = 1;
+      musicPatternActive = true;
+      musicModScale = 1.0f;
+      musicBeatEnv = 0.0f;
+      musicLastBeatMs = 0;
+    }
+    else
+    {
+      musicPatternActive = false;
+      musicEnabled = false;
+      musicModScale = 1.0f;
+    }
+  }
+#endif
   patternStartMs = millis();
   if (announce)
     announcePattern();
@@ -3943,23 +3969,7 @@ void handleCommand(String line)
     String arg = line.substring(5);
     arg.trim();
     arg.toLowerCase();
-    if (arg == "on")
-    {
-      musicEnabled = true;
-      saveSettings();
-      sendFeedback(F("[Music] Enabled"));
-    }
-    else if (arg == "off")
-    {
-      musicEnabled = false;
-      musicModScale = 1.0f;
-      musicBeatEnv = 0.0f;
-      musicBeatIntervalMs = 600.0f;
-      musicLastBeatMs = 0;
-      saveSettings();
-      sendFeedback(F("[Music] Disabled"));
-    }
-    else if (arg.startsWith("sens"))
+    if (arg.startsWith("sens"))
     {
       float g = arg.substring(4).toFloat();
       if (g < 0.1f) g = 0.1f;
@@ -4028,22 +4038,9 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Music] calib gain=")) + String(musicGain, 2) + F(" thr=") + String(clapThreshold, 2));
     }
-    else if (arg.startsWith("mode"))
+    else if (arg.startsWith("mode") || arg == "on" || arg == "off")
     {
-      String m = arg.substring(4);
-      m.trim();
-      m.toLowerCase();
-      if (m == "beat")
-        musicMode = 1;
-      else
-        musicMode = 0;
-      // Reset beat tracking when changing mode
-      musicModScale = 1.0f;
-      musicBeatEnv = 0.0f;
-      musicBeatIntervalMs = 600.0f;
-      musicLastBeatMs = 0;
-      saveSettings();
-      sendFeedback(String(F("[Music] mode=")) + (musicMode == 1 ? F("beat") : F("direct")));
+      sendFeedback(F("[Music] Select pattern 'Music Direct' or 'Music Beat' to use music mode."));
     }
     else if (arg == "raw")
     {

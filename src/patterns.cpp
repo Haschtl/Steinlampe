@@ -886,7 +886,8 @@ float patternSOS(uint32_t ms)
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
 #if ENABLE_MUSIC_MODE
-extern float patternMusic(uint32_t ms);
+extern float patternMusicDirect(uint32_t ms);
+extern float patternMusicBeat(uint32_t ms);
 #endif
 
 /// Exported pattern table consumed by the main firmware
@@ -943,7 +944,8 @@ const Pattern PATTERNS[] = {
     {"SOS", patternSOS, 0},
     {"Custom", patternCustom, 0},
 #if ENABLE_MUSIC_MODE
-    {"Musik", patternMusic, 0},
+    {"Music Direct", patternMusicDirect, 0},
+    {"Music Beat", patternMusicBeat, 0},
 #endif
 };
 
