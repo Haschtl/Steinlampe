@@ -245,10 +245,12 @@ export function useBle(): BleApi {
         await refreshStatus();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        const lower = msg.toLowerCase();
+        const untrusted = lower.includes('rejected unknown device') || lower.includes('unknown device');
         pushLog('Connect error: ' + msg);
+        toast.error((untrusted ? 'Untrusted device: ' : 'Connect error: ') + msg);
         setStatus((s) => ({ ...s, connecting: false }));
         cleanup();
-        toast.error('Connect error: ' + msg);
         throw e;
       }
     },

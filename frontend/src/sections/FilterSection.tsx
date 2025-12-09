@@ -179,6 +179,28 @@ export function FilterSection() {
             }
             disabled={!status.filterSpark}
           />
+          <div className="flex flex-col items-center">
+            <label className="text-xs text-muted"><Trans k="filter.density">Density (events/s)</Trans></label>
+            <input
+              type="number"
+              className="input w-24 text-center"
+              min={0}
+              max={20}
+              step={0.1}
+              value={(status.filterSparkDens ?? 0.6).toFixed(1)}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v)) {
+                  sendCmd(
+                    `filter spark on ${v.toFixed(2)} ${status.filterSparkInt ?? 0.25} ${
+                      status.filterSparkDecay ?? 200
+                    }`,
+                  );
+                }
+              }}
+              disabled={!status.filterSpark}
+            />
+          </div>
           <Knob
             label={<Trans k="filter.intensity">Intensity</Trans>}
             min={0}

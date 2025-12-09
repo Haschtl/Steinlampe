@@ -107,14 +107,14 @@ export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, di
         <div
           className="pointer-events-none absolute inset-[6px] rounded-full"
           style={{
-            background: `conic-gradient(from ${startDeg + 90}deg, rgba(var(--accent-rgb,91,230,255),0.95) ${
+            background: `conic-gradient(from ${startDeg + 90}deg, rgb(var(--accent-rgb,91,230,255)) ${
               norm * sweepDeg
-            }deg, rgba(60,80,110,0.6) ${norm * sweepDeg}deg)`,
+            }deg, rgba(20,30,48,0.9) ${norm * sweepDeg}deg)`,
             WebkitMaskImage:
-              'radial-gradient(circle at center, transparent 54%, black 58%), radial-gradient(circle at center, black 100%)',
+              'radial-gradient(circle at center, transparent 52%, black 58%), radial-gradient(circle at center, black 100%)',
             maskImage:
-              'radial-gradient(circle at center, transparent 54%, black 58%), radial-gradient(circle at center, black 100%)',
-            boxShadow: 'inset 0 0 14px rgba(0,0,0,0.7)',
+              'radial-gradient(circle at center, transparent 52%, black 58%), radial-gradient(circle at center, black 100%)',
+            boxShadow: 'inset 0 0 14px rgba(0,0,0,0.8), 0 0 10px rgba(var(--accent-rgb,91,230,255),0.2)',
           }}
         />
         {/* Pointer overlay */}
@@ -166,7 +166,21 @@ export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, di
           {...kb}
         />
       </div>
-      <span className="text-xs text-muted">{fmt(value)}</span>
+      <input
+        type="number"
+        className="input w-16 text-center text-xs"
+        step={step || 0.01}
+        min={min}
+        max={max}
+        value={fmt(internalVal)}
+        onChange={(e) => {
+          if (disabled) return;
+          const v = parseFloat(e.target.value);
+          if (!Number.isFinite(v)) return;
+          handleChange(v);
+        }}
+        disabled={disabled}
+      />
     </div>
   );
 }

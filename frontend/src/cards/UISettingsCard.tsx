@@ -18,6 +18,24 @@ export function UISettingsCard() {
     localStorage.setItem('ql-theme', theme);
   }, [theme]);
 
+  const formatSerialLabel = (id: string) => {
+    if (!id) return 'Device';
+    try {
+      const parsed = JSON.parse(id);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.bluetoothServiceClassId) return String(parsed.bluetoothServiceClassId);
+        if (parsed.usbVendorId && parsed.usbProductId)
+          return `USB ${parsed.usbVendorId}:${parsed.usbProductId}`;
+        const keys = Object.keys(parsed);
+        if (keys.length > 0) return `${keys[0]}=${String((parsed as any)[keys[0]])}`;
+      }
+    } catch {
+      // not JSON, fall back
+    }
+    if (id.length > 24) return `${id.slice(0, 6)}…${id.slice(-6)}`;
+    return id;
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -89,7 +107,7 @@ export function UISettingsCard() {
             <div className="flex flex-wrap gap-2">
               {Object.entries(knownSerials || {}).map(([id]) => (
                 <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
-                  <span className="max-w-[140px] truncate">{id}</span>
+                  <span className="max-w-[180px] truncate">{formatSerialLabel(id)}</span>
                   <button
                     type="button"
                     className="text-destructive hover:underline"
