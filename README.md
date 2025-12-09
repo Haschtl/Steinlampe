@@ -77,7 +77,7 @@ When BLE-MIDI or BT-MIDI is enabled, a fixed map triggers core actions:
 - **Or via SPP (Classic BT)**: Connect to the device name (default `Quarzlampe-SPP`) and send the same ASCII commands as over BLE/USB. Read lines for feedback.
 - **Core commands to implement**: `on/off/toggle`, `bri <0..100>`, `mode <n>`, `next/prev`, `wake <s>`/`sleep <min>`, `status`, plus optional `ramp`, `idleoff`, `presence` and `custom`/`music` if used.
 - **Status parsing**: The Status Characteristic gives a single-line snapshot; you can also request `status` via command and parse the notify. It emits a `STATUS|key=val...` line and extra `[Touch]/[Light]/[Music]` debug lines you can filter or use for telemetry.
-- **Optional sensors/features**: If built with `ENABLE_LIGHT_SENSOR`/`ENABLE_MUSIC_MODE`, expose toggles in your UI (`light on/off/calib`, `music on/off`). Presence can be managed in-app with `presence set me` after connecting.
+- **Optional sensors/features**: If built with `ENABLE_LIGHT_SENSOR`/`ENABLE_MUSIC_MODE`, expose toggles in your UI (light on/off/calib). Music is driven by the patterns “Music Direct” / “Music Beat”; no separate on/off command. Presence can be managed in-app with `presence set me` after connecting.
 - **Config import/export**: Use `cfg export` to read all settings as a single `cfg import ...` line you can store/rest. Apply with `cfg import ...` to restore user prefs.
 
 ## Command Reference
@@ -123,7 +123,8 @@ All commands can be sent via USB serial, BLE, or classic BT serial:
 | `light [on/off/calib]`    | Enable/disable light sensor and (calib) reset min/max (if built with ENABLE_LIGHT_SENSOR) |
 | `light gain <f>` / `light clamp <min> <max>` / `light alpha <f>` | Adjust sensor gain, clamp and LPF smoothing (if built with ENABLE_LIGHT_SENSOR) |
 | `poti on/off` / `poti alpha <0..1>` / `poti delta <0..0.5>` / `poti off <0..0.5>` / `poti sample <ms>` | Configure optional brightness knob (ENABLE_POTI) |
-| `music [on/off]`    | Enable/disable music mode (ADC, if built with ENABLE_MUSIC_MODE) |
+| `music sens <f>` / `music auto on|off` / `music auto thr <f>` | Adjust music sensitivity; auto-lamp (switch ON + loudness > thr) |
+| `music calib`        | Quick gain/threshold calibration (music patterns) |
 | `music sens <f>` / `music auto on|off` / `music auto thr <f>` | Adjust music sensitivity; auto-lamp (switch ON + loudness > thr) |
 | `demo [seconds]` / `demo off` | Cycle quick-list entries with fixed dwell (default 6s) |
 | `push on/off` / `push debounce <ms>` / `push double <ms>` / `push hold <ms>` / `push step_ms <ms>` / `push step <0..0.5>` | Configure optional momentary push button (ENABLE_PUSH_BUTTON) |

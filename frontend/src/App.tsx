@@ -39,7 +39,7 @@ const commands = [
   { cmd: 'clap on/off / clap thr / cool / train', desc: 'Clap/audio control' },
   { cmd: 'presence on/off/set/clear/grace', desc: 'Presence auto on/off' },
   { cmd: 'light on/off/calib/gain/clamp', desc: 'Ambient light (if built)' },
-  { cmd: 'music on/off / music sens', desc: 'Music mode (if built)' },
+  { cmd: 'music sens / music smooth / music auto on|off|thr', desc: 'Music params (use patterns Music Direct/Beat)' },
   { cmd: 'poti on/off/alpha/delta/off/sample', desc: 'Brightness knob (if built)' },
   { cmd: 'push on/off/debounce/double/hold/step_ms/step', desc: 'Push button (if built)' },
   { cmd: 'custom v1,v2.. / custom step ms', desc: 'Custom pattern' },
