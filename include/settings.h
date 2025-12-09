@@ -87,6 +87,15 @@ constexpr bool FEEDBACK_NEEDS_HANDSHAKE = REQUIRE_FEEDBACK_HANDSHAKE;
 #define ENABLE_FILTERS 1
 #endif
 
+#if ENABLE_EXT_INPUT
+constexpr int EXT_INPUT_PIN = 33;                ///< GPIO for optional external input
+constexpr bool EXT_INPUT_ANALOG_DEFAULT = true;  ///< true=analog brightness, false=digital on/off
+constexpr bool EXT_INPUT_ACTIVE_LOW = true;      ///< for digital mode
+constexpr uint32_t EXT_INPUT_SAMPLE_MS = 50;     ///< sample interval for analog
+constexpr float EXT_INPUT_ALPHA = 0.2f;          ///< low-pass alpha for analog
+constexpr float EXT_INPUT_DELTA = 0.02f;         ///< minimum change to apply brightness update
+#endif
+
 #if ENABLE_POTI
 constexpr int POTI_PIN = 39;                    ///< ADC pin for optional brightness knob
 constexpr uint32_t POTI_SAMPLE_MS = 80;

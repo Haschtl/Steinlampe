@@ -77,6 +77,7 @@ void processStartupSwitch();
 #if ENABLE_SWITCH
 bool readSwitchRaw();
 #endif
+void updateExternalInput();
 
 void setBleName(const String &name);
 void setBtName(const String &name);
@@ -251,6 +252,17 @@ uint8_t secureBootToggleCount = 0;
 bool secureBootLatched = false;
 bool secureBootWindowClosed = false;
 bool startupHoldActive = false;
+#endif
+
+#if ENABLE_EXT_INPUT
+bool extInputEnabled = false;
+bool extInputAnalog = Settings::EXT_INPUT_ANALOG_DEFAULT;
+float extInputAlpha = Settings::EXT_INPUT_ALPHA;
+float extInputDelta = Settings::EXT_INPUT_DELTA;
+float extInputFiltered = -1.0f;
+float extInputLastApplied = -1.0f;
+uint32_t extInputLastSampleMs = 0;
+bool extInputLastDigital = false;
 #endif
 
 // Touch sensing state
@@ -899,6 +911,12 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_LCLAMP_MAX, lightClampMax);
   prefs.putFloat(PREF_KEY_LIGHT_ALPHA, lightAlpha);
 #endif
+#if ENABLE_EXT_INPUT
+  prefs.putBool("ext_en", extInputEnabled);
+  prefs.putBool("ext_mode", extInputAnalog);
+  prefs.putFloat("ext_alpha", extInputAlpha);
+  prefs.putFloat("ext_delta", extInputDelta);
+#endif
   prefs.putUInt(PREF_KEY_CUSTOM_MS, customStepMs);
   prefs.putBytes(PREF_KEY_CUSTOM, customPattern, sizeof(float) * customLen);
 #if ENABLE_MUSIC_MODE
@@ -1034,6 +1052,15 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
   touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
   patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
   patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
+#if ENABLE_EXT_INPUT
+  extInputEnabled = false;
+  extInputAnalog = Settings::EXT_INPUT_ANALOG_DEFAULT;
+  extInputAlpha = Settings::EXT_INPUT_ALPHA;
+  extInputDelta = Settings::EXT_INPUT_DELTA;
+  extInputFiltered = -1.0f;
+  extInputLastApplied = -1.0f;
+  extInputLastDigital = Settings::EXT_INPUT_ACTIVE_LOW;
+#endif
   trustSetLists("", "");
   setBleName(Settings::BLE_NAME_DEFAULT);
   setBtName(Settings::BT_NAME_DEFAULT);
@@ -1148,6 +1175,18 @@ void loadSettings()
     patternFadeStrength = 0.01f;
   if (patternFadeStrength > 10.0f)
     patternFadeStrength = 10.0f;
+  rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
+  if (rampAmbientFactor < 0.0f) rampAmbientFactor = 0.0f;
+  if (rampAmbientFactor > 3.0f) rampAmbientFactor = 3.0f;
+#if ENABLE_EXT_INPUT
+  extInputEnabled = prefs.getBool("ext_en", false);
+  extInputAnalog = prefs.getBool("ext_mode", Settings::EXT_INPUT_ANALOG_DEFAULT);
+  extInputAlpha = prefs.getFloat("ext_alpha", Settings::EXT_INPUT_ALPHA);
+  extInputDelta = prefs.getFloat("ext_delta", Settings::EXT_INPUT_DELTA);
+  extInputFiltered = -1.0f;
+  extInputLastApplied = -1.0f;
+  extInputLastDigital = Settings::EXT_INPUT_ACTIVE_LOW;
+#endif
   patternMarginLow = prefs.getFloat(PREF_KEY_PAT_LO, Settings::PATTERN_MARGIN_LOW_DEFAULT);
   patternMarginHigh = prefs.getFloat(PREF_KEY_PAT_HI, Settings::PATTERN_MARGIN_HIGH_DEFAULT);
   if (patternMarginLow < 0.0f)
@@ -1665,6 +1704,48 @@ void updateTouchBrightness()
     logBrightnessChange("touch hold");
   }
 }
+
+#if ENABLE_EXT_INPUT
+void updateExternalInput()
+{
+  if (!extInputEnabled)
+    return;
+  uint32_t now = millis();
+  if (extInputAnalog)
+  {
+    if (now - extInputLastSampleMs < Settings::EXT_INPUT_SAMPLE_MS)
+      return;
+    extInputLastSampleMs = now;
+    int raw = analogRead(Settings::EXT_INPUT_PIN);
+    float norm = (float)raw / 4095.0f;
+    if (norm < 0.0f) norm = 0.0f;
+    if (norm > 1.0f) norm = 1.0f;
+    float a = clamp01(extInputAlpha);
+    if (extInputFiltered < 0.0f)
+      extInputFiltered = norm;
+    extInputFiltered = extInputFiltered + (norm - extInputFiltered) * a;
+    if (extInputLastApplied < 0.0f || fabsf(extInputFiltered - extInputLastApplied) >= extInputDelta)
+    {
+      extInputLastApplied = extInputFiltered;
+      setLampEnabled(true, "ext-analog");
+      setBrightnessPercent(extInputFiltered * 100.0f, false, false);
+      logBrightnessChange("ext analog");
+    }
+  }
+  else
+  {
+    bool level = digitalRead(Settings::EXT_INPUT_PIN) == HIGH;
+    if (level != extInputLastDigital)
+    {
+      extInputLastDigital = level;
+      bool active = Settings::EXT_INPUT_ACTIVE_LOW ? !level : level;
+      setLampEnabled(active, "ext-digital");
+      sendFeedback(String(F("[Ext] Digital ")) + (active ? F("ON") : F("OFF")));
+    }
+  }
+}
+#endif
+
 /**
  * @brief Start a sunrise-style wake fade over the given duration.
  */
@@ -1818,6 +1899,11 @@ void printStatus()
   line3 += F(")");
   line3 += F(" | PWM=");
   line3 += String(outputGamma, 2);
+#if ENABLE_EXT_INPUT
+  line3 += F(" | ExtIn=");
+  line3 += extInputEnabled ? F("ON") : F("OFF");
+  line3 += extInputAnalog ? F("(ana)") : F("(dig)");
+#endif
   sendFeedback(line3);
   payload += line3 + '\n';
 
@@ -2081,6 +2167,18 @@ void printStatusStructured()
   line += quickMaskToCsv();
   line += F("|presence=");
   line += presenceEnabled ? (presenceAddr.isEmpty() ? F("ON(no-dev)") : presenceAddr) : F("OFF");
+#if ENABLE_EXT_INPUT
+  line += F("|ext_in=");
+  line += extInputEnabled ? F("ON") : F("OFF");
+  line += F("|ext_mode=");
+  line += extInputAnalog ? F("ana") : F("dig");
+  line += F("|ext_alpha=");
+  line += String(extInputAlpha, 3);
+  line += F("|ext_delta=");
+  line += String(extInputDelta, 3);
+  line += F("|ext_val=");
+  line += extInputFiltered >= 0.0f ? String(extInputFiltered, 3) : F("N/A");
+#endif
   line += F("|custom_len=");
   line += String(customLen);
   line += F("|custom_step_ms=");
@@ -3461,6 +3559,71 @@ void handleCommand(String line)
     }
     return;
   }
+#if ENABLE_EXT_INPUT
+  if (lower.startsWith("ext"))
+  {
+    String arg = line.substring(3);
+    arg.trim();
+    if (arg.startsWith("on"))
+    {
+      extInputEnabled = true;
+      saveSettings();
+      sendFeedback(F("[Ext] Enabled"));
+    }
+    else if (arg.startsWith("off"))
+    {
+      extInputEnabled = false;
+      saveSettings();
+      sendFeedback(F("[Ext] Disabled"));
+    }
+    else if (arg.startsWith("mode"))
+    {
+      if (arg.indexOf("analog") >= 0 || arg.indexOf("ana") >= 0)
+        extInputAnalog = true;
+      else if (arg.indexOf("dig") >= 0 || arg.indexOf("digital") >= 0)
+        extInputAnalog = false;
+      else
+      {
+        sendFeedback(F("Usage: ext mode analog|digital"));
+        return;
+      }
+      if (extInputAnalog)
+      {
+        analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
+        pinMode(Settings::EXT_INPUT_PIN, INPUT);
+      }
+      else
+      {
+        pinMode(Settings::EXT_INPUT_PIN, Settings::EXT_INPUT_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
+      }
+      saveSettings();
+      sendFeedback(String(F("[Ext] Mode=")) + (extInputAnalog ? F("analog") : F("digital")));
+    }
+    else if (arg.startsWith("alpha"))
+    {
+      float v = arg.substring(5).toFloat();
+      if (v < 0.0f) v = 0.0f;
+      if (v > 1.0f) v = 1.0f;
+      extInputAlpha = v;
+      saveSettings();
+      sendFeedback(String(F("[Ext] alpha=")) + String(v, 3));
+    }
+    else if (arg.startsWith("delta"))
+    {
+      float v = arg.substring(5).toFloat();
+      if (v < 0.0f) v = 0.0f;
+      if (v > 1.0f) v = 1.0f;
+      extInputDelta = v;
+      saveSettings();
+      sendFeedback(String(F("[Ext] delta=")) + String(v, 3));
+    }
+    else
+    {
+      sendFeedback(F("ext on|off | ext mode analog|digital | ext alpha <0-1> | ext delta <0-1>"));
+    }
+    return;
+  }
+#endif
   if (lower.startsWith("bri min"))
   {
     float v = line.substring(7).toFloat();
@@ -5301,7 +5464,7 @@ void setup()
 #endif
   calibrateTouchBaseline();
 
-#if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE
+#if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
   analogReadResolution(12);
 #endif
 #if ENABLE_LIGHT_SENSOR
@@ -5311,6 +5474,17 @@ void setup()
 #if ENABLE_POTI
   analogSetPinAttenuation(PIN_POTI, ADC_11db);
   pinMode(PIN_POTI, INPUT);
+#endif
+#if ENABLE_EXT_INPUT
+  if (extInputAnalog)
+  {
+    analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
+    pinMode(Settings::EXT_INPUT_PIN, INPUT);
+  }
+  else
+  {
+    pinMode(Settings::EXT_INPUT_PIN, Settings::EXT_INPUT_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
+  }
 #endif
 #if ENABLE_MUSIC_MODE
   analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
@@ -5370,6 +5544,9 @@ void loop()
 #endif
 #if ENABLE_MUSIC_MODE
   updateMusicSensor();
+#endif
+#if ENABLE_EXT_INPUT
+  updateExternalInput();
 #endif
   maybeLightSleep();
   delay(10);
