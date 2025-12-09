@@ -23,6 +23,33 @@ export type DeviceStatus = {
   touchActive?: boolean;
   lastTouchLine?: string;
   touchDimStep?: number;
+  filterIir?: boolean;
+  filterIirAlpha?: number;
+  filterClip?: boolean;
+  filterClipAmt?: number;
+  filterClipCurve?: number;
+  filterTrem?: boolean;
+  filterTremRate?: number;
+  filterTremDepth?: number;
+  filterTremWave?: number;
+  filterSpark?: boolean;
+  filterSparkDens?: number;
+  filterSparkInt?: number;
+  filterSparkDecay?: number;
+  filterDelay?: boolean;
+  filterDelayMs?: number;
+  filterDelayFb?: number;
+  filterDelayMix?: number;
+  filterComp?: boolean;
+  filterCompThr?: number;
+  filterCompRatio?: number;
+  filterCompAttack?: number;
+  filterCompRelease?: number;
+  filterEnv?: boolean;
+  filterEnvAttack?: number;
+  filterEnvRelease?: number;
+  filterFold?: boolean;
+  filterFoldAmt?: number;
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
@@ -179,6 +206,33 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         pwmCurve: asNum('gamma') ?? s.pwmCurve,
         briMin: asNum('bri_min') ?? s.briMin,
         briMax: asNum('bri_max') ?? s.briMax,
+        filterIir: kv.filter_iir ? kv.filter_iir.toUpperCase() === 'ON' : s.filterIir,
+        filterIirAlpha: asNum('filter_alpha') ?? s.filterIirAlpha,
+        filterClip: kv.filter_clip ? kv.filter_clip.toUpperCase() === 'ON' : s.filterClip,
+        filterClipAmt: asNum('filter_clip_amt') ?? s.filterClipAmt,
+        filterClipCurve: asInt('filter_clip_curve') ?? s.filterClipCurve,
+        filterTrem: kv.filter_trem ? kv.filter_trem.toUpperCase() === 'ON' : s.filterTrem,
+        filterTremRate: asNum('filter_trem_rate') ?? s.filterTremRate,
+        filterTremDepth: asNum('filter_trem_depth') ?? s.filterTremDepth,
+        filterTremWave: asInt('filter_trem_wave') ?? s.filterTremWave,
+        filterSpark: kv.filter_spark ? kv.filter_spark.toUpperCase() === 'ON' : s.filterSpark,
+        filterSparkDens: asNum('filter_spark_dens') ?? s.filterSparkDens,
+        filterSparkInt: asNum('filter_spark_int') ?? s.filterSparkInt,
+        filterSparkDecay: asInt('filter_spark_decay') ?? s.filterSparkDecay,
+        filterDelay: kv.filter_delay ? kv.filter_delay.toUpperCase() === 'ON' : s.filterDelay,
+        filterDelayMs: asInt('filter_delay_ms') ?? s.filterDelayMs,
+        filterDelayFb: asNum('filter_delay_fb') ?? s.filterDelayFb,
+        filterDelayMix: asNum('filter_delay_mix') ?? s.filterDelayMix,
+        filterComp: kv.filter_comp ? kv.filter_comp.toUpperCase() === 'ON' : s.filterComp,
+        filterCompThr: asNum('filter_comp_thr') ?? s.filterCompThr,
+        filterCompRatio: asNum('filter_comp_ratio') ?? s.filterCompRatio,
+        filterCompAttack: asInt('filter_comp_att') ?? s.filterCompAttack,
+        filterCompRelease: asInt('filter_comp_rel') ?? s.filterCompRelease,
+        filterEnv: kv.filter_env ? kv.filter_env.toUpperCase() === 'ON' : s.filterEnv,
+        filterEnvAttack: asInt('filter_env_att') ?? s.filterEnvAttack,
+        filterEnvRelease: asInt('filter_env_rel') ?? s.filterEnvRelease,
+        filterFold: kv.filter_fold ? kv.filter_fold.toUpperCase() === 'ON' : s.filterFold,
+        filterFoldAmt: asNum('filter_fold_amt') ?? s.filterFoldAmt,
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
         lightGain: asNum('light_gain') ?? s.lightGain,

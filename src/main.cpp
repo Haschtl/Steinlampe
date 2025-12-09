@@ -183,6 +183,20 @@ static const char *PREF_KEY_FILTER_SPARK_EN = "fil_sp_en";
 static const char *PREF_KEY_FILTER_SPARK_DENS = "fil_sp_dn";
 static const char *PREF_KEY_FILTER_SPARK_INT = "fil_sp_in";
 static const char *PREF_KEY_FILTER_SPARK_DECAY = "fil_sp_dc";
+static const char *PREF_KEY_FILTER_COMP_EN = "fil_cp_en";
+static const char *PREF_KEY_FILTER_COMP_THR = "fil_cp_th";
+static const char *PREF_KEY_FILTER_COMP_RATIO = "fil_cp_rt";
+static const char *PREF_KEY_FILTER_COMP_ATTACK = "fil_cp_at";
+static const char *PREF_KEY_FILTER_COMP_RELEASE = "fil_cp_rl";
+static const char *PREF_KEY_FILTER_ENV_EN = "fil_ev_en";
+static const char *PREF_KEY_FILTER_ENV_AT = "fil_ev_at";
+static const char *PREF_KEY_FILTER_ENV_RL = "fil_ev_rl";
+static const char *PREF_KEY_FILTER_FOLD_EN = "fil_fd_en";
+static const char *PREF_KEY_FILTER_FOLD_AMT = "fil_fd_am";
+static const char *PREF_KEY_FILTER_DELAY_EN = "fil_dl_en";
+static const char *PREF_KEY_FILTER_DELAY_MS = "fil_dl_ms";
+static const char *PREF_KEY_FILTER_DELAY_FB = "fil_dl_fb";
+static const char *PREF_KEY_FILTER_DELAY_MIX = "fil_dl_mx";
 
 // ---------- Zustand ----------
 // Active pattern state (index and start time)
@@ -922,6 +936,20 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_FILTER_SPARK_DENS, filt.sparkDensity);
   prefs.putFloat(PREF_KEY_FILTER_SPARK_INT, filt.sparkIntensity);
   prefs.putUInt(PREF_KEY_FILTER_SPARK_DECAY, filt.sparkDecayMs);
+  prefs.putBool(PREF_KEY_FILTER_COMP_EN, filt.compEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_COMP_THR, filt.compThr);
+  prefs.putFloat(PREF_KEY_FILTER_COMP_RATIO, filt.compRatio);
+  prefs.putUInt(PREF_KEY_FILTER_COMP_ATTACK, filt.compAttackMs);
+  prefs.putUInt(PREF_KEY_FILTER_COMP_RELEASE, filt.compReleaseMs);
+  prefs.putBool(PREF_KEY_FILTER_ENV_EN, filt.envEnabled);
+  prefs.putUInt(PREF_KEY_FILTER_ENV_AT, filt.envAttackMs);
+  prefs.putUInt(PREF_KEY_FILTER_ENV_RL, filt.envReleaseMs);
+  prefs.putBool(PREF_KEY_FILTER_FOLD_EN, filt.foldEnabled);
+  prefs.putFloat(PREF_KEY_FILTER_FOLD_AMT, filt.foldAmt);
+  prefs.putBool(PREF_KEY_FILTER_DELAY_EN, filt.delayEnabled);
+  prefs.putUInt(PREF_KEY_FILTER_DELAY_MS, filt.delayMs);
+  prefs.putFloat(PREF_KEY_FILTER_DELAY_FB, filt.delayFeedback);
+  prefs.putFloat(PREF_KEY_FILTER_DELAY_MIX, filt.delayMix);
   
 }
 
@@ -1048,6 +1076,24 @@ void loadSettings()
   float spInt = prefs.getFloat(PREF_KEY_FILTER_SPARK_INT, Settings::FILTER_SPARK_INT_DEFAULT);
   uint32_t spDec = prefs.getUInt(PREF_KEY_FILTER_SPARK_DECAY, Settings::FILTER_SPARK_DECAY_DEFAULT);
   filtersSetSpark(spEn, spDens, spInt, spDec);
+  bool compEn = prefs.getBool(PREF_KEY_FILTER_COMP_EN, Settings::FILTER_COMP_DEFAULT);
+  float compThr = prefs.getFloat(PREF_KEY_FILTER_COMP_THR, Settings::FILTER_COMP_THR_DEFAULT);
+  float compRatio = prefs.getFloat(PREF_KEY_FILTER_COMP_RATIO, Settings::FILTER_COMP_RATIO_DEFAULT);
+  uint32_t compAt = prefs.getUInt(PREF_KEY_FILTER_COMP_ATTACK, Settings::FILTER_COMP_ATTACK_DEFAULT);
+  uint32_t compRl = prefs.getUInt(PREF_KEY_FILTER_COMP_RELEASE, Settings::FILTER_COMP_RELEASE_DEFAULT);
+  filtersSetComp(compEn, compThr, compRatio, compAt, compRl);
+  bool envEn = prefs.getBool(PREF_KEY_FILTER_ENV_EN, Settings::FILTER_ENV_DEFAULT);
+  uint32_t envAt = prefs.getUInt(PREF_KEY_FILTER_ENV_AT, Settings::FILTER_ENV_ATTACK_DEFAULT);
+  uint32_t envRl = prefs.getUInt(PREF_KEY_FILTER_ENV_RL, Settings::FILTER_ENV_RELEASE_DEFAULT);
+  filtersSetEnv(envEn, envAt, envRl);
+  bool foldEn = prefs.getBool(PREF_KEY_FILTER_FOLD_EN, Settings::FILTER_FOLD_DEFAULT);
+  float foldAmt = prefs.getFloat(PREF_KEY_FILTER_FOLD_AMT, Settings::FILTER_FOLD_AMT_DEFAULT);
+  filtersSetFold(foldEn, foldAmt);
+  bool delEn = prefs.getBool(PREF_KEY_FILTER_DELAY_EN, Settings::FILTER_DELAY_DEFAULT);
+  uint32_t delMs = prefs.getUInt(PREF_KEY_FILTER_DELAY_MS, Settings::FILTER_DELAY_MS_DEFAULT);
+  float delFb = prefs.getFloat(PREF_KEY_FILTER_DELAY_FB, Settings::FILTER_DELAY_FB_DEFAULT);
+  float delMix = prefs.getFloat(PREF_KEY_FILTER_DELAY_MIX, Settings::FILTER_DELAY_MIX_DEFAULT);
+  filtersSetDelay(delEn, delMs, delFb, delMix);
   customStepMs = prefs.getUInt(PREF_KEY_CUSTOM_MS, Settings::CUSTOM_STEP_MS_DEFAULT);
   if (customStepMs < 100)
     customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
@@ -1637,6 +1683,29 @@ void printStatus()
   filtLine += F("/");
   filtLine += String(filt.sparkDecayMs);
   filtLine += F("ms)");
+  filtLine += F(" comp=");
+  filtLine += filt.compEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.compThr, 2);
+  filtLine += F("/");
+  filtLine += String(filt.compRatio, 2);
+  filtLine += F("/");
+  filtLine += String(filt.compAttackMs);
+  filtLine += F("/");
+  filtLine += String(filt.compReleaseMs);
+  filtLine += F(")");
+  filtLine += F(" env=");
+  filtLine += filt.envEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.envAttackMs);
+  filtLine += F("/");
+  filtLine += String(filt.envReleaseMs);
+  filtLine += F(")");
+  filtLine += F(" fold=");
+  filtLine += filt.foldEnabled ? F("ON") : F("OFF");
+  filtLine += F("(");
+  filtLine += String(filt.foldAmt, 2);
+  filtLine += F(")");
   sendFeedback(filtLine);
   payload += filtLine + '\n';
 
@@ -1953,16 +2022,72 @@ void printStatusStructured()
     line += String(filt.tremRateHz, 2);
     line += F("|filter_trem_depth=");
     line += String(filt.tremDepth, 2);
-    line += F("|filter_trem_wave=");
-    line += filt.tremWave;
-    line += F("|filter_spark=");
-    line += filt.sparkEnabled ? F("ON") : F("OFF");
-    line += F("|filter_spark_dens=");
-    line += String(filt.sparkDensity, 2);
-    line += F("|filter_spark_int=");
-    line += String(filt.sparkIntensity, 2);
-    line += F("|filter_spark_decay=");
-    line += String(filt.sparkDecayMs);
+  line += F("|filter_trem_wave=");
+  line += filt.tremWave;
+  line += F("|filter_spark=");
+  line += filt.sparkEnabled ? F("ON") : F("OFF");
+  line += F("|filter_spark_dens=");
+  line += String(filt.sparkDensity, 2);
+  line += F("|filter_spark_int=");
+  line += String(filt.sparkIntensity, 2);
+  line += F("|filter_spark_decay=");
+  line += String(filt.sparkDecayMs);
+  line += F("|filter_comp=");
+  line += filt.compEnabled ? F("ON") : F("OFF");
+  line += F("|filter_comp_thr=");
+  line += String(filt.compThr, 2);
+  line += F("|filter_comp_ratio=");
+  line += String(filt.compRatio, 2);
+  line += F("|filter_comp_att=");
+  line += String(filt.compAttackMs);
+  line += F("|filter_comp_rel=");
+  line += String(filt.compReleaseMs);
+  line += F("|filter_env=");
+  line += filt.envEnabled ? F("ON") : F("OFF");
+  line += F("|filter_env_att=");
+  line += String(filt.envAttackMs);
+  line += F("|filter_env_rel=");
+  line += String(filt.envReleaseMs);
+  line += F("|filter_fold=");
+  line += filt.foldEnabled ? F("ON") : F("OFF");
+  line += F("|filter_fold_amt=");
+  line += String(filt.foldAmt, 2);
+  line += F("|filter_delay=");
+  line += filt.delayEnabled ? F("ON") : F("OFF");
+  line += F("|filter_delay_ms=");
+  line += String(filt.delayMs);
+  line += F("|filter_delay_fb=");
+  line += String(filt.delayFeedback, 2);
+  line += F("|filter_delay_mix=");
+  line += String(filt.delayMix, 2);
+    line += F("|filter_comp=");
+    line += filt.compEnabled ? F("ON") : F("OFF");
+    line += F("|filter_comp_thr=");
+    line += String(filt.compThr, 2);
+    line += F("|filter_comp_ratio=");
+    line += String(filt.compRatio, 2);
+    line += F("|filter_comp_att=");
+    line += String(filt.compAttackMs);
+    line += F("|filter_comp_rel=");
+    line += String(filt.compReleaseMs);
+    line += F("|filter_env=");
+    line += filt.envEnabled ? F("ON") : F("OFF");
+    line += F("|filter_env_att=");
+    line += String(filt.envAttackMs);
+    line += F("|filter_env_rel=");
+    line += String(filt.envReleaseMs);
+    line += F("|filter_fold=");
+    line += filt.foldEnabled ? F("ON") : F("OFF");
+    line += F("|filter_fold_amt=");
+    line += String(filt.foldAmt, 2);
+    line += F("|filter_delay=");
+    line += filt.delayEnabled ? F("ON") : F("OFF");
+    line += F("|filter_delay_ms=");
+    line += String(filt.delayMs);
+    line += F("|filter_delay_fb=");
+    line += String(filt.delayFeedback, 2);
+    line += F("|filter_delay_mix=");
+    line += String(filt.delayMix, 2);
   }
   sendFeedback(line);
 }
@@ -2146,6 +2271,48 @@ void importConfig(const String &args)
     FilterState f; filtersGetState(f);
     filtersSetClip(f.clipEnabled, f.clipAmount, v);
   }
+  else if (key == "filter_comp")
+  {
+    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetComp(v, f.compThr, f.compRatio, f.compAttackMs, f.compReleaseMs); }
+  }
+  else if (key == "filter_comp_thr")
+  {
+    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 1.2f) v = 1.2f;
+    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, v, f.compRatio, f.compAttackMs, f.compReleaseMs);
+  }
+  else if (key == "filter_comp_ratio")
+  {
+    float v = val.toFloat(); if (v < 1.0f) v = 1.0f; if (v > 10.0f) v = 10.0f;
+    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, v, f.compAttackMs, f.compReleaseMs);
+  }
+  else if (key == "filter_comp_att")
+  {
+    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 2000) v = 2000;
+    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, f.compRatio, v, f.compReleaseMs);
+  }
+  else if (key == "filter_comp_rel")
+  {
+    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 4000) v = 4000;
+    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, f.compRatio, f.compAttackMs, v);
+  }
+  else if (key == "filter_env")
+  {
+    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetEnv(v, f.envAttackMs, f.envReleaseMs); }
+  }
+  else if (key == "filter_env_att")
+  {
+    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 4000) v = 4000;
+    FilterState f; filtersGetState(f); filtersSetEnv(f.envEnabled, v, f.envReleaseMs);
+  }
+  else if (key == "filter_env_rel")
+  {
+    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 6000) v = 6000;
+    FilterState f; filtersGetState(f); filtersSetEnv(f.envEnabled, f.envAttackMs, v);
+  }
+  else if (key == "filter_fold")
+  {
+    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetFold(v, f.foldAmt); }
+  }
   else if (key == "filter_trem")
   {
     bool v;
@@ -2210,6 +2377,25 @@ void importConfig(const String &args)
     if (v > 5000) v = 5000;
     FilterState f; filtersGetState(f);
     filtersSetSpark(f.sparkEnabled, f.sparkDensity, f.sparkIntensity, v);
+  }
+  else if (key == "filter_delay")
+  {
+    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetDelay(v, f.delayMs, f.delayFeedback, f.delayMix); }
+  }
+  else if (key == "filter_delay_ms")
+  {
+    uint32_t v = val.toInt(); if (v < 10) v = 10; if (v > 5000) v = 5000;
+    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, v, f.delayFeedback, f.delayMix);
+  }
+  else if (key == "filter_delay_fb")
+  {
+    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 0.95f) v = 0.95f;
+    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, f.delayMs, v, f.delayMix);
+  }
+  else if (key == "filter_delay_mix")
+  {
+    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 1.0f) v = 1.0f;
+    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, f.delayMs, f.delayFeedback, v);
   }
   else if (key == "light_gain")
   {
@@ -2928,9 +3114,122 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Filter] Spark ")) + (en ? F("ON ") : F("OFF ")) + F(" dens=") + String(dens, 2) + F(" int=") + String(inten, 2) + F(" dec=") + String(dec) + F("ms"));
     }
+    else if (arg.startsWith("comp"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      float thr = Settings::FILTER_COMP_THR_DEFAULT;
+      float ratio = Settings::FILTER_COMP_RATIO_DEFAULT;
+      uint32_t att = Settings::FILTER_COMP_ATTACK_DEFAULT;
+      uint32_t rel = Settings::FILTER_COMP_RELEASE_DEFAULT;
+      // parse numbers
+      int p1 = arg.indexOf(' ');
+      if (p1 > 0)
+      {
+        String rest = arg.substring(p1 + 1);
+        rest.trim();
+        int p2 = rest.indexOf(' ');
+        int p3 = p2 > 0 ? rest.indexOf(' ', p2 + 1) : -1;
+        int p4 = p3 > 0 ? rest.indexOf(' ', p3 + 1) : -1;
+        if (p2 > 0)
+        {
+          thr = rest.substring(0, p2).toFloat();
+          if (p3 > 0)
+          {
+            ratio = rest.substring(p2 + 1, p3).toFloat();
+            if (p4 > 0)
+            {
+              att = rest.substring(p3 + 1, p4).toInt();
+              rel = rest.substring(p4 + 1).toInt();
+            }
+          }
+        }
+      }
+      if (thr < 0.0f) thr = 0.0f;
+      if (thr > 1.2f) thr = 1.2f;
+      if (ratio < 1.0f) ratio = 1.0f;
+      if (ratio > 10.0f) ratio = 10.0f;
+      if (att < 1) att = 1;
+      if (att > 2000) att = 2000;
+      if (rel < 1) rel = 1;
+      if (rel > 4000) rel = 4000;
+      filtersSetComp(en, thr, ratio, att, rel);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Comp ")) + (en ? F("ON ") : F("OFF ")) + F(" thr=") + String(thr, 2) + F(" ratio=") + String(ratio, 2) + F(" att=") + String(att) + F("ms rel=") + String(rel) + F("ms"));
+    }
+    else if (arg.startsWith("env"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      uint32_t att = Settings::FILTER_ENV_ATTACK_DEFAULT;
+      uint32_t rel = Settings::FILTER_ENV_RELEASE_DEFAULT;
+      int p1 = arg.indexOf(' ');
+      if (p1 > 0)
+      {
+        String rest = arg.substring(p1 + 1);
+        rest.trim();
+        int p2 = rest.indexOf(' ');
+        if (p2 > 0)
+        {
+          att = rest.substring(0, p2).toInt();
+          rel = rest.substring(p2 + 1).toInt();
+        }
+      }
+      if (att < 1) att = 1;
+      if (att > 4000) att = 4000;
+      if (rel < 1) rel = 1;
+      if (rel > 6000) rel = 6000;
+      filtersSetEnv(en, att, rel);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Env ")) + (en ? F("ON ") : F("OFF ")) + F(" att=") + String(att) + F("ms rel=") + String(rel) + F("ms"));
+    }
+    else if (arg.startsWith("fold"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      int p1 = arg.indexOf(' ');
+      float amt = (p1 > 0) ? arg.substring(p1 + 1).toFloat() : Settings::FILTER_FOLD_AMT_DEFAULT;
+      if (amt < 0.0f) amt = 0.0f;
+      if (amt > 1.0f) amt = 1.0f;
+      filtersSetFold(en, amt);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Fold ")) + (en ? F("ON ") : F("OFF ")) + F(" amt=") + String(amt, 2));
+      return;
+    }
+    else if (arg.startsWith("delay"))
+    {
+      bool en = arg.indexOf("off") == -1;
+      uint32_t dMs = Settings::FILTER_DELAY_MS_DEFAULT;
+      float fb = Settings::FILTER_DELAY_FB_DEFAULT;
+      float mix = Settings::FILTER_DELAY_MIX_DEFAULT;
+      int p1 = arg.indexOf(' ');
+      if (p1 > 0)
+      {
+        String rest = arg.substring(p1 + 1);
+        rest.trim();
+        int p2 = rest.indexOf(' ');
+        int p3 = p2 > 0 ? rest.indexOf(' ', p2 + 1) : -1;
+        if (p2 > 0)
+        {
+          dMs = rest.substring(0, p2).toInt();
+          if (p3 > 0)
+          {
+            fb = rest.substring(p2 + 1, p3).toFloat();
+            mix = rest.substring(p3 + 1).toFloat();
+          }
+        }
+      }
+      if (dMs < 10) dMs = 10;
+      if (dMs > 5000) dMs = 5000;
+      if (fb < 0.0f) fb = 0.0f;
+      if (fb > 0.95f) fb = 0.95f;
+      if (mix < 0.0f) mix = 0.0f;
+      if (mix > 1.0f) mix = 1.0f;
+      filtersSetDelay(en, dMs, fb, mix);
+      saveSettings();
+      sendFeedback(String(F("[Filter] Delay ")) + (en ? F("ON ") : F("OFF ")) + F(" ms=") + String(dMs) + F(" fb=") + String(fb, 2) + F(" mix=") + String(mix, 2));
+      return;
+    }
     else
     {
-      sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs>"));
+      sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs> | filter comp <on/off> <thr> <ratio> <att> <rel> | filter env <on/off> <att> <rel> | filter fold <on/off> <amt> | filter delay <on/off> <ms> <fb> <mix>"));
     }
     return;
   }

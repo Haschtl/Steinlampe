@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap } from 'lucide-react';
+import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -12,6 +12,7 @@ import { SettingsSection } from './sections/SettingsSection';
 import { ActionsSection } from './sections/ActionsSection';
 import { HelpSection } from './sections/HelpSection';
 import { AdvancedSection } from './sections/AdvancedSection';
+import { FilterSection } from './sections/FilterSection';
 
 const bleGuids = [
   { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
@@ -74,7 +75,7 @@ export default function App() {
     sendCmd,
     setLog,
   } = useConnection();
-  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'help'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'>('home');
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -127,10 +128,11 @@ export default function App() {
     [sendCmd],
   );
 
-  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'help'; label: string; icon: JSX.Element }[] = [
+  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
     { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
+    { key: 'filters', label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
     { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
@@ -151,13 +153,15 @@ export default function App() {
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
                 className="w-full max-w-lg rounded-3xl border border-border/80 bg-panel/90 p-6 shadow-2xl"
               >
                 <h2 className="mb-4 text-center text-2xl font-semibold text-text drop-shadow">
                   <Trans k="title.app">Quarzlampe</Trans>
                 </h2>
-                <p className="mb-6 text-center text-muted text-sm">Verbinden oder überspringen, um die App anzuschauen.</p>
+                <p className="mb-6 text-center text-muted text-sm">
+                  Verbinden oder überspringen, um die App anzuschauen.
+                </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     size="md"
@@ -182,7 +186,10 @@ export default function App() {
                   </Button>
                 </div>
                 <div className="mt-6 text-center">
-                  <Button variant="ghost" onClick={() => setShowConnectOverlay(false)}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowConnectOverlay(false)}
+                  >
                     Skip
                   </Button>
                 </div>
@@ -231,7 +238,7 @@ export default function App() {
               </div>
             </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {tabs.map((tab) => (
                 <Button
                   key={tab.key}
@@ -247,29 +254,32 @@ export default function App() {
                   <span className="hidden sm:inline">{tab.label}</span>
                 </Button>
               ))}
-              <div className="flex-1" />
               <div className="flex items-center gap-2">
-                <span
-                  className={`inline-flex h-3 w-3 rounded-full ${
-                    status.patternCount > 0 &&
-                    status.brightness !== undefined &&
-                    status.cap !== undefined &&
-                    status.rampOnMs !== undefined &&
-                    status.rampOffMs !== undefined &&
-                    status.customLen !== undefined &&
-                    status.customStepMs !== undefined
-                      ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.7)]"
-                      : "bg-slate-500/60"
-                  }`}
-                  title="Settings loaded"
-                />
+                 <Button
+  variant="ghost"
+  size="sm"
+  style={{
+    borderRadius:"50%"
+  }}
+  className="rounded-full p-2 h-9 w-9 justify-center"
+  onClick={refreshStatus}
+>
+   <span
+                    className={`inline-flex h-3 w-3 rounded-full ${
+                      status.patternCount > 0 &&
+                      status.brightness !== undefined &&
+                      status.cap !== undefined &&
+                      status.rampOnMs !== undefined &&
+                      status.rampOffMs !== undefined &&
+                      status.customLen !== undefined &&
+                      status.customStepMs !== undefined
+                        ? "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.7)]"
+                        : "bg-slate-500/60"
+                    }`}
+                    title="Settings loaded"
+                  />
+                </Button>
               </div>
-              <Button size="sm" onClick={refreshStatus}>
-                <RefreshCw className="mr-1 h-4 w-4" />{" "}
-                <span className="hidden sm:inline">
-                  {t("btn.reload", "Reload")}
-                </span>
-              </Button>
             </div>
           </div>
         </header>
@@ -298,9 +308,14 @@ export default function App() {
               {activeTab === "home" && <HomeSection />}
               {activeTab === "settings" && <SettingsSection />}
               {activeTab === "advanced" && <AdvancedSection />}
+              {activeTab === "filters" && <FilterSection />}
               {activeTab === "actions" && <ActionsSection />}
               {activeTab === "help" && (
-                <HelpSection bleGuids={bleGuids} commands={commands} midi={midiMapping} />
+                <HelpSection
+                  bleGuids={bleGuids}
+                  commands={commands}
+                  midi={midiMapping}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -308,33 +323,50 @@ export default function App() {
             key={`${activeTab}-glow`}
             className="pointer-events-none absolute -inset-10 -z-10 hidden md:block"
             initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
-            animate={{ opacity: 0.75, scale: 1, rotate: 0, transition: { duration: 0.8, ease: 'easeOut' } }}
-            exit={{ opacity: 0, scale: 0.95, rotate: 1, transition: { duration: 0.35 } }}
+            animate={{
+              opacity: 0.75,
+              scale: 1,
+              rotate: 0,
+              transition: { duration: 0.8, ease: "easeOut" },
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.95,
+              rotate: 1,
+              transition: { duration: 0.35 },
+            }}
             style={{
               background:
-                'radial-gradient(65% 45% at 50% 35%, rgba(var(--accent-rgb),0.22), transparent 60%),' +
-                'radial-gradient(40% 35% at 25% 65%, rgba(130,200,255,0.12), transparent 65%),' +
-                'radial-gradient(35% 30% at 75% 70%, rgba(255,180,120,0.12), transparent 70%)',
-              filter: 'blur(46px)',
+                "radial-gradient(65% 45% at 50% 35%, rgba(var(--accent-rgb),0.22), transparent 60%)," +
+                "radial-gradient(40% 35% at 25% 65%, rgba(130,200,255,0.12), transparent 65%)," +
+                "radial-gradient(35% 30% at 75% 70%, rgba(255,180,120,0.12), transparent 70%)",
+              filter: "blur(46px)",
             }}
           />
           <motion.div
             key={`${activeTab}-facet`}
             className="pointer-events-none absolute -inset-12 -z-20 hidden md:block"
             initial={{ opacity: 0, scale: 1 }}
-            animate={{ opacity: 0.35, scale: 1, transition: { duration: 1.1, ease: 'easeOut' } }}
+            animate={{
+              opacity: 0.35,
+              scale: 1,
+              transition: { duration: 1.1, ease: "easeOut" },
+            }}
             exit={{ opacity: 0, transition: { duration: 0.4 } }}
             style={{
               background:
-                'conic-gradient(from 120deg at 50% 40%, rgba(255,255,255,0.08), rgba(var(--accent-rgb),0.05), rgba(255,200,150,0.06), rgba(0,0,0,0.04), rgba(255,255,255,0.08))',
-              mixBlendMode: 'screen',
-              filter: 'blur(30px)',
+                "conic-gradient(from 120deg at 50% 40%, rgba(255,255,255,0.08), rgba(var(--accent-rgb),0.05), rgba(255,200,150,0.06), rgba(0,0,0,0.04), rgba(255,255,255,0.08))",
+              mixBlendMode: "screen",
+              filter: "blur(30px)",
             }}
           />
         </main>
 
         <footer className="sticky bottom-0 z-20 border-t border-border/60 backdrop-blur-sm relative">
-          <div className="pointer-events-none absolute -top-3 inset-x-0 h-4 bg-gradient-to-t from-bg/0 via-bg/0 to-transparent" aria-hidden />
+          <div
+            className="pointer-events-none absolute -top-3 inset-x-0 h-4 bg-gradient-to-t from-bg/0 via-bg/0 to-transparent"
+            aria-hidden
+          />
           <div className="mx-auto max-w-6xl px-4 py-2">
             <button
               type="button"
@@ -345,11 +377,11 @@ export default function App() {
                 <span className="font-semibold">
                   <Trans k="title.log">Log</Trans>
                 </span>
-                {log.length>0&&
-                <span className="text-xs text-muted">
-                  ({log.length} {t("log.lines", "lines")})
-                </span>
-                }
+                {log.length > 0 && (
+                  <span className="text-xs text-muted">
+                    ({log.length} {t("log.lines", "lines")})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 text-xs text-muted">
                 <span>
@@ -364,11 +396,11 @@ export default function App() {
                   className={`inline-flex h-2.5 w-2.5 items-center justify-center rounded-full ${
                     status.connected
                       ? isStale
-                        ? 'bg-amber-400/40'
-                        : 'bg-green-500/30'
+                        ? "bg-amber-400/40"
+                        : "bg-green-500/30"
                       : status.connecting
-                        ? 'bg-yellow-400/40'
-                        : 'bg-red-500/30'
+                      ? "bg-yellow-400/40"
+                      : "bg-red-500/30"
                   }`}
                   title={
                     status.lastStatusAt
@@ -380,11 +412,11 @@ export default function App() {
                     className={`inline-block h-1.5 w-1.5 rounded-full ${
                       status.connected
                         ? isStale
-                          ? 'bg-amber-300'
-                          : 'bg-green-400'
+                          ? "bg-amber-300"
+                          : "bg-green-400"
                         : status.connecting
-                          ? 'bg-yellow-300'
-                          : 'bg-red-500'
+                        ? "bg-yellow-300"
+                        : "bg-red-500"
                     } animate-pulse`}
                   />
                 </span>
@@ -413,7 +445,7 @@ export default function App() {
                     {t("log.filter", "Filter status lines")}
                   </label>
                   <Button size="sm" variant="ghost" onClick={() => setLog([])}>
-                    {t('btn.clear', 'Clear')}
+                    {t("btn.clear", "Clear")}
                   </Button>
                 </div>
                 <div
@@ -441,41 +473,43 @@ export default function App() {
                 </div>
                 <div className="flex items-stretch overflow-hidden rounded-md border border-border">
                   <Input
-                  className="w-full border-none"
-                  placeholder={t("input.command", "Type command")}
-                  value={commandInput}
-                  onChange={(e) => setCommandInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleCommandSend(commandInput);
-                    } else if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      // up: walk backward through history
-                      setCommandInput((current) => {
-                        const idx = commandHistory.lastIndexOf(current);
-                        const startIdx = idx >= 0 ? idx - 1 : commandHistory.length - 1;
-                        const nextIdx = Math.max(startIdx, 0);
-                        return commandHistory[nextIdx] ?? current;
-                      });
-                    } else if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      // down: walk forward; if past the end, clear
-                      const idx = commandHistory.indexOf(commandInput);
-                      const nextIdx = idx >= 0 ? idx + 1 : commandHistory.length;
-                      setCommandInput(commandHistory[nextIdx] ?? '');
-                    }
-                  }}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="rounded-none border-l border-border"
-                  onClick={() => handleCommandSend(commandInput)}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+                    className="w-full border-none"
+                    placeholder={t("input.command", "Type command")}
+                    value={commandInput}
+                    onChange={(e) => setCommandInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleCommandSend(commandInput);
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        // up: walk backward through history
+                        setCommandInput((current) => {
+                          const idx = commandHistory.lastIndexOf(current);
+                          const startIdx =
+                            idx >= 0 ? idx - 1 : commandHistory.length - 1;
+                          const nextIdx = Math.max(startIdx, 0);
+                          return commandHistory[nextIdx] ?? current;
+                        });
+                      } else if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        // down: walk forward; if past the end, clear
+                        const idx = commandHistory.indexOf(commandInput);
+                        const nextIdx =
+                          idx >= 0 ? idx + 1 : commandHistory.length;
+                        setCommandInput(commandHistory[nextIdx] ?? "");
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="rounded-none border-l border-border"
+                    onClick={() => handleCommandSend(commandInput)}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>
