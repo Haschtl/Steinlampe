@@ -283,6 +283,29 @@ void filtersSetSpark(bool en, float density, float intensity, uint32_t decayMs)
 void filtersGetState(FilterState &out)
 {
   out = st;
+  // sanitize to avoid NaN/inf leaking into status/log
+  if (!isfinite(out.iirAlpha)) out.iirAlpha = Settings::FILTER_IIR_ALPHA_DEFAULT;
+  if (!isfinite(out.clipAmount)) out.clipAmount = Settings::FILTER_CLIP_AMT_DEFAULT;
+  if (out.clipCurve > 1) out.clipCurve = 0;
+  if (!isfinite(out.tremRateHz) || out.tremRateHz < 0.0f) out.tremRateHz = Settings::FILTER_TREM_RATE_DEFAULT;
+  if (!isfinite(out.tremDepth) || out.tremDepth < 0.0f || out.tremDepth > 1.0f) out.tremDepth = Settings::FILTER_TREM_DEPTH_DEFAULT;
+  if (out.tremWave > 1) out.tremWave = 0;
+  if (!isfinite(out.sparkDensity) || out.sparkDensity < 0.0f) out.sparkDensity = Settings::FILTER_SPARK_DENS_DEFAULT;
+  if (!isfinite(out.sparkIntensity) || out.sparkIntensity < 0.0f) out.sparkIntensity = Settings::FILTER_SPARK_INT_DEFAULT;
+  if (out.sparkDecayMs > 10000U) out.sparkDecayMs = Settings::FILTER_SPARK_DECAY_DEFAULT;
+  if (!isfinite(out.compThr) || out.compThr < 0.0f) out.compThr = Settings::FILTER_COMP_THR_DEFAULT;
+  if (!isfinite(out.compRatio) || out.compRatio < 1.0f) out.compRatio = Settings::FILTER_COMP_RATIO_DEFAULT;
+  if (out.compAttackMs > 10000U) out.compAttackMs = Settings::FILTER_COMP_ATTACK_DEFAULT;
+  if (out.compReleaseMs > 10000U) out.compReleaseMs = Settings::FILTER_COMP_RELEASE_DEFAULT;
+  if (out.envAttackMs > 10000U) out.envAttackMs = Settings::FILTER_ENV_ATTACK_DEFAULT;
+  if (out.envReleaseMs > 10000U) out.envReleaseMs = Settings::FILTER_ENV_RELEASE_DEFAULT;
+  if (!isfinite(out.foldAmt) || out.foldAmt < 0.0f) out.foldAmt = Settings::FILTER_FOLD_AMT_DEFAULT;
+  if (out.foldAmt > 1.0f) out.foldAmt = 1.0f;
+  if (out.delayMs > 10000U) out.delayMs = Settings::FILTER_DELAY_MS_DEFAULT;
+  if (!isfinite(out.delayFeedback) || out.delayFeedback < 0.0f || out.delayFeedback > 0.95f)
+    out.delayFeedback = Settings::FILTER_DELAY_FB_DEFAULT;
+  if (!isfinite(out.delayMix) || out.delayMix < 0.0f || out.delayMix > 1.0f)
+    out.delayMix = Settings::FILTER_DELAY_MIX_DEFAULT;
 }
 
 void filtersSetComp(bool en, float thr, float ratio, uint32_t attackMs, uint32_t releaseMs)

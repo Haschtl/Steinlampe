@@ -73,5 +73,5 @@ inline void filtersSetComp(bool, float, float, uint32_t, uint32_t) {}
 inline void filtersSetEnv(bool, uint32_t, uint32_t) {}
 inline void filtersSetFold(bool, float) {}
 inline void filtersSetDelay(bool, uint32_t, float, float) {}
-inline void filtersGetState(FilterState &out) { (void)out; }
+inline void filtersGetState(FilterState &out) { out = {}; }
 #endif

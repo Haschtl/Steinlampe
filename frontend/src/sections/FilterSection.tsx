@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { Activity, Flame, Sparkles, Waves } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SliderRow } from '@/components/ui/slider-row';
 import { Knob } from '@/components/ui/knob';
+import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -31,20 +31,17 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent>
-          <SliderRow
+        <CardContent className="flex flex-wrap gap-4">
+          <Knob
             label={<Trans k="filter.alpha">Alpha</Trans>}
-            description={<Trans k="filter.iirDesc">Low-pass amount on the final output</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1,
-              step: 0.01,
-              value: status.filterIirAlpha ?? 0.2,
-            }}
-            onInputChange={(val) => sendCmd(`filter iir on ${val.toFixed(2)}`)}
+            min={0}
+            max={1}
+            step={0.01}
+            value={status.filterIirAlpha ?? 0.2}
+            onChange={(val) => sendCmd(`filter iir on ${val.toFixed(2)}`)}
             disabled={!status.filterIir}
           />
-        </CardContent>
+          </CardContent>
       </Card>
 
       <Card>
@@ -67,17 +64,14 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <SliderRow
+        <CardContent className="flex flex-wrap gap-4">
+          <Knob
             label={<Trans k="filter.amount">Amount</Trans>}
-            description={<Trans k="filter.clipDesc">Adds punch without hard clipping</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1,
-              step: 0.05,
-              value: status.filterClipAmt ?? 0.15,
-            }}
-            onInputChange={(val) => sendCmd(`filter clip on ${val.toFixed(2)} ${curveLabel}`)}
+            min={0}
+            max={1}
+            step={0.05}
+            value={status.filterClipAmt ?? 0.15}
+            onChange={(val) => sendCmd(`filter clip on ${val.toFixed(2)} ${curveLabel}`)}
             disabled={!status.filterClip}
           />
           <div className="flex items-center gap-2">
@@ -85,7 +79,6 @@ export function FilterSection() {
             <Select
               value={curveLabel}
               onValueChange={(val) => sendCmd(`filter clip on ${status.filterClipAmt ?? 0.15} ${val}`)}
-              disabled={!status.filterClip}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -121,31 +114,25 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <SliderRow
+        <CardContent className="flex flex-wrap items-center gap-4">
+          <Knob
             label={<Trans k="filter.rate">Rate (Hz)</Trans>}
-            description={<Trans k="filter.tremDesc">Amplitude modulation over time</Trans>}
-            inputProps={{
-              min: 0.05,
-              max: 20,
-              step: 0.05,
-              value: status.filterTremRate ?? 1.5,
-            }}
-            onInputChange={(val) =>
+            min={0.05}
+            max={20}
+            step={0.05}
+            value={status.filterTremRate ?? 1.5}
+            onChange={(val) =>
               sendCmd(`filter trem on ${val.toFixed(2)} ${status.filterTremDepth ?? 0.3} ${waveLabel}`)
             }
             disabled={!status.filterTrem}
           />
-          <SliderRow
+          <Knob
             label={<Trans k="filter.depth">Depth</Trans>}
-            description={<Trans k="filter.depthDesc">How strong the modulation is</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1,
-              step: 0.05,
-              value: status.filterTremDepth ?? 0.3,
-            }}
-            onInputChange={(val) =>
+            min={0}
+            max={1}
+            step={0.05}
+            value={status.filterTremDepth ?? 0.3}
+            onChange={(val) =>
               sendCmd(`filter trem on ${status.filterTremRate ?? 1.5} ${val.toFixed(2)} ${waveLabel}`)
             }
             disabled={!status.filterTrem}
@@ -157,7 +144,6 @@ export function FilterSection() {
               onValueChange={(val) =>
                 sendCmd(`filter trem on ${status.filterTremRate ?? 1.5} ${status.filterTremDepth ?? 0.3} ${val}`)
               }
-              disabled={!status.filterTrem}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -193,17 +179,14 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <SliderRow
+        <CardContent className="flex flex-wrap gap-4">
+          <Knob
             label={<Trans k="filter.density">Density (events/s)</Trans>}
-            description={<Trans k="filter.sparkDesc">Random flashes added on top</Trans>}
-            inputProps={{
-              min: 0,
-              max: 20,
-              step: 0.1,
-              value: status.filterSparkDens ?? 0.6,
-            }}
-            onInputChange={(val) =>
+            min={0}
+            max={20}
+            step={0.1}
+            value={status.filterSparkDens ?? 0.6}
+            onChange={(val) =>
               sendCmd(
                 `filter spark on ${val.toFixed(2)} ${status.filterSparkInt ?? 0.25} ${
                   status.filterSparkDecay ?? 200
@@ -212,16 +195,13 @@ export function FilterSection() {
             }
             disabled={!status.filterSpark}
           />
-          <SliderRow
+          <Knob
             label={<Trans k="filter.intensity">Intensity</Trans>}
-            description={<Trans k="filter.intDesc">How bright each sparkle is</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1,
-              step: 0.05,
-              value: status.filterSparkInt ?? 0.25,
-            }}
-            onInputChange={(val) =>
+            min={0}
+            max={1}
+            step={0.05}
+            value={status.filterSparkInt ?? 0.25}
+            onChange={(val) =>
               sendCmd(
                 `filter spark on ${status.filterSparkDens ?? 0.6} ${val.toFixed(2)} ${
                   status.filterSparkDecay ?? 200
@@ -230,16 +210,13 @@ export function FilterSection() {
             }
             disabled={!status.filterSpark}
           />
-          <SliderRow
+          <Knob
             label={<Trans k="filter.decay">Decay (ms)</Trans>}
-            description={<Trans k="filter.decayDesc">Fade-out time per sparkle</Trans>}
-            inputProps={{
-              min: 10,
-              max: 5000,
-              step: 10,
-              value: status.filterSparkDecay ?? 200,
-            }}
-            onInputChange={(val) =>
+            min={10}
+            max={5000}
+            step={10}
+            value={status.filterSparkDecay ?? 200}
+            onChange={(val) =>
               sendCmd(
                 `filter spark on ${status.filterSparkDens ?? 0.6} ${status.filterSparkInt ?? 0.25} ${Math.round(
                   val,
@@ -273,17 +250,14 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <SliderRow
+        <CardContent className="flex flex-wrap gap-4">
+          <Knob
             label={<Trans k="filter.compThr">Threshold</Trans>}
-            description={<Trans k="filter.compDesc">Tames peaks above threshold</Trans>}
-            inputProps={{
-              min: 0,
-              max: 1.2,
-              step: 0.02,
-              value: status.filterCompThr ?? 0.8,
-            }}
-            onInputChange={(val) =>
+            min={0}
+            max={1.2}
+            step={0.02}
+            value={status.filterCompThr ?? 0.8}
+            onChange={(val) =>
               sendCmd(
                 `filter comp on ${val.toFixed(2)} ${status.filterCompRatio ?? 3} ${
                   status.filterCompAttack ?? 20
@@ -292,15 +266,13 @@ export function FilterSection() {
             }
             disabled={!status.filterComp}
           />
-          <SliderRow
+          <Knob
             label={<Trans k="filter.compRatio">Ratio</Trans>}
-            inputProps={{
-              min: 1,
-              max: 10,
-              step: 0.2,
-              value: status.filterCompRatio ?? 3,
-            }}
-            onInputChange={(val) =>
+            min={1}
+            max={10}
+            step={0.2}
+            value={status.filterCompRatio ?? 3}
+            onChange={(val) =>
               sendCmd(
                 `filter comp on ${status.filterCompThr ?? 0.8} ${val.toFixed(2)} ${
                   status.filterCompAttack ?? 20
@@ -309,42 +281,36 @@ export function FilterSection() {
             }
             disabled={!status.filterComp}
           />
-          <div className="grid gap-2 md:grid-cols-2">
-            <SliderRow
-              label={<Trans k="filter.compAttack">Attack (ms)</Trans>}
-              inputProps={{
-                min: 1,
-                max: 2000,
-                step: 5,
-                value: status.filterCompAttack ?? 20,
-              }}
-              onInputChange={(val) =>
-                sendCmd(
-                  `filter comp on ${status.filterCompThr ?? 0.8} ${status.filterCompRatio ?? 3} ${Math.round(
-                    val,
-                  )} ${status.filterCompRelease ?? 180}`,
-                )
-              }
-              disabled={!status.filterComp}
-            />
-            <SliderRow
-              label={<Trans k="filter.compRelease">Release (ms)</Trans>}
-              inputProps={{
-                min: 1,
-                max: 4000,
-                step: 10,
-                value: status.filterCompRelease ?? 180,
-              }}
-              onInputChange={(val) =>
-                sendCmd(
-                  `filter comp on ${status.filterCompThr ?? 0.8} ${status.filterCompRatio ?? 3} ${
-                    status.filterCompAttack ?? 20
-                  } ${Math.round(val)}`,
-                )
-              }
-              disabled={!status.filterComp}
-            />
-          </div>
+          <Knob
+            label={<Trans k="filter.compAttack">Attack (ms)</Trans>}
+            min={1}
+            max={2000}
+            step={5}
+            value={status.filterCompAttack ?? 20}
+            onChange={(val) =>
+              sendCmd(
+                `filter comp on ${status.filterCompThr ?? 0.8} ${status.filterCompRatio ?? 3} ${Math.round(
+                  val,
+                )} ${status.filterCompRelease ?? 180}`,
+              )
+            }
+            disabled={!status.filterComp}
+          />
+          <Knob
+            label={<Trans k="filter.compRelease">Release (ms)</Trans>}
+            min={1}
+            max={4000}
+            step={10}
+            value={status.filterCompRelease ?? 180}
+            onChange={(val) =>
+              sendCmd(
+                `filter comp on ${status.filterCompThr ?? 0.8} ${status.filterCompRatio ?? 3} ${
+                  status.filterCompAttack ?? 20
+                } ${Math.round(val)}`,
+              )
+            }
+            disabled={!status.filterComp}
+          />
         </CardContent>
       </Card>
 
@@ -370,29 +336,25 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          <SliderRow
+        <CardContent className="flex flex-wrap gap-4">
+          <Knob
             label={<Trans k="filter.compAttack">Attack (ms)</Trans>}
-            inputProps={{
-              min: 1,
-              max: 4000,
-              step: 5,
-              value: status.filterEnvAttack ?? 30,
-            }}
-            onInputChange={(val) =>
+            min={1}
+            max={4000}
+            step={5}
+            value={status.filterEnvAttack ?? 30}
+            onChange={(val) =>
               sendCmd(`filter env on ${Math.round(val)} ${status.filterEnvRelease ?? 120}`)
             }
             disabled={!status.filterEnv}
           />
-          <SliderRow
+          <Knob
             label={<Trans k="filter.compRelease">Release (ms)</Trans>}
-            inputProps={{
-              min: 1,
-              max: 6000,
-              step: 10,
-              value: status.filterEnvRelease ?? 120,
-            }}
-            onInputChange={(val) =>
+            min={1}
+            max={6000}
+            step={10}
+            value={status.filterEnvRelease ?? 120}
+            onChange={(val) =>
               sendCmd(`filter env on ${status.filterEnvAttack ?? 30} ${Math.round(val)}`)
             }
             disabled={!status.filterEnv}
