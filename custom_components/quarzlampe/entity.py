@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DEFAULT_NAME, DOMAIN, MANUFACTURER, MODEL
+from .const import DEFAULT_NAME, DOMAIN, MANUFACTURER, MODEL, TRANSPORT_BT_SERIAL
 from .coordinator import QuarzlampeCoordinator
 
 
@@ -21,11 +21,15 @@ class QuarzlampeEntity(CoordinatorEntity[QuarzlampeCoordinator]):
 
     @property
     def device_info(self) -> dict:
+        connections = set()
+        if self.coordinator.transport == TRANSPORT_BT_SERIAL and self.coordinator.serial_port:
+            connections.add(("serial", self.coordinator.serial_port))
+        elif self.coordinator.address:
+            connections.add(("bluetooth", self.coordinator.address))
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
             "name": DEFAULT_NAME,
             "manufacturer": MANUFACTURER,
             "model": MODEL,
-            "connections": {("bluetooth", self.coordinator.client.address)},
+            "connections": connections,
         }
-

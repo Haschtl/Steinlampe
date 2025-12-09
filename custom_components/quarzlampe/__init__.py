@@ -9,7 +9,15 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
-from .const import DEFAULT_NAME, DOMAIN, PLATFORMS, LOGGER, MANUFACTURER
+from .const import (
+    DEFAULT_NAME,
+    DOMAIN,
+    MANUFACTURER,
+    PLATFORMS,
+    LOGGER,
+    TRANSPORT_BLE,
+    TRANSPORT_BT_SERIAL,
+)
 from .coordinator import QuarzlampeCoordinator
 
 SEND_COMMAND = "send_command"
@@ -93,10 +101,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {"entries": {}, "services_registered": False})
     domain_data = hass.data[DOMAIN]
 
-    address: str = entry.data["address"]
+    address: str = entry.data.get("address", "")
+    transport: str = entry.data.get("transport", TRANSPORT_BLE)
+    serial_port: str | None = entry.data.get("serial_port")
     name: str = entry.data.get("name") or DEFAULT_NAME
 
-    coordinator = QuarzlampeCoordinator(hass, address, name)
+    coordinator = QuarzlampeCoordinator(hass, address, name, transport, serial_port)
     await coordinator.async_config_entry_first_refresh()
     domain_data["entries"][entry.entry_id] = coordinator
 

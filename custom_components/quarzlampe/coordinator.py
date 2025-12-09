@@ -9,14 +9,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .ble import QuarzlampeClient
-from .const import DEFAULT_UPDATE_INTERVAL, DOMAIN, LOGGER
+from .bt_serial import QuarzlampeBtSerialClient
+from .const import (
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    LOGGER,
+    TRANSPORT_BLE,
+    TRANSPORT_BT_SERIAL,
+)
 
 
 class QuarzlampeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """DataUpdateCoordinator wrapping the BLE client."""
 
-    def __init__(self, hass: HomeAssistant, address: str, name: str) -> None:
-        self.client = QuarzlampeClient(hass, address, name)
+    def __init__(self, hass: HomeAssistant, address: str, name: str, transport: str, serial_port: str | None) -> None:
+        self.address = address
+        self.serial_port = serial_port
+        self.transport = transport
+        if transport == TRANSPORT_BT_SERIAL and serial_port:
+            self.client = QuarzlampeBtSerialClient(hass, serial_port)
+        else:
+            self.client = QuarzlampeClient(hass, address, name)
         super().__init__(
             hass,
             LOGGER,
@@ -30,4 +43,3 @@ class QuarzlampeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return await self.client.async_request_status()
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Failed to refresh Quarzlampe status: {err}") from err
-
