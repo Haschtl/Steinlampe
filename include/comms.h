@@ -33,6 +33,17 @@ bool btHasClient();
 /** Return last known BLE address (if any). */
 String getLastBleAddr();
 
+// Trusted device management
+void trustSetBootMs(uint32_t ms);
+void trustSetLists(const String &bleCsv, const String &btCsv);
+String trustGetBleCsv();
+String trustGetBtCsv();
+bool trustAddBle(const String &addr, bool persist = true);
+bool trustAddBt(const String &addr, bool persist = true);
+bool trustRemoveBle(const String &addr, bool persist = true);
+bool trustRemoveBt(const String &addr, bool persist = true);
+void trustListFeedback();
+
 // Presence hooks
 void blePresenceUpdate(bool connected, const String &addr);
 

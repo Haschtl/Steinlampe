@@ -2,6 +2,8 @@
 
 #include "lamp_config.h"
 #include "settings.h"
+#include <vector>
+#include <algorithm>
 #if ENABLE_BT_SERIAL && ENABLE_BT_MIDI
 #include "midi_bt.h"
 #endif
@@ -33,6 +35,8 @@
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
 void blePresenceUpdate(bool connected, const String &addr);
+void saveSettings();
+void sendFeedback(const String &line);
 
     namespace
 {
@@ -71,6 +75,171 @@ void processInputChar(String &buffer, char c)
 // Line buffer for USB serial input
 String bufferUsb;
 
+// Trusted devices (BLE + BT)
+static std::vector<String> trustedBle;
+static std::vector<String> trustedBt;
+static uint32_t trustBootMs = 0;
+static const uint32_t TRUST_GRACE_MS = 60000; // 1 minute open window
+static const size_t TRUST_MAX = 12;
+
+String normalizeAddr(const String &in)
+{
+  String a = in;
+  a.trim();
+  a.toUpperCase();
+  a.replace("-", ":");
+  // ensure colon separated
+  return a;
+}
+
+bool addrEqual(const String &a, const String &b) { return normalizeAddr(a) == normalizeAddr(b); }
+
+bool listContains(const std::vector<String> &list, const String &addr)
+{
+  const String norm = normalizeAddr(addr);
+  return std::any_of(list.begin(), list.end(), [&](const String &v)
+                     { return v.equalsIgnoreCase(norm); });
+}
+
+bool addToList(std::vector<String> &list, const String &addr)
+{
+  String norm = normalizeAddr(addr);
+  if (norm.isEmpty())
+    return false;
+  if (listContains(list, norm))
+    return false;
+  if (list.size() >= TRUST_MAX)
+    list.erase(list.begin()); // drop oldest
+  list.push_back(norm);
+  return true;
+}
+
+bool removeFromList(std::vector<String> &list, const String &addr)
+{
+  String norm = normalizeAddr(addr);
+  auto it = std::remove_if(list.begin(), list.end(), [&](const String &v)
+                           { return v.equalsIgnoreCase(norm); });
+  if (it != list.end())
+  {
+    list.erase(it, list.end());
+    return true;
+  }
+  return false;
+}
+
+String joinList(const std::vector<String> &list)
+{
+  String out;
+  for (size_t i = 0; i < list.size(); ++i)
+  {
+    out += list[i];
+    if (i + 1 < list.size())
+      out += ',';
+  }
+  return out;
+}
+
+void parseList(const String &csv, std::vector<String> &out)
+{
+  out.clear();
+  int start = 0;
+  while (start < csv.length())
+  {
+    int comma = csv.indexOf(',', start);
+    if (comma < 0)
+      comma = csv.length();
+    String part = csv.substring(start, comma);
+    part.trim();
+    if (!part.isEmpty())
+    {
+      addToList(out, part);
+    }
+    start = comma + 1;
+  }
+}
+
+bool withinGrace()
+{
+  return (millis() - trustBootMs) < TRUST_GRACE_MS;
+}
+
+void trustSetBootMs(uint32_t ms) { trustBootMs = ms; }
+
+void trustSetLists(const String &bleCsv, const String &btCsv)
+{
+  parseList(bleCsv, trustedBle);
+  parseList(btCsv, trustedBt);
+}
+
+String trustGetBleCsv() { return joinList(trustedBle); }
+String trustGetBtCsv() { return joinList(trustedBt); }
+
+bool trustAddBle(const String &addr, bool persist)
+{
+  if (addToList(trustedBle, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+bool trustAddBt(const String &addr, bool persist)
+{
+  if (addToList(trustedBt, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+
+bool trustRemoveBle(const String &addr, bool persist)
+{
+  if (removeFromList(trustedBle, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+bool trustRemoveBt(const String &addr, bool persist)
+{
+  if (removeFromList(trustedBt, addr))
+  {
+    if (persist)
+      saveSettings();
+    return true;
+  }
+  return false;
+}
+
+void trustListFeedback()
+{
+  sendFeedback(String(F("[Trust] BLE: ")) + trustGetBleCsv());
+  sendFeedback(String(F("[Trust] BT : ")) + trustGetBtCsv());
+}
+
+bool allowBleAddr(const String &addr)
+{
+  if (addr.isEmpty())
+    return true;
+  if (withinGrace())
+    return true;
+  return listContains(trustedBle, addr);
+}
+
+bool allowBtAddr(const String &addr)
+{
+  if (addr.isEmpty())
+    return withinGrace(); // no MAC? allow only during grace
+  if (withinGrace())
+    return true;
+  return listContains(trustedBt, addr);
+}
+
 #if ENABLE_BT_SERIAL
 BluetoothSerial serialBt;
 // Line buffer for BT serial input
@@ -92,6 +261,15 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     if (param)
     {
       lastSppAddr = formatMac(param->srv_open.rem_bda);
+      if (!allowBtAddr(lastSppAddr))
+      {
+        if (feedbackAllowed())
+          Serial.println(F("[BT] Rejected unknown device"));
+        esp_spp_disconnect(param->srv_open.handle);
+        return;
+      }
+      if (addToList(trustedBt, lastSppAddr) && feedbackAllowed())
+        saveSettings();
       if (feedbackAllowed())
       {
         Serial.print(F("[BT] Client connected: "));
@@ -160,6 +338,20 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     bleClientConnected = true;
     String addr = formatAddr(param->connect.remote_bda);
     bleLastAddr = addr;
+    if (!allowBleAddr(addr))
+    {
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BLE] Rejecting unknown "));
+        Serial.println(addr);
+      }
+      if (server)
+        server->disconnect(param->connect.conn_id);
+      bleClientConnected = false;
+      return;
+    }
+    if (addToList(trustedBle, addr))
+      saveSettings();
     if (feedbackAllowed())
     {
       Serial.print(F("[BLE] Verbunden: "));

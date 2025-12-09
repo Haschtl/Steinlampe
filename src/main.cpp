@@ -117,6 +117,8 @@ static const char *PREF_KEY_IDLE_OFF = "idle_off";
 static const char *PREF_KEY_LS_EN = "ls_en";
 static const char *PREF_KEY_CUSTOM = "cust";
 static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
+static const char *PREF_KEY_TRUST_BLE = "trust_ble";
+static const char *PREF_KEY_TRUST_BT = "trust_bt";
 #if ENABLE_MUSIC_MODE
 static const char *PREF_KEY_MUSIC_EN = "music_en";
 static const char *PREF_KEY_CLAP_EN = "clap_en";
@@ -857,6 +859,8 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
   prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
   prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
+  prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
+  prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
   prefs.putFloat(PREF_KEY_BRI_CAP, brightnessCap);
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
@@ -959,6 +963,7 @@ void saveSettings()
 void loadSettings()
 {
   prefs.begin(PREF_NS, false);
+  trustSetLists(prefs.getString(PREF_KEY_TRUST_BLE, ""), prefs.getString(PREF_KEY_TRUST_BT, ""));
   uint16_t b = prefs.getUShort(PREF_KEY_B1000, (uint16_t)(Settings::DEFAULT_BRIGHTNESS * 1000.0f));
   masterBrightness = clamp01(b / 1000.0f);
   uint16_t idx = prefs.getUShort(PREF_KEY_MODE, 0);
@@ -4357,6 +4362,49 @@ void handleCommand(String line)
     }
     return;
   }
+  if (lower.startsWith("trust"))
+  {
+    String args = line.substring(5);
+    args.trim();
+    if (args.isEmpty() || args.equalsIgnoreCase(F("list")))
+    {
+      trustListFeedback();
+      return;
+    }
+    // expect: trust <ble|bt> <add|del> <addr>
+    int sp1 = args.indexOf(' ');
+    int sp2 = sp1 >= 0 ? args.indexOf(' ', sp1 + 1) : -1;
+    String kind = sp1 > 0 ? args.substring(0, sp1) : args;
+    String action = (sp1 > 0 && sp2 > sp1) ? args.substring(sp1 + 1, sp2) : "";
+    String addr = sp2 > 0 ? args.substring(sp2 + 1) : "";
+    kind.toLowerCase();
+    action.toLowerCase();
+    addr.trim();
+    bool ok = false;
+    if (kind == "ble")
+    {
+      if (action == "add")
+        ok = trustAddBle(addr);
+      else if (action == "del" || action == "rem" || action == "rm")
+        ok = trustRemoveBle(addr);
+    }
+    else if (kind == "bt")
+    {
+      if (action == "add")
+        ok = trustAddBt(addr);
+      else if (action == "del" || action == "rem" || action == "rm")
+        ok = trustRemoveBt(addr);
+    }
+    if (ok)
+    {
+      trustListFeedback();
+    }
+    else
+    {
+      sendFeedback(F("Usage: trust list | trust ble add <mac> | trust ble del <mac> | trust bt add <mac> | trust bt del <mac>"));
+    }
+    return;
+  }
   if (lower == "factory")
   {
     prefs.begin(PREF_NS, false);
@@ -4404,6 +4452,7 @@ void handleCommand(String line)
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
+    trustSetLists("", "");
     filtersInit();
     saveSettings();
     sendFeedback(F("[Factory] Settings cleared"));
@@ -5075,6 +5124,7 @@ void setup()
 #endif
 
   loadSettings();
+  trustSetBootMs(millis());
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
   ledcAttachPin(PIN_PWM, LEDC_CH);
   ledcWrite(LEDC_CH, 0); // explicit off at startup
