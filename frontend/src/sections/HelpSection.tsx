@@ -122,6 +122,25 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
           </div>
         </CardContent>
       </Card>
+      <Card className="md:col-span-2 xl:col-span-1">
+        <CardHeader>
+          <CardTitle>
+            <Trans k="help.secureBoot">Secure Boot / Reset</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>
+            <Trans k="help.secureBootDesc">
+              During the first second after power-up the lamp stays dark. Toggle the hardware switch twice in that window to factory-reset and start at 20% brightness.
+            </Trans>
+          </p>
+          <p className="text-muted">
+            <Trans k="help.secureBootNote">
+              No filters/patterns run until the window closes; use this gesture if the device is wedged or misconfigured.
+            </Trans>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

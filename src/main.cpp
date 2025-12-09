@@ -50,6 +50,7 @@ static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
+static const uint32_t SECURE_BOOT_WINDOW_MS = 1000;
 
 // Touch-Schwellwerte-Defaults
 static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
@@ -71,6 +72,11 @@ void syncLampToSwitch();
 void startDemo(uint32_t dwellMs);
 void stopDemo();
 void saveSettings();
+void applyDefaultSettings(float brightnessOverride = -1.0f, bool announce = true);
+void processStartupSwitch();
+#if ENABLE_SWITCH
+bool readSwitchRaw();
+#endif
 
 void setBleName(const String &name);
 void setBtName(const String &name);
@@ -240,6 +246,11 @@ uint32_t switchLastDebounceMs = 0;
 uint32_t lastSwitchOffMs = 0;
 uint32_t lastSwitchOnMs = 0;
 bool modeTapArmed = false;
+uint32_t bootStartMs = 0;
+uint8_t secureBootToggleCount = 0;
+bool secureBootLatched = false;
+bool secureBootWindowClosed = false;
+bool startupHoldActive = false;
 #endif
 
 // Touch sensing state
@@ -961,6 +972,118 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_FILTER_DELAY_FB, filt.delayFeedback);
   prefs.putFloat(PREF_KEY_FILTER_DELAY_MIX, filt.delayMix);
   
+}
+
+void applyDefaultSettings(float brightnessOverride, bool announce)
+{
+  prefs.begin(PREF_NS, false);
+  prefs.clear();
+  prefs.end();
+
+  masterBrightness = (brightnessOverride >= 0.0f) ? clamp01(brightnessOverride) : Settings::DEFAULT_BRIGHTNESS;
+  brightnessCap = Settings::BRI_CAP_DEFAULT;
+  autoCycle = Settings::DEFAULT_AUTOCYCLE;
+  patternSpeedScale = 1.0f;
+  touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
+  touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
+  touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
+  touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
+  quickMask = computeDefaultQuickMask();
+  presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
+  presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
+  presenceAddr = "";
+  rampDurationMs = Settings::DEFAULT_RAMP_MS;
+  idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
+  rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
+  rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
+  rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
+  rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
+  rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
+  rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
+  rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
+  briMinUser = Settings::BRI_MIN_DEFAULT;
+  briMaxUser = Settings::BRI_MAX_DEFAULT;
+  customLen = 0;
+  customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+#if ENABLE_LIGHT_SENSOR
+  lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
+  lightGain = Settings::LIGHT_GAIN_DEFAULT;
+  lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
+  lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+  lightAlpha = Settings::LIGHT_ALPHA;
+  lightMinRaw = 4095;
+  lightMaxRaw = 0;
+#endif
+#if ENABLE_MUSIC_MODE
+  musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
+  musicGain = Settings::MUSIC_GAIN_DEFAULT;
+  musicSmoothing = 0.4f;
+  musicAutoLamp = false;
+  musicAutoThr = 0.4f;
+  musicMode = 0;
+  clapEnabled = Settings::CLAP_DEFAULT_ENABLED;
+  clapThreshold = Settings::CLAP_THRESHOLD_DEFAULT;
+  clapCooldownMs = Settings::CLAP_COOLDOWN_MS_DEFAULT;
+  clapCmd1 = "";
+  clapCmd2 = "";
+  clapCmd3 = "";
+#endif
+  patternFadeEnabled = false;
+  patternFadeStrength = 1.0f;
+  patternFilteredLevel = 0.0f;
+  touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
+  patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
+  patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
+  trustSetLists("", "");
+  setBleName(Settings::BLE_NAME_DEFAULT);
+  setBtName(Settings::BT_NAME_DEFAULT);
+  filtersInit();
+  saveSettings();
+  if (brightnessOverride >= 0.0f)
+  {
+    setLampEnabled(true, "secure-default");
+  }
+  if (announce)
+    sendFeedback(F("[Defaults] Settings reset to factory values"));
+}
+
+/**
+ * @brief During the secure-boot window, debounce the switch and count toggles without running full logic.
+ */
+void processStartupSwitch()
+{
+#if ENABLE_SWITCH
+  if (secureBootWindowClosed)
+    return;
+  uint32_t now = millis();
+  bool raw = readSwitchRaw();
+  if (raw != switchRawState)
+  {
+    switchRawState = raw;
+    switchLastDebounceMs = now;
+  }
+  if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
+  {
+    switchDebouncedState = switchRawState;
+    if (!secureBootLatched && !secureBootWindowClosed)
+    {
+      secureBootToggleCount++;
+      if (secureBootToggleCount >= 2)
+      {
+        secureBootLatched = true;
+        secureBootWindowClosed = true;
+        startupHoldActive = false;
+        applyDefaultSettings(0.20f, false);
+        sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
+        printStatus();
+      }
+      else
+      {
+        sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/2"));
+      }
+    }
+  }
+#endif
 }
 
 /**
@@ -4506,57 +4629,7 @@ void handleCommand(String line)
   }
   if (lower == "factory")
   {
-    prefs.begin(PREF_NS, false);
-    prefs.clear();
-    prefs.end();
-    // reset runtime defaults
-    masterBrightness = Settings::DEFAULT_BRIGHTNESS;
-    autoCycle = Settings::DEFAULT_AUTOCYCLE;
-    patternSpeedScale = 1.0f;
-    touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
-    touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
-    touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
-    touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
-    quickMask = computeDefaultQuickMask();
-    presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
-    presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
-    presenceAddr = "";
-    rampDurationMs = Settings::DEFAULT_RAMP_MS;
-    idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
-    rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
-    rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
-    rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
-    rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
-    rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
-    rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
-    briMinUser = Settings::BRI_MIN_DEFAULT;
-    briMaxUser = Settings::BRI_MAX_DEFAULT;
-    customLen = 0;
-    customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
-#if ENABLE_LIGHT_SENSOR
-    lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
-    lightGain = Settings::LIGHT_GAIN_DEFAULT;
-    lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
-    lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
-    lightAlpha = Settings::LIGHT_ALPHA;
-#endif
-#if ENABLE_MUSIC_MODE
-    musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
-    musicGain = Settings::MUSIC_GAIN_DEFAULT;
-#endif
-    patternFadeEnabled = false;
-    patternFadeStrength = 1.0f;
-  patternFilteredLevel = 0.0f;
-    patternFilterLastMs = 0;
-    touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
-    patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
-    patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
-    trustSetLists("", "");
-    setBleName(Settings::BLE_NAME_DEFAULT);
-    setBtName(Settings::BT_NAME_DEFAULT);
-    filtersInit();
-    saveSettings();
-    sendFeedback(F("[Factory] Settings cleared"));
+    applyDefaultSettings(-1.0f, true);
     return;
   }
   if (lower.startsWith("profile"))
@@ -5210,6 +5283,13 @@ void setup()
   Serial.println();
   Serial.println(F("Quarzlampe PWM-Demo"));
   ensureBaseMac();
+#if ENABLE_SWITCH
+  bootStartMs = millis();
+  secureBootToggleCount = 0;
+  secureBootLatched = false;
+  secureBootWindowClosed = false;
+  startupHoldActive = true;
+#endif
 
 #if ENABLE_SWITCH
   pinMode(PIN_SWITCH, INPUT_PULLUP);
@@ -5259,6 +5339,21 @@ void setup()
  */
 void loop()
 {
+  if (startupHoldActive)
+  {
+    uint32_t now = millis();
+    processStartupSwitch();
+    if ((now - bootStartMs) < SECURE_BOOT_WINDOW_MS)
+    {
+      if (lampEnabled)
+        setLampEnabled(false, "startup-hold");
+      ledcWrite(LEDC_CH, 0);
+      delay(10);
+      return;
+    }
+    startupHoldActive = false;
+    secureBootWindowClosed = true;
+  }
   pollCommunications();
 #if ENABLE_SWITCH
   updateSwitchLogic();

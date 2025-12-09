@@ -95,6 +95,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.clamp": "Clamp",
     "label.idle": "Idle off (min)",
     "label.pwm": "PWM Curve",
+    "desc.pwm": "Gamma to linearize LED brightness (0.5–4). Use a step pattern like “Gamma Probe”/“Stufen” and adjust until all steps look evenly spaced.",
     "label.rampOn": "Ramp On",
     "label.rampOff": "Ramp Off",
     "label.pow": "Power",
@@ -228,6 +229,11 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.",
     "help.commandsLinks": "Command Reference & Links",
+    "help.secureBoot": "Secure Boot / Reset",
+    "help.secureBootDesc":
+      "After power-up the lamp stays dark for ~1s. Toggle the hardware switch twice in that window to factory-reset and start at 20% brightness.",
+    "help.secureBootNote":
+      "No patterns/filters run until the window closes. Use this gesture if the device is wedged or misconfigured.",
   },
   de: {
     "nav.home": "Start",
@@ -286,6 +292,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.clamp": "Begrenzung",
     "label.idle": "Idle aus (Min)",
     "label.pwm": "PWM Kurve",
+    "desc.pwm": "Gamma zur Linearisierung der LED-Helligkeit (0.5–4). Nutze z. B. das Pattern „Gamma Probe“/„Stufen“ und stelle so ein, dass die Schritte gleich hell wirken.",
     "label.rampOn": "Rampe An",
     "label.rampOff": "Rampe Aus",
     "label.pow": "Power",
@@ -455,6 +462,11 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; per optionalem Flag aktivieren. Write/WriteNR, nur RX.",
     "help.commandsLinks": "Befehle",
+    "help.secureBoot": "Secure Boot / Reset",
+    "help.secureBootDesc":
+      "Nach dem Einschalten bleibt die Lampe ca. 1s aus. In diesem Fenster den Hardware-Schalter zweimal toggeln, um auf Werkseinstellungen zu setzen und mit 20% Helligkeit zu starten.",
+    "help.secureBootNote":
+      "Keine Patterns/Filter laufen, bis das Fenster zu ist. Nutze dies, wenn das Gerät hängt oder falsch konfiguriert ist.",
   },
 };
 

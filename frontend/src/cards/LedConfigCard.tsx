@@ -70,9 +70,13 @@ export function LedConfigCard() {
               onBlur={(e) => handlePwm(Number(e.target.value))}
               className="w-28"
               suffix="γ"
-              description="Gamma to linearize LED brightness (0.5–4)"
             />
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            <Trans k="desc.pwm">
+              Gamma to linearize LED brightness (0.5–4). Pick a simple step pattern (e.g. “Stufen”) and tweak until each step looks equally bright.
+            </Trans>
+          </p>
         </div>
       </CardContent>
     </Card>

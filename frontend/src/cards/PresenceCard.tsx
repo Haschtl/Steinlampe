@@ -27,7 +27,7 @@ export function PresenceCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Input
               placeholder={t('label.presenceAddr', 'Presence MAC')}
               value={addr}
