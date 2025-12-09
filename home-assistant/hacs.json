@@ -1,0 +1,6 @@
+{
+  "name": "Quarzlampe BLE",
+  "content_in_root": false,
+  "domains": ["quarzlampe"],
+  "render_readme": true
+}

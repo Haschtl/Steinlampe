@@ -1,0 +1,16 @@
+{
+  "domain": "quarzlampe",
+  "name": "Quarzlampe BLE",
+  "version": "0.1.0",
+  "documentation": "https://github.com/haschtl/quarzlampe",
+  "requirements": [],
+  "codeowners": ["@haschtl"],
+  "config_flow": true,
+  "iot_class": "local_push",
+  "bluetooth": [
+    {
+      "service_uuid": "d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b"
+    }
+  ],
+  "loggers": ["custom_components.quarzlampe"]
+}

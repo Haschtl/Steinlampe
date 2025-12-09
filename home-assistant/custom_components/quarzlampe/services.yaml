@@ -1,0 +1,223 @@
+send_command:
+  name: Send raw command
+  description: Send an arbitrary text command (same syntax as BLE/serial CLI).
+  fields:
+    command:
+      required: true
+      example: "status"
+      selector:
+        text:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+wake:
+  name: Wake fade
+  description: Start a wake fade (optionally soft-cancel on touch).
+  fields:
+    duration:
+      required: true
+      example: 180
+      selector:
+        number:
+          min: 1
+          max: 7200
+          unit_of_measurement: seconds
+    mode:
+      required: false
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 64
+    brightness:
+      required: false
+      example: 80
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    soft:
+      required: false
+      selector:
+        boolean:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+sleep:
+  name: Sleep fade
+  description: Fade to off over N minutes (or stop with 0/negative).
+  fields:
+    minutes:
+      required: false
+      example: 15
+      selector:
+        number:
+          min: 0
+          max: 360
+          unit_of_measurement: minutes
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+notify:
+  name: Notify blink
+  description: Blink a custom on/off sequence (ms) with optional fade.
+  fields:
+    sequence:
+      required: true
+      example:
+        - 80
+        - 40
+        - 120
+      selector:
+        number:
+          min: 10
+          max: 5000
+    fade:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 2000
+          unit_of_measurement: ms
+    repeat:
+      required: false
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 8
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+morse:
+  name: Morse
+  description: Blink text as Morse code.
+  fields:
+    text:
+      required: true
+      example: "SOS"
+      selector:
+        text:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+presence_set:
+  name: Presence bind
+  description: Bind/unbind a MAC for presence-driven on/off.
+  fields:
+    mac:
+      required: false
+      example: "AA:BB:CC:DD:EE:FF"
+      selector:
+        text:
+    clear:
+      required: false
+      selector:
+        boolean:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+custom_pattern:
+  name: Custom pattern
+  description: Upload a CSV of values (0..1) and optional step time.
+  fields:
+    values:
+      required: false
+      example:
+        - 0.2
+        - 0.8
+        - 1
+        - 0.4
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.01
+    step_ms:
+      required: false
+      example: 400
+      selector:
+        number:
+          min: 20
+          max: 5000
+          unit_of_measurement: ms
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+quick_modes:
+  name: Quick tap list
+  description: Configure switch quick-list (mode numbers or profile slots).
+  fields:
+    modes:
+      required: true
+      example:
+        - 1
+        - 5
+        - 12
+      selector:
+        number:
+          min: 1
+          max: 64
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+config_import:
+  name: Config import
+  description: Apply a full cfg import string (see cfg export output).
+  fields:
+    payload:
+      required: true
+      example: "mode=1 bri=0.7 ramp_on_ms=320 ramp_off_ms=600 ..."
+      selector:
+        text:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+config_export:
+  name: Config export
+  description: Request cfg export line over BLE.
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text:
+
+demo:
+  name: Demo cycle
+  description: Start/stop automatic demo cycling of quick list.
+  fields:
+    seconds:
+      required: false
+      example: 6
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: seconds
+    stop:
+      required: false
+      selector:
+        boolean:
+    config_entry_id:
+      required: false
+      selector:
+        text:
