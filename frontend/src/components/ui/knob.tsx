@@ -93,36 +93,59 @@ export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, di
   return (
     <div className="flex flex-col items-center gap-2 text-center" style={{marginTop:0}}>
       {label && <span className="text-xs font-medium text-muted">{label}</span>}
-      <div className={`relative ${disabled ? 'opacity-50' : ''}`} style={{ width: 88, height: 88 }}>
-        {/* Glow */}
+      <div className={`relative ${disabled ? 'opacity-50' : ''}`} style={{ width: 92, height: 92 }}>
+        {/* Outer shimmer */}
         <div
-          className="pointer-events-none absolute -inset-3 rounded-full blur-2xl"
+          className="pointer-events-none absolute -inset-4 rounded-full blur-2xl"
           style={{
             background:
-              'radial-gradient(circle at 40% 35%, rgba(var(--accent-rgb,91,230,255),0.28), transparent 60%), ' +
-              'radial-gradient(circle at 70% 65%, rgba(255,190,140,0.12), transparent 65%)',
+              'radial-gradient(circle at 35% 30%, rgba(var(--accent-rgb,91,230,255),0.35), transparent 55%), ' +
+              'radial-gradient(circle at 70% 70%, rgba(255,200,160,0.18), transparent 60%)',
+            opacity: 0.9,
           }}
         />
-        {/* Progress */}
+        {/* Glass ring */}
         <div
-          className="pointer-events-none absolute inset-[6px] rounded-full"
+          className="pointer-events-none absolute inset-[4px] rounded-full"
+          style={{
+            background:
+              'linear-gradient(145deg, rgba(12,18,32,0.95), rgba(7,11,20,0.9)), ' +
+              'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), transparent 60%)',
+            boxShadow:
+              'inset 0 10px 18px rgba(0,0,0,0.45), inset 0 -6px 10px rgba(0,0,0,0.5), 0 0 18px rgba(var(--accent-rgb,91,230,255),0.28)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        />
+        {/* Progress arc */}
+        <div
+          className="pointer-events-none absolute inset-[10px] rounded-full"
           style={{
             background: `conic-gradient(from ${startDeg + 90}deg, rgb(var(--accent-rgb,91,230,255)) ${
               norm * sweepDeg
-            }deg, rgba(20,30,48,0.9) ${norm * sweepDeg}deg)`,
+            }deg, rgba(16,24,38,0.85) ${norm * sweepDeg}deg)`,
             WebkitMaskImage:
-              'radial-gradient(circle at center, transparent 52%, black 58%), radial-gradient(circle at center, black 100%)',
+              'radial-gradient(circle at center, transparent 50%, black 56%), radial-gradient(circle at center, black 100%)',
             maskImage:
-              'radial-gradient(circle at center, transparent 52%, black 58%), radial-gradient(circle at center, black 100%)',
-            boxShadow: 'inset 0 0 14px rgba(0,0,0,0.8), 0 0 10px rgba(var(--accent-rgb,91,230,255),0.2)',
+              'radial-gradient(circle at center, transparent 50%, black 56%), radial-gradient(circle at center, black 100%)',
+            boxShadow: 'inset 0 0 16px rgba(0,0,0,0.8), 0 0 14px rgba(var(--accent-rgb,91,230,255),0.22)',
+          }}
+        />
+        {/* Inner disc */}
+        <div
+          className="pointer-events-none absolute inset-[18px] rounded-full"
+          style={{
+            background:
+              'radial-gradient(circle at 32% 32%, rgba(255,255,255,0.18), transparent 55%), ' +
+              'linear-gradient(160deg, #0f172a, #0a1322)',
+            boxShadow: 'inset 0 3px 6px rgba(255,255,255,0.08), inset 0 -4px 10px rgba(0,0,0,0.55)',
           }}
         />
         {/* Pointer overlay */}
         <div
-          className="pointer-events-none absolute inset-[12px] flex items-center justify-center"
+          className="pointer-events-none absolute inset-[16px] flex items-center justify-center"
           style={{ transform: `rotate(${pointerDeg}deg)` }}
         >
-          <div className="h-1.5 w-8 rounded-full bg-[rgba(91,230,255,0.95)] shadow-[0_0_18px_rgba(91,230,255,0.75)]" />
+          <div className="h-1.5 w-9 rounded-full bg-[rgba(91,230,255,0.98)] shadow-[0_0_20px_rgba(91,230,255,0.75)]" />
         </div>
 
         <KnobHeadless
@@ -151,12 +174,12 @@ export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, di
             touchAction: 'none',
             borderRadius: '9999px',
             background:
-              'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.08), transparent 55%), ' +
-              'radial-gradient(circle at 65% 70%, rgba(var(--accent-rgb,91,230,255),0.18), transparent 60%), ' +
-              'linear-gradient(140deg, rgba(10,15,28,0.96), rgba(6,10,18,0.86))',
+              'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 90%), ' +
+              'radial-gradient(circle at 70% 70%, rgba(var(--accent-rgb,91,230,255),0.14), transparent 92%), ' +
+              'linear-gradient(120deg, rgba(18,27,46,0.55), rgba(10,16,30,0.79))',
             boxShadow:
-              'inset 0 6px 12px rgba(0,0,0,0.35), inset 0 -4px 8px rgba(0,0,0,0.35), 0 0 18px rgba(var(--accent-rgb,91,230,255),0.24)',
-            border: '1px solid rgba(255,255,255,0.06)',
+              'inset 0 10px 16px rgba(0,0,0,0.4), inset 0 -6px 10px rgba(0,0,0,0.45), 0 0 14px rgba(var(--accent-rgb,91,230,255),0.2)',
+            border: '1px solid rgba(255,255,255,0.05)',
             cursor: disabled ? 'not-allowed' : 'pointer',
             pointerEvents: disabled ? 'none' : 'auto',
             color: 'inherit',
