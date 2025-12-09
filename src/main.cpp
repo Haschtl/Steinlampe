@@ -3014,11 +3014,21 @@ void handleCommand(String line)
   {
     String arg = line.substring(line.indexOf("filter") + 6);
     arg.trim();
-    if (arg.startsWith("iir"))
+    if (arg.startsWith("iir") || arg.startsWith("irr"))
     {
-      bool en = arg.indexOf("off") == -1;
-      int pos = arg.indexOf(' ');
-      float a = (pos > 0) ? arg.substring(pos + 1).toFloat() : Settings::FILTER_IIR_ALPHA_DEFAULT;
+      // tokens: iir <on/off> <alpha>
+      String rest = arg.substring(3);
+      rest.trim();
+      bool en = rest.indexOf("off") == -1;
+      float a = Settings::FILTER_IIR_ALPHA_DEFAULT;
+      int pos = rest.indexOf(' ');
+      if (pos > 0)
+      {
+        String alphaStr = rest.substring(pos + 1);
+        alphaStr.trim();
+        if (alphaStr.length() > 0)
+          a = alphaStr.toFloat();
+      }
       if (a < 0.0f)
         a = 0.0f;
       if (a > 1.0f)

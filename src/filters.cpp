@@ -1,3 +1,4 @@
+#include "settings.h"
 #include "filters.h"
 
 #if ENABLE_FILTERS
@@ -5,7 +6,6 @@
 #include <math.h>
 #include <esp_random.h>
 
-#include "settings.h"
 #include "utils.h"
 
 namespace

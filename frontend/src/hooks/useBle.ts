@@ -54,6 +54,7 @@ export function useBle(): BleApi {
   const pushLog = useCallback(
     (line: string) => {
       if (!line) return;
+      console.debug('[BLE]', line);
       // Filter out noisy status-only lines when enabled
       if (
         filterParsed &&

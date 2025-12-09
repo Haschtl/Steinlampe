@@ -415,6 +415,81 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lastStatusAt: Date.now(),
       }));
   }
+  if (line.startsWith('[Filter]')) {
+    handled = true;
+    const lower = line.toLowerCase();
+    const hasLbl = (lbl: string) =>
+      lower.includes(`${lbl}=`) || new RegExp(`\\b${lbl}\\s+(on|off)\\b`).test(lower);
+    const onOff = (lbl: string, prev?: boolean) => {
+      const eqMatch = lower.match(new RegExp(`${lbl}=([a-z]+)`));
+      if (eqMatch && eqMatch[1]) return eqMatch[1] === 'on';
+      const plain = lower.match(new RegExp(`\\b${lbl}\\s+(on|off)\\b`));
+      if (plain && plain[1]) return plain[1] === 'on';
+      return prev ?? false;
+    };
+    const numInParens = (lbl: string) => {
+      const match = line.match(new RegExp(`${lbl}=\\w+\\(([^)]+)\\)`));
+      if (match && match[1]) {
+        const parts = match[1].split(/[\\/]/).map((p) => parseFloat(p));
+        return parts;
+      }
+      return [];
+    };
+    const parseNumAfter = (lbl: string) => {
+      const match = line.match(new RegExp(`${lbl}=([0-9.+-]+)`));
+      return match ? parseFloat(match[1]) : undefined;
+    };
+    setStatus((s) => {
+      const iirParts = numInParens('iir');
+      const clipParts = numInParens('clip');
+      const tremParts = numInParens('trem');
+      const sparkParts = numInParens('spark');
+      const compParts = numInParens('comp');
+      const envParts = numInParens('env');
+      const foldParts = numInParens('fold');
+      const alphaInline = parseNumAfter('alpha');
+      const clipAmtInline = parseNumAfter('amt');
+      const tremRateInline = parseNumAfter('rate');
+      const tremDepthInline = parseNumAfter('depth');
+      const sparkDensInline = parseNumAfter('dens');
+      const sparkIntInline = parseNumAfter('intensity') ?? parseNumAfter('int');
+      const sparkDecayInline = parseNumAfter('decay');
+      const compThrInline = parseNumAfter('thr');
+      const compRatioInline = parseNumAfter('ratio');
+      const compAttInline = parseNumAfter('att');
+      const compRelInline = parseNumAfter('rel');
+      const envAttInline = parseNumAfter('att');
+      const envRelInline = parseNumAfter('rel');
+      const foldAmtInline = parseNumAfter('fold');
+      const delayMs = parseNumAfter('filter_delay_ms') ?? (numInParens('delay')[0] ?? undefined);
+      return {
+        ...s,
+        filterIir: onOff('iir', s.filterIir),
+        filterIirAlpha: iirParts[0] ?? alphaInline ?? s.filterIirAlpha,
+        filterClip: onOff('clip', s.filterClip),
+        filterClipAmt: clipParts[0] ?? clipAmtInline ?? s.filterClipAmt,
+        filterTrem: onOff('trem', s.filterTrem),
+        filterTremRate: tremParts[0] ?? tremRateInline ?? s.filterTremRate,
+        filterTremDepth: tremParts[1] ?? tremDepthInline ?? s.filterTremDepth,
+        filterSpark: onOff('spark', s.filterSpark),
+        filterSparkDens: sparkParts[0] ?? sparkDensInline ?? s.filterSparkDens,
+        filterSparkInt: sparkParts[1] ?? sparkIntInline ?? s.filterSparkInt,
+        filterSparkDecay: sparkParts[2] ? Number(sparkParts[2]) : sparkDecayInline ?? s.filterSparkDecay,
+        filterComp: onOff('comp', s.filterComp),
+        filterCompThr: compParts[0] ?? compThrInline ?? s.filterCompThr,
+        filterCompRatio: compParts[1] ?? compRatioInline ?? s.filterCompRatio,
+        filterCompAttack: compParts[2] ? Number(compParts[2]) : compAttInline ?? s.filterCompAttack,
+        filterCompRelease: compParts[3] ? Number(compParts[3]) : compRelInline ?? s.filterCompRelease,
+        filterEnv: onOff('env', s.filterEnv),
+        filterEnvAttack: envParts[0] ? Number(envParts[0]) : envAttInline ?? s.filterEnvAttack,
+        filterEnvRelease: envParts[1] ? Number(envParts[1]) : envRelInline ?? s.filterEnvRelease,
+        filterFold: onOff('fold', s.filterFold),
+        filterFoldAmt: foldParts[0] ?? foldAmtInline ?? s.filterFoldAmt,
+        filterDelay: onOff('delay', s.filterDelay),
+        filterDelayMs: delayMs ?? s.filterDelayMs,
+      };
+    });
+  }
   if (line.startsWith('Ramp=')) {
     handled = true;
     const onMs = line.match(/Ramp=([0-9]+)/);

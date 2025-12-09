@@ -40,6 +40,7 @@ export function useSerial(): SerialApi {
   const pushLog = useCallback(
     (line: string) => {
       if (!line) return;
+      console.debug('[Serial]', line);
       if (
         filterParsed &&
         (/^Status[:=]/i.test(line) ||

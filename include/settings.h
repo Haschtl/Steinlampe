@@ -5,6 +5,8 @@
  * @brief Central configuration for user-tunable defaults and identifiers.
  */
 
+#include <Arduino.h>
+
 namespace Settings
 {
 // ---- Names / IDs ----

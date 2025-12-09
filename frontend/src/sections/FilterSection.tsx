@@ -31,7 +31,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4">
           <Knob
             label={<Trans k="filter.alpha">Alpha</Trans>}
             min={0}
@@ -55,16 +55,12 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterClip}
-              onChange={(e) =>
-                sendCmd(
-                  `filter clip ${e.target.checked ? 'on' : 'off'} ${status.filterClipAmt ?? 0.15} ${curveLabel}`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter clip ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4">
           <Knob
             label={<Trans k="filter.amount">Amount</Trans>}
             min={0}
@@ -103,18 +99,12 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterTrem}
-              onChange={(e) =>
-                sendCmd(
-                  `filter trem ${e.target.checked ? 'on' : 'off'} ${status.filterTremRate ?? 1.5} ${
-                    status.filterTremDepth ?? 0.3
-                  } ${waveLabel}`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter trem ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4">
           <Knob
             label={<Trans k="filter.rate">Rate (Hz)</Trans>}
             min={0.05}
@@ -168,18 +158,12 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterSpark}
-              onChange={(e) =>
-                sendCmd(
-                  `filter spark ${e.target.checked ? 'on' : 'off'} ${status.filterSparkDens ?? 0.6} ${
-                    status.filterSparkInt ?? 0.25
-                  } ${status.filterSparkDecay ?? 200}`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter spark ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4">
           <Knob
             label={<Trans k="filter.density">Density (events/s)</Trans>}
             min={0}
@@ -239,18 +223,12 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterComp}
-              onChange={(e) =>
-                sendCmd(
-                  `filter comp ${e.target.checked ? 'on' : 'off'} ${status.filterCompThr ?? 0.8} ${
-                    status.filterCompRatio ?? 3
-                  } ${status.filterCompAttack ?? 20} ${status.filterCompRelease ?? 180}`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter comp ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4">
           <Knob
             label={<Trans k="filter.compThr">Threshold</Trans>}
             min={0}
@@ -325,13 +303,7 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterEnv}
-              onChange={(e) =>
-                sendCmd(
-                  `filter env ${e.target.checked ? 'on' : 'off'} ${status.filterEnvAttack ?? 30} ${
-                    status.filterEnvRelease ?? 120
-                  }`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter env ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -373,9 +345,7 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterFold}
-              onChange={(e) =>
-                sendCmd(`filter fold ${e.target.checked ? 'on' : 'off'} ${status.filterFoldAmt ?? 0.2}`)
-              }
+              onChange={(e) => sendCmd(`filter fold ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -407,13 +377,7 @@ export function FilterSection() {
               type="checkbox"
               className="accent-accent"
               checked={!!status.filterDelay}
-              onChange={(e) =>
-                sendCmd(
-                  `filter delay ${e.target.checked ? 'on' : 'off'} ${status.filterDelayMs ?? 180} ${
-                    status.filterDelayFb ?? 0.35
-                  } ${status.filterDelayMix ?? 0.3}`,
-                )
-              }
+              onChange={(e) => sendCmd(`filter delay ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
