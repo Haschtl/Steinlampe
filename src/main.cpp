@@ -116,6 +116,7 @@ static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
 static const char *PREF_KEY_RAMP_ON_MS = "ramp_on_ms";
 static const char *PREF_KEY_RAMP_OFF_MS = "ramp_off_ms";
+static const char *PREF_KEY_RAMP_AMB = "ramp_amb";
 static const char *PREF_KEY_IDLE_OFF = "idle_off";
 static const char *PREF_KEY_LS_EN = "ls_en";
 static const char *PREF_KEY_CUSTOM = "cust";
@@ -305,6 +306,7 @@ float lightAlpha = Settings::LIGHT_ALPHA;
 float lightGain = Settings::LIGHT_GAIN_DEFAULT;
 float lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
 float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
+float rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
 
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
@@ -478,6 +480,8 @@ String buildProfileString()
   cfg += rampOnDurationMs;
   cfg += F(" ramp_off_ms=");
   cfg += rampOffDurationMs;
+  cfg += F(" ramp_amb=");
+  cfg += String(rampAmbientFactor, 2);
   cfg += F(" pat_fade=");
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
@@ -540,13 +544,13 @@ String defaultProfileString(uint8_t slot)
   switch (slot)
   {
   case 1: // A: full brightness, constant
-    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
     break;
   case 2: // B: half brightness, constant
-    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
     break;
   case 3: // C: half brightness, pulsierend
-    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 bri_min=0.05 bri_max=0.95");
+    cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
     break;
   default:
     break;
@@ -871,6 +875,7 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
+  prefs.putFloat(PREF_KEY_RAMP_AMB, rampAmbientFactor);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
   prefs.putUChar(PREF_KEY_RAMP_EASE_ON, rampEaseOnType);
   prefs.putUChar(PREF_KEY_RAMP_EASE_OFF, rampEaseOffType);
@@ -1045,10 +1050,15 @@ void loadSettings()
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
   rampOnDurationMs = prefs.getUInt(PREF_KEY_RAMP_ON_MS, Settings::DEFAULT_RAMP_ON_MS);
   rampOffDurationMs = prefs.getUInt(PREF_KEY_RAMP_OFF_MS, Settings::DEFAULT_RAMP_OFF_MS);
+  rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
   if (rampOnDurationMs < 50)
     rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
   if (rampOffDurationMs < 50)
     rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
+  if (rampAmbientFactor < 0.0f)
+    rampAmbientFactor = 0.0f;
+  if (rampAmbientFactor > 5.0f)
+    rampAmbientFactor = 5.0f;
   idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
   rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, Settings::DEFAULT_RAMP_EASE_ON);
   rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, Settings::DEFAULT_RAMP_EASE_OFF);
@@ -1772,11 +1782,13 @@ void printStatus()
   if (lightSensorEnabled)
   {
     lightLine += String(F("raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
-                 F(" max=") + String((int)lightMaxRaw) + F(" alpha=") + String(lightAlpha, 3);
+                 F(" max=") + String((int)lightMaxRaw) + F(" alpha=") + String(lightAlpha, 3) +
+                 F(" ambx=") + String(rampAmbientMultiplier, 2) + F(" rampAmb=") + String(rampAmbientFactor, 2);
   }
   else
   {
-    lightLine += F("off");
+    lightLine += F("off rampAmb=");
+    lightLine += String(rampAmbientFactor, 2);
   }
   sendFeedback(lightLine);
   payload += lightLine + '\n';
@@ -1841,6 +1853,10 @@ void printSensorsStructured()
   line += String((int)lightMinRaw);
   line += F("|light_max=");
   line += String((int)lightMaxRaw);
+  line += F("|light_amb_mult=");
+  line += String(rampAmbientMultiplier, 2);
+  line += F("|ramp_amb=");
+  line += String(rampAmbientFactor, 2);
 #else
   line += F("|light_raw=N/A");
 #endif
@@ -1904,6 +1920,8 @@ void printStatusStructured()
   line += String(rampEaseOnPower, 2);
   line += F("|ramp_off_pow=");
   line += String(rampEaseOffPower, 2);
+  line += F("|ramp_amb=");
+  line += String(rampAmbientFactor, 2);
   line += F("|idle_min=");
   line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
   line += F("|pat_speed=");
@@ -2151,6 +2169,15 @@ void importConfig(const String &args)
       uint32_t v = val.toInt();
       if (v >= 50 && v <= 10000)
         rampOffDurationMs = v;
+    }
+    else if (key == "ramp_amb")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 5.0f)
+        v = 5.0f;
+      rampAmbientFactor = v;
     }
     else if (key == "idle")
     {
@@ -3404,6 +3431,21 @@ void handleCommand(String line)
         rampEaseOffPower = power;
       sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
       }
+      saveSettings();
+    }
+    else if (lower.startsWith("ramp ambient") || lower.startsWith("ramp amb"))
+    {
+      arg = arg.substring(arg.indexOf(' ') + 1);
+      arg.trim();
+      float v = arg.toFloat();
+      if (isnan(v))
+        v = rampAmbientFactor;
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 5.0f)
+        v = 5.0f;
+      rampAmbientFactor = v;
+      sendFeedback(String(F("[Ramp] ambient factor=")) + String(rampAmbientFactor, 2));
       saveSettings();
     }
     else
@@ -4824,6 +4866,7 @@ void updatePatternEngine()
 void updateLightSensor()
 {
 #if ENABLE_LIGHT_SENSOR
+  rampAmbientMultiplier = 1.0f;
   if (!lightSensorEnabled)
   {
     ambientScale = 1.0f;
@@ -4841,8 +4884,6 @@ void updateLightSensor()
   if (raw > (int)lightMaxRaw)
     lightMaxRaw = raw;
 
-  if (!lampEnabled || touchActive || wakeFadeActive || sleepFadeActive)
-    return;
   int range = (int)lightMaxRaw - (int)lightMinRaw;
   if (range < 20)
     return;
@@ -4857,6 +4898,16 @@ void updateLightSensor()
   target = clamp01(target);
   // Heavier smoothing to avoid visible steps when dimming by ambient light
   ambientScale = 0.92f * ambientScale + 0.08f * target;
+  // Darker rooms -> longer ramps: multiplier = 1 + factor * darkness
+  float span = lightClampMax - lightClampMin;
+  float normAmbient = span > 0.001f ? clamp01((ambientScale - lightClampMin) / span) : 1.0f;
+  float darkness = 1.0f - normAmbient;
+  float mult = 1.0f + rampAmbientFactor * darkness;
+  if (mult < 0.1f)
+    mult = 0.1f;
+  if (mult > 8.0f)
+    mult = 8.0f;
+  rampAmbientMultiplier = mult;
 #endif
 }
 

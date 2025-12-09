@@ -29,6 +29,7 @@ constexpr uint8_t DEFAULT_RAMP_EASE_ON = 3;     ///< ease-out
 constexpr uint8_t DEFAULT_RAMP_EASE_OFF = 3;    ///< ease-out
 constexpr float DEFAULT_RAMP_POW_ON = 7.0f;     ///< easing power for on-ramp
 constexpr float DEFAULT_RAMP_POW_OFF = 2.0f;    ///< easing power for off-ramp
+constexpr float RAMP_AMBIENT_FACTOR_DEFAULT = 0.0f; ///< Extra ramp length per darkness (0 = off)
 constexpr float PATTERN_MARGIN_LOW_DEFAULT = 0.0f;  ///< lower bound for pattern output
 constexpr float PATTERN_MARGIN_HIGH_DEFAULT = 1.0f; ///< upper bound for pattern output
 constexpr bool FILTER_IIR_DEFAULT = false;

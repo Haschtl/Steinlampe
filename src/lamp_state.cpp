@@ -45,6 +45,7 @@ uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;   // 0=linear,1=ease(sm
 uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
 float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
 float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
+float rampAmbientMultiplier = 1.0f;
 static uint8_t rampEaseActiveType = Settings::DEFAULT_RAMP_EASE_ON;
 static float rampEaseActivePower = Settings::DEFAULT_RAMP_POW_ON;
 
@@ -212,7 +213,13 @@ void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster, u
     rampStartLevel = outputScale;
   rampTargetLevel = clamp01(target);
   rampStartMs = millis();
-  uint32_t dur = (durationMs > 0 ? durationMs : rampDurationMs);
+  uint32_t durBase = (durationMs > 0 ? durationMs : rampDurationMs);
+  float mult = rampAmbientMultiplier;
+  if (mult < 0.1f)
+    mult = 0.1f;
+  if (mult > 8.0f)
+    mult = 8.0f;
+  uint32_t dur = (uint32_t)fmaxf(10.0f, (float)durBase * mult);
   rampDurationActive = dur;
   rampActive = (dur > 0 && rampStartLevel != rampTargetLevel);
   rampEaseActiveType = easeType;

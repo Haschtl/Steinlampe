@@ -35,6 +35,7 @@ extern uint8_t rampEaseOnType;
 extern uint8_t rampEaseOffType;
 extern float rampEaseOnPower;
 extern float rampEaseOffPower;
+extern float rampAmbientMultiplier;
 
 // Core lamp helpers
 void applyPwmLevel(float normalized);

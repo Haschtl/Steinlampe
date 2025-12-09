@@ -146,6 +146,7 @@ export function RampCard() {
   const [rampOffEase, setRampOffEase] = useState('linear');
   const [rampOnPow, setRampOnPow] = useState(2);
   const [rampOffPow, setRampOffPow] = useState(2);
+  const [rampAmbient, setRampAmbient] = useState(0);
 
   useEffect(() => {
     if (typeof status.rampOnMs === 'number') setRampOn(status.rampOnMs);
@@ -154,7 +155,8 @@ export function RampCard() {
     if (typeof status.rampOffPow === 'number') setRampOffPow(status.rampOffPow);
     if (status.rampOnEase) setRampOnEase(status.rampOnEase as EaseType);
     if (status.rampOffEase) setRampOffEase(status.rampOffEase as EaseType);
-  }, [status.rampOnMs, status.rampOffMs, status.rampOnPow, status.rampOffPow, status.rampOnEase, status.rampOffEase]);
+    if (typeof status.rampAmbient === 'number') setRampAmbient(status.rampAmbient);
+  }, [status.rampOnMs, status.rampOffMs, status.rampOnPow, status.rampOffPow, status.rampOnEase, status.rampOffEase, status.rampAmbient]);
 
   const handleRampOn = (val: number) => {
     setRampOn(val);
@@ -184,6 +186,11 @@ export function RampCard() {
       setRampOffPow(pow);
       if (!Number.isNaN(pow)) sendCmd(`ramp ease off ${rampOffEase} ${pow}`);
     }
+  };
+
+  const handleRampAmbient = (val: number) => {
+    setRampAmbient(val);
+    if (!Number.isNaN(val)) sendCmd(`ramp ambient ${val.toFixed(2)}`);
   };
 
   return (
@@ -284,6 +291,23 @@ export function RampCard() {
             </div>
           </Card>
         </div>
+        <Card className="p-3">
+          <CardTitle className="text-base text-text"><Trans k="label.rampAmbient">Ambient ramps</Trans></CardTitle>
+          <div className="space-y-3">
+            <SliderRow
+              label={<Trans k="label.rampAmbient">Ambient ramps</Trans>}
+              description={<Trans k="desc.rampAmbient">Dark rooms stretch ramps by this factor (0 disables)</Trans>}
+              valueLabel={`x${(1 + rampAmbient).toFixed(2)} in dark`}
+              inputProps={{
+                min: 0,
+                max: 5,
+                step: 0.05,
+                value: rampAmbient,
+              }}
+              onInputChange={handleRampAmbient}
+            />
+          </div>
+        </Card>
       </CardContent>
     </Card>
   );

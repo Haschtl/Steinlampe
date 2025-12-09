@@ -67,6 +67,7 @@ export type DeviceStatus = {
   rampOffEase?: string;
   rampOnPow?: number;
   rampOffPow?: number;
+  rampAmbient?: number;
   customLen?: number;
   customStepMs?: number;
   customCsv?: string;
@@ -81,6 +82,7 @@ export type DeviceStatus = {
   lightRaw?: number;
   lightRawMin?: number;
   lightRawMax?: number;
+  lightAmbMult?: number;
   hasMusic?: boolean;
   musicEnabled?: boolean;
   musicGain?: number;
@@ -194,6 +196,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         rampOffEase: kv.ramp_off_ease ?? s.rampOffEase,
         rampOnPow: asNum('ramp_on_pow') ?? s.rampOnPow,
         rampOffPow: asNum('ramp_off_pow') ?? s.rampOffPow,
+        rampAmbient: asNum('ramp_amb') ?? s.rampAmbient,
         idleOffMin: asInt('idle_min') ?? s.idleOffMin,
         idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
@@ -311,6 +314,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const musicEnv = num('music_env') ?? s.musicEnv;
       const musicLevel = num('music_level') ?? s.musicLevel;
       const musicSmooth = num('music_smooth') ?? s.musicSmooth;
+      const lightAmbMult = num('light_amb_mult') ?? s.lightAmbMult;
+      const rampAmb = num('ramp_amb') ?? s.rampAmbient;
       return {
         ...s,
         lastStatusAt: Date.now(),
@@ -330,6 +335,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         musicEnv,
         musicLevel,
         musicSmooth,
+        lightAmbMult,
+        rampAmbient: rampAmb,
       };
     });
     return true;
@@ -574,14 +581,20 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     const rawMatch = line.match(/raw=([0-9.]+)/i);
     const minMatch = line.match(/min=([0-9.]+)/i);
     const maxMatch = line.match(/max=([0-9.]+)/i);
+    const ambMatch = line.match(/ambx=([0-9.]+)/i);
+    const ambFactorMatch = line.match(/rampamb=([0-9.]+)/i);
     const rawVal = rawMatch ? parseFloat(rawMatch[1]) : undefined;
     const minVal = minMatch ? parseFloat(minMatch[1]) : undefined;
     const maxVal = maxMatch ? parseFloat(maxMatch[1]) : undefined;
+    const ambVal = ambMatch ? parseFloat(ambMatch[1]) : undefined;
+    const ambFacVal = ambFactorMatch ? parseFloat(ambFactorMatch[1]) : undefined;
     setStatus((s) => ({
       ...s,
       lightRaw: Number.isFinite(rawVal ?? NaN) ? rawVal : s.lightRaw,
       lightRawMin: Number.isFinite(minVal ?? NaN) ? minVal : s.lightRawMin,
       lightRawMax: Number.isFinite(maxVal ?? NaN) ? maxVal : s.lightRawMax,
+      lightAmbMult: Number.isFinite(ambVal ?? NaN) ? ambVal : s.lightAmbMult,
+      rampAmbient: Number.isFinite(ambFacVal ?? NaN) ? ambFacVal : s.rampAmbient,
       hasLight: line.toUpperCase().includes("N/A") ? false : s.hasLight ?? true,
       lightEnabled: line.toUpperCase().includes("N/A")
         ? false
