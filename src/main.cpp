@@ -199,8 +199,6 @@ static const char *PREF_KEY_FILTER_COMP_RELEASE = "fil_cp_rl";
 static const char *PREF_KEY_FILTER_ENV_EN = "fil_ev_en";
 static const char *PREF_KEY_FILTER_ENV_AT = "fil_ev_at";
 static const char *PREF_KEY_FILTER_ENV_RL = "fil_ev_rl";
-static const char *PREF_KEY_FILTER_FOLD_EN = "fil_fd_en";
-static const char *PREF_KEY_FILTER_FOLD_AMT = "fil_fd_am";
 static const char *PREF_KEY_FILTER_DELAY_EN = "fil_dl_en";
 static const char *PREF_KEY_FILTER_DELAY_MS = "fil_dl_ms";
 static const char *PREF_KEY_FILTER_DELAY_FB = "fil_dl_fb";
@@ -958,8 +956,6 @@ void saveSettings()
   prefs.putBool(PREF_KEY_FILTER_ENV_EN, filt.envEnabled);
   prefs.putUInt(PREF_KEY_FILTER_ENV_AT, filt.envAttackMs);
   prefs.putUInt(PREF_KEY_FILTER_ENV_RL, filt.envReleaseMs);
-  prefs.putBool(PREF_KEY_FILTER_FOLD_EN, filt.foldEnabled);
-  prefs.putFloat(PREF_KEY_FILTER_FOLD_AMT, filt.foldAmt);
   prefs.putBool(PREF_KEY_FILTER_DELAY_EN, filt.delayEnabled);
   prefs.putUInt(PREF_KEY_FILTER_DELAY_MS, filt.delayMs);
   prefs.putFloat(PREF_KEY_FILTER_DELAY_FB, filt.delayFeedback);
@@ -1106,9 +1102,6 @@ void loadSettings()
   uint32_t envAt = prefs.getUInt(PREF_KEY_FILTER_ENV_AT, Settings::FILTER_ENV_ATTACK_DEFAULT);
   uint32_t envRl = prefs.getUInt(PREF_KEY_FILTER_ENV_RL, Settings::FILTER_ENV_RELEASE_DEFAULT);
   filtersSetEnv(envEn, envAt, envRl);
-  bool foldEn = prefs.getBool(PREF_KEY_FILTER_FOLD_EN, Settings::FILTER_FOLD_DEFAULT);
-  float foldAmt = prefs.getFloat(PREF_KEY_FILTER_FOLD_AMT, Settings::FILTER_FOLD_AMT_DEFAULT);
-  filtersSetFold(foldEn, foldAmt);
   bool delEn = prefs.getBool(PREF_KEY_FILTER_DELAY_EN, Settings::FILTER_DELAY_DEFAULT);
   uint32_t delMs = prefs.getUInt(PREF_KEY_FILTER_DELAY_MS, Settings::FILTER_DELAY_MS_DEFAULT);
   float delFb = prefs.getFloat(PREF_KEY_FILTER_DELAY_FB, Settings::FILTER_DELAY_FB_DEFAULT);
@@ -1752,11 +1745,6 @@ void printStatus()
   filtLine += F("/");
   filtLine += String(filt.envReleaseMs);
   filtLine += F(")");
-  filtLine += F(" fold=");
-  filtLine += filt.foldEnabled ? F("ON") : F("OFF");
-  filtLine += F("(");
-  filtLine += String(filt.foldAmt, 2);
-  filtLine += F(")");
   sendFeedback(filtLine);
   payload += filtLine + '\n';
 
@@ -2113,10 +2101,6 @@ void printStatusStructured()
     line += String(filt.envAttackMs);
     line += F("|filter_env_rel=");
     line += String(filt.envReleaseMs);
-    line += F("|filter_fold=");
-    line += filt.foldEnabled ? F("ON") : F("OFF");
-    line += F("|filter_fold_amt=");
-    line += String(filt.foldAmt, 2);
     line += F("|filter_delay=");
     line += filt.delayEnabled ? F("ON") : F("OFF");
     line += F("|filter_delay_ms=");
@@ -2354,10 +2338,6 @@ void importConfig(const String &args)
   {
     uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 6000) v = 6000;
     FilterState f; filtersGetState(f); filtersSetEnv(f.envEnabled, f.envAttackMs, v);
-  }
-  else if (key == "filter_fold")
-  {
-    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetFold(v, f.foldAmt); }
   }
   else if (key == "filter_trem")
   {
@@ -3290,34 +3270,6 @@ void handleCommand(String line)
       saveSettings();
       sendFeedback(String(F("[Filter] Env ")) + (en ? F("ON ") : F("OFF ")) + F(" att=") + String(att) + F("ms rel=") + String(rel) + F("ms"));
     }
-    else if (arg.startsWith("fold"))
-    {
-      bool en = arg.indexOf("off") == -1;
-      int p1 = arg.indexOf(' ');
-      float amt = Settings::FILTER_FOLD_AMT_DEFAULT;
-      if (p1 > 0)
-      {
-        String rest = arg.substring(p1 + 1);
-        rest.trim();
-        if (rest.startsWith("on"))
-        {
-          rest = rest.substring(2);
-          rest.trim();
-        }
-        else if (rest.startsWith("off"))
-        {
-          rest = rest.substring(3);
-          rest.trim();
-        }
-        amt = rest.toFloat();
-      }
-      if (amt < 0.0f) amt = 0.0f;
-      if (amt > 1.0f) amt = 1.0f;
-      filtersSetFold(en, amt);
-      saveSettings();
-      sendFeedback(String(F("[Filter] Fold ")) + (en ? F("ON ") : F("OFF ")) + F(" amt=") + String(amt, 2));
-      return;
-    }
     else if (arg.startsWith("delay"))
     {
       bool en = arg.indexOf("off") == -1;
@@ -3364,7 +3316,7 @@ void handleCommand(String line)
     }
     else
     {
-      sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs> | filter comp <on/off> <thr> <ratio> <att> <rel> | filter env <on/off> <att> <rel> | filter fold <on/off> <amt> | filter delay <on/off> <ms> <fb> <mix>"));
+      sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs> | filter comp <on/off> <thr> <ratio> <att> <rel> | filter env <on/off> <att> <rel> | filter delay <on/off> <ms> <fb> <mix>"));
     }
     return;
   }

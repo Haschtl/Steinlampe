@@ -48,8 +48,6 @@ export type DeviceStatus = {
   filterEnv?: boolean;
   filterEnvAttack?: number;
   filterEnvRelease?: number;
-  filterFold?: boolean;
-  filterFoldAmt?: number;
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
@@ -237,8 +235,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         filterEnv: kv.filter_env ? kv.filter_env.toUpperCase() === 'ON' : s.filterEnv,
         filterEnvAttack: asInt('filter_env_att') ?? s.filterEnvAttack,
         filterEnvRelease: asInt('filter_env_rel') ?? s.filterEnvRelease,
-        filterFold: kv.filter_fold ? kv.filter_fold.toUpperCase() === 'ON' : s.filterFold,
-        filterFoldAmt: asNum('filter_fold_amt') ?? s.filterFoldAmt,
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
         lightGain: asNum('light_gain') ?? s.lightGain,
@@ -286,8 +282,11 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     const lower = line.toLowerCase();
     const isBle = lower.includes('ble');
     const isBt = lower.includes('bt');
-    const parts = line.split(':');
-    const list = parts.length > 1 ? parts[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const payload = line.includes(':') ? line.slice(line.indexOf(':') + 1) : '';
+    const list = payload
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
     setStatus((s) => ({
       ...s,
       trustedBle: isBle ? list : s.trustedBle,
@@ -473,7 +472,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const sparkParts = numInParens('spark');
       const compParts = numInParens('comp');
       const envParts = numInParens('env');
-      const foldParts = numInParens('fold');
       const alphaInline = parseNumAfter('alpha');
       const clipAmtInline = parseNumAfter('amt');
       const tremRateInline = parseNumAfter('rate');
@@ -484,10 +482,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const compThrInline = parseNumAfter('thr');
       const compRatioInline = parseNumAfter('ratio');
       const compAttInline = parseNumAfter('att');
-      const compRelInline = parseNumAfter('rel');
+      const compRelInline = parseNumAfter('comp_rel');
       const envAttInline = parseNumAfter('att');
-      const envRelInline = parseNumAfter('rel');
-      const foldAmtInline = parseNumAfter('fold');
+      const envRelInline = parseNumAfter('env_rel');
       const delayMs = parseNumAfter('filter_delay_ms') ?? (numInParens('delay')[0] ?? undefined);
       return {
         ...s,
@@ -510,8 +507,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         filterEnv: onOff('env', s.filterEnv),
         filterEnvAttack: envParts[0] ? Number(envParts[0]) : envAttInline ?? s.filterEnvAttack,
         filterEnvRelease: envParts[1] ? Number(envParts[1]) : envRelInline ?? s.filterEnvRelease,
-        filterFold: onOff('fold', s.filterFold),
-        filterFoldAmt: foldParts[0] ?? foldAmtInline ?? s.filterFoldAmt,
         filterDelay: onOff('delay', s.filterDelay),
         filterDelayMs: delayMs ?? s.filterDelayMs,
       };

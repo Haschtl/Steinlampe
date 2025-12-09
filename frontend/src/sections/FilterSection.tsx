@@ -24,7 +24,6 @@ export function FilterSection() {
         'filter trem off',
         'filter comp off',
         'filter env off',
-        'filter fold off',
         'filter delay off',
       ],
     },
@@ -386,35 +385,6 @@ export function FilterSection() {
               sendCmd(`filter env on ${status.filterEnvAttack ?? 30} ${Math.round(val)}`)
             }
             disabled={!status.filterEnv}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Flame className="h-4 w-4" />
-            <Trans k="filter.fold">Wavefolder</Trans>
-          </CardTitle>
-          <label className="pill cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={!!status.filterFold}
-              onChange={(e) => sendCmd(`filter fold ${e.target.checked ? 'on' : 'off'}`)}
-            />{' '}
-            <Trans k="btn.enable">Enable</Trans>
-          </label>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
-          <Knob
-            label={<Trans k="filter.amount">Amount</Trans>}
-            min={0}
-            max={1}
-            step={0.05}
-            value={status.filterFoldAmt ?? 0.2}
-            onChange={(val) => sendCmd(`filter fold on ${val.toFixed(2)}`)}
-            disabled={!status.filterFold}
           />
         </CardContent>
       </Card>

@@ -33,8 +33,6 @@ struct FilterState
   float envValue;
   uint32_t envLastMs;
 
-  bool foldEnabled;
-  float foldAmt;
 
   bool delayEnabled;
   uint32_t delayMs;

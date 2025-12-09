@@ -77,8 +77,6 @@ void filtersInit()
   st.envValue = -1.0f;
   st.envLastMs = millis();
 
-  st.foldEnabled = false;
-  st.foldAmt = Settings::FILTER_FOLD_AMT_DEFAULT;
 
   st.delayEnabled = false;
   st.delayMs = Settings::FILTER_DELAY_MS_DEFAULT;
@@ -217,14 +215,6 @@ float filtersApply(float in, uint32_t nowMs)
     }
   }
 
-  // Wavefolder
-  if (st.foldEnabled && st.foldAmt > 0.001f)
-  {
-    float k = 1.0f + st.foldAmt * 6.0f;
-    float y = fabsf(fmodf(out * k, 2.0f) - 1.0f); // triangle fold 0..1
-    out = y;
-  }
-
   // Delay (simple tap with feedback)
   if (st.delayEnabled && st.delayMs > 0)
   {
@@ -317,8 +307,6 @@ void filtersGetState(FilterState &out)
   if (out.compReleaseMs > 10000U) out.compReleaseMs = Settings::FILTER_COMP_RELEASE_DEFAULT;
   if (out.envAttackMs > 10000U) out.envAttackMs = Settings::FILTER_ENV_ATTACK_DEFAULT;
   if (out.envReleaseMs > 10000U) out.envReleaseMs = Settings::FILTER_ENV_RELEASE_DEFAULT;
-  if (!isfinite(out.foldAmt) || out.foldAmt < 0.0f) out.foldAmt = Settings::FILTER_FOLD_AMT_DEFAULT;
-  if (out.foldAmt > 1.0f) out.foldAmt = 1.0f;
   if (out.delayMs > 10000U) out.delayMs = Settings::FILTER_DELAY_MS_DEFAULT;
   if (!isfinite(out.delayFeedback) || out.delayFeedback < 0.0f || out.delayFeedback > 0.95f)
     out.delayFeedback = Settings::FILTER_DELAY_FB_DEFAULT;
@@ -344,12 +332,6 @@ void filtersSetEnv(bool en, uint32_t attackMs, uint32_t releaseMs)
   st.envReleaseMs = releaseMs;
   st.envValue = -1.0f;
   st.envLastMs = millis();
-}
-
-void filtersSetFold(bool en, float amt)
-{
-  st.foldEnabled = en;
-  st.foldAmt = amt;
 }
 
 void filtersSetDelay(bool en, uint32_t delayMs, float feedback, float mix)
