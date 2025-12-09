@@ -31,7 +31,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
           <Knob
             label={<Trans k="filter.alpha">Alpha</Trans>}
             min={0}
@@ -60,7 +60,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
           <Knob
             label={<Trans k="filter.amount">Amount</Trans>}
             min={0}
@@ -104,7 +104,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4">
+        <CardContent className="flex flex-wrap justify-around items-start gap-4">
           <Knob
             label={<Trans k="filter.rate">Rate (Hz)</Trans>}
             min={0.05}
@@ -163,7 +163,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
           <Knob
             label={<Trans k="filter.density">Density (events/s)</Trans>}
             min={0}
@@ -228,7 +228,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-start gap-4">
+        <CardContent className="flex flex-wrap items-start gap-4 justify-around">
           <Knob
             label={<Trans k="filter.compThr">Threshold</Trans>}
             min={0}
@@ -308,7 +308,7 @@ export function FilterSection() {
             <Trans k="btn.enable">Enable</Trans>
           </label>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
+        <CardContent className="flex flex-wrap gap-4 justify-around">
           <Knob
             label={<Trans k="filter.compAttack">Attack (ms)</Trans>}
             min={1}
