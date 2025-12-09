@@ -206,7 +206,15 @@ float filtersApply(float in, uint32_t nowMs)
       if (st.sparkValue > 1.0f)
         st.sparkValue = 1.0f;
     }
-    out *= (1.0f + st.sparkValue);
+    // apply as additive flash on top, but clamp softly
+    float flash = st.sparkValue;
+    if (flash > 0.0f)
+    {
+      float combined = out + flash;
+      if (combined > 1.0f)
+        combined = 1.0f - expf(-combined + 1.0f); // soft clip for high flashes
+      out = combined;
+    }
   }
 
   // Wavefolder
