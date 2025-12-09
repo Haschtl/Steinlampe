@@ -16,6 +16,10 @@ type ConnectionContextValue = {
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
   setAutoReconnect: (v: boolean) => void;
+  knownDevices: Record<string, string>;
+  forgetDevice: (id: string) => void;
+  knownSerials: Record<string, string>;
+  forgetSerial: (id: string) => void;
   status: ReturnType<typeof useBle>['status'];
   connect: () => Promise<void>;
   connectBle: () => Promise<void>;
@@ -55,6 +59,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setFilterParsed: active.setFilterParsed,
       autoReconnect: ble.autoReconnect,
       setAutoReconnect: ble.setAutoReconnect,
+      knownDevices: ble.knownDevices,
+      forgetDevice: ble.forgetDevice,
+      knownSerials: serial.knownSerials ?? {},
+      forgetSerial: serial.forgetSerial ?? (() => undefined),
       status: active.status,
       connect: async () => {
         if (transport === 'serial') {

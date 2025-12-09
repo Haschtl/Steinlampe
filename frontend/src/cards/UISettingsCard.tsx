@@ -5,7 +5,7 @@ import { useI18n, Trans } from '@/i18n';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export function UISettingsCard() {
-  const { autoReconnect, setAutoReconnect } = useConnection();
+  const { autoReconnect, setAutoReconnect, knownDevices, forgetDevice, knownSerials, forgetSerial } = useConnection();
   const { lang, setLang } = useI18n();
   const [theme, setTheme] = useState(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -60,6 +60,51 @@ export function UISettingsCard() {
               <SelectItem value="fancy-light">Fancy Light</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-2">
+          <div className="text-sm font-medium"><Trans k="title.devices">Manage Devices</Trans></div>
+          <div className="rounded-md border border-border/60 bg-bg/60 p-2">
+            <div className="text-xs text-muted mb-1"><Trans k="label.bleDevices">BLE</Trans></div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(knownDevices || {}).map(([id, name]) => (
+                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
+                  <span className="max-w-[140px] truncate">{name || 'Device'}</span>
+                  <button
+                    type="button"
+                    className="text-destructive hover:underline"
+                    onClick={() => forgetDevice(id)}
+                    title="Forget"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {Object.keys(knownDevices || {}).length === 0 && (
+                <span className="text-xs text-muted"><Trans k="label.noDevices">No trusted devices yet</Trans></span>
+              )}
+            </div>
+          </div>
+          <div className="rounded-md border border-border/60 bg-bg/60 p-2">
+            <div className="text-xs text-muted mb-1"><Trans k="label.serialDevices">Serial</Trans></div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(knownSerials || {}).map(([id]) => (
+                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
+                  <span className="max-w-[140px] truncate">{id}</span>
+                  <button
+                    type="button"
+                    className="text-destructive hover:underline"
+                    onClick={() => forgetSerial(id)}
+                    title="Forget"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {Object.keys(knownSerials || {}).length === 0 && (
+                <span className="text-xs text-muted"><Trans k="label.noDevices">No trusted devices yet</Trans></span>
+              )}
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

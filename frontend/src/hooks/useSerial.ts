@@ -12,6 +12,8 @@ type SerialApi = {
   setLog: (v: LogEntry[] | ((prev: LogEntry[]) => LogEntry[])) => void;
   filterParsed: boolean;
   setFilterParsed: (v: boolean) => void;
+  knownSerials: Record<string, string>;
+  forgetSerial: (id: string) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
@@ -33,6 +35,15 @@ export function useSerial(): SerialApi {
     const stored = localStorage.getItem('ql-log-filter');
     return stored !== 'false';
   });
+  const knownSerialsRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-serials') || '{}'));
+  const [knownSerials, setKnownSerials] = useState<Record<string, string>>(knownSerialsRef.current);
+  const forgetSerial = useCallback((id: string) => {
+    if (knownSerialsRef.current[id]) {
+      delete knownSerialsRef.current[id];
+      localStorage.setItem('ql-known-serials', JSON.stringify(knownSerialsRef.current));
+      setKnownSerials({ ...knownSerialsRef.current });
+    }
+  }, []);
   const portRef = useRef<SerialPort | null>(null);
   const readerCancelRef = useRef<() => void>();
   const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
@@ -113,8 +124,17 @@ export function useSerial(): SerialApi {
     setStatus((s) => ({ ...s, connecting: true }));
     try {
       const port = await navigator.serial.requestPort();
+      const info = port.getInfo ? port.getInfo() : {};
+      const id = JSON.stringify(info);
+      const now = Date.now();
+      const known = id && knownSerialsRef.current[id];
       await port.open({ baudRate: 115200 });
       portRef.current = port;
+      if (id) {
+        knownSerialsRef.current[id] = id;
+        localStorage.setItem('ql-known-serials', JSON.stringify(knownSerialsRef.current));
+        setKnownSerials({ ...knownSerialsRef.current });
+      }
 
       const textEncoder = new TextEncoderStream();
       // Cast to any to satisfy differing BufferSource/Uint8Array stream typings
@@ -182,14 +202,15 @@ export function useSerial(): SerialApi {
       log,
       liveLog,
       setLiveLog,
-      setLog: setLogPublic,
+      setLog: setLogPublic,knownSerials,
       filterParsed,
       setFilterParsed,
+      forgetSerial,
       connect,
       disconnect,
       refreshStatus,
       sendCmd,
     }),
-    [connect, disconnect, filterParsed, liveLog, log, refreshStatus, sendCmd, setFilterParsed, setLogPublic, status],
+    [connect, disconnect, filterParsed, forgetSerial, knownSerials, liveLog, log, refreshStatus, sendCmd, setFilterParsed, setLogPublic, status],
   );
 }

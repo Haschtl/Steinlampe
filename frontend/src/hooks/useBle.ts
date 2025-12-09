@@ -15,6 +15,8 @@ type BleApi = {
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
   setAutoReconnect: (v: boolean) => void;
+  knownDevices: Record<string, string>;
+  forgetDevice: (id: string) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
@@ -50,6 +52,15 @@ export function useBle(): BleApi {
   const unsubRef = useRef<(() => void)[]>([]);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
+  const knownDevicesRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-devices') || '{}'));
+  const [knownDevices, setKnownDevices] = useState<Record<string, string>>(knownDevicesRef.current);
+  const forgetDevice = useCallback((id: string) => {
+    if (knownDevicesRef.current[id]) {
+      delete knownDevicesRef.current[id];
+      localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+      setKnownDevices({ ...knownDevicesRef.current });
+    }
+  }, []);
 
   const pushLog = useCallback(
     (line: string) => {
@@ -225,6 +236,11 @@ export function useBle(): BleApi {
         lastDeviceIdRef.current = dev.id || null;
         if (dev.id) localStorage.setItem('ql-last-device-id', dev.id);
         if (dev.name) localStorage.setItem('ql-last-device-name', dev.name);
+        if (dev.id) {
+          knownDevicesRef.current[dev.id] = dev.name || 'BLE';
+          localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+          setKnownDevices({ ...knownDevicesRef.current });
+        }
         if (!silent) pushLog('Connected to ' + (dev.name || 'BLE'));
         await refreshStatus();
       } catch (e) {
@@ -248,6 +264,10 @@ export function useBle(): BleApi {
     setStatus((s) => ({ ...s, connecting: true }));
     try {
       const dev = await requestDevice();
+      if (dev?.id) {
+        knownDevicesRef.current[dev.id] = dev.name || 'BLE';
+        localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+      }
       await connectWithDevice(dev);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -297,11 +317,28 @@ export function useBle(): BleApi {
       setFilterParsed,
       autoReconnect,
       setAutoReconnect,
+      knownDevices,
+      forgetDevice,
       connect,
       disconnect: cleanup,
       refreshStatus,
       sendCmd,
     }),
-    [autoReconnect, cleanup, connect, filterParsed, liveLog, log, refreshStatus, sendCmd, setAutoReconnect, setFilterParsed, setLiveLog, setLog, status],
+    [
+      autoReconnect,
+      cleanup,
+      connect,
+      filterParsed,
+      forgetDevice,
+      liveLog,
+      log,
+      refreshStatus,
+      sendCmd,
+      setAutoReconnect,
+      setFilterParsed,
+      setLiveLog,
+      setLog,
+      status,
+    ],
   );
 }
