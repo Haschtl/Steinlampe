@@ -132,6 +132,8 @@ static const char *PREF_KEY_TRUST_BLE = "trust_ble";
 static const char *PREF_KEY_TRUST_BT = "trust_bt";
 static const char *PREF_KEY_BLE_NAME = "ble_name";
 static const char *PREF_KEY_BT_NAME = "bt_name";
+static const char *PREF_KEY_BT_SLEEP_BOOT = "bt_sl_boot";
+static const char *PREF_KEY_BT_SLEEP_BLE = "bt_sl_ble";
 #if ENABLE_MUSIC_MODE
 static const char *PREF_KEY_MUSIC_EN = "music_en";
 static const char *PREF_KEY_CLAP_EN = "clap_en";
@@ -903,6 +905,8 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_RAMP_POW_OFF, rampEaseOffPower);
   prefs.putFloat(PREF_KEY_PAT_LO, patternMarginLow);
   prefs.putFloat(PREF_KEY_PAT_HI, patternMarginHigh);
+  prefs.putUInt(PREF_KEY_BT_SLEEP_BOOT, getBtSleepAfterBootMs());
+  prefs.putUInt(PREF_KEY_BT_SLEEP_BLE, getBtSleepAfterBleMs());
 #if ENABLE_LIGHT_SENSOR
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   lightMinRaw = 4095;
@@ -1175,6 +1179,8 @@ void loadSettings()
     patternFadeStrength = 0.01f;
   if (patternFadeStrength > 10.0f)
     patternFadeStrength = 10.0f;
+  setBtSleepAfterBootMs(prefs.getUInt(PREF_KEY_BT_SLEEP_BOOT, Settings::BT_SLEEP_AFTER_BOOT_MS));
+  setBtSleepAfterBleMs(prefs.getUInt(PREF_KEY_BT_SLEEP_BLE, Settings::BT_SLEEP_AFTER_BLE_MS));
   rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
   if (rampAmbientFactor < 0.0f) rampAmbientFactor = 0.0f;
   if (rampAmbientFactor > 3.0f) rampAmbientFactor = 3.0f;
@@ -2178,6 +2184,12 @@ void printStatusStructured()
   line += String(extInputDelta, 3);
   line += F("|ext_val=");
   line += extInputFiltered >= 0.0f ? String(extInputFiltered, 3) : F("N/A");
+#endif
+#if ENABLE_BT_SERIAL
+  line += F("|bt_sleep_boot_ms=");
+  line += String(getBtSleepAfterBootMs());
+  line += F("|bt_sleep_ble_ms=");
+  line += String(getBtSleepAfterBleMs());
 #endif
   line += F("|custom_len=");
   line += String(customLen);
@@ -3682,6 +3694,35 @@ void handleCommand(String line)
       sendFeedback(F("auto on|off"));
     saveSettings();
     printStatus();
+    return;
+  }
+  if (lower.startsWith("bt sleep"))
+  {
+    String arg = line.substring(8);
+    arg.trim();
+    arg.toLowerCase();
+    if (arg.startsWith("boot"))
+    {
+      float min = arg.substring(4).toFloat();
+      if (min < 0.0f) min = 0.0f;
+      uint32_t ms = (uint32_t)(min * 60000.0f);
+      setBtSleepAfterBootMs(ms);
+      saveSettings();
+      sendFeedback(String(F("[BT] sleep after boot=")) + String(min, 2) + F(" min"));
+    }
+    else if (arg.startsWith("ble"))
+    {
+      float min = arg.substring(3).toFloat();
+      if (min < 0.0f) min = 0.0f;
+      uint32_t ms = (uint32_t)(min * 60000.0f);
+      setBtSleepAfterBleMs(ms);
+      saveSettings();
+      sendFeedback(String(F("[BT] sleep after BLE=")) + String(min, 2) + F(" min"));
+    }
+    else
+    {
+      sendFeedback(F("bt sleep boot <min> | bt sleep ble <min> (0=off)"));
+    }
     return;
   }
   if (lower.startsWith("demo"))

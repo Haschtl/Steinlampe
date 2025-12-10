@@ -5,7 +5,7 @@ ESP32 firmware for a stone lamp with rich PWM patterns, touch/knob/switch contro
 ## Quick Start
 
 - **Firmware build:** `pio run -e upesy_wroom` (PlatformIO required; flags in `include/lamp_config.h`).
-- **Web UI:** `cd frontend && npm install && npm run dev` (or `npm run build`).
+- **Web UI:** `cd frontend && pnpm install && pnpm run dev` (or `pnpm run build`).
 - **Home Assistant:** Copy `custom_components/quarzlampe` (HACS) into your HA `config/custom_components/`, restart HA, add the *Quarzlampe* integration (choose BLE or BT-Serial).
 
 ## Hardware (ESP32 Devkit)
@@ -50,7 +50,7 @@ BLE UUIDs (default):
 
 ## Web BLE UI (React/Vite)
 
-- Lives in `frontend/` (Tailwind, PWA-ready). `npm run dev` for local, `npm run build` for prod.
+- Lives in `frontend/` (Tailwind, PWA-ready). `pnpm run dev` for local, `pnpm run build` for prod.
 - GitHub Pages deployment via `.github/workflows/pages.yml` builds `frontend/dist` and publishes to `https://haschtl.github.io/<repo>/`.
 - Use a Web-Bluetooth-capable browser (Chrome/Edge/Android) over HTTPS or `localhost`, click **Connect**, control lamp. BLE command coverage is being expanded.
 
@@ -85,4 +85,3 @@ BLE UUIDs (default):
 - PlatformIO env: `upesy_wroom`. Adjust pins/features in `include/lamp_config.h`.
 - Default names/UUIDs and runtime defaults in `include/settings.h`.
 - Classic BT SPP name from `Settings::BT_SERIAL_NAME` (default `Quarzlampe-SPP`).
-

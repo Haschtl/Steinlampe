@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export function UISettingsCard() {
-  const { autoReconnect, setAutoReconnect, knownDevices, forgetDevice, knownSerials, forgetSerial, sendCmd } = useConnection();
+  const { autoReconnect, setAutoReconnect, knownDevices, forgetDevice, knownSerials, forgetSerial, sendCmd, status } =
+    useConnection();
   const { lang, setLang } = useI18n();
   const [theme, setTheme] = useState(() => {
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -16,11 +17,18 @@ export function UISettingsCard() {
   });
   const [bleName, setBleName] = useState(() => localStorage.getItem('ql-ble-name') || 'Quarzlampe');
   const [btName, setBtName] = useState(() => localStorage.getItem('ql-bt-name') || 'Quarzlampe-SPP');
+  const [btSleepBoot, setBtSleepBoot] = useState(0);
+  const [btSleepBle, setBtSleepBle] = useState(0);
 
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('ql-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (typeof status.btSleepBootMs === 'number') setBtSleepBoot(Math.round(status.btSleepBootMs / 600) / 100);
+    if (typeof status.btSleepBleMs === 'number') setBtSleepBle(Math.round(status.btSleepBleMs / 600) / 100);
+  }, [status.btSleepBootMs, status.btSleepBleMs]);
 
   const formatSerialLabel = (id: string) => {
     if (!id) return 'Device';
@@ -68,6 +76,48 @@ export function UISettingsCard() {
               {lang === 'en' ? '🇬🇧' : '🇩🇪'}
             </span>
           </button>
+        </div>
+        <div className="space-y-2">
+          <div className="text-sm font-medium"><Trans k="title.btSleep">BT-Serial Sleep</Trans></div>
+          <p className="text-xs text-muted">
+            <Trans k="desc.btSleep">Turn off Classic BT after a timeout (0 = disabled). BLE stays active.</Trans>
+          </p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto] items-center">
+            <div className="space-y-1">
+              <label className="text-xs text-muted"><Trans k="label.btSleepBoot">After boot (min)</Trans></label>
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={btSleepBoot}
+                onChange={(e) => setBtSleepBoot(Number(e.target.value))}
+                suffix="min"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => sendCmd(`bt sleep boot ${btSleepBoot}`).catch(() => undefined)}
+            >
+              <Trans k="btn.apply">Apply</Trans>
+            </Button>
+            <div className="space-y-1">
+              <label className="text-xs text-muted"><Trans k="label.btSleepBle">After last BLE cmd (min)</Trans></label>
+              <Input
+                type="number"
+                min={0}
+                step={0.1}
+                value={btSleepBle}
+                onChange={(e) => setBtSleepBle(Number(e.target.value))}
+                suffix="min"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => sendCmd(`bt sleep ble ${btSleepBle}`).catch(() => undefined)}
+            >
+              <Trans k="btn.apply">Apply</Trans>
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted"><Trans k="label.theme">Theme</Trans></span>

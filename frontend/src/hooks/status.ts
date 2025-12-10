@@ -114,6 +114,8 @@ export type DeviceStatus = {
   pushStep?: number;
   trustedBle?: string[];
   trustedBt?: string[];
+  btSleepBootMs?: number;
+  btSleepBleMs?: number;
 };
 
 /**
@@ -205,6 +207,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         quickCsv: kv.quick ?? s.quickCsv,
         presence: kv.presence ?? s.presence,
         hasPresence,
+        btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
+        btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,
         customLen: asInt('custom_len') ?? s.customLen,
         customStepMs: asInt('custom_step_ms') ?? s.customStepMs,
         pwmCurve: asNum('gamma') ?? s.pwmCurve,

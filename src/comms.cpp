@@ -47,6 +47,10 @@ static const size_t TRUST_MAX = 12;
 static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
 static String bleName = Settings::BLE_NAME_DEFAULT;
 static String btName = Settings::BT_NAME_DEFAULT;
+static uint32_t bootMsComm = 0;
+static uint32_t lastBleActivityMs = 0;
+static uint32_t btSleepAfterBootMs = Settings::BT_SLEEP_AFTER_BOOT_MS;
+static uint32_t btSleepAfterBleMs = Settings::BT_SLEEP_AFTER_BLE_MS;
 
 // Line buffers
 static String bufferUsb;
@@ -54,6 +58,8 @@ static String bufferUsb;
 static String bufferBt;
 static String lastSppAddr;
 BluetoothSerial serialBt;
+static bool btSerialActive = false;
+static void maybeSleepBtSerial(uint32_t nowMs);
 #endif
 
 inline bool feedbackAllowed()
@@ -395,6 +401,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     line.trim();
     if (!line.isEmpty())
     {
+      lastBleActivityMs = millis();
       handleCommand(line);
     }
   }
@@ -468,9 +475,15 @@ void startBtSerial()
     Serial.println(F("'"));
     serialBt.register_callback([](esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
                               { sppCallbackLocal(event, param); });
+    btSerialActive = true;
   }
 }
 #endif
+
+void setBtSleepAfterBootMs(uint32_t ms) { btSleepAfterBootMs = ms; }
+void setBtSleepAfterBleMs(uint32_t ms) { btSleepAfterBleMs = ms; }
+uint32_t getBtSleepAfterBootMs() { return btSleepAfterBootMs; }
+uint32_t getBtSleepAfterBleMs() { return btSleepAfterBleMs; }
 
 
 void trustSetBootMs(uint32_t ms) { trustBootMs = ms; }
@@ -545,6 +558,8 @@ void setupCommunications()
   if (feedbackAllowed())
     Serial.println(F("[BLE] deaktiviert (ENABLE_BLE=0)."));
 #endif
+  bootMsComm = millis();
+  lastBleActivityMs = bootMsComm;
 }
 
 /**
@@ -559,6 +574,7 @@ void pollCommunications()
   }
 
 #if ENABLE_BT_SERIAL
+  maybeSleepBtSerial(millis());
   if (serialBt.hasClient())
   {
     while (serialBt.available())
@@ -596,6 +612,25 @@ void sendFeedback(const String &line)
   }
 #endif
 }
+
+#if ENABLE_BT_SERIAL
+// Auto sleep for BT serial after inactivity/timeout
+static void maybeSleepBtSerial(uint32_t nowMs)
+{
+  if (!btSerialActive)
+    return;
+  bool bootTimeout = (btSleepAfterBootMs > 0) && (nowMs - bootMsComm >= btSleepAfterBootMs);
+  bool bleTimeout = (btSleepAfterBleMs > 0) && (lastBleActivityMs > 0) && (nowMs - lastBleActivityMs >= btSleepAfterBleMs);
+  if (bootTimeout || bleTimeout)
+  {
+    if (serialBt.hasClient())
+      serialBt.disconnect();
+    serialBt.end();
+    btSerialActive = false;
+    Serial.println(F("[BT] Serial disabled (sleep timer)"));
+  }
+}
+#endif
 
 /**
  * @brief Update BLE status characteristic (read + notify if connected).
