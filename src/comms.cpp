@@ -48,7 +48,7 @@ static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
 static String bleName = Settings::BLE_NAME_DEFAULT;
 static String btName = Settings::BT_NAME_DEFAULT;
 static uint32_t bootMsComm = 0;
-static uint32_t lastBleActivityMs = 0;
+static uint32_t lastBtActivityMs = 0;
 static uint32_t btSleepAfterBootMs = Settings::BT_SLEEP_AFTER_BOOT_MS;
 static uint32_t btSleepAfterBleMs = Settings::BT_SLEEP_AFTER_BLE_MS;
 
@@ -59,7 +59,9 @@ static String bufferBt;
 static String lastSppAddr;
 BluetoothSerial serialBt;
 static bool btSerialActive = false;
+static bool btSerialDisabled = false;
 static void maybeSleepBtSerial(uint32_t nowMs);
+static void powerOffBtSerial(const char *reason);
 #endif
 
 inline bool feedbackAllowed()
@@ -232,6 +234,30 @@ String getBtName() { return btName; }
 
 #if ENABLE_BT_SERIAL
 
+static void powerOffBtSerial(const char *reason)
+{
+  if (btSerialDisabled)
+    return;
+#if ENABLE_BT_SERIAL
+  if (serialBt.hasClient())
+    serialBt.disconnect();
+  serialBt.end();
+  btSerialActive = false;
+#endif
+  btSerialDisabled = true;
+  if (feedbackAllowed())
+  {
+    Serial.print(F("[BT] Serial disabled"));
+    if (reason && reason[0])
+    {
+      Serial.print(F(" ("));
+      Serial.print(reason);
+      Serial.print(F(")"));
+    }
+    Serial.println();
+  }
+}
+
 String formatMac(const uint8_t bda[6])
 {
   char buf[18];
@@ -255,6 +281,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         esp_spp_disconnect(param->srv_open.handle);
         return;
       }
+      lastBtActivityMs = millis();
       if (addToList(trustedBt, lastSppAddr) && feedbackAllowed())
         saveSettings();
       if (feedbackAllowed())
@@ -266,6 +293,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     }
     else
     {
+      lastBtActivityMs = millis();
       if (feedbackAllowed())
         Serial.println(F("[BT] Client connected"));
     }
@@ -337,6 +365,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       bleClientConnected = false;
       return;
     }
+    lastBtActivityMs = millis();
     if (addToList(trustedBle, addr))
       saveSettings();
     if (feedbackAllowed())
@@ -401,7 +430,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     line.trim();
     if (!line.isEmpty())
     {
-      lastBleActivityMs = millis();
+      lastBtActivityMs = millis();
       handleCommand(line);
     }
   }
@@ -559,7 +588,7 @@ void setupCommunications()
     Serial.println(F("[BLE] deaktiviert (ENABLE_BLE=0)."));
 #endif
   bootMsComm = millis();
-  lastBleActivityMs = bootMsComm;
+  lastBtActivityMs = bootMsComm;
 }
 
 /**
@@ -579,6 +608,7 @@ void pollCommunications()
   {
     while (serialBt.available())
     {
+      lastBtActivityMs = millis();
       char c = (char)serialBt.read();
 #if ENABLE_BT_MIDI
       processBtMidiByte((uint8_t)c);
@@ -614,21 +644,15 @@ void sendFeedback(const String &line)
 }
 
 #if ENABLE_BT_SERIAL
-// Auto sleep for BT serial after inactivity/timeout
+// Auto sleep for Classic BT serial after inactivity/timeout
 static void maybeSleepBtSerial(uint32_t nowMs)
 {
-  if (!btSerialActive)
+  if (!btSerialActive || btSerialDisabled)
     return;
   bool bootTimeout = (btSleepAfterBootMs > 0) && (nowMs - bootMsComm >= btSleepAfterBootMs);
-  bool bleTimeout = (btSleepAfterBleMs > 0) && (lastBleActivityMs > 0) && (nowMs - lastBleActivityMs >= btSleepAfterBleMs);
-  if (bootTimeout || bleTimeout)
-  {
-    if (serialBt.hasClient())
-      serialBt.disconnect();
-    serialBt.end();
-    btSerialActive = false;
-    Serial.println(F("[BT] Serial disabled (sleep timer)"));
-  }
+  bool inactivityTimeout = (btSleepAfterBleMs > 0) && (lastBtActivityMs > 0) && (nowMs - lastBtActivityMs >= btSleepAfterBleMs);
+  if (bootTimeout || inactivityTimeout)
+    powerOffBtSerial(bootTimeout ? "boot timeout" : "idle timeout");
 }
 #endif
 

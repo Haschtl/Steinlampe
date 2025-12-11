@@ -3717,11 +3717,11 @@ void handleCommand(String line)
       uint32_t ms = (uint32_t)(min * 60000.0f);
       setBtSleepAfterBleMs(ms);
       saveSettings();
-      sendFeedback(String(F("[BT] sleep after BLE=")) + String(min, 2) + F(" min"));
+      sendFeedback(String(F("[BT] sleep after idle command=")) + String(min, 2) + F(" min"));
     }
     else
     {
-      sendFeedback(F("bt sleep boot <min> | bt sleep ble <min> (0=off)"));
+      sendFeedback(F("bt sleep boot <min> | bt sleep ble <min> (0=off, idle after last cmd)"));
     }
     return;
   }

@@ -125,16 +125,7 @@ export function useSerial(): SerialApi {
     try {
       const port = await navigator.serial.requestPort();
       const info = port.getInfo ? port.getInfo() : {};
-      const id = JSON.stringify(info);
-      const now = Date.now();
-      const known = id && knownSerialsRef.current[id];
-      const allowAllUntil = Date.now() - 60_000; // 1 minute grace after browser load
-      if (id && !known && Date.now() > allowAllUntil) {
-        pushLog('Blocked unknown serial device (manage in settings)');
-        toast.error('Untrusted serial device');
-        setStatus((s) => ({ ...s, connecting: false }));
-        return;
-      }
+      const id = port.getInfo ? JSON.stringify(info) : '';
       await port.open({ baudRate: 115200 });
       portRef.current = port;
       if (id) {

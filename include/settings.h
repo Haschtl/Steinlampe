@@ -134,7 +134,7 @@ constexpr uint32_t CLAP_COOLDOWN_MS_DEFAULT = 800;
 #if ENABLE_BT_SERIAL
 // Auto-sleep timers for Classic BT serial (0 = disabled)
 constexpr uint32_t BT_SLEEP_AFTER_BOOT_MS = 0; ///< Turn off BT-SERIAL after X ms from boot
-constexpr uint32_t BT_SLEEP_AFTER_BLE_MS = 0;  ///< Turn off BT-SERIAL after X ms since last BLE command
+constexpr uint32_t BT_SLEEP_AFTER_BLE_MS = 0;  ///< Turn off BT-SERIAL after X ms since last BLE/BT command (BLE stays on)
 #endif
 
 // PWM curve
