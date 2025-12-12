@@ -18,7 +18,7 @@
 #endif
 
 #ifndef ENABLE_MUSIC_MODE
-#define ENABLE_MUSIC_MODE 1
+#define ENABLE_MUSIC_MODE 0
 #endif
 
 #ifndef ENABLE_BLE_MIDI

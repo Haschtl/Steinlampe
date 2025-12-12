@@ -47,10 +47,13 @@ void trustListFeedback();
 // Device names
 String getBleName();
 String getBtName();
+
+#if ENABLE_BT_SERIAL
 void setBtSleepAfterBootMs(uint32_t ms);
 void setBtSleepAfterBleMs(uint32_t ms);
 uint32_t getBtSleepAfterBootMs();
 uint32_t getBtSleepAfterBleMs();
+#endif
 
 // Presence hooks
 void blePresenceUpdate(bool connected, const String &addr);

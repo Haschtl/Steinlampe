@@ -72,12 +72,6 @@ void syncLampToSwitch();
 void startDemo(uint32_t dwellMs);
 void stopDemo();
 void saveSettings();
-void applyDefaultSettings(float brightnessOverride = -1.0f, bool announce = true);
-void processStartupSwitch();
-#if ENABLE_SWITCH
-bool readSwitchRaw();
-#endif
-void updateExternalInput();
 
 void setBleName(const String &name);
 void setBtName(const String &name);
@@ -325,11 +319,11 @@ uint32_t lastLightSampleMs = 0;
 uint16_t lightMinRaw = 4095;
 uint16_t lightMaxRaw = 0;
 float lightAlpha = Settings::LIGHT_ALPHA;
+float rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
 #endif
 float lightGain = Settings::LIGHT_GAIN_DEFAULT;
 float lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
 float lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
-float rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
 
 #if ENABLE_MUSIC_MODE
 bool musicEnabled = Settings::MUSIC_DEFAULT_ENABLED;
@@ -502,8 +496,6 @@ String buildProfileString()
   cfg += rampOnDurationMs;
   cfg += F(" ramp_off_ms=");
   cfg += rampOffDurationMs;
-  cfg += F(" ramp_amb=");
-  cfg += String(rampAmbientFactor, 2);
   cfg += F(" pat_fade=");
   cfg += patternFadeEnabled ? F("on") : F("off");
   cfg += F(" pat_fade_amt=");
@@ -530,7 +522,9 @@ String buildProfileString()
   cfg += String(brightnessCap, 3);
   cfg += F(" pwm_gamma=");
   cfg += String(outputGamma, 2);
-#if ENABLE_LIGHT_SENSOR
+  #if ENABLE_LIGHT_SENSOR
+  cfg += F(" ramp_amb=");
+  cfg += String(rampAmbientFactor, 2);
   cfg += F(" light_gain=");
   cfg += String(lightGain, 2);
   cfg += F(" light_min=");
@@ -897,7 +891,6 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
   prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
-  prefs.putFloat(PREF_KEY_RAMP_AMB, rampAmbientFactor);
   prefs.putUInt(PREF_KEY_IDLE_OFF, idleOffMs);
   prefs.putUChar(PREF_KEY_RAMP_EASE_ON, rampEaseOnType);
   prefs.putUChar(PREF_KEY_RAMP_EASE_OFF, rampEaseOffType);
@@ -905,9 +898,12 @@ void saveSettings()
   prefs.putFloat(PREF_KEY_RAMP_POW_OFF, rampEaseOffPower);
   prefs.putFloat(PREF_KEY_PAT_LO, patternMarginLow);
   prefs.putFloat(PREF_KEY_PAT_HI, patternMarginHigh);
+#if ENABLE_BT_SERIAL
   prefs.putUInt(PREF_KEY_BT_SLEEP_BOOT, getBtSleepAfterBootMs());
   prefs.putUInt(PREF_KEY_BT_SLEEP_BLE, getBtSleepAfterBleMs());
+#endif
 #if ENABLE_LIGHT_SENSOR
+  prefs.putFloat(PREF_KEY_RAMP_AMB, rampAmbientFactor);
   prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
   lightMinRaw = 4095;
   lightMaxRaw = 0;
@@ -1022,12 +1018,12 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
   rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
   rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
   rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
-  rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
   briMinUser = Settings::BRI_MIN_DEFAULT;
   briMaxUser = Settings::BRI_MAX_DEFAULT;
   customLen = 0;
   customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
-#if ENABLE_LIGHT_SENSOR
+  #if ENABLE_LIGHT_SENSOR
+  rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
   lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
   lightGain = Settings::LIGHT_GAIN_DEFAULT;
   lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
@@ -1077,6 +1073,81 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
   if (announce)
     sendFeedback(F("[Defaults] Settings reset to factory values"));
 }
+
+
+#if ENABLE_SWITCH
+/**
+ * @brief Read the current raw logic level of the mechanical switch.
+ */
+bool readSwitchRaw()
+{
+  return digitalRead(PIN_SWITCH) == SWITCH_ACTIVE_LEVEL;
+}
+
+/**
+ * @brief Initializes switch debouncing state from current hardware level.
+ */
+void initSwitchState()
+{
+  switchRawState = readSwitchRaw();
+  switchDebouncedState = switchRawState;
+  lampEnabled = switchDebouncedState;
+  if (!lampEnabled)
+    ledcWrite(LEDC_CH, 0);
+  lastSwitchOffMs = millis();
+  lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
+  modeTapArmed = false;
+}
+/**
+ * @brief Debounce the toggle switch and handle on/off plus mode tap detection.
+ */
+void updateSwitchLogic()
+{
+  uint32_t now = millis();
+  bool raw = readSwitchRaw();
+  if (raw != switchRawState)
+  {
+    switchRawState = raw;
+    switchLastDebounceMs = now;
+  }
+
+  if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
+  {
+    switchDebouncedState = switchRawState;
+    if (switchDebouncedState)
+    {
+      uint32_t nowOn = now;
+      // if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
+      // {
+      //   startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
+      // }
+      lastSwitchOnMs = nowOn;
+      // Short off→on within MODE_TAP_MAX_MS: advance pattern
+      if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
+      {
+        size_t from = currentModeIndex;
+        if (from >= quickModeCount())
+          from = 0;
+        size_t next = nextQuickMode(from);
+        applyQuickMode(next);
+      }
+      modeTapArmed = false;
+      setLampEnabled(true, "switch on");
+      sendFeedback(F("[Switch] ON"));
+    }
+    else
+    {
+      // Arm mode change if lamp was on before this off edge
+      modeTapArmed = lampEnabled;
+      lastSwitchOffMs = now;
+      setLampEnabled(false, "switch off");
+      sendFeedback(F("[Switch] OFF"));
+    }
+    saveSettings();
+    lastActivityMs = now;
+  }
+}
+#endif
 
 /**
  * @brief During the secure-boot window, debounce the switch and count toggles without running full logic.
@@ -1179,11 +1250,15 @@ void loadSettings()
     patternFadeStrength = 0.01f;
   if (patternFadeStrength > 10.0f)
     patternFadeStrength = 10.0f;
+#if ENABLE_BT_SERIAL
   setBtSleepAfterBootMs(prefs.getUInt(PREF_KEY_BT_SLEEP_BOOT, Settings::BT_SLEEP_AFTER_BOOT_MS));
   setBtSleepAfterBleMs(prefs.getUInt(PREF_KEY_BT_SLEEP_BLE, Settings::BT_SLEEP_AFTER_BLE_MS));
+#endif
+#if ENABLE_LIGHT_SENSOR
   rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
   if (rampAmbientFactor < 0.0f) rampAmbientFactor = 0.0f;
   if (rampAmbientFactor > 3.0f) rampAmbientFactor = 3.0f;
+#endif
 #if ENABLE_EXT_INPUT
   extInputEnabled = prefs.getBool("ext_en", false);
   extInputAnalog = prefs.getBool("ext_mode", Settings::EXT_INPUT_ANALOG_DEFAULT);
@@ -1380,14 +1455,6 @@ void loadSettings()
   setPattern(currentPattern, false, false);
 }
 
-#if ENABLE_SWITCH
-/**
- * @brief Read the current raw logic level of the mechanical switch.
- */
-bool readSwitchRaw()
-{
-  return digitalRead(PIN_SWITCH) == SWITCH_ACTIVE_LEVEL;
-}
 
 /**
  * @brief Print averaged touch sensor data for calibration purposes.
@@ -1405,21 +1472,6 @@ void printTouchDebug()
   int delta = touchBaseline - raw;
   sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
                F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff));
-}
-
-/**
- * @brief Initializes switch debouncing state from current hardware level.
- */
-void initSwitchState()
-{
-  switchRawState = readSwitchRaw();
-  switchDebouncedState = switchRawState;
-  lampEnabled = switchDebouncedState;
-  if (!lampEnabled)
-    ledcWrite(LEDC_CH, 0);
-  lastSwitchOffMs = millis();
-  lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
-  modeTapArmed = false;
 }
 
 /**
@@ -1493,57 +1545,6 @@ void setPattern(size_t index, bool announce, bool persist)
   if (persist)
     saveSettings();
 }
-
-/**
- * @brief Debounce the toggle switch and handle on/off plus mode tap detection.
- */
-void updateSwitchLogic()
-{
-  uint32_t now = millis();
-  bool raw = readSwitchRaw();
-  if (raw != switchRawState)
-  {
-    switchRawState = raw;
-    switchLastDebounceMs = now;
-  }
-
-  if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
-  {
-    switchDebouncedState = switchRawState;
-    if (switchDebouncedState)
-    {
-      uint32_t nowOn = now;
-      // if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
-      // {
-      //   startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
-      // }
-      lastSwitchOnMs = nowOn;
-      // Short off→on within MODE_TAP_MAX_MS: advance pattern
-      if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
-      {
-        size_t from = currentModeIndex;
-        if (from >= quickModeCount())
-          from = 0;
-        size_t next = nextQuickMode(from);
-        applyQuickMode(next);
-      }
-      modeTapArmed = false;
-      setLampEnabled(true, "switch on");
-      sendFeedback(F("[Switch] ON"));
-    }
-    else
-    {
-      // Arm mode change if lamp was on before this off edge
-      modeTapArmed = lampEnabled;
-      lastSwitchOffMs = now;
-      setLampEnabled(false, "switch off");
-      sendFeedback(F("[Switch] OFF"));
-    }
-    saveSettings();
-    lastActivityMs = now;
-  }
-}
-#endif
 
 // Presence is handled via polling in loop()
 void blePresenceUpdate(bool, const String &) {}
@@ -3706,7 +3707,9 @@ void handleCommand(String line)
       float min = arg.substring(4).toFloat();
       if (min < 0.0f) min = 0.0f;
       uint32_t ms = (uint32_t)(min * 60000.0f);
+#if ENABLE_BT_SERIAL
       setBtSleepAfterBootMs(ms);
+#endif
       saveSettings();
       sendFeedback(String(F("[BT] sleep after boot=")) + String(min, 2) + F(" min"));
     }
@@ -3715,7 +3718,9 @@ void handleCommand(String line)
       float min = arg.substring(3).toFloat();
       if (min < 0.0f) min = 0.0f;
       uint32_t ms = (uint32_t)(min * 60000.0f);
+#if ENABLE_BT_SERIAL
       setBtSleepAfterBleMs(ms);
+#endif
       saveSettings();
       sendFeedback(String(F("[BT] sleep after idle command=")) + String(min, 2) + F(" min"));
     }
@@ -5063,8 +5068,10 @@ void updatePatternEngine()
     adjusted = 1.0f;
   relative = adjusted;
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
+#ifndef ENABLE_MUSIC_MODE
   if (musicEnabled)
     combined *= musicModScale;
+#endif
   if (notifyActive && !notifySeq.empty())
   {
     uint32_t dtStage = now - notifyStageStartMs;

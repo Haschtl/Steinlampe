@@ -254,7 +254,7 @@ export default function App() {
                   <span className="hidden sm:inline">{tab.label}</span>
                 </Button>
               ))}
-              <div className="flex items-center gap-2">
+              {/* <div className="flex items-center gap-2">
                  <Button
   variant="ghost"
   size="sm"
@@ -279,7 +279,7 @@ export default function App() {
                     title="Settings loaded"
                   />
                 </Button>
-              </div>
+              </div> */}
             </div>
           </div>
         </header>

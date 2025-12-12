@@ -49,19 +49,17 @@ static String bleName = Settings::BLE_NAME_DEFAULT;
 static String btName = Settings::BT_NAME_DEFAULT;
 static uint32_t bootMsComm = 0;
 static uint32_t lastBtActivityMs = 0;
-static uint32_t btSleepAfterBootMs = Settings::BT_SLEEP_AFTER_BOOT_MS;
-static uint32_t btSleepAfterBleMs = Settings::BT_SLEEP_AFTER_BLE_MS;
 
 // Line buffers
 static String bufferUsb;
 #if ENABLE_BT_SERIAL
+static uint32_t btSleepAfterBootMs = Settings::BT_SLEEP_AFTER_BOOT_MS;
+static uint32_t btSleepAfterBleMs = Settings::BT_SLEEP_AFTER_BLE_MS;
 static String bufferBt;
 static String lastSppAddr;
 BluetoothSerial serialBt;
 static bool btSerialActive = false;
 static bool btSerialDisabled = false;
-static void maybeSleepBtSerial(uint32_t nowMs);
-static void powerOffBtSerial(const char *reason);
 #endif
 
 inline bool feedbackAllowed()
@@ -509,11 +507,12 @@ void startBtSerial()
 }
 #endif
 
+#if ENABLE_BT_SERIAL
 void setBtSleepAfterBootMs(uint32_t ms) { btSleepAfterBootMs = ms; }
 void setBtSleepAfterBleMs(uint32_t ms) { btSleepAfterBleMs = ms; }
 uint32_t getBtSleepAfterBootMs() { return btSleepAfterBootMs; }
 uint32_t getBtSleepAfterBleMs() { return btSleepAfterBleMs; }
-
+#endif
 
 void trustSetBootMs(uint32_t ms) { trustBootMs = ms; }
 
@@ -591,6 +590,19 @@ void setupCommunications()
   lastBtActivityMs = bootMsComm;
 }
 
+#if ENABLE_BT_SERIAL
+// Auto sleep for Classic BT serial after inactivity/timeout
+static void maybeSleepBtSerial(uint32_t nowMs)
+{
+  if (!btSerialActive || btSerialDisabled)
+    return;
+  bool bootTimeout = (btSleepAfterBootMs > 0) && (nowMs - bootMsComm >= btSleepAfterBootMs);
+  bool inactivityTimeout = (btSleepAfterBleMs > 0) && (lastBtActivityMs > 0) && (nowMs - lastBtActivityMs >= btSleepAfterBleMs);
+  if (bootTimeout || inactivityTimeout)
+    powerOffBtSerial(bootTimeout ? "boot timeout" : "idle timeout");
+}
+#endif
+
 /**
  * @brief Poll all enabled transports for incoming bytes and feed line parser.
  */
@@ -643,18 +655,6 @@ void sendFeedback(const String &line)
 #endif
 }
 
-#if ENABLE_BT_SERIAL
-// Auto sleep for Classic BT serial after inactivity/timeout
-static void maybeSleepBtSerial(uint32_t nowMs)
-{
-  if (!btSerialActive || btSerialDisabled)
-    return;
-  bool bootTimeout = (btSleepAfterBootMs > 0) && (nowMs - bootMsComm >= btSleepAfterBootMs);
-  bool inactivityTimeout = (btSleepAfterBleMs > 0) && (lastBtActivityMs > 0) && (nowMs - lastBtActivityMs >= btSleepAfterBleMs);
-  if (bootTimeout || inactivityTimeout)
-    powerOffBtSerial(bootTimeout ? "boot timeout" : "idle timeout");
-}
-#endif
 
 /**
  * @brief Update BLE status characteristic (read + notify if connected).
@@ -709,8 +709,12 @@ String getLastBleAddr()
 }
 
 String getBLEAddress(){
+#if ENABLE_BLE
   if (BLEDevice::getInitialized())
     return BLEDevice::getAddress().toString().c_str();
   else
     return F("N/A");
+#else
+  return F("N/A");
+#endif
 }
