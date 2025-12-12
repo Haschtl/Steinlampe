@@ -158,16 +158,16 @@ export function ModesCard() {
                 Smooth transitions between patterns
               </Trans>
             }
-            valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : "Off"}
-            disabled={!fadeEnabled}
+            valueLabel={patternFade > 0 ? `${patternFade.toFixed(1)}x` : "Off"}
             inputProps={{
               min: 0,
               max: 2,
               step: 0.01,
-              value: fadeEnabled ? patternFade : 0,
+              value: patternFade,
             }}
             onInputChange={(val) => {
-              handlePatternFade(val || 1, val > 0);
+              const v = Math.max(0, val);
+              handlePatternFade(v || 1, v > 0);
             }}
           />
         </div>
@@ -182,20 +182,6 @@ export function ModesCard() {
             />{" "}
             <span className="inline-flex items-center gap-1">
               <Activity className="h-4 w-4" /> AutoCycle
-            </span>
-          </label>
-          <label className="pill cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={fadeEnabled}
-              onChange={(e) =>
-                handlePatternFade(patternFade || 1, e.target.checked)
-              }
-            />{" "}
-            <span className="inline-flex items-center gap-1">
-              <Activity className="h-4 w-4" />{" "}
-              <Trans k="label.fadeMul">Pattern Fade</Trans>
             </span>
           </label>
         </div>

@@ -60,9 +60,11 @@ export function RangeSliderRow({
     const onUp = () => setDragging(null);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, [dragging, low, high]);
 
@@ -109,8 +111,9 @@ export function RangeSliderRow({
       )}
       <div
         ref={trackRef}
-        className="relative h-8 select-none"
+        className="relative h-8 select-none touch-none"
         onPointerDown={(e) => {
+          e.preventDefault();
           (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
           handlePointer(e.clientX);
         }}
@@ -126,9 +129,10 @@ export function RangeSliderRow({
         {[['low', low] as const, ['high', high] as const].map(([key, val]) => (
           <div
             key={key}
-            className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border border-accent/50 bg-accent focus:outline-none transition-colors hover:border-accent hover:bg-accent/20"
+            className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border border-accent/50 bg-accent focus:outline-none transition-colors hover:border-accent hover:bg-accent/20 touch-none"
             style={{ left: pct(val) }}
             onPointerDown={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
               setDragging(key);
