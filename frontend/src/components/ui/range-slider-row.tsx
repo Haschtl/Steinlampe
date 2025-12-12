@@ -23,7 +23,7 @@ export function RangeSliderRow({
   values,
   onChange,
 }: RangeSliderRowProps) {
-  const [low, high] = values;
+  const [[low, high], setRange] = useState<[number, number]>(values);
   const span = max - min === 0 ? 1 : max - min;
   const pct = (v: number) => `${((v - min) / span) * 100}%`;
 
@@ -38,6 +38,7 @@ export function RangeSliderRow({
     } else {
       hi = clamp(val, lo, max);
     }
+    setRange([lo, hi]);
     onChange([lo, hi]);
   };
 
@@ -71,6 +72,11 @@ export function RangeSliderRow({
     max,
     step,
   };
+
+  // Keep local state in sync with incoming values unless the user is dragging.
+  useEffect(() => {
+    if (!dragging) setRange(values);
+  }, [values, dragging]);
 
   return (
     <div className="space-y-1">
