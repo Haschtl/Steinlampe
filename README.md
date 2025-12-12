@@ -85,3 +85,10 @@ BLE UUIDs (default):
 - PlatformIO env: `upesy_wroom`. Adjust pins/features in `include/lamp_config.h`.
 - Default names/UUIDs and runtime defaults in `include/settings.h`.
 - Classic BT SPP name from `Settings::BT_SERIAL_NAME` (default `Quarzlampe-SPP`).
+- Partition options:
+  - Default in `platformio.ini` is `min_spiffs.csv` (two OTA slots, small SPIFFS).
+  - If you do **not** need OTA and want more headroom plus larger NVS, use the custom table `partitions/quarzlampe_no_ota_large_nvs.csv`:
+    ```
+    board_build.partitions = partitions/quarzlampe_no_ota_large_nvs.csv
+    ```
+    This gives ~3.4 MB app space, 64 KB NVS, ~448 KB SPIFFS, no OTA slot.

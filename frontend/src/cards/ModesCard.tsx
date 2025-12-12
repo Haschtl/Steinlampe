@@ -85,7 +85,9 @@ export function ModesCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Trans k="title.pattern">Pattern</Trans></CardTitle>
+        <CardTitle>
+          <Trans k="title.pattern">Pattern</Trans>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-nowrap items-center gap-2">
@@ -106,7 +108,9 @@ export function ModesCard() {
           >
             <div className="flex flex-col items-start leading-tight">
               <span className="text-xs text-muted">Pattern {pattern}</span>
-              <span className="truncate text-sm font-semibold">{patternLabel(pattern, status.patternName)}</span>
+              <span className="truncate text-sm font-semibold">
+                {patternLabel(pattern, status.patternName)}
+              </span>
             </div>
             <Palette className="h-4 w-4 text-muted" />
           </Button>
@@ -123,7 +127,9 @@ export function ModesCard() {
         <div className="space-y-3">
           <SliderRow
             label={<Trans k="label.speed">Speed</Trans>}
-            description={<Trans k="desc.patternSpeed">Pattern speed multiplier</Trans>}
+            description={
+              <Trans k="desc.patternSpeed">Pattern speed multiplier</Trans>
+            }
             inputProps={{
               min: 0.1,
               max: 5,
@@ -132,10 +138,27 @@ export function ModesCard() {
             }}
             onInputChange={(val) => handlePatternSpeed(val)}
           />
+          <RangeSliderRow
+            label={<Trans k="label.patternMargin">Pattern Margin</Trans>}
+            description={
+              <Trans k="desc.patternMargin">
+                Clamp pattern output between two levels
+              </Trans>
+            }
+            min={0}
+            max={1}
+            step={0.01}
+            values={margin}
+            onChange={handleMargin}
+          />
           <SliderRow
             label={<Trans k="label.fadeMul">Pattern Fade</Trans>}
-            description={<Trans k="desc.patternFade">Smooth transitions between patterns</Trans>}
-            valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : 'Off'}
+            description={
+              <Trans k="desc.patternFade">
+                Smooth transitions between patterns
+              </Trans>
+            }
+            valueLabel={fadeEnabled ? `${patternFade.toFixed(1)}x` : "Off"}
             disabled={!fadeEnabled}
             inputProps={{
               min: 0,
@@ -147,19 +170,16 @@ export function ModesCard() {
               handlePatternFade(val || 1, val > 0);
             }}
           />
-          <RangeSliderRow
-            label={<Trans k="label.patternMargin">Pattern Margin</Trans>}
-            description={<Trans k="desc.patternMargin">Clamp pattern output between two levels</Trans>}
-            min={0}
-            max={1}
-            step={0.01}
-            values={margin}
-            onChange={handleMargin}
-          />
         </div>
         <div className="flex flex-wrap gap-2">
           <label className="pill cursor-pointer">
-            <input type="checkbox" className="accent-accent" onChange={(e) => sendCmd(`auto ${e.target.checked ? 'on' : 'off'}`)} />{' '}
+            <input
+              type="checkbox"
+              className="accent-accent"
+              onChange={(e) =>
+                sendCmd(`auto ${e.target.checked ? "on" : "off"}`)
+              }
+            />{" "}
             <span className="inline-flex items-center gap-1">
               <Activity className="h-4 w-4" /> AutoCycle
             </span>
@@ -169,10 +189,13 @@ export function ModesCard() {
               type="checkbox"
               className="accent-accent"
               checked={fadeEnabled}
-              onChange={(e) => handlePatternFade(patternFade || 1, e.target.checked)}
-            />{' '}
+              onChange={(e) =>
+                handlePatternFade(patternFade || 1, e.target.checked)
+              }
+            />{" "}
             <span className="inline-flex items-center gap-1">
-              <Activity className="h-4 w-4" /> <Trans k="label.fadeMul">Pattern Fade</Trans>
+              <Activity className="h-4 w-4" />{" "}
+              <Trans k="label.fadeMul">Pattern Fade</Trans>
             </span>
           </label>
         </div>
