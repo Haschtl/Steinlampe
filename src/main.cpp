@@ -3893,10 +3893,14 @@ void handleCommand(String line)
     notifyIdx = 0;
     notifyStageStartMs = millis();
     notifyInvert = (masterBrightness > 0.8f);
+    bool wasActive = notifyActive;
     notifyActive = true;
-    notifyPrevLampOn = lampEnabled;
-    notifyRestoreLamp = !lampEnabled;
-    if (notifyRestoreLamp)
+    if (!wasActive)
+    {
+      notifyPrevLampOn = lampEnabled;
+      notifyRestoreLamp = !lampEnabled;
+    }
+    if (notifyRestoreLamp || !lampEnabled)
       setLampEnabled(true, "notify");
     String seqStr;
     for (size_t i = 0; i < notifySeq.size(); ++i)
@@ -3994,15 +3998,19 @@ void handleCommand(String line)
       sendFeedback(F("[Morse] no valid symbols"));
       return;
     }
+    bool wasActive = notifyActive;
     notifySeq = seq;
     notifyIdx = 0;
     notifyStageStartMs = millis();
     notifyFadeMs = 0;
     notifyInvert = (masterBrightness > 0.8f);
     notifyActive = true;
-    notifyPrevLampOn = lampEnabled;
-    notifyRestoreLamp = !lampEnabled;
-    if (notifyRestoreLamp)
+    if (!wasActive)
+    {
+      notifyPrevLampOn = lampEnabled;
+      notifyRestoreLamp = !lampEnabled;
+    }
+    if (notifyRestoreLamp || !lampEnabled)
       setLampEnabled(true, "morse");
     sendFeedback(String(F("[Morse] ")) + text);
     return;
