@@ -53,8 +53,8 @@ static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
 static const uint32_t SECURE_BOOT_WINDOW_MS = 1000;
 
 // Touch-Schwellwerte-Defaults
-static const int TOUCH_DELTA_ON_DEFAULT = 10; // Counts relativ zur Baseline
-static const int TOUCH_DELTA_OFF_DEFAULT = 6; // Hysterese
+static const int TOUCH_DELTA_ON_DEFAULT = 12; // Counts relativ zur Baseline
+static const int TOUCH_DELTA_OFF_DEFAULT = 8; // Hysterese
 static const uint32_t TOUCH_SAMPLE_DT_MS = 25;
 static const uint32_t TOUCH_EVENT_DEBOUNCE_MS = 200;
 static const float DIM_RAMP_STEP = 0.005f;
@@ -1636,13 +1636,15 @@ void updateTouchBrightness()
     return;
   touchLastSampleMs = now;
 
-  int raw = touchRead(PIN_TOUCH_DIM);
+  // Take a small moving average to reduce noise
+  int raw = (touchRead(PIN_TOUCH_DIM) + touchRead(PIN_TOUCH_DIM) + touchRead(PIN_TOUCH_DIM)) / 3;
   int delta = touchBaseline - raw;
   int mag = abs(delta);
 
   if (!touchActive)
   {
-    // touchBaseline = (touchBaseline * 15 + raw) / 16;
+    if (mag < touchDeltaOn)
+      touchBaseline = (touchBaseline * 15 + raw) / 16;
     if (mag > touchDeltaOn && (now - lastTouchChangeMs) >= TOUCH_EVENT_DEBOUNCE_MS)
     {
       if (wakeFadeActive && wakeSoftCancel)
@@ -1671,7 +1673,7 @@ void updateTouchBrightness()
   if (mag < touchDeltaOff)
   {
     touchActive = false;
-    // touchBaseline = (touchBaseline * 7 + raw) / 8;
+    touchBaseline = (touchBaseline * 7 + raw) / 8;
     if (brightnessChangedByTouch)
     {
       logBrightnessChange("touch");
@@ -1767,7 +1769,7 @@ void startWakeFade(uint32_t durationMs, bool announce, bool softCancel, float ta
   else
     wakeTargetLevel = clamp01(fmax(masterBrightness, Settings::WAKE_MIN_TARGET));
   wakeSoftCancel = softCancel;
-  setLampEnabled(true);
+  setLampEnabled(true, "wake fade");
   wakeFadeActive = true;
   if (announce)
   {
@@ -1801,7 +1803,7 @@ void startSleepFade(uint32_t durationMs)
   sleepDurationMs = durationMs;
   sleepStartMs = millis();
   sleepFadeActive = true;
-  setLampEnabled(true);
+  setLampEnabled(true, "sleep fade");
   sendFeedback(String(F("[Sleep] Fade ueber ")) + String(durationMs / 1000) + F("s"));
 }
 
@@ -5179,10 +5181,19 @@ void updateLightSensor()
     lightMaxRaw = raw;
 
   int range = (int)lightMaxRaw - (int)lightMinRaw;
-  if (range < 20)
-    return;
-  float norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
-  norm = clamp01(norm);
+  // Fallback: if we do not yet have a stable min/max span (very little variation),
+  // derive a normalized level directly from the raw ADC reading so that
+  // rampAmbientFactor still has an effect instead of staying at 1.0.
+  float norm = 0.5f;
+  if (range >= 20)
+  {
+    norm = ((float)lightFiltered - (float)lightMinRaw) / (float)range;
+    norm = clamp01(norm);
+  }
+  else
+  {
+    norm = clamp01((float)raw / 4095.0f);
+  }
   // Map ambient reading to a dimming factor; smooth via low-pass
   float target = (0.2f + 0.8f * norm) * lightGain;
   if (target < lightClampMin)
