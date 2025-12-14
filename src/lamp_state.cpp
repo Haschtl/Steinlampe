@@ -17,6 +17,8 @@ const int LEDC_FREQ = 1000;
 const int LEDC_RES = 16; // 16-bit @1 kHz fits LEDC clock
 const int PWM_MAX = (1 << LEDC_RES) - 1;
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
+uint32_t lastPwmValue = 0;
+float lastPwmNormalized = 0.0f;
 
 // ---------- Brightness State ----------
 float masterBrightness = Settings::DEFAULT_BRIGHTNESS;
@@ -85,6 +87,8 @@ void applyPwmLevel(float normalized)
   uint32_t pwmValue = (uint32_t)(pwm + 0.5f);
   if (pwmValue > (uint32_t)PWM_MAX)
     pwmValue = (uint32_t)PWM_MAX;
+  lastPwmNormalized = level;
+  lastPwmValue = pwmValue;
   ledcWrite(LEDC_CH, pwmValue);
 }
 

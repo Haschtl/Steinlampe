@@ -2202,6 +2202,10 @@ void printStatusStructured()
   line += demoActive ? F("ON") : F("OFF");
   line += F("|gamma=");
   line += String(outputGamma, 2);
+  line += F("|pwm_raw=");
+  line += String((uint32_t)lastPwmValue);
+  line += F("|pwm_max=");
+  line += String((uint32_t)PWM_MAX);
   line += F("|bri_min=");
   line += String(briMinUser * 100.0f, 1);
   line += F("|bri_max=");

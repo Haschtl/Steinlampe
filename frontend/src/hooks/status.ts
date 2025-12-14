@@ -54,6 +54,8 @@ export type DeviceStatus = {
   idleOffMin?: number;
   idleMinutes?: number;
   pwmCurve?: number;
+  pwmRaw?: number;
+  pwmMax?: number;
   patternMarginLow?: number;
   patternMarginHigh?: number;
   presence?: string;
@@ -163,6 +165,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
       const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
       const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
+      const pwmRaw = kv.pwm_raw ? asInt('pwm_raw') : undefined;
+      const pwmMax = kv.pwm_max ? asInt('pwm_max') : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
@@ -212,6 +216,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         customLen: asInt('custom_len') ?? s.customLen,
         customStepMs: asInt('custom_step_ms') ?? s.customStepMs,
         pwmCurve: asNum('gamma') ?? s.pwmCurve,
+        pwmRaw: pwmRaw ?? s.pwmRaw,
+        pwmMax: pwmMax ?? s.pwmMax,
         briMin: asNum('bri_min') ?? s.briMin,
         briMax: asNum('bri_max') ?? s.briMax,
         filterIir: kv.filter_iir ? kv.filter_iir.toUpperCase() === 'ON' : s.filterIir,

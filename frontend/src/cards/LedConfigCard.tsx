@@ -10,6 +10,12 @@ export function LedConfigCard() {
   const { status, sendCmd } = useConnection();
   const [cap, setCap] = useState(100);
   const [pwmCurve, setPwmCurve] = useState(1.8);
+  const pwmRaw = status.pwmRaw;
+  const pwmMax = status.pwmMax ?? 65535;
+  const pwmPct =
+    typeof pwmRaw === "number" && typeof pwmMax === "number" && pwmMax > 0
+      ? (pwmRaw / pwmMax) * 100
+      : undefined;
 
   useEffect(() => {
     if (typeof status.cap === "number") setCap(Math.round(status.cap));
@@ -77,6 +83,20 @@ export function LedConfigCard() {
               Gamma to linearize LED brightness (0.5–4). Pick a simple step pattern (e.g. “Stufen”) and tweak until each step looks equally bright.
             </Trans>
           </p>
+        </div>
+        <div>
+          <Label>
+            <Trans k="label.pwmRaw">PWM raw</Trans>
+          </Label>
+          <div className="text-sm text-muted-foreground">
+            {typeof pwmRaw === "number" ? (
+              <>
+                {pwmRaw}/{pwmMax} {typeof pwmPct === "number" ? `(${pwmPct.toFixed(1)}%)` : null}
+              </>
+            ) : (
+              <>-</>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
