@@ -3901,8 +3901,9 @@ void handleCommand(String line)
     notifyActive = true;
     if (!wasActive)
     {
-      notifyPrevLampOn = lampEnabled;
-      notifyRestoreLamp = !lampEnabled;
+      bool effectiveLampOn = lampEnabled && !lampOffPending;
+      notifyPrevLampOn = effectiveLampOn;
+      notifyRestoreLamp = !effectiveLampOn;
     }
     if (notifyRestoreLamp || !lampEnabled)
       setLampEnabled(true, "notify");
@@ -4011,8 +4012,9 @@ void handleCommand(String line)
     notifyActive = true;
     if (!wasActive)
     {
-      notifyPrevLampOn = lampEnabled;
-      notifyRestoreLamp = !lampEnabled;
+      bool effectiveLampOn = lampEnabled && !lampOffPending;
+      notifyPrevLampOn = effectiveLampOn;
+      notifyRestoreLamp = !effectiveLampOn;
     }
     if (notifyRestoreLamp || !lampEnabled)
       setLampEnabled(true, "morse");
