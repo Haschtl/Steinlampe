@@ -33,7 +33,6 @@
 
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
-void blePresenceUpdate(bool connected, const String &addr);
 void saveSettings();
 void sendFeedback(const String &line);
 
@@ -343,7 +342,6 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   // {
   //   bleClientConnected = true;
   //   // Serial.println(F("[BLE] Verbunden."));
-  //   blePresenceUpdate(true, bleLastAddr);
   // }
 
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
@@ -371,14 +369,12 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       Serial.print(F("[BLE] Verbunden: "));
       Serial.println(addr);
     }
-    blePresenceUpdate(true, addr);
   }
 
   // void onDisconnect(BLEServer *server) override
   // {
   //   bleClientConnected = false;
   //   // Serial.println(F("[BLE] Getrennt."));
-  //   blePresenceUpdate(false, bleLastAddr);
   //   BLEDevice::startAdvertising();
   // }
 
@@ -392,7 +388,6 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       Serial.println(addr);
     }
     bleLastAddr = addr;
-    blePresenceUpdate(false, addr);
     BLEDevice::startAdvertising();
   }
 };

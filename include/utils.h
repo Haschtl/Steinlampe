@@ -5,14 +5,7 @@
  * @brief Small math helpers shared across firmware modules.
  */
 
-/**
- * @brief Clamp a float value to the inclusive range [0, 1].
- */
-inline float clamp01(float x)
-{
-  if (x < 0.0f)
-    return 0.0f;
-  if (x > 1.0f)
-    return 1.0f;
-  return x;
-}
+float clamp01(float x);
+bool parseBool(const String &s, bool &out);
+uint8_t easeFromString(const String &s);
+String easeToString(uint8_t t);

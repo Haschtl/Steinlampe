@@ -39,6 +39,9 @@ extern float rampEaseOnPower;
 extern float rampEaseOffPower;
 extern float rampAmbientMultiplier;
 
+// Ramping and timers
+extern uint32_t idleOffMs;
+
 // Core lamp helpers
 void applyPwmLevel(float normalized);
 void logBrightnessChange(const char *reason);
@@ -46,3 +49,5 @@ void logLampState(const char *reason = nullptr);
 void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = true, uint8_t easeType = 1, float easePower = 2.0f);
 void updateBrightnessRamp();
 void setLampEnabled(bool enable, const char *reason = nullptr);
+void forceLampOff(const char *reason = nullptr);
+void setBrightnessPercent(float percent, bool persist = false, bool announce = true);

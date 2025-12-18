@@ -5,6 +5,10 @@
 #include "lamp_config.h"
 #include "comms.h"
 #include "utils.h"
+#include "notifications.h"
+#include "persistence.h"
+#include "pattern.h"
+#include "inputs.h"
 
 // ---------- LEDC ----------
 const int LEDC_CH = 0;
@@ -50,6 +54,9 @@ float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
 float rampAmbientMultiplier = 1.0f;
 static uint8_t rampEaseActiveType = Settings::DEFAULT_RAMP_EASE_ON;
 static float rampEaseActivePower = Settings::DEFAULT_RAMP_POW_ON;
+
+// Ramping and timers
+uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 
 /**
  * @brief Write a gamma-corrected PWM value to the LED driver.
@@ -309,4 +316,41 @@ void setLampEnabled(bool enable, const char *reason)
     startBrightnessRamp(0.0f, rampOffDurationMs, false, rampEaseOffType, rampEaseOffPower);
     logLampState(reason);
   }
+}
+
+void forceLampOff(const char *reason)
+{
+  rampActive = false;
+  lampOffPending = false;
+  outputScale = 0.0f;
+  lampEnabled = false;
+  notifyActive = false;
+  patternFilteredLevel = 0.0f;
+  patternFilterLastMs = 0;
+  applyPwmLevel(0.0f);
+  if (reason)
+    logLampState(reason);
+}
+
+/**
+ * @brief Set the master brightness in percent, optionally persisting/announcing.
+ */
+void setBrightnessPercent(float percent, bool persist, bool announce)
+{
+  float cap = brightnessCap;
+  if (cap < briMinUser)
+    cap = briMinUser;
+  if (cap > 1.0f)
+    cap = 1.0f;
+  float target = clamp01(percent / 100.0f);
+  if (target > cap)
+    target = cap;
+  uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
+  startBrightnessRamp(target, dur);
+  if (announce)
+  {
+    logBrightnessChange("cmd bri");
+  }
+  if (persist)
+    saveSettings();
 }

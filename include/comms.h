@@ -55,8 +55,6 @@ uint32_t getBtSleepAfterBootMs();
 uint32_t getBtSleepAfterBleMs();
 #endif
 
-// Presence hooks
-void blePresenceUpdate(bool connected, const String &addr);
 
 /**
  * @brief Update the BLE status characteristic (read/notify) with a snapshot string.
@@ -77,3 +75,6 @@ bool presenceScanOnce();
 // extern String lastBtAddr;
 // extern uint32_t lastPresenceSeenMs;
 // extern uint32_t lastPresenceScanMs;
+
+void setBtName(const String &name);
+void setBleName(const String &name);
