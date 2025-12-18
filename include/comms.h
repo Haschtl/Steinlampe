@@ -20,7 +20,7 @@ void pollCommunications();
 /**
  * @brief Send a single-line feedback message to Serial/BT and BLE notify (if connected).
  */
-void sendFeedback(const String &line);
+void sendFeedback(const String &line, const bool &force=false);
 
 /**
  * @brief Returns true if a BLE client is currently connected (if BLE is enabled).

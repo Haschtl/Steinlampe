@@ -132,16 +132,8 @@ void initSwitchState()
 {
     switchRawState = readSwitchRaw();
     switchDebouncedState = switchRawState;
-    lampEnabled = switchDebouncedState;
-    if (!lampEnabled)
-    {
-        ledcWrite(LEDC_CH, 0);
-        lastPwmValue = 0;
-    }
-    else
-    {
-        setLampEnabled(true, "init switch");
-    }
+    // Apply switch state via setLampEnabled so ramps/guards are respected.
+    setLampEnabled(switchDebouncedState, "init switch");
     lastSwitchOffMs = millis();
     lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
     modeTapArmed = false;

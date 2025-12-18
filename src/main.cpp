@@ -264,6 +264,7 @@ void updatePatternEngine()
         }
         else
         {
+          // setLampEnabled(false, "notify done");
           forceLampOff("notify done");
         }
         notifyRestoreLamp = false;
@@ -370,6 +371,9 @@ void maybeLightSleep()
  */
 void setup()
 {
+  pinMode(PIN_PWM, OUTPUT);
+  digitalWrite(PIN_PWM, LOW); // keep LED off during init
+
   Serial.begin(115200);
   delay(200);
   Serial.println();
@@ -386,8 +390,6 @@ void setup()
 #if ENABLE_SWITCH
   pinMode(PIN_SWITCH, INPUT_PULLUP);
 #endif
-  pinMode(PIN_PWM, OUTPUT);
-  digitalWrite(PIN_PWM, LOW); // keep LED off during init
   calibrateTouchBaseline();
 
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
@@ -422,14 +424,15 @@ void setup()
 
   loadSettings();
   trustSetBootMs(millis());
+
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
   ledcAttachPin(PIN_PWM, LEDC_CH);
   ledcWrite(LEDC_CH, 0); // explicit off at startup
   patternStartMs = millis();
 
-  announcePattern();
-  printHelp();
-  printStatus();
+  announcePattern(true);
+  printHelp(true);
+  printStatus(true);
   setupCommunications();
   updatePatternEngine();
 

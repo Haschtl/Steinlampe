@@ -9,6 +9,7 @@
 #include "persistence.h"
 #include "pattern.h"
 #include "inputs.h"
+#include <string.h>
 
 // ---------- LEDC ----------
 const int LEDC_CH = 0;
@@ -125,6 +126,7 @@ void logBrightnessChange(const char *reason)
 
 void logLampState(const char *reason)
 {
+  bool forceSerial = (reason && (strstr(reason, "init") != nullptr || strstr(reason, "startup") != nullptr));
   String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : F("OFF"));
   if (reason && reason[0] != '\0')
   {
@@ -132,7 +134,7 @@ void logLampState(const char *reason)
     msg += reason;
     msg += F(")");
   }
-  sendFeedback(msg);
+  sendFeedback(msg, forceSerial);
 }
 
 static float applyEase(float t, uint8_t type, float power)

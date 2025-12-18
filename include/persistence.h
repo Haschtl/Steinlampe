@@ -5,8 +5,8 @@
 
 // ---------- Persistenz ----------
 extern Preferences prefs;
-extern const char *PREF_KEY_PROFILE_BASE; // profile slots profile1..profileN
 extern const uint8_t PROFILE_SLOTS;
+extern const char *PREF_KEY_PROFILE_BASE;
 
 bool parseQuickCsv(const String &csv, uint64_t &outMask);
 

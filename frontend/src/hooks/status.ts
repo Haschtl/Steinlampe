@@ -142,7 +142,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     }));
     return true;
   }
-  if (line.startsWith('STATUS|')) {
+  if (line.startsWith('STATUS')) {
     const parts = line.split('|').slice(1);
     const kv: Record<string, string> = {};
     parts.forEach((p) => {

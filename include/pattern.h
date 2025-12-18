@@ -29,7 +29,7 @@ float patternCustom(uint32_t ms);
 /**
  * @brief Log the currently selected pattern and its index.
  */
-void announcePattern();
+void announcePattern(const bool &force=false);
 
 /**
  * @brief Find the index of a pattern by name (case-insensitive), -1 if missing.

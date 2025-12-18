@@ -40,9 +40,9 @@ float patternCustom(uint32_t ms)
 /**
  * @brief Log the currently selected pattern and its index.
  */
-void announcePattern()
+void announcePattern(const bool &force)
 {
-    sendFeedback(String(F("[Mode] ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" - ") + PATTERNS[currentPattern].name);
+    sendFeedback(String(F("[Mode] ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" - ") + PATTERNS[currentPattern].name,force);
 }
 
 /**
@@ -104,7 +104,7 @@ void setPattern(size_t index, bool announce, bool persist)
 #endif
     patternStartMs = millis();
     if (announce)
-        announcePattern();
+        announcePattern(false);
     if (persist)
         saveSettings();
 }

@@ -23,7 +23,7 @@
 /**
  * @brief Print averaged touch sensor data for calibration purposes.
  */
-void printTouchDebug()
+void printTouchDebug(const bool &force)
 {
     long acc = 0;
     const int samples = 10;
@@ -35,15 +35,15 @@ void printTouchDebug()
     int raw = (int)(acc / samples);
     int delta = touchBaseline - raw;
     sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
-                 F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff));
+                 F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff),force);
 }
 
 /**
  * @brief Print current mode, brightness and wake/auto state.
  */
-void printStatus()
+void printStatus(const bool &force)
 {
-    String payload;
+#ifdef ENABLE_HUMAN_STATUS
     String line1 = String(F("Pattern ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" '") +
                    PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF")) +
                    F(" | Speed=") + String(patternSpeedScale, 2);
@@ -51,12 +51,10 @@ void printStatus()
         line1 += F(" | Wake");
     if (sleepFadeActive)
         line1 += F(" | Sleep");
-    sendFeedback(line1);
-    payload += line1 + '\n';
+    sendFeedback(line1,force);
 
     String quickLine = String(F("[Quick] ")) + quickMaskToCsv();
-    sendFeedback(quickLine);
-    payload += quickLine + '\n';
+    sendFeedback(quickLine,force);
 
     String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Brightness=") +
                    String(masterBrightness * 100.0f, 1) + F("% | Cap=") + String(brightnessCap * 100.0f, 1) + F("%");
@@ -64,13 +62,11 @@ void printStatus()
     line2 += F(" | Switch=");
     line2 += (switchDebouncedState ? F("ON") : F("OFF"));
 #endif
-    sendFeedback(line2);
-    payload += line2 + '\n';
+    sendFeedback(line2,force);
 
 #if ENABLE_MUSIC_MODE
     String clapLine = String(F("[Clap] ")) + (clapEnabled ? F("ON") : F("OFF")) + F(" thr=") + String(clapThreshold, 2) + F(" cool=") + String(clapCooldownMs);
-    sendFeedback(clapLine);
-    payload += clapLine + '\n';
+    sendFeedback(clapLine,force);
 #endif
 
     String line3 = F("Ramp=");
@@ -116,8 +112,7 @@ void printStatus()
     line3 += extInputEnabled ? F("ON") : F("OFF");
     line3 += extInputAnalog ? F("(ana)") : F("(dig)");
 #endif
-    sendFeedback(line3);
-    payload += line3 + '\n';
+    sendFeedback(line3,force);
 
     // Filters
     FilterState filt;
@@ -166,8 +161,7 @@ void printStatus()
     filtLine += F("/");
     filtLine += String(filt.envReleaseMs);
     filtLine += F(")");
-    sendFeedback(filtLine);
-    payload += filtLine + '\n';
+    sendFeedback(filtLine,force);
 
     String line4 = F("Presence=");
     if (presenceEnabled)
@@ -180,14 +174,12 @@ void printStatus()
     {
         line4 += F("OFF");
     }
-    sendFeedback(line4);
-    payload += line4 + '\n';
+    sendFeedback(line4,force);
 
     if (demoActive)
     {
         String demoLine = String(F("[Demo] dwell=")) + String(demoDwellMs) + F("ms list=") + quickMaskToCsv();
-        sendFeedback(demoLine);
-        payload += demoLine + '\n';
+        sendFeedback(demoLine,force);
     }
 
 #if ENABLE_BLE
@@ -199,13 +191,11 @@ void printStatus()
     line4b += Settings::BLE_COMMAND_CHAR_UUID;
     line4b += F(" | Status=");
     line4b += Settings::BLE_STATUS_CHAR_UUID;
-    sendFeedback(line4b);
-    payload += line4b + '\n';
+    sendFeedback(line4b,force);
 #endif
 
     String customLine = String(F("[Custom] len=")) + String(customLen) + F(" stepMs=") + String(customStepMs);
-    sendFeedback(customLine);
-    payload += customLine + '\n';
+    sendFeedback(customLine,force);
 
     int raw = touchRead(PIN_TOUCH_DIM);
     int delta = raw - touchBaseline;
@@ -213,8 +203,7 @@ void printStatus()
     String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
                        F(" delta=") + String(delta) + F(" |mag=") + String(mag) + F(" thrOn=") + String(touchDeltaOn) +
                        F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
-    sendFeedback(touchLine);
-    payload += touchLine + '\n';
+    sendFeedback(touchLine,force);
 
 #if ENABLE_LIGHT_SENSOR
     String lightLine = F("[Light] ");
@@ -229,22 +218,18 @@ void printStatus()
         lightLine += F("off rampAmb=");
         lightLine += String(rampAmbientFactor, 2);
     }
-    sendFeedback(lightLine);
-    payload += lightLine + '\n';
+    sendFeedback(lightLine,force);
 #else
     String lightLine = F("[Light] N/A");
-    sendFeedback(lightLine);
-    payload += lightLine + '\n';
+    sendFeedback(lightLine,force);
 #endif
 
 #if ENABLE_MUSIC_MODE
     String musicLine = String(F("[Music] ")) + (musicEnabled ? F("ON") : F("OFF"));
-    sendFeedback(musicLine);
-    payload += musicLine + '\n';
+    sendFeedback(musicLine,force);
 #else
     String musicLine = F("[Music] N/A");
-    sendFeedback(musicLine);
-    payload += musicLine + '\n';
+    sendFeedback(musicLine,force);
 #endif
 #if ENABLE_POTI
     String potiLine = String(F("[Poti] ")) + (potiEnabled ? F("ON") : F("OFF")) + F(" a=") + String(potiAlpha, 2) +
@@ -253,8 +238,7 @@ void printStatus()
 #else
     String potiLine = F("[Poti] N/A");
 #endif
-    sendFeedback(potiLine);
-    payload += potiLine + '\n';
+    sendFeedback(potiLine,force);
 
 #if ENABLE_PUSH_BUTTON
     String pushLine = String(F("[Push] ")) + (pushEnabled ? F("ON") : F("OFF")) + F(" db=") + String(pushDebounceMs) +
@@ -263,17 +247,15 @@ void printStatus()
 #else
     String pushLine = F("[Push] N/A");
 #endif
-    sendFeedback(pushLine);
-    payload += pushLine + '\n';
-
-    updateBleStatus(payload);
-    printStatusStructured();
+    sendFeedback(pushLine,force);
+#endif
+    printStatusStructured(force);
 }
 
 /**
  * @brief Emit structured sensor snapshot for machine parsing.
  */
-void printSensorsStructured()
+void printSensorsStructured(const bool &force)
 {
     String line = F("SENSORS|");
     line += F("touch_base=");
@@ -317,13 +299,14 @@ void printSensorsStructured()
 #else
     line += F("|music_env=N/A");
 #endif
-    sendFeedback(line);
+    sendFeedback(line,force);
 }
 /**
  * @brief Emit a single structured status line for easier parsing (key=value pairs).
  */
-void printStatusStructured()
+void printStatusStructured(const bool &force)
 {
+    // Core line (keep short for BLE MTU)
     String line = F("STATUS|");
     line += F("pattern=");
     line += String(currentPattern + 1);
@@ -379,187 +362,198 @@ void printStatusStructured()
     line += quickMaskToCsv();
     line += F("|presence=");
     line += presenceEnabled ? (presenceAddr.isEmpty() ? F("ON(no-dev)") : presenceAddr) : F("OFF");
+    sendFeedback(line,force);
+    updateBleStatus(line);
+
+    // Detail line: IO, PWM, light, music, inputs
+    String lineIO = F("STATUS1|");
 #if ENABLE_EXT_INPUT
-    line += F("|ext_in=");
-    line += extInputEnabled ? F("ON") : F("OFF");
-    line += F("|ext_mode=");
-    line += extInputAnalog ? F("ana") : F("dig");
-    line += F("|ext_alpha=");
-    line += String(extInputAlpha, 3);
-    line += F("|ext_delta=");
-    line += String(extInputDelta, 3);
-    line += F("|ext_val=");
-    line += extInputFiltered >= 0.0f ? String(extInputFiltered, 3) : F("N/A");
+    lineIO += F("ext_in=");
+    lineIO += extInputEnabled ? F("ON") : F("OFF");
+    lineIO += F("|ext_mode=");
+    lineIO += extInputAnalog ? F("ana") : F("dig");
+    lineIO += F("|ext_alpha=");
+    lineIO += String(extInputAlpha, 3);
+    lineIO += F("|ext_delta=");
+    lineIO += String(extInputDelta, 3);
+    lineIO += F("|ext_val=");
+    lineIO += extInputFiltered >= 0.0f ? String(extInputFiltered, 3) : F("N/A");
 #endif
 #if ENABLE_BT_SERIAL
-    line += F("|bt_sleep_boot_ms=");
-    line += String(getBtSleepAfterBootMs());
-    line += F("|bt_sleep_ble_ms=");
-    line += String(getBtSleepAfterBleMs());
+    lineIO += F("|bt_sleep_boot_ms=");
+    lineIO += String(getBtSleepAfterBootMs());
+    lineIO += F("|bt_sleep_ble_ms=");
+    lineIO += String(getBtSleepAfterBleMs());
 #endif
-    line += F("|custom_len=");
-    line += String(customLen);
-    line += F("|custom_step_ms=");
-    line += String(customStepMs);
-    line += F("|demo=");
-    line += demoActive ? F("ON") : F("OFF");
-    line += F("|gamma=");
-    line += String(outputGamma, 2);
-    line += F("|pwm_raw=");
-    line += String((uint32_t)lastPwmValue);
-    line += F("|pwm_max=");
-    line += String((uint32_t)PWM_MAX);
-    line += F("|bri_min=");
-    line += String(briMinUser * 100.0f, 1);
-    line += F("|bri_max=");
-    line += String(briMaxUser * 100.0f, 1);
+    lineIO += F("|custom_len=");
+    lineIO += String(customLen);
+    lineIO += F("|custom_step_ms=");
+    lineIO += String(customStepMs);
+    lineIO += F("|demo=");
+    lineIO += demoActive ? F("ON") : F("OFF");
+    lineIO += F("|gamma=");
+    lineIO += String(outputGamma, 2);
+    lineIO += F("|pwm_raw=");
+    lineIO += String((uint32_t)lastPwmValue);
+    lineIO += F("|pwm_max=");
+    lineIO += String((uint32_t)PWM_MAX);
+    lineIO += F("|bri_min=");
+    lineIO += String(briMinUser * 100.0f, 1);
+    lineIO += F("|bri_max=");
+    lineIO += String(briMaxUser * 100.0f, 1);
 #if ENABLE_LIGHT_SENSOR
-    line += F("|light=");
-    line += lightSensorEnabled ? F("ON") : F("OFF");
-    line += F("|light_gain=");
-    line += String(lightGain, 2);
-    line += F("|light_min=");
-    line += String(lightClampMin, 2);
-    line += F("|light_max=");
-    line += String(lightClampMax, 2);
-    line += F("|light_alpha=");
-    line += String(lightAlpha, 3);
-    line += F("|light_raw=");
-    line += String((int)lightFiltered);
-    line += F("|light_raw_min=");
-    line += String((int)lightMinRaw);
-    line += F("|light_raw_max=");
-    line += String((int)lightMaxRaw);
+    lineIO += F("|light=");
+    lineIO += lightSensorEnabled ? F("ON") : F("OFF");
+    lineIO += F("|light_gain=");
+    lineIO += String(lightGain, 2);
+    lineIO += F("|light_min=");
+    lineIO += String(lightClampMin, 2);
+    lineIO += F("|light_max=");
+    lineIO += String(lightClampMax, 2);
+    lineIO += F("|light_alpha=");
+    lineIO += String(lightAlpha, 3);
+    lineIO += F("|light_raw=");
+    lineIO += String((int)lightFiltered);
+    lineIO += F("|light_raw_min=");
+    lineIO += String((int)lightMinRaw);
+    lineIO += F("|light_raw_max=");
+    lineIO += String((int)lightMaxRaw);
 #else
-    line += F("|light=N/A");
+    lineIO += F("|light=N/A");
 #endif
 #if ENABLE_MUSIC_MODE
-    line += F("|music=");
-    line += musicEnabled ? F("ON") : F("OFF");
-    line += F("|music_gain=");
-    line += String(musicGain, 2);
-    line += F("|music_auto=");
-    line += musicAutoLamp ? F("ON") : F("OFF");
-    line += F("|music_thr=");
-    line += String(musicAutoThr, 2);
-    line += F("|music_mode=");
-    line += (musicMode == 1 ? F("beat") : F("direct"));
-    line += F("|music_mod=");
-    line += String(musicModScale, 3);
-    line += F("|music_kick_ms=");
-    line += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
-    line += F("|music_env=");
-    line += String(musicFiltered, 3);
-    line += F("|music_level=");
-    line += String(musicRawLevel, 3);
-    line += F("|music_smooth=");
-    line += String(musicSmoothing, 2);
-    line += F("|clap=");
-    line += clapEnabled ? F("ON") : F("OFF");
-    line += F("|clap_thr=");
-    line += String(clapThreshold, 2);
-    line += F("|clap_cool=");
-    line += String(clapCooldownMs);
-    line += F("|clap_cmd1=");
-    line += clapCmd1;
-    line += F("|clap_cmd2=");
-    line += clapCmd2;
-    line += F("|clap_cmd3=");
-    line += clapCmd3;
+    lineIO += F("|music=");
+    lineIO += musicEnabled ? F("ON") : F("OFF");
+    lineIO += F("|music_gain=");
+    lineIO += String(musicGain, 2);
+    lineIO += F("|music_auto=");
+    lineIO += musicAutoLamp ? F("ON") : F("OFF");
+    lineIO += F("|music_thr=");
+    lineIO += String(musicAutoThr, 2);
+    lineIO += F("|music_mode=");
+    lineIO += (musicMode == 1 ? F("beat") : F("direct"));
+    lineIO += F("|music_mod=");
+    lineIO += String(musicModScale, 3);
+    lineIO += F("|music_kick_ms=");
+    lineIO += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
+    lineIO += F("|music_env=");
+    lineIO += String(musicFiltered, 3);
+    lineIO += F("|music_level=");
+    lineIO += String(musicRawLevel, 3);
+    lineIO += F("|music_smooth=");
+    lineIO += String(musicSmoothing, 2);
+    lineIO += F("|clap=");
+    lineIO += clapEnabled ? F("ON") : F("OFF");
+    lineIO += F("|clap_thr=");
+    lineIO += String(clapThreshold, 2);
+    lineIO += F("|clap_cool=");
+    lineIO += String(clapCooldownMs);
+    lineIO += F("|clap_cmd1=");
+    lineIO += clapCmd1;
+    lineIO += F("|clap_cmd2=");
+    lineIO += clapCmd2;
+    lineIO += F("|clap_cmd3=");
+    lineIO += clapCmd3;
 #else
-    line += F("|music=N/A|clap=N/A");
+    lineIO += F("|music=N/A|clap=N/A");
 #endif
 #if ENABLE_POTI
-    line += F("|poti=");
-    line += potiEnabled ? F("ON") : F("OFF");
-    line += F("|poti_alpha=");
-    line += String(potiAlpha, 2);
-    line += F("|poti_delta=");
-    line += String(potiDeltaMin, 3);
-    line += F("|poti_off=");
-    line += String(potiOffThreshold, 3);
-    line += F("|poti_sample=");
-    line += String(potiSampleMs);
+    lineIO += F("|poti=");
+    lineIO += potiEnabled ? F("ON") : F("OFF");
+    lineIO += F("|poti_alpha=");
+    lineIO += String(potiAlpha, 2);
+    lineIO += F("|poti_delta=");
+    lineIO += String(potiDeltaMin, 3);
+    lineIO += F("|poti_off=");
+    lineIO += String(potiOffThreshold, 3);
+    lineIO += F("|poti_sample=");
+    lineIO += String(potiSampleMs);
 #else
-    line += F("|poti=N/A");
+    lineIO += F("|poti=N/A");
 #endif
 #if ENABLE_PUSH_BUTTON
-    line += F("|push=");
-    line += pushEnabled ? F("ON") : F("OFF");
-    line += F("|push_db=");
-    line += String(pushDebounceMs);
-    line += F("|push_dbl=");
-    line += String(pushDoubleMs);
-    line += F("|push_hold=");
-    line += String(pushHoldMs);
-    line += F("|push_step_ms=");
-    line += String(pushStepMs);
-    line += F("|push_step=");
-    line += String(pushStep, 3);
+    lineIO += F("|push=");
+    lineIO += pushEnabled ? F("ON") : F("OFF");
+    lineIO += F("|push_db=");
+    lineIO += String(pushDebounceMs);
+    lineIO += F("|push_dbl=");
+    lineIO += String(pushDoubleMs);
+    lineIO += F("|push_hold=");
+    lineIO += String(pushHoldMs);
+    lineIO += F("|push_step_ms=");
+    lineIO += String(pushStepMs);
+    lineIO += F("|push_step=");
+    lineIO += String(pushStep, 3);
 #else
-    line += F("|push=N/A");
+    lineIO += F("|push=N/A");
 #endif
+    sendFeedback(lineIO,force);
+    updateBleStatus(lineIO);
+
+    // Filters/status chunk (separate to stay under BLE MTU)
+    String line2 = F("STATUS2|");
     {
         FilterState filt;
         filtersGetState(filt);
-        line += F("|filter_iir=");
-        line += filt.iirEnabled ? F("ON") : F("OFF");
-        line += F("|filter_alpha=");
-        line += String(filt.iirAlpha, 3);
-        line += F("|filter_clip=");
-        line += filt.clipEnabled ? F("ON") : F("OFF");
-        line += F("|filter_clip_amt=");
-        line += String(filt.clipAmount, 2);
-        line += F("|filter_clip_curve=");
-        line += filt.clipCurve;
-        line += F("|filter_trem=");
-        line += filt.tremEnabled ? F("ON") : F("OFF");
-        line += F("|filter_trem_rate=");
-        line += String(filt.tremRateHz, 2);
-        line += F("|filter_trem_depth=");
-        line += String(filt.tremDepth, 2);
-        line += F("|filter_trem_wave=");
-        line += filt.tremWave;
-        line += F("|filter_spark=");
-        line += filt.sparkEnabled ? F("ON") : F("OFF");
-        line += F("|filter_spark_dens=");
-        line += String(filt.sparkDensity, 2);
-        line += F("|filter_spark_int=");
-        line += String(filt.sparkIntensity, 2);
-        line += F("|filter_spark_decay=");
-        line += String(filt.sparkDecayMs);
-        line += F("|filter_comp=");
-        line += filt.compEnabled ? F("ON") : F("OFF");
-        line += F("|filter_comp_thr=");
-        line += String(filt.compThr, 2);
-        line += F("|filter_comp_ratio=");
-        line += String(filt.compRatio, 2);
-        line += F("|filter_comp_att=");
-        line += String(filt.compAttackMs);
-        line += F("|filter_comp_rel=");
-        line += String(filt.compReleaseMs);
-        line += F("|filter_env=");
-        line += filt.envEnabled ? F("ON") : F("OFF");
-        line += F("|filter_env_att=");
-        line += String(filt.envAttackMs);
-        line += F("|filter_env_rel=");
-        line += String(filt.envReleaseMs);
-        line += F("|filter_delay=");
-        line += filt.delayEnabled ? F("ON") : F("OFF");
-        line += F("|filter_delay_ms=");
-        line += String(filt.delayMs);
-        line += F("|filter_delay_fb=");
-        line += String(filt.delayFeedback, 2);
-        line += F("|filter_delay_mix=");
-        line += String(filt.delayMix, 2);
+        line2 += F("filter_iir=");
+        line2 += filt.iirEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_alpha=");
+        line2 += String(filt.iirAlpha, 3);
+        line2 += F("|filter_clip=");
+        line2 += filt.clipEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_clip_amt=");
+        line2 += String(filt.clipAmount, 2);
+        line2 += F("|filter_clip_curve=");
+        line2 += filt.clipCurve;
+        line2 += F("|filter_trem=");
+        line2 += filt.tremEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_trem_rate=");
+        line2 += String(filt.tremRateHz, 2);
+        line2 += F("|filter_trem_depth=");
+        line2 += String(filt.tremDepth, 2);
+        line2 += F("|filter_trem_wave=");
+        line2 += filt.tremWave;
+        line2 += F("|filter_spark=");
+        line2 += filt.sparkEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_spark_dens=");
+        line2 += String(filt.sparkDensity, 2);
+        line2 += F("|filter_spark_int=");
+        line2 += String(filt.sparkIntensity, 2);
+        line2 += F("|filter_spark_decay=");
+        line2 += String(filt.sparkDecayMs);
+        line2 += F("|filter_comp=");
+        line2 += filt.compEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_comp_thr=");
+        line2 += String(filt.compThr, 2);
+        line2 += F("|filter_comp_ratio=");
+        line2 += String(filt.compRatio, 2);
+        line2 += F("|filter_comp_att=");
+        line2 += String(filt.compAttackMs);
+        line2 += F("|filter_comp_rel=");
+        line2 += String(filt.compReleaseMs);
+        line2 += F("|filter_env=");
+        line2 += filt.envEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_env_att=");
+        line2 += String(filt.envAttackMs);
+        line2 += F("|filter_env_rel=");
+        line2 += String(filt.envReleaseMs);
+        line2 += F("|filter_delay=");
+        line2 += filt.delayEnabled ? F("ON") : F("OFF");
+        line2 += F("|filter_delay_ms=");
+        line2 += String(filt.delayMs);
+        line2 += F("|filter_delay_fb=");
+        line2 += String(filt.delayFeedback, 2);
+        line2 += F("|filter_delay_mix=");
+        line2 += String(filt.delayMix, 2);
     }
-    sendFeedback(line);
+    sendFeedback(line2,force);
+    updateBleStatus(line2);
 }
 
 /**
  * @brief Print available serial/BLE command usage.
  */
-void printHelp()
+void printHelp(const bool &force)
 {
 #if ENABLE_HELP_TEXT
     const char *lines[] = {
@@ -614,8 +608,8 @@ void printHelp()
         "  help              - diese Übersicht",
     };
     for (auto l : lines)
-        sendFeedback(String(l));
+        sendFeedback(String(l),force);
 #else
-    sendFeedback(F("[Help] disabled to save flash. Commands in README."));
+    sendFeedback(F("[Help] disabled to save flash. Commands in README."),force);
 #endif
 }

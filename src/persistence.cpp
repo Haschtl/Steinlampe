@@ -90,7 +90,8 @@ static const char *PREF_KEY_PUSH_HOLD = "push_hold";
 static const char *PREF_KEY_PUSH_STEP_MS = "push_s_ms";
 static const char *PREF_KEY_PUSH_STEP = "push_step";
 #endif
-const char *PREF_KEY_PROFILE_BASE = "profile"; // profile slots profile1..profileN
+// profile slots profile1..profileN
+const char *PREF_KEY_PROFILE_BASE = "profile";
 const uint8_t PROFILE_SLOTS = 3;
 static const char *PREF_KEY_PWM_GAMMA = "pwm_g";
 static const char *PREF_KEY_FILTER_IIR_EN = "fil_iir_en";

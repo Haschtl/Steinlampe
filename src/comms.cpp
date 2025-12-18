@@ -34,7 +34,6 @@
 // Provided by main.cpp to route parsed command strings.
 void handleCommand(String line);
 void saveSettings();
-void sendFeedback(const String &line);
 
 // Trusted device storage (shared across helpers)
 static std::vector<String> trustedBle;
@@ -629,20 +628,22 @@ void pollCommunications()
 /**
  * @brief Broadcast a single text line to Serial, BT Serial (if connected) and BLE notify.
  */
-void sendFeedback(const String &line)
+void sendFeedback(const String &line, const bool &force)
 {
-  if (!feedbackAllowed())
+  bool allow = feedbackAllowed();
+  if (!allow && !force)
     return;
+
   Serial.println(line);
 #if ENABLE_BT_SERIAL
-  if (serialBt.hasClient())
+  if (allow && serialBt.hasClient())
   {
     serialBt.println(line);
   }
 #endif
 #if ENABLE_BLE
   // Send feedback only via status characteristic (notify/indicate) to keep GATT simple for clients.
-  if (bleClientConnected && bleStatusCharacteristic)
+  if (allow && bleClientConnected && bleStatusCharacteristic)
   {
     bleStatusCharacteristic->setValue(line.c_str());
     bleStatusCharacteristic->notify();
