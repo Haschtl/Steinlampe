@@ -32,9 +32,9 @@
 #include <esp_spp_api.h>
 
 // ---------- Pins ----------
-static const int PIN_PWM = 23;       // MOSFET-Gate
+static const int PIN_PWM = 23; // MOSFET-Gate
 #if ENABLE_SWITCH
-static const int PIN_SWITCH = 32;    // Kippschalter (digital)
+static const int PIN_SWITCH = 32; // Kippschalter (digital)
 #endif
 static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO27)
 #if ENABLE_POTI
@@ -49,7 +49,7 @@ static const int PUSH_ACTIVE_LEVEL = LOW;
 static const int SWITCH_ACTIVE_LEVEL = LOW;
 static const uint32_t SWITCH_DEBOUNCE_MS = 35;
 static const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
-static const uint32_t TOUCH_DOUBLE_MS = 500;  // Touch-Doppeltipp Erkennung
+static const uint32_t TOUCH_DOUBLE_MS = 500; // Touch-Doppeltipp Erkennung
 static const uint32_t SECURE_BOOT_WINDOW_MS = 1000;
 
 // Touch-Schwellwerte-Defaults
@@ -214,7 +214,7 @@ uint32_t patternStartMs = 0;
 // General flags/state
 bool autoCycle = Settings::DEFAULT_AUTOCYCLE;
 float patternSpeedScale = 1.0f;
-uint64_t quickMask = 0; // bitmask of modes used for quick switch tap cycling (supports up to 64 entries)
+uint64_t quickMask = 0;      // bitmask of modes used for quick switch tap cycling (supports up to 64 entries)
 size_t currentModeIndex = 0; // tracks current mode (patterns + profile slots)
 bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
@@ -402,6 +402,20 @@ float patternMusicDirect(uint32_t) { return 1.0f; }
 float patternMusicBeat(uint32_t) { return 1.0f; }
 #endif
 
+inline void forceLampOff(const char *reason = nullptr)
+{
+  rampActive = false;
+  lampOffPending = false;
+  outputScale = 0.0f;
+  lampEnabled = false;
+  notifyActive = false;
+  patternFilteredLevel = 0.0f;
+  patternFilterLastMs = 0;
+  applyPwmLevel(0.0f);
+  if (reason)
+    logLampState(reason);
+}
+
 bool wakeFadeActive = false;
 uint32_t wakeStartMs = 0;
 uint32_t wakeDurationMs = 0;
@@ -522,7 +536,7 @@ String buildProfileString()
   cfg += String(brightnessCap, 3);
   cfg += F(" pwm_gamma=");
   cfg += String(outputGamma, 2);
-  #if ENABLE_LIGHT_SENSOR
+#if ENABLE_LIGHT_SENSOR
   cfg += F(" ramp_amb=");
   cfg += String(rampAmbientFactor, 2);
   cfg += F(" light_gain=");
@@ -868,7 +882,6 @@ void exportConfig()
   sendFeedback(cfg);
 }
 
-
 /**
  * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
  */
@@ -989,7 +1002,6 @@ void saveSettings()
   prefs.putUInt(PREF_KEY_FILTER_DELAY_MS, filt.delayMs);
   prefs.putFloat(PREF_KEY_FILTER_DELAY_FB, filt.delayFeedback);
   prefs.putFloat(PREF_KEY_FILTER_DELAY_MIX, filt.delayMix);
-  
 }
 
 void applyDefaultSettings(float brightnessOverride, bool announce)
@@ -1022,7 +1034,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
   briMaxUser = Settings::BRI_MAX_DEFAULT;
   customLen = 0;
   customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
-  #if ENABLE_LIGHT_SENSOR
+#if ENABLE_LIGHT_SENSOR
   rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
   lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
   lightGain = Settings::LIGHT_GAIN_DEFAULT;
@@ -1074,7 +1086,6 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     sendFeedback(F("[Defaults] Settings reset to factory values"));
 }
 
-
 #if ENABLE_SWITCH
 /**
  * @brief Read the current raw logic level of the mechanical switch.
@@ -1093,7 +1104,14 @@ void initSwitchState()
   switchDebouncedState = switchRawState;
   lampEnabled = switchDebouncedState;
   if (!lampEnabled)
+  {
     ledcWrite(LEDC_CH, 0);
+    lastPwmValue = 0;
+  }
+  else
+  {
+    setLampEnabled(true, "init switch");
+  }
   lastSwitchOffMs = millis();
   lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
   modeTapArmed = false;
@@ -1256,8 +1274,10 @@ void loadSettings()
 #endif
 #if ENABLE_LIGHT_SENSOR
   rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
-  if (rampAmbientFactor < 0.0f) rampAmbientFactor = 0.0f;
-  if (rampAmbientFactor > 3.0f) rampAmbientFactor = 3.0f;
+  if (rampAmbientFactor < 0.0f)
+    rampAmbientFactor = 0.0f;
+  if (rampAmbientFactor > 3.0f)
+    rampAmbientFactor = 3.0f;
 #endif
 #if ENABLE_EXT_INPUT
   extInputEnabled = prefs.getBool("ext_en", false);
@@ -1372,59 +1392,87 @@ void loadSettings()
 #if ENABLE_MUSIC_MODE
   musicEnabled = prefs.getBool(PREF_KEY_MUSIC_EN, Settings::MUSIC_DEFAULT_ENABLED);
   musicGain = prefs.getFloat(PREF_KEY_MUSIC_GAIN, Settings::MUSIC_GAIN_DEFAULT);
-  if (musicGain < 0.1f) musicGain = 0.1f;
-  if (musicGain > 12.0f) musicGain = 12.0f;
+  if (musicGain < 0.1f)
+    musicGain = 0.1f;
+  if (musicGain > 12.0f)
+    musicGain = 12.0f;
   musicSmoothing = prefs.getFloat(PREF_KEY_MUSIC_SMOOTH, 0.4f);
-  if (musicSmoothing < 0.0f) musicSmoothing = 0.0f;
-  if (musicSmoothing > 1.0f) musicSmoothing = 1.0f;
+  if (musicSmoothing < 0.0f)
+    musicSmoothing = 0.0f;
+  if (musicSmoothing > 1.0f)
+    musicSmoothing = 1.0f;
   musicAutoLamp = prefs.getBool(PREF_KEY_MUSIC_AUTOLAMP, false);
   musicAutoThr = prefs.getFloat(PREF_KEY_MUSIC_AUTOTHR, 0.4f);
-  if (musicAutoThr < 0.05f) musicAutoThr = 0.05f;
-  if (musicAutoThr > 1.5f) musicAutoThr = 1.5f;
+  if (musicAutoThr < 0.05f)
+    musicAutoThr = 0.05f;
+  if (musicAutoThr > 1.5f)
+    musicAutoThr = 1.5f;
   musicMode = prefs.getUChar(PREF_KEY_MUSIC_MODE, 0);
-  if (musicMode > 1) musicMode = 0;
+  if (musicMode > 1)
+    musicMode = 0;
   clapEnabled = prefs.getBool(PREF_KEY_CLAP_EN, Settings::CLAP_DEFAULT_ENABLED);
   clapThreshold = prefs.getFloat(PREF_KEY_CLAP_THR, Settings::CLAP_THRESHOLD_DEFAULT);
   clapCooldownMs = prefs.getUInt(PREF_KEY_CLAP_COOL, Settings::CLAP_COOLDOWN_MS_DEFAULT);
   clapCmd1 = prefs.getString(PREF_KEY_CLAP_CMD1, clapCmd1);
   clapCmd2 = prefs.getString(PREF_KEY_CLAP_CMD2, clapCmd2);
   clapCmd3 = prefs.getString(PREF_KEY_CLAP_CMD3, clapCmd3);
-  if (clapThreshold < 0.05f) clapThreshold = 0.05f;
-  if (clapThreshold > 1.5f) clapThreshold = 1.5f;
-  if (clapCooldownMs < 200) clapCooldownMs = 200;
+  if (clapThreshold < 0.05f)
+    clapThreshold = 0.05f;
+  if (clapThreshold > 1.5f)
+    clapThreshold = 1.5f;
+  if (clapCooldownMs < 200)
+    clapCooldownMs = 200;
 #endif
 #if ENABLE_POTI
   potiEnabled = prefs.getBool(PREF_KEY_POTI_EN, true);
   potiAlpha = prefs.getFloat(PREF_KEY_POTI_ALPHA, Settings::POTI_ALPHA);
-  if (potiAlpha < 0.01f) potiAlpha = 0.01f;
-  if (potiAlpha > 1.0f) potiAlpha = 1.0f;
+  if (potiAlpha < 0.01f)
+    potiAlpha = 0.01f;
+  if (potiAlpha > 1.0f)
+    potiAlpha = 1.0f;
   potiDeltaMin = prefs.getFloat(PREF_KEY_POTI_DELTA, Settings::POTI_DELTA_MIN);
-  if (potiDeltaMin < 0.001f) potiDeltaMin = 0.001f;
-  if (potiDeltaMin > 0.5f) potiDeltaMin = 0.5f;
+  if (potiDeltaMin < 0.001f)
+    potiDeltaMin = 0.001f;
+  if (potiDeltaMin > 0.5f)
+    potiDeltaMin = 0.5f;
   potiOffThreshold = prefs.getFloat(PREF_KEY_POTI_OFF, Settings::POTI_OFF_THRESHOLD);
-  if (potiOffThreshold < 0.0f) potiOffThreshold = 0.0f;
-  if (potiOffThreshold > 0.5f) potiOffThreshold = 0.5f;
+  if (potiOffThreshold < 0.0f)
+    potiOffThreshold = 0.0f;
+  if (potiOffThreshold > 0.5f)
+    potiOffThreshold = 0.5f;
   potiSampleMs = prefs.getUInt(PREF_KEY_POTI_SAMPLE, Settings::POTI_SAMPLE_MS);
-  if (potiSampleMs < 10) potiSampleMs = 10;
-  if (potiSampleMs > 2000) potiSampleMs = 2000;
+  if (potiSampleMs < 10)
+    potiSampleMs = 10;
+  if (potiSampleMs > 2000)
+    potiSampleMs = 2000;
 #endif
 #if ENABLE_PUSH_BUTTON
   pushEnabled = prefs.getBool(PREF_KEY_PUSH_EN, true);
   pushDebounceMs = prefs.getUInt(PREF_KEY_PUSH_DB, Settings::PUSH_DEBOUNCE_MS);
-  if (pushDebounceMs < 5) pushDebounceMs = 5;
-  if (pushDebounceMs > 500) pushDebounceMs = 500;
+  if (pushDebounceMs < 5)
+    pushDebounceMs = 5;
+  if (pushDebounceMs > 500)
+    pushDebounceMs = 500;
   pushDoubleMs = prefs.getUInt(PREF_KEY_PUSH_DBL, Settings::PUSH_DOUBLE_MS);
-  if (pushDoubleMs < 100) pushDoubleMs = 100;
-  if (pushDoubleMs > 5000) pushDoubleMs = 5000;
+  if (pushDoubleMs < 100)
+    pushDoubleMs = 100;
+  if (pushDoubleMs > 5000)
+    pushDoubleMs = 5000;
   pushHoldMs = prefs.getUInt(PREF_KEY_PUSH_HOLD, Settings::PUSH_HOLD_MS);
-  if (pushHoldMs < 200) pushHoldMs = 200;
-  if (pushHoldMs > 6000) pushHoldMs = 6000;
+  if (pushHoldMs < 200)
+    pushHoldMs = 200;
+  if (pushHoldMs > 6000)
+    pushHoldMs = 6000;
   pushStepMs = prefs.getUInt(PREF_KEY_PUSH_STEP_MS, Settings::PUSH_BRI_STEP_MS);
-  if (pushStepMs < 50) pushStepMs = 50;
-  if (pushStepMs > 2000) pushStepMs = 2000;
+  if (pushStepMs < 50)
+    pushStepMs = 50;
+  if (pushStepMs > 2000)
+    pushStepMs = 2000;
   pushStep = prefs.getFloat(PREF_KEY_PUSH_STEP, Settings::PUSH_BRI_STEP);
-  if (pushStep < 0.005f) pushStep = 0.005f;
-  if (pushStep > 0.5f) pushStep = 0.5f;
+  if (pushStep < 0.005f)
+    pushStep = 0.005f;
+  if (pushStep > 0.5f)
+    pushStep = 0.5f;
 #endif
   outputGamma = prefs.getFloat(PREF_KEY_PWM_GAMMA, Settings::PWM_GAMMA_DEFAULT);
   if (outputGamma < 0.5f || outputGamma > 4.0f)
@@ -1435,11 +1483,16 @@ void loadSettings()
   lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
   lightClampMax = prefs.getFloat(PREF_KEY_LCLAMP_MAX, Settings::LIGHT_CLAMP_MAX_DEFAULT);
   lightAlpha = prefs.getFloat(PREF_KEY_LIGHT_ALPHA, Settings::LIGHT_ALPHA);
-  if (lightAlpha < 0.001f) lightAlpha = 0.001f;
-  if (lightAlpha > 0.8f) lightAlpha = 0.8f;
-  if (lightClampMin < 0.0f) lightClampMin = 0.0f;
-  if (lightClampMax > 1.5f) lightClampMax = 1.0f;
-  if (lightClampMin >= lightClampMax) {
+  if (lightAlpha < 0.001f)
+    lightAlpha = 0.001f;
+  if (lightAlpha > 0.8f)
+    lightAlpha = 0.8f;
+  if (lightClampMin < 0.0f)
+    lightClampMin = 0.0f;
+  if (lightClampMax > 1.5f)
+    lightClampMax = 1.0f;
+  if (lightClampMin >= lightClampMax)
+  {
     lightClampMin = Settings::LIGHT_CLAMP_MIN_DEFAULT;
     lightClampMax = Settings::LIGHT_CLAMP_MAX_DEFAULT;
   }
@@ -1454,7 +1507,6 @@ void loadSettings()
 #endif
   setPattern(currentPattern, false, false);
 }
-
 
 /**
  * @brief Print averaged touch sensor data for calibration purposes.
@@ -1605,7 +1657,7 @@ void calibrateTouchGuided()
   int delta = touchAvg - baseAvg;
   if (delta < 3)
     delta = 3;
-  int newOn = delta * 6 / 10;  // ~60% of observed delta
+  int newOn = delta * 6 / 10; // ~60% of observed delta
   if (newOn < 4)
     newOn = 4;
   if (newOn > 60)
@@ -1727,8 +1779,10 @@ void updateExternalInput()
     extInputLastSampleMs = now;
     int raw = analogRead(Settings::EXT_INPUT_PIN);
     float norm = (float)raw / 4095.0f;
-    if (norm < 0.0f) norm = 0.0f;
-    if (norm > 1.0f) norm = 1.0f;
+    if (norm < 0.0f)
+      norm = 0.0f;
+    if (norm > 1.0f)
+      norm = 1.0f;
     float a = clamp01(extInputAlpha);
     if (extInputFiltered < 0.0f)
       extInputFiltered = norm;
@@ -1821,10 +1875,13 @@ void cancelSleepFade()
 void setBrightnessPercent(float percent, bool persist = false, bool announce = true)
 {
   float cap = brightnessCap;
-  if (cap < briMinUser) cap = briMinUser;
-  if (cap > 1.0f) cap = 1.0f;
+  if (cap < briMinUser)
+    cap = briMinUser;
+  if (cap > 1.0f)
+    cap = 1.0f;
   float target = clamp01(percent / 100.0f);
-  if (target > cap) target = cap;
+  if (target > cap)
+    target = cap;
   uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
   startBrightnessRamp(target, dur);
   if (announce)
@@ -2384,7 +2441,8 @@ void importConfig(const String &args)
     if (key == "ramp")
     {
       uint32_t v = val.toInt();
-      if (v >= 50 && v <= 10000) {
+      if (v >= 50 && v <= 10000)
+      {
         rampDurationMs = v;
         rampOnDurationMs = v;
         rampOffDurationMs = v;
@@ -2430,12 +2488,12 @@ void importConfig(const String &args)
       if (v > 0)
         touchDeltaOff = v;
     }
-  else if (key == "touch_hold")
-  {
-    uint32_t v = val.toInt();
-    if (v >= 500 && v <= 5000)
-      touchHoldStartMs = v;
-  }
+    else if (key == "touch_hold")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 500 && v <= 5000)
+        touchHoldStartMs = v;
+    }
     else if (key == "pat_scale")
     {
       float v = val.toFloat();
@@ -2490,183 +2548,285 @@ void importConfig(const String &args)
     {
       presenceAddr = val;
     }
-  else if (key == "touch_dim")
-  {
-    bool v;
-    if (parseBool(val, v))
-      touchDimEnabled = v;
-  }
-  else if (key == "touch_dim_step")
-  {
-    float v = val.toFloat();
-    if (v < 0.001f) v = 0.001f;
-    if (v > 0.05f) v = 0.05f;
-    touchDimStep = v;
-  }
-  else if (key == "filter_iir")
-  {
-    bool v;
-    if (parseBool(val, v))
-      filtersSetIir(v, Settings::FILTER_IIR_ALPHA_DEFAULT);
-  }
-  else if (key == "filter_iir_a")
-  {
-    float v = val.toFloat();
-    if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetIir(f.iirEnabled, v);
-  }
-  else if (key == "filter_clip")
-  {
-    bool v;
-    if (parseBool(val, v))
+    else if (key == "touch_dim")
     {
-      FilterState f; filtersGetState(f);
-      filtersSetClip(v, f.clipAmount, f.clipCurve);
+      bool v;
+      if (parseBool(val, v))
+        touchDimEnabled = v;
     }
-  }
-  else if (key == "filter_clip_amt")
-  {
-    float v = val.toFloat();
-    if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetClip(f.clipEnabled, v, f.clipCurve);
-  }
-  else if (key == "filter_clip_curve")
-  {
-    uint8_t v = (uint8_t)val.toInt();
-    if (v > 1) v = 0;
-    FilterState f; filtersGetState(f);
-    filtersSetClip(f.clipEnabled, f.clipAmount, v);
-  }
-  else if (key == "filter_comp")
-  {
-    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetComp(v, f.compThr, f.compRatio, f.compAttackMs, f.compReleaseMs); }
-  }
-  else if (key == "filter_comp_thr")
-  {
-    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 1.2f) v = 1.2f;
-    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, v, f.compRatio, f.compAttackMs, f.compReleaseMs);
-  }
-  else if (key == "filter_comp_ratio")
-  {
-    float v = val.toFloat(); if (v < 1.0f) v = 1.0f; if (v > 10.0f) v = 10.0f;
-    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, v, f.compAttackMs, f.compReleaseMs);
-  }
-  else if (key == "filter_comp_att")
-  {
-    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 2000) v = 2000;
-    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, f.compRatio, v, f.compReleaseMs);
-  }
-  else if (key == "filter_comp_rel")
-  {
-    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 4000) v = 4000;
-    FilterState f; filtersGetState(f); filtersSetComp(f.compEnabled, f.compThr, f.compRatio, f.compAttackMs, v);
-  }
-  else if (key == "filter_env")
-  {
-    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetEnv(v, f.envAttackMs, f.envReleaseMs); }
-  }
-  else if (key == "filter_env_att")
-  {
-    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 4000) v = 4000;
-    FilterState f; filtersGetState(f); filtersSetEnv(f.envEnabled, v, f.envReleaseMs);
-  }
-  else if (key == "filter_env_rel")
-  {
-    uint32_t v = val.toInt(); if (v < 1) v = 1; if (v > 6000) v = 6000;
-    FilterState f; filtersGetState(f); filtersSetEnv(f.envEnabled, f.envAttackMs, v);
-  }
-  else if (key == "filter_trem")
-  {
-    bool v;
-    if (parseBool(val, v))
+    else if (key == "touch_dim_step")
     {
-      FilterState f; filtersGetState(f);
-      filtersSetTrem(v, f.tremRateHz, f.tremDepth, f.tremWave);
+      float v = val.toFloat();
+      if (v < 0.001f)
+        v = 0.001f;
+      if (v > 0.05f)
+        v = 0.05f;
+      touchDimStep = v;
     }
-  }
-  else if (key == "filter_trem_rate")
-  {
-    float v = val.toFloat();
-    if (v < 0.05f) v = 0.05f;
-    if (v > 20.0f) v = 20.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetTrem(f.tremEnabled, v, f.tremDepth, f.tremWave);
-  }
-  else if (key == "filter_trem_depth")
-  {
-    float v = val.toFloat();
-    if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetTrem(f.tremEnabled, f.tremRateHz, v, f.tremWave);
-  }
-  else if (key == "filter_trem_wave")
-  {
-    uint8_t v = (uint8_t)val.toInt();
-    if (v > 1) v = 0;
-    FilterState f; filtersGetState(f);
-    filtersSetTrem(f.tremEnabled, f.tremRateHz, f.tremDepth, v);
-  }
-  else if (key == "filter_spark")
-  {
-    bool v;
-    if (parseBool(val, v))
+    else if (key == "filter_iir")
     {
-      FilterState f; filtersGetState(f);
-      filtersSetSpark(v, f.sparkDensity, f.sparkIntensity, f.sparkDecayMs);
+      bool v;
+      if (parseBool(val, v))
+        filtersSetIir(v, Settings::FILTER_IIR_ALPHA_DEFAULT);
     }
-  }
-  else if (key == "filter_spark_dens")
-  {
-    float v = val.toFloat();
-    if (v < 0.0f) v = 0.0f;
-    if (v > 20.0f) v = 20.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetSpark(f.sparkEnabled, v, f.sparkIntensity, f.sparkDecayMs);
-  }
-  else if (key == "filter_spark_int")
-  {
-    float v = val.toFloat();
-    if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
-    FilterState f; filtersGetState(f);
-    filtersSetSpark(f.sparkEnabled, f.sparkDensity, v, f.sparkDecayMs);
-  }
-  else if (key == "filter_spark_decay")
-  {
-    uint32_t v = val.toInt();
-    if (v < 10) v = 10;
-    if (v > 5000) v = 5000;
-    FilterState f; filtersGetState(f);
-    filtersSetSpark(f.sparkEnabled, f.sparkDensity, f.sparkIntensity, v);
-  }
-  else if (key == "filter_delay")
-  {
-    bool v; if (parseBool(val, v)) { FilterState f; filtersGetState(f); filtersSetDelay(v, f.delayMs, f.delayFeedback, f.delayMix); }
-  }
-  else if (key == "filter_delay_ms")
-  {
-    uint32_t v = val.toInt(); if (v < 10) v = 10; if (v > 5000) v = 5000;
-    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, v, f.delayFeedback, f.delayMix);
-  }
-  else if (key == "filter_delay_fb")
-  {
-    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 0.95f) v = 0.95f;
-    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, f.delayMs, v, f.delayMix);
-  }
-  else if (key == "filter_delay_mix")
-  {
-    float v = val.toFloat(); if (v < 0.0f) v = 0.0f; if (v > 1.0f) v = 1.0f;
-    FilterState f; filtersGetState(f); filtersSetDelay(f.delayEnabled, f.delayMs, f.delayFeedback, v);
-  }
-  else if (key == "light_gain")
-  {
+    else if (key == "filter_iir_a")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetIir(f.iirEnabled, v);
+    }
+    else if (key == "filter_clip")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetClip(v, f.clipAmount, f.clipCurve);
+      }
+    }
+    else if (key == "filter_clip_amt")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetClip(f.clipEnabled, v, f.clipCurve);
+    }
+    else if (key == "filter_clip_curve")
+    {
+      uint8_t v = (uint8_t)val.toInt();
+      if (v > 1)
+        v = 0;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetClip(f.clipEnabled, f.clipAmount, v);
+    }
+    else if (key == "filter_comp")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetComp(v, f.compThr, f.compRatio, f.compAttackMs, f.compReleaseMs);
+      }
+    }
+    else if (key == "filter_comp_thr")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.2f)
+        v = 1.2f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetComp(f.compEnabled, v, f.compRatio, f.compAttackMs, f.compReleaseMs);
+    }
+    else if (key == "filter_comp_ratio")
+    {
+      float v = val.toFloat();
+      if (v < 1.0f)
+        v = 1.0f;
+      if (v > 10.0f)
+        v = 10.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetComp(f.compEnabled, f.compThr, v, f.compAttackMs, f.compReleaseMs);
+    }
+    else if (key == "filter_comp_att")
+    {
+      uint32_t v = val.toInt();
+      if (v < 1)
+        v = 1;
+      if (v > 2000)
+        v = 2000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetComp(f.compEnabled, f.compThr, f.compRatio, v, f.compReleaseMs);
+    }
+    else if (key == "filter_comp_rel")
+    {
+      uint32_t v = val.toInt();
+      if (v < 1)
+        v = 1;
+      if (v > 4000)
+        v = 4000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetComp(f.compEnabled, f.compThr, f.compRatio, f.compAttackMs, v);
+    }
+    else if (key == "filter_env")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetEnv(v, f.envAttackMs, f.envReleaseMs);
+      }
+    }
+    else if (key == "filter_env_att")
+    {
+      uint32_t v = val.toInt();
+      if (v < 1)
+        v = 1;
+      if (v > 4000)
+        v = 4000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetEnv(f.envEnabled, v, f.envReleaseMs);
+    }
+    else if (key == "filter_env_rel")
+    {
+      uint32_t v = val.toInt();
+      if (v < 1)
+        v = 1;
+      if (v > 6000)
+        v = 6000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetEnv(f.envEnabled, f.envAttackMs, v);
+    }
+    else if (key == "filter_trem")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetTrem(v, f.tremRateHz, f.tremDepth, f.tremWave);
+      }
+    }
+    else if (key == "filter_trem_rate")
+    {
+      float v = val.toFloat();
+      if (v < 0.05f)
+        v = 0.05f;
+      if (v > 20.0f)
+        v = 20.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetTrem(f.tremEnabled, v, f.tremDepth, f.tremWave);
+    }
+    else if (key == "filter_trem_depth")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetTrem(f.tremEnabled, f.tremRateHz, v, f.tremWave);
+    }
+    else if (key == "filter_trem_wave")
+    {
+      uint8_t v = (uint8_t)val.toInt();
+      if (v > 1)
+        v = 0;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetTrem(f.tremEnabled, f.tremRateHz, f.tremDepth, v);
+    }
+    else if (key == "filter_spark")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetSpark(v, f.sparkDensity, f.sparkIntensity, f.sparkDecayMs);
+      }
+    }
+    else if (key == "filter_spark_dens")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 20.0f)
+        v = 20.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetSpark(f.sparkEnabled, v, f.sparkIntensity, f.sparkDecayMs);
+    }
+    else if (key == "filter_spark_int")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetSpark(f.sparkEnabled, f.sparkDensity, v, f.sparkDecayMs);
+    }
+    else if (key == "filter_spark_decay")
+    {
+      uint32_t v = val.toInt();
+      if (v < 10)
+        v = 10;
+      if (v > 5000)
+        v = 5000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetSpark(f.sparkEnabled, f.sparkDensity, f.sparkIntensity, v);
+    }
+    else if (key == "filter_delay")
+    {
+      bool v;
+      if (parseBool(val, v))
+      {
+        FilterState f;
+        filtersGetState(f);
+        filtersSetDelay(v, f.delayMs, f.delayFeedback, f.delayMix);
+      }
+    }
+    else if (key == "filter_delay_ms")
+    {
+      uint32_t v = val.toInt();
+      if (v < 10)
+        v = 10;
+      if (v > 5000)
+        v = 5000;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetDelay(f.delayEnabled, v, f.delayFeedback, f.delayMix);
+    }
+    else if (key == "filter_delay_fb")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 0.95f)
+        v = 0.95f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetDelay(f.delayEnabled, f.delayMs, v, f.delayMix);
+    }
+    else if (key == "filter_delay_mix")
+    {
+      float v = val.toFloat();
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
+      FilterState f;
+      filtersGetState(f);
+      filtersSetDelay(f.delayEnabled, f.delayMs, f.delayFeedback, v);
+    }
+    else if (key == "light_gain")
+    {
 #if ENABLE_LIGHT_SENSOR
-    lightGain = val.toFloat();
+      lightGain = val.toFloat();
       if (lightGain < 0.1f)
         lightGain = 0.1f;
       if (lightGain > 5.0f)
@@ -2764,24 +2924,24 @@ void importConfig(const String &args)
       if (v >= 0.01f && v <= 10.0f)
         rampEaseOnPower = v;
     }
-  else if (key == "ramp_off_pow")
-  {
-    float v = val.toFloat();
-    if (v >= 0.01f && v <= 10.0f)
-      rampEaseOffPower = v;
-  }
-  else if (key == "ramp_on_ms")
-  {
-    uint32_t v = val.toInt();
-    if (v >= 50 && v <= 10000)
-      rampOnDurationMs = v;
-  }
-  else if (key == "ramp_off_ms")
-  {
-    uint32_t v = val.toInt();
-    if (v >= 50 && v <= 10000)
-      rampOffDurationMs = v;
-  }
+    else if (key == "ramp_off_pow")
+    {
+      float v = val.toFloat();
+      if (v >= 0.01f && v <= 10.0f)
+        rampEaseOffPower = v;
+    }
+    else if (key == "ramp_on_ms")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampOnDurationMs = v;
+    }
+    else if (key == "ramp_off_ms")
+    {
+      uint32_t v = val.toInt();
+      if (v >= 50 && v <= 10000)
+        rampOffDurationMs = v;
+    }
     else if (key == "pwm_gamma")
     {
       float v = val.toFloat();
@@ -2923,7 +3083,8 @@ void syncLampToSwitch()
 #if ENABLE_MUSIC_MODE
 void executeClapCommand(uint8_t count)
 {
-  String cmd = (count == 1) ? clapCmd1 : (count == 2) ? clapCmd2 : clapCmd3;
+  String cmd = (count == 1) ? clapCmd1 : (count == 2) ? clapCmd2
+                                                      : clapCmd3;
   cmd.trim();
   if (cmd.isEmpty())
     return;
@@ -3166,7 +3327,7 @@ void handleCommand(String line)
       for (size_t i = 0; i < count; ++i)
         customPattern[i] = vals[i];
       saveSettings();
-      sendFeedback(String(F("[Custom] Stored " )) + String(count) + F(" values"));
+      sendFeedback(String(F("[Custom] Stored ")) + String(count) + F(" values"));
     }
     else
     {
@@ -3225,20 +3386,20 @@ void handleCommand(String line)
     int pos = lower.indexOf("fade");
     String arg = line.substring(pos + 4);
     arg.trim();
-  if (arg.startsWith("amt"))
-  {
-    float v = arg.substring(3).toFloat();
-    if (v >= 0.01f && v <= 10.0f)
+    if (arg.startsWith("amt"))
     {
-      patternFadeStrength = v;
-      saveSettings();
-      sendFeedback(String(F("[Pattern] fade amt=")) + String(v, 2));
+      float v = arg.substring(3).toFloat();
+      if (v >= 0.01f && v <= 10.0f)
+      {
+        patternFadeStrength = v;
+        saveSettings();
+        sendFeedback(String(F("[Pattern] fade amt=")) + String(v, 2));
+      }
+      else
+      {
+        sendFeedback(F("Usage: pat fade amt 0.01-10"));
+      }
     }
-    else
-    {
-      sendFeedback(F("Usage: pat fade amt 0.01-10"));
-    }
-  }
     else
     {
       bool v;
@@ -3328,10 +3489,14 @@ void handleCommand(String line)
           rest.trim();
         }
         amt = rest.toFloat();
-        if (amt < 0.0f) amt = 0.0f;
-        if (amt > 1.0f) amt = 1.0f;
-        if (rest.indexOf("soft") >= 0) curve = 1;
-        else if (rest.indexOf("tanh") >= 0) curve = 0;
+        if (amt < 0.0f)
+          amt = 0.0f;
+        if (amt > 1.0f)
+          amt = 1.0f;
+        if (rest.indexOf("soft") >= 0)
+          curve = 1;
+        else if (rest.indexOf("tanh") >= 0)
+          curve = 0;
       }
       filtersSetClip(en, amt, curve);
       saveSettings();
@@ -3365,17 +3530,23 @@ void handleCommand(String line)
         String rest2 = rest.substring(pos2 + 1);
         rest2.trim();
         depth = rest2.toFloat();
-        if (rest2.indexOf("tri") >= 0) wave = 1;
-        else wave = 0;
+        if (rest2.indexOf("tri") >= 0)
+          wave = 1;
+        else
+          wave = 0;
       }
       else if (rest.length())
       {
         rate = rest.toFloat();
       }
-      if (rate < 0.05f) rate = 0.05f;
-      if (rate > 20.0f) rate = 20.0f;
-      if (depth < 0.0f) depth = 0.0f;
-      if (depth > 1.0f) depth = 1.0f;
+      if (rate < 0.05f)
+        rate = 0.05f;
+      if (rate > 20.0f)
+        rate = 20.0f;
+      if (depth < 0.0f)
+        depth = 0.0f;
+      if (depth > 1.0f)
+        depth = 1.0f;
       filtersSetTrem(en, rate, depth, wave);
       saveSettings();
       sendFeedback(String(F("[Filter] Trem ")) + (en ? F("ON ") : F("OFF ")) + F(" rate=") + String(rate, 2) + F(" depth=") + String(depth, 2));
@@ -3413,12 +3584,18 @@ void handleCommand(String line)
           }
         }
       }
-      if (dens < 0.0f) dens = 0.0f;
-      if (dens > 20.0f) dens = 20.0f;
-      if (inten < 0.0f) inten = 0.0f;
-      if (inten > 1.0f) inten = 1.0f;
-      if (dec < 10) dec = 10;
-      if (dec > 5000) dec = 5000;
+      if (dens < 0.0f)
+        dens = 0.0f;
+      if (dens > 20.0f)
+        dens = 20.0f;
+      if (inten < 0.0f)
+        inten = 0.0f;
+      if (inten > 1.0f)
+        inten = 1.0f;
+      if (dec < 10)
+        dec = 10;
+      if (dec > 5000)
+        dec = 5000;
       filtersSetSpark(en, dens, inten, dec);
       saveSettings();
       sendFeedback(String(F("[Filter] Spark ")) + (en ? F("ON ") : F("OFF ")) + F(" dens=") + String(dens, 2) + F(" int=") + String(inten, 2) + F(" dec=") + String(dec) + F("ms"));
@@ -3463,14 +3640,22 @@ void handleCommand(String line)
           }
         }
       }
-      if (thr < 0.0f) thr = 0.0f;
-      if (thr > 1.2f) thr = 1.2f;
-      if (ratio < 1.0f) ratio = 1.0f;
-      if (ratio > 10.0f) ratio = 10.0f;
-      if (att < 1) att = 1;
-      if (att > 2000) att = 2000;
-      if (rel < 1) rel = 1;
-      if (rel > 4000) rel = 4000;
+      if (thr < 0.0f)
+        thr = 0.0f;
+      if (thr > 1.2f)
+        thr = 1.2f;
+      if (ratio < 1.0f)
+        ratio = 1.0f;
+      if (ratio > 10.0f)
+        ratio = 10.0f;
+      if (att < 1)
+        att = 1;
+      if (att > 2000)
+        att = 2000;
+      if (rel < 1)
+        rel = 1;
+      if (rel > 4000)
+        rel = 4000;
       filtersSetComp(en, thr, ratio, att, rel);
       saveSettings();
       sendFeedback(String(F("[Filter] Comp ")) + (en ? F("ON ") : F("OFF ")) + F(" thr=") + String(thr, 2) + F(" ratio=") + String(ratio, 2) + F(" att=") + String(att) + F("ms rel=") + String(rel) + F("ms"));
@@ -3502,10 +3687,14 @@ void handleCommand(String line)
           rel = rest.substring(p2 + 1).toInt();
         }
       }
-      if (att < 1) att = 1;
-      if (att > 4000) att = 4000;
-      if (rel < 1) rel = 1;
-      if (rel > 6000) rel = 6000;
+      if (att < 1)
+        att = 1;
+      if (att > 4000)
+        att = 4000;
+      if (rel < 1)
+        rel = 1;
+      if (rel > 6000)
+        rel = 6000;
       filtersSetEnv(en, att, rel);
       saveSettings();
       sendFeedback(String(F("[Filter] Env ")) + (en ? F("ON ") : F("OFF ")) + F(" att=") + String(att) + F("ms rel=") + String(rel) + F("ms"));
@@ -3543,12 +3732,18 @@ void handleCommand(String line)
           }
         }
       }
-      if (dMs < 10) dMs = 10;
-      if (dMs > 5000) dMs = 5000;
-      if (fb < 0.0f) fb = 0.0f;
-      if (fb > 0.95f) fb = 0.95f;
-      if (mix < 0.0f) mix = 0.0f;
-      if (mix > 1.0f) mix = 1.0f;
+      if (dMs < 10)
+        dMs = 10;
+      if (dMs > 5000)
+        dMs = 5000;
+      if (fb < 0.0f)
+        fb = 0.0f;
+      if (fb > 0.95f)
+        fb = 0.95f;
+      if (mix < 0.0f)
+        mix = 0.0f;
+      if (mix > 1.0f)
+        mix = 1.0f;
       filtersSetDelay(en, dMs, fb, mix);
       saveSettings();
       sendFeedback(String(F("[Filter] Delay ")) + (en ? F("ON ") : F("OFF ")) + F(" ms=") + String(dMs) + F(" fb=") + String(fb, 2) + F(" mix=") + String(mix, 2));
@@ -3621,8 +3816,10 @@ void handleCommand(String line)
     else if (arg.startsWith("alpha"))
     {
       float v = arg.substring(5).toFloat();
-      if (v < 0.0f) v = 0.0f;
-      if (v > 1.0f) v = 1.0f;
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
       extInputAlpha = v;
       saveSettings();
       sendFeedback(String(F("[Ext] alpha=")) + String(v, 3));
@@ -3630,8 +3827,10 @@ void handleCommand(String line)
     else if (arg.startsWith("delta"))
     {
       float v = arg.substring(5).toFloat();
-      if (v < 0.0f) v = 0.0f;
-      if (v > 1.0f) v = 1.0f;
+      if (v < 0.0f)
+        v = 0.0f;
+      if (v > 1.0f)
+        v = 1.0f;
       extInputDelta = v;
       saveSettings();
       sendFeedback(String(F("[Ext] delta=")) + String(v, 3));
@@ -3711,7 +3910,8 @@ void handleCommand(String line)
     if (arg.startsWith("boot"))
     {
       float min = arg.substring(4).toFloat();
-      if (min < 0.0f) min = 0.0f;
+      if (min < 0.0f)
+        min = 0.0f;
       uint32_t ms = (uint32_t)(min * 60000.0f);
 #if ENABLE_BT_SERIAL
       setBtSleepAfterBootMs(ms);
@@ -3722,7 +3922,8 @@ void handleCommand(String line)
     else if (arg.startsWith("ble"))
     {
       float min = arg.substring(3).toFloat();
-      if (min < 0.0f) min = 0.0f;
+      if (min < 0.0f)
+        min = 0.0f;
       uint32_t ms = (uint32_t)(min * 60000.0f);
 #if ENABLE_BT_SERIAL
       setBtSleepAfterBleMs(ms);
@@ -3806,7 +4007,7 @@ void handleCommand(String line)
       {
         rampEaseOffType = etype;
         rampEaseOffPower = power;
-      sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
+        sendFeedback(String(F("[Ramp] ease off ")) + easeToString(etype) + F(" pow=") + String(power, 2));
       }
       saveSettings();
     }
@@ -3926,51 +4127,90 @@ void handleCommand(String line)
       sendFeedback(F("Usage: morse <text>"));
       return;
     }
-    auto symbol = [](char c) -> const char * {
+    auto symbol = [](char c) -> const char *
+    {
       switch (c)
       {
-      case 'A': return ".-";
-      case 'B': return "-...";
-      case 'C': return "-.-.";
-      case 'D': return "-..";
-      case 'E': return ".";
-      case 'F': return "..-.";
-      case 'G': return "--.";
-      case 'H': return "....";
-      case 'I': return "..";
-      case 'J': return ".---";
-      case 'K': return "-.-";
-      case 'L': return ".-..";
-      case 'M': return "--";
-      case 'N': return "-.";
-      case 'O': return "---";
-      case 'P': return ".--.";
-      case 'Q': return "--.-";
-      case 'R': return ".-.";
-      case 'S': return "...";
-      case 'T': return "-";
-      case 'U': return "..-";
-      case 'V': return "...-";
-      case 'W': return ".--";
-      case 'X': return "-..-";
-      case 'Y': return "-.--";
-      case 'Z': return "--..";
-      case '1': return ".----";
-      case '2': return "..---";
-      case '3': return "...--";
-      case '4': return "....-";
-      case '5': return ".....";
-      case '6': return "-....";
-      case '7': return "--...";
-      case '8': return "---..";
-      case '9': return "----.";
-      case '0': return "-----";
-      default: return nullptr;
+      case 'A':
+        return ".-";
+      case 'B':
+        return "-...";
+      case 'C':
+        return "-.-.";
+      case 'D':
+        return "-..";
+      case 'E':
+        return ".";
+      case 'F':
+        return "..-.";
+      case 'G':
+        return "--.";
+      case 'H':
+        return "....";
+      case 'I':
+        return "..";
+      case 'J':
+        return ".---";
+      case 'K':
+        return "-.-";
+      case 'L':
+        return ".-..";
+      case 'M':
+        return "--";
+      case 'N':
+        return "-.";
+      case 'O':
+        return "---";
+      case 'P':
+        return ".--.";
+      case 'Q':
+        return "--.-";
+      case 'R':
+        return ".-.";
+      case 'S':
+        return "...";
+      case 'T':
+        return "-";
+      case 'U':
+        return "..-";
+      case 'V':
+        return "...-";
+      case 'W':
+        return ".--";
+      case 'X':
+        return "-..-";
+      case 'Y':
+        return "-.--";
+      case 'Z':
+        return "--..";
+      case '1':
+        return ".----";
+      case '2':
+        return "..---";
+      case '3':
+        return "...--";
+      case '4':
+        return "....-";
+      case '5':
+        return ".....";
+      case '6':
+        return "-....";
+      case '7':
+        return "--...";
+      case '8':
+        return "---..";
+      case '9':
+        return "----.";
+      case '0':
+        return "-----";
+      default:
+        return nullptr;
       }
     };
 
     std::vector<uint32_t> seq;
-    auto addOnOff = [&](uint32_t on, uint32_t off) {
+    auto addOnOff = [&](uint32_t on, uint32_t off)
+    {
       seq.push_back(on);
       seq.push_back(off);
     };
@@ -4025,7 +4265,7 @@ void handleCommand(String line)
   {
     notifyActive = false;
     if (!notifyPrevLampOn)
-      setLampEnabled(false, "notify stop");
+      forceLampOff("notify stop");
     sendFeedback(F("[Notify] stopped"));
     return;
   }
@@ -4121,8 +4361,10 @@ void handleCommand(String line)
       float mn = restClamp.toFloat();
       int pos2 = restClamp.indexOf(' ');
       float mx = (pos2 >= 0) ? restClamp.substring(pos2 + 1).toFloat() : lightClampMax;
-      if (mn < 0.0f) mn = 0.0f;
-      if (mx > 1.5f) mx = 1.5f;
+      if (mn < 0.0f)
+        mn = 0.0f;
+      if (mx > 1.5f)
+        mx = 1.5f;
       if (mn >= mx)
       {
         sendFeedback(F("[Light] clamp invalid (min>=max)"));
@@ -4333,8 +4575,10 @@ void handleCommand(String line)
     if (arg.startsWith("sens"))
     {
       float g = arg.substring(4).toFloat();
-      if (g < 0.1f) g = 0.1f;
-      if (g > 12.0f) g = 12.0f;
+      if (g < 0.1f)
+        g = 0.1f;
+      if (g > 12.0f)
+        g = 12.0f;
       musicGain = g;
       saveSettings();
       sendFeedback(String(F("[Music] gain=")) + String(g, 2));
@@ -4342,8 +4586,10 @@ void handleCommand(String line)
     else if (arg.startsWith("smooth"))
     {
       float s = arg.substring(6).toFloat();
-      if (s < 0.0f) s = 0.0f;
-      if (s > 1.0f) s = 1.0f;
+      if (s < 0.0f)
+        s = 0.0f;
+      if (s > 1.0f)
+        s = 1.0f;
       musicSmoothing = s;
       saveSettings();
       sendFeedback(String(F("[Music] smooth=")) + String(s, 2));
@@ -4361,7 +4607,8 @@ void handleCommand(String line)
         ++n;
         delay(10);
       }
-      if (n == 0) n = 1;
+      if (n == 0)
+        n = 1;
       dc /= (float)n;
       float dcNorm = dc / 4095.0f;
       // Peak detect for 1200ms
@@ -4377,20 +4624,26 @@ void handleCommand(String line)
         float d = fabsf(v - dcTrack);
         const float envAlpha = 0.2f;
         env = (1.0f - envAlpha) * env + envAlpha * d;
-        if (env > peak) peak = env;
+        if (env > peak)
+          peak = env;
         delay(10);
       }
-      if (peak < 0.05f) peak = 0.05f; // avoid zero
+      if (peak < 0.05f)
+        peak = 0.05f; // avoid zero
       // derive gain so peak lands near 0.6
       float targetEnv = 0.6f;
       float g = targetEnv / peak;
-      if (g < 0.1f) g = 0.1f;
-      if (g > 12.0f) g = 12.0f;
+      if (g < 0.1f)
+        g = 0.1f;
+      if (g > 12.0f)
+        g = 12.0f;
       musicGain = g;
       // threshold at ~35% of peak
       float thr = peak * g * 0.35f;
-      if (thr < 0.05f) thr = 0.05f;
-      if (thr > 1.0f) thr = 1.0f;
+      if (thr < 0.05f)
+        thr = 0.05f;
+      if (thr > 1.0f)
+        thr = 1.0f;
       clapThreshold = thr;
       musicDc = dcNorm;
       musicEnv = 0.0f;
@@ -4428,8 +4681,10 @@ void handleCommand(String line)
       else if (rest.startsWith("thr"))
       {
         float v = rest.substring(3).toFloat();
-        if (v < 0.05f) v = 0.05f;
-        if (v > 1.5f) v = 1.5f;
+        if (v < 0.05f)
+          v = 0.05f;
+        if (v > 1.5f)
+          v = 1.5f;
         musicAutoThr = v;
         saveSettings();
         sendFeedback(String(F("[Music] auto thr=")) + String(v, 2));
@@ -4528,9 +4783,12 @@ void handleCommand(String line)
       }
       else
       {
-        if (count == 1) clapCmd1 = cmd;
-        else if (count == 2) clapCmd2 = cmd;
-        else clapCmd3 = cmd;
+        if (count == 1)
+          clapCmd1 = cmd;
+        else if (count == 2)
+          clapCmd2 = cmd;
+        else
+          clapCmd3 = cmd;
         saveSettings();
         sendFeedback(String(F("[Clap] ")) + count + F("x -> ") + cmd);
       }
@@ -5036,16 +5294,40 @@ void updatePatternEngine()
   if (presenceGraceDeadline > 0 && millis() >= presenceGraceDeadline)
   {
     presenceGraceDeadline = 0;
+#if PRESENCE_ALWAYS_OFF
+
     if (lampEnabled)
     {
       setLampEnabled(false, "presence grace");
       sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
       return;
     }
+#else
+    if (lampEnabled)
+    {
+      // Do not force off if the hardware switch is ON.
+#if ENABLE_SWITCH
+      if (switchDebouncedState)
+      {
+        sendFeedback(F("[Presence] Grace timeout ignored (switch ON)"));
+      }
+      else
+#endif
+      {
+        setLampEnabled(false, "presence grace");
+        sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
+        return;
+      }
+    }
+#endif
   }
 
   // idle-off timer
-  if (idleOffMs > 0 && lampEnabled && !rampActive)
+  if (idleOffMs > 0 && lampEnabled && !rampActive
+#if ENABLE_SWITCH
+      && !switchDebouncedState
+#endif
+  )
   {
     if (now - lastActivityMs >= idleOffMs)
     {
@@ -5067,6 +5349,15 @@ void updatePatternEngine()
       setLampEnabled(false, "sleep done");
       sendFeedback(F("[Sleep] Fade abgeschlossen."));
     }
+    return;
+  }
+
+  // If lamp is off and no pending ramps/notifications, force output to 0 and clear filters.
+  if (!lampEnabled && !notifyActive && !rampActive && !wakeFadeActive && !sleepFadeActive)
+  {
+    patternFilteredLevel = 0.0f;
+    patternFilterLastMs = 0;
+    applyPwmLevel(0.0f);
     return;
   }
 
@@ -5098,7 +5389,14 @@ void updatePatternEngine()
       if (notifyIdx >= notifySeq.size())
       {
         notifyActive = false;
-        setLampEnabled(notifyPrevLampOn, "notify done");
+        if (notifyPrevLampOn)
+        {
+          setLampEnabled(true, "notify done");
+        }
+        else
+        {
+          forceLampOff("notify done");
+        }
         notifyRestoreLamp = false;
       }
       else
@@ -5119,8 +5417,10 @@ void updatePatternEngine()
           s = (float)dt / (float)notifyFadeMs;
         else if (dt > dur - notifyFadeMs)
           s = (float)(dur - dt) / (float)notifyFadeMs;
-        if (s < 0.0f) s = 0.0f;
-        if (s > 1.0f) s = 1.0f;
+        if (s < 0.0f)
+          s = 0.0f;
+        if (s > 1.0f)
+          s = 1.0f;
         if (notifyInvert)
           scale = onPhase ? (1.0f - s) : s;
         else
@@ -5532,9 +5832,6 @@ void setup()
 #endif
   pinMode(PIN_PWM, OUTPUT);
   digitalWrite(PIN_PWM, LOW); // keep LED off during init
-#if ENABLE_SWITCH
-  initSwitchState();
-#endif
   calibrateTouchBaseline();
 
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
@@ -5579,6 +5876,10 @@ void setup()
   printStatus();
   setupCommunications();
   updatePatternEngine();
+
+#if ENABLE_SWITCH
+  initSwitchState();
+#endif
 }
 
 /**

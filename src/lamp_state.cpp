@@ -72,6 +72,7 @@ void applyPwmLevel(float normalized)
   if (level <= 0.0f)
   {
     ledcWrite(LEDC_CH, 0);
+    lastPwmValue = 0;
     return;
   }
   float gamma = outputGamma;
@@ -266,6 +267,7 @@ void updateBrightnessRamp()
       lampEnabled = false;
       lampOffPending = false;
       ledcWrite(LEDC_CH, 0);
+      lastPwmValue = 0;
     }
     if (rampAffectsMaster)
       logBrightnessChange("ramp");
