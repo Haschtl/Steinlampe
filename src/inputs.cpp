@@ -19,12 +19,18 @@ uint32_t switchLastDebounceMs = 0;
 uint32_t lastSwitchOffMs = 0;
 uint32_t lastSwitchOnMs = 0;
 bool modeTapArmed = false;
+#endif
+
+#if ENABLE_POTI
+static const float SECURE_POTI_LOW = 0.2f;  // normalized 0..1
+static const float SECURE_POTI_HIGH = 0.8f; // normalized 0..1
+#endif
+
 uint32_t bootStartMs = 0;
 uint8_t secureBootToggleCount = 0;
 bool secureBootLatched = false;
 bool secureBootWindowClosed = false;
 bool startupHoldActive = false;
-#endif
 
 #if ENABLE_EXT_INPUT
 bool extInputEnabled = false;
@@ -194,34 +200,80 @@ void updateSwitchLogic()
  */
 void processStartupSwitch()
 {
-#if ENABLE_SWITCH
     if (secureBootWindowClosed)
         return;
-    uint32_t now = millis();
-    bool raw = readSwitchRaw();
-    if (raw != switchRawState)
+#if ENABLE_SWITCH
     {
-        switchRawState = raw;
-        switchLastDebounceMs = now;
-    }
-    if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
-    {
-        switchDebouncedState = switchRawState;
-        if (!secureBootLatched && !secureBootWindowClosed)
+        uint32_t now = millis();
+        bool raw = readSwitchRaw();
+        if (raw != switchRawState)
         {
-            secureBootToggleCount++;
-            if (secureBootToggleCount >= 2)
+            switchRawState = raw;
+            switchLastDebounceMs = now;
+        }
+        if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
+        {
+            switchDebouncedState = switchRawState;
+            if (!secureBootLatched && !secureBootWindowClosed)
             {
-                secureBootLatched = true;
-                secureBootWindowClosed = true;
-                startupHoldActive = false;
-                applyDefaultSettings(0.20f, false);
-                sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
-                printStatus();
+                secureBootToggleCount++;
+                if (secureBootToggleCount >= 2)
+                {
+                    secureBootLatched = true;
+                    secureBootWindowClosed = true;
+                    startupHoldActive = false;
+                    applyDefaultSettings(0.20f, false);
+                    sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
+                    printStatus();
+                }
+                else
+                {
+                    sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/2"));
+                }
             }
-            else
+        }
+    }
+#endif
+
+#if ENABLE_POTI
+    // Poti-based secure boot: count swings between low/high positions within the window
+    static int lastZone = -1; // -1=unset, 0=low, 1=high
+    static uint32_t lastToggleMs = 0;
+    uint32_t now = millis();
+    int raw = analogRead(PIN_POTI);
+    float norm = clamp01((float)raw / 4095.0f);
+    int zone = -1;
+    if (norm <= SECURE_POTI_LOW)
+        zone = 0;
+    else if (norm >= SECURE_POTI_HIGH)
+        zone = 1;
+
+    if (zone >= 0)
+    {
+        if (lastZone == -1)
+        {
+            lastZone = zone; // establish baseline without counting
+        }
+        else if (zone != lastZone && (now - lastToggleMs) >= 60)
+        {
+            lastZone = zone;
+            lastToggleMs = now;
+            if (!secureBootLatched && !secureBootWindowClosed)
             {
-                sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/2"));
+                secureBootToggleCount++;
+                if (secureBootToggleCount >= 2)
+                {
+                    secureBootLatched = true;
+                    secureBootWindowClosed = true;
+                    startupHoldActive = false;
+                    applyDefaultSettings(0.20f, false);
+                    sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
+                    printStatus();
+                }
+                else
+                {
+                    sendFeedback(String(F("[SecureBoot] Poti swing ")) + String(secureBootToggleCount) + F("/2"));
+                }
             }
         }
     }

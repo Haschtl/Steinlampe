@@ -13,12 +13,14 @@ extern uint32_t switchLastDebounceMs;
 extern uint32_t lastSwitchOffMs;
 extern uint32_t lastSwitchOnMs;
 extern bool modeTapArmed;
+#endif
+
+// Secure-boot window state (used by switch or poti)
 extern uint32_t bootStartMs;
 extern uint8_t secureBootToggleCount;
 extern bool secureBootLatched;
 extern bool secureBootWindowClosed;
 extern bool startupHoldActive;
-#endif
 
 #if ENABLE_EXT_INPUT
 extern bool extInputEnabled;
@@ -115,7 +117,7 @@ void updateSwitchLogic();
 #endif
 
 /**
- * @brief During the secure-boot window, debounce the switch and count toggles without running full logic.
+ * @brief During the secure-boot window, look for the unlock gesture (switch toggles or poti swings).
  */
 void processStartupSwitch();
 

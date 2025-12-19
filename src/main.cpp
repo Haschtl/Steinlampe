@@ -386,7 +386,8 @@ void setup()
   Serial.println();
   Serial.println(F("Quarzlampe PWM-Demo"));
   ensureBaseMac();
-#if ENABLE_SWITCH
+  // Allow secure-boot window via switch or poti
+#if ENABLE_SWITCH || ENABLE_POTI
   bootStartMs = millis();
   secureBootToggleCount = 0;
   secureBootLatched = false;
