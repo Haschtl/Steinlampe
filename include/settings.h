@@ -22,8 +22,8 @@ constexpr bool DEFAULT_AUTOCYCLE = false;       ///< Auto pattern cycling on fir
 constexpr uint32_t DEFAULT_WAKE_MS = 180000;    ///< Default wake fade duration (3 min)
 constexpr uint32_t DEFAULT_SLEEP_MS = 900000;   ///< Default sleep fade duration (15 min)
 constexpr uint32_t DEFAULT_RAMP_MS = 400;       ///< Default ramp duration for brightness changes
-constexpr uint32_t DEFAULT_RAMP_ON_MS = 320;    ///< Default on-ramp
-constexpr uint32_t DEFAULT_RAMP_OFF_MS = 600;   ///< Default off-ramp
+constexpr uint32_t DEFAULT_RAMP_ON_MS = 950;    ///< Default on-ramp
+constexpr uint32_t DEFAULT_RAMP_OFF_MS = 2200;   ///< Default off-ramp
 constexpr uint32_t DEFAULT_IDLE_OFF_MS = 0;     ///< 0 = disabled
 constexpr uint8_t DEFAULT_RAMP_EASE_ON = 3;     ///< ease-out
 constexpr uint8_t DEFAULT_RAMP_EASE_OFF = 3;    ///< ease-out
@@ -138,5 +138,5 @@ constexpr uint32_t BT_SLEEP_AFTER_BLE_MS = 0;  ///< Turn off BT-SERIAL after X m
 #endif
 
 // PWM curve
-constexpr float PWM_GAMMA_DEFAULT = 2.2f; ///< Gamma/curve to linearize perceived brightness
+constexpr float PWM_GAMMA_DEFAULT = 2.8f; ///< Gamma/curve to linearize perceived brightness
 } // namespace Settings
