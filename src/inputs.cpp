@@ -97,6 +97,7 @@ float potiAlpha = Settings::POTI_ALPHA;
 float potiDeltaMin = Settings::POTI_DELTA_MIN;
 float potiOffThreshold = Settings::POTI_OFF_THRESHOLD;
 bool potiEnabled = true;
+int potiLastRaw = -1;
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -537,6 +538,7 @@ void updatePoti()
     lastPotiSampleMs = now;
 
     int raw = analogRead(PIN_POTI);
+    potiLastRaw = raw;
     float level = clamp01((float)raw / 4095.0f);
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 

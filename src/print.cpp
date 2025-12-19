@@ -479,6 +479,10 @@ void printStatusStructured(const bool &force)
     lineIO += String(potiOffThreshold, 3);
     lineIO += F("|poti_sample=");
     lineIO += String(potiSampleMs);
+    lineIO += F("|poti_val=");
+    lineIO += String(potiFiltered, 3);
+    lineIO += F("|poti_raw=");
+    lineIO += String(potiLastRaw);
 #else
     lineIO += F("|poti=N/A");
 #endif

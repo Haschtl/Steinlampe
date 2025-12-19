@@ -11,6 +11,7 @@ export function PotiCard() {
   const [delta, setDelta] = useState(0.025);
   const [off, setOff] = useState(0.02);
   const [sample, setSample] = useState(80);
+  const [history, setHistory] = useState<number[]>([]);
 
   useEffect(() => {
     if (typeof status.potiEnabled === 'boolean') setEnabled(status.potiEnabled);
@@ -20,7 +21,37 @@ export function PotiCard() {
     if (typeof status.potiSample === 'number') setSample(status.potiSample);
   }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiOff, status.potiSample]);
 
+  useEffect(() => {
+    if (typeof status.potiVal === 'number') {
+      const v = Math.min(1, Math.max(0, status.potiVal));
+      setHistory((prev) => {
+        const next = [...prev, v];
+        return next.slice(-120); // keep last ~120 samples
+      });
+    }
+  }, [status.potiVal]);
+
   const apply = (cmd: string) => sendCmd(cmd).catch((err) => console.warn(err));
+
+  const lastVal = history.length > 0 ? history[history.length - 1] : typeof status.potiVal === 'number' ? status.potiVal : undefined;
+  const lastRaw = typeof status.potiRaw === 'number' ? status.potiRaw : undefined;
+  const spark = (() => {
+    if (history.length === 0) return null;
+    const w = 280;
+    const h = 90;
+    const pad = 10;
+    const span = Math.max(1, history.length - 1);
+    const pts = history
+      .map((v, i) => {
+        const x = pad + (i / span) * (w - 2 * pad);
+        const y = pad + (1 - v) * (h - 2 * pad);
+        return `${x},${y}`;
+      })
+      .join(' ');
+    const offY = off !== undefined ? pad + (1 - Math.min(1, Math.max(0, off))) * (h - 2 * pad) : null;
+    const midY = pad + 0.5 * (h - 2 * pad);
+    return { w, h, pad, pts, offY, midY };
+  })();
 
   return (
     <Card>
@@ -103,6 +134,67 @@ export function PotiCard() {
           }}
           disabled={!enabled}
         />
+        <div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">
+                <Trans k="label.potiVal">Live value</Trans>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <Trans k="desc.potiVal">Filtered knob position (0..1)</Trans>
+              </div>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {typeof lastVal === 'number' ? `${(lastVal * 100).toFixed(1)}%` : '--'}{' '}
+              {typeof lastRaw === 'number' ? `(raw ${lastRaw})` : ''}
+            </div>
+          </div>
+          <div className="mt-2 rounded-lg border border-border bg-panel p-3">
+            {spark ? (
+              <svg viewBox={`0 0 ${spark.w} ${spark.h}`} className="w-full" role="img" aria-label="Poti value">
+                <rect
+                  x={spark.pad}
+                  y={spark.pad}
+                  width={spark.w - 2 * spark.pad}
+                  height={spark.h - 2 * spark.pad}
+                  rx="6"
+                  ry="6"
+                  fill="rgba(255,255,255,0.02)"
+                  stroke="rgba(255,255,255,0.08)"
+                />
+                <line
+                  x1={spark.pad}
+                  x2={spark.w - spark.pad}
+                  y1={spark.midY}
+                  y2={spark.midY}
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeDasharray="4 4"
+                />
+                {typeof spark.offY === 'number' && (
+                  <line
+                    x1={spark.pad}
+                    x2={spark.w - spark.pad}
+                    y1={spark.offY}
+                    y2={spark.offY}
+                    stroke="var(--accent-color)"
+                    strokeDasharray="6 4"
+                    strokeOpacity="0.4"
+                  />
+                )}
+                <polyline
+                  points={spark.pts}
+                  fill="none"
+                  stroke="var(--accent-color)"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : (
+              <div className="text-xs text-muted">Waiting for data…</div>
+            )}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

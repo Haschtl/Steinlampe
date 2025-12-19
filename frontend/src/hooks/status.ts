@@ -109,6 +109,8 @@ export type DeviceStatus = {
   potiDelta?: number;
   potiOff?: number;
   potiSample?: number;
+  potiVal?: number;
+  potiRaw?: number;
   hasPush?: boolean;
   pushEnabled?: boolean;
   pushDebounceMs?: number;
@@ -172,6 +174,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const outputMode = kv.out ? (kv.out.toLowerCase().startsWith('ana') ? 'analog' : 'pwm') : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
+      const potiVal = Object.prototype.hasOwnProperty.call(kv, 'poti_val') ? asNum('poti_val') : undefined;
+      const potiRaw = Object.prototype.hasOwnProperty.call(kv, 'poti_raw') ? asInt('poti_raw') : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresence = kv.presence ? isAvailable('presence') : s.hasPresence;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
@@ -288,6 +292,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         potiDelta: asNum('poti_delta') ?? s.potiDelta,
         potiOff: asNum('poti_off') ?? s.potiOff,
         potiSample: asInt('poti_sample') ?? s.potiSample,
+        potiVal: potiVal ?? s.potiVal,
+        potiRaw: potiRaw ?? s.potiRaw,
         hasPush,
         pushEnabled: kv.push ? kv.push.toUpperCase() === 'ON' : hasPush === false ? false : s.pushEnabled,
         pushDebounceMs: asInt('push_db') ?? s.pushDebounceMs,

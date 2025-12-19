@@ -87,6 +87,7 @@ extern float potiAlpha;
 extern float potiDeltaMin;
 extern float potiOffThreshold;
 extern bool potiEnabled;
+extern int potiLastRaw; // last ADC sample (0..4095)
 #endif
 
 #if ENABLE_PUSH_BUTTON
