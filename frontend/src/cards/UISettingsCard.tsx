@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 export function UISettingsCard() {
-  const { autoReconnect, setAutoReconnect, knownDevices, forgetDevice, knownSerials, forgetSerial, sendCmd, status } =
+  const { autoReconnect, setAutoReconnect, knownDevices, forgetDevice, renameDevice, knownSerials, forgetSerial, renameSerial, sendCmd, status } =
     useConnection();
   const { lang, setLang } = useI18n();
   const [theme, setTheme] = useState(() => {
@@ -143,6 +143,17 @@ export function UISettingsCard() {
                   <span className="max-w-[140px] truncate">{name || 'Device'}</span>
                   <button
                     type="button"
+                    className="text-accent hover:underline"
+                    onClick={() => {
+                      const next = prompt('Rename device', name || id);
+                      if (next !== null) renameDevice(id, next);
+                    }}
+                    title="Rename"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
                     className="text-destructive hover:underline"
                     onClick={() => forgetDevice(id)}
                     title="Forget"
@@ -161,7 +172,18 @@ export function UISettingsCard() {
             <div className="flex flex-wrap gap-2">
               {Object.entries(knownSerials || {}).map(([id]) => (
                 <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
-                  <span className="max-w-[180px] truncate">{formatSerialLabel(id)}</span>
+                  <span className="max-w-[180px] truncate">{knownSerials[id] || formatSerialLabel(id)}</span>
+                  <button
+                    type="button"
+                    className="text-accent hover:underline"
+                    onClick={() => {
+                      const next = prompt('Rename device', knownSerials[id] || formatSerialLabel(id));
+                      if (next !== null) renameSerial(id, next);
+                    }}
+                    title="Rename"
+                  >
+                    ✎
+                  </button>
                   <button
                     type="button"
                     className="text-destructive hover:underline"

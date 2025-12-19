@@ -85,7 +85,14 @@ export default function App() {
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
   const headerTitle =
     status.connected && (status.deviceName || deviceName)
-      ? status.deviceName || deviceName
+      ? (() => {
+          const n = status.deviceName || deviceName;
+          if (!n) return 'Quarzlampe';
+          const lower = n.toLowerCase();
+          const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(n.trim());
+          if (n.trim().startsWith('{') || lower.includes('bluetoothserviceclassid') || uuidLike) return 'Quarzlampe';
+          return n;
+        })()
       : undefined;
   const logLines = log.slice(-150);
   const logRef = useRef<HTMLDivElement | null>(null);

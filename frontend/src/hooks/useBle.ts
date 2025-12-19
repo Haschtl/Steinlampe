@@ -17,6 +17,7 @@ type BleApi = {
   setAutoReconnect: (v: boolean) => void;
   knownDevices: Record<string, string>;
   forgetDevice: (id: string) => void;
+  renameDevice: (id: string, name: string) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
@@ -60,6 +61,13 @@ export function useBle(): BleApi {
       localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
       setKnownDevices({ ...knownDevicesRef.current });
     }
+  }, []);
+  const renameDevice = useCallback((id: string, name: string) => {
+    if (!id) return;
+    const clean = name && name.trim().length > 0 ? name.trim() : 'Quarzlampe';
+    knownDevicesRef.current[id] = clean;
+    localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+    setKnownDevices({ ...knownDevicesRef.current });
   }, []);
 
   const pushLog = useCallback(
@@ -226,16 +234,22 @@ export function useBle(): BleApi {
         cmdCharRef.current = cmdChar;
         statusCharRef.current = statusChar;
         await attachListeners(dev, cmdChar, statusChar);
+        const friendlyName = (dev.id && knownDevicesRef.current[dev.id]) || dev.name || 'Quarzlampe';
+        if (dev.id && !knownDevicesRef.current[dev.id]) {
+          knownDevicesRef.current[dev.id] = friendlyName;
+          localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+          setKnownDevices({ ...knownDevicesRef.current });
+        }
 
         setStatus((s) => ({
           ...s,
           connected: true,
           connecting: false,
-          deviceName: dev.name || 'BLE Device',
+          deviceName: friendlyName,
         }));
         lastDeviceIdRef.current = dev.id || null;
         if (dev.id) localStorage.setItem('ql-last-device-id', dev.id);
-        if (dev.name) localStorage.setItem('ql-last-device-name', dev.name);
+        if (dev.name) localStorage.setItem('ql-last-device-name', friendlyName);
         if (dev.id) {
           knownDevicesRef.current[dev.id] = dev.name || 'BLE';
           localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
@@ -320,6 +334,7 @@ export function useBle(): BleApi {
       autoReconnect,
       setAutoReconnect,
       knownDevices,
+      renameDevice,
       forgetDevice,
       connect,
       disconnect: cleanup,

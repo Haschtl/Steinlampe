@@ -14,6 +14,7 @@ type SerialApi = {
   setFilterParsed: (v: boolean) => void;
   knownSerials: Record<string, string>;
   forgetSerial: (id: string) => void;
+  renameSerial: (id: string, name: string) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
@@ -43,6 +44,13 @@ export function useSerial(): SerialApi {
       localStorage.setItem('ql-known-serials', JSON.stringify(knownSerialsRef.current));
       setKnownSerials({ ...knownSerialsRef.current });
     }
+  }, []);
+  const renameSerial = useCallback((id: string, name: string) => {
+    if (!id) return;
+    const clean = name && name.trim().length > 0 ? name.trim() : 'Quarzlampe';
+    knownSerialsRef.current[id] = clean;
+    localStorage.setItem('ql-known-serials', JSON.stringify(knownSerialsRef.current));
+    setKnownSerials({ ...knownSerialsRef.current });
   }, []);
   const portRef = useRef<SerialPort | null>(null);
   const readerCancelRef = useRef<() => void>();
@@ -129,7 +137,7 @@ export function useSerial(): SerialApi {
       await port.open({ baudRate: 115200 });
       portRef.current = port;
       if (id) {
-        knownSerialsRef.current[id] = id;
+        knownSerialsRef.current[id] = knownSerialsRef.current[id] || 'Serial';
         localStorage.setItem('ql-known-serials', JSON.stringify(knownSerialsRef.current));
         setKnownSerials({ ...knownSerialsRef.current });
       }
@@ -178,12 +186,24 @@ export function useSerial(): SerialApi {
       };
       pump();
 
+      const label =
+        (id && knownSerialsRef.current[id]) ||
+        (() => {
+          try {
+            const parsed = port.getInfo ? port.getInfo() : {};
+            if ((parsed as any).usbProductId) return 'Serial';
+          } catch {
+            /* ignore */
+          }
+          return 'Serial';
+        })();
       setStatus((s) => ({
         ...s,
         connected: true,
         connecting: false,
-        deviceName: port.getInfo ? JSON.stringify(port.getInfo()) : 'Serial',
+        deviceName: label,
       }));
+      localStorage.setItem('ql-last-device-name', label);
       await refreshStatus();
     } catch (e) {
       pushLog('Serial connect error: ' + e);
@@ -202,6 +222,7 @@ export function useSerial(): SerialApi {
       setLiveLog,
       setLog: setLogPublic,
       knownSerials,
+      renameSerial,
       filterParsed,
       setFilterParsed,
       forgetSerial,

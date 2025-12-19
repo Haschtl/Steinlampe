@@ -18,8 +18,10 @@ type ConnectionContextValue = {
   setAutoReconnect: (v: boolean) => void;
   knownDevices: Record<string, string>;
   forgetDevice: (id: string) => void;
+  renameDevice: (id: string, name: string) => void;
   knownSerials: Record<string, string>;
   forgetSerial: (id: string) => void;
+  renameSerial: (id: string, name: string) => void;
   status: ReturnType<typeof useBle>['status'];
   connect: () => Promise<void>;
   connectBle: () => Promise<void>;
@@ -61,8 +63,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setAutoReconnect: ble.setAutoReconnect,
       knownDevices: ble.knownDevices,
       forgetDevice: ble.forgetDevice,
+      renameDevice: ble.renameDevice,
       knownSerials: serial.knownSerials ?? {},
       forgetSerial: serial.forgetSerial ?? (() => undefined),
+      renameSerial: serial.renameSerial ?? (() => undefined),
       status: active.status,
       connect: async () => {
         if (transport === 'serial') {
