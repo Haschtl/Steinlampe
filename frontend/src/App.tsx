@@ -91,6 +91,8 @@ export default function App() {
   const logRef = useRef<HTMLDivElement | null>(null);
   const lastStatusAge = status.lastStatusAt ? Date.now() - status.lastStatusAt : null;
   const isStale = status.connected && lastStatusAge !== null && lastStatusAge > 25000; // 25s without update
+  const [lastPulseTs, setLastPulseTs] = useState<number | null>(null);
+  const lastPulseRef = useRef<number>(0);
 
   useEffect(() => {
     if (!status.connected) setShowConnectOverlay(true);
@@ -114,6 +116,16 @@ export default function App() {
   useEffect(() => {
     if (status.connected) setShowConnectOverlay(false);
   }, [status.connected]);
+
+  useEffect(() => {
+    if (status.lastStatusAt) {
+      const now = Date.now();
+      if (now - lastPulseRef.current > 1500) {
+        lastPulseRef.current = now;
+        setLastPulseTs(now);
+      }
+    }
+  }, [status.lastStatusAt]);
 
   useEffect(() => {
     if (liveLog && logRef.current) {
@@ -397,34 +409,33 @@ export default function App() {
                     : t("status.disconnected", "Not connected")}
                 </span>
                 <span>•</span>
-                <span
-                  className={`inline-flex h-2.5 w-2.5 items-center justify-center rounded-full ${
-                    status.connected
-                      ? isStale
-                        ? "bg-amber-400/40"
-                        : "bg-green-500/30"
-                      : status.connecting
-                      ? "bg-yellow-400/40"
-                      : "bg-red-500/30"
-                  }`}
+                <button
+                  type="button"
+                  className="relative inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-panel/60 text-xs font-semibold overflow-hidden"
                   title={
                     status.lastStatusAt
                       ? new Date(status.lastStatusAt).toLocaleTimeString()
-                      : "--"
+                      : t("status.last", "Last status")
                   }
+                  onClick={(e) => {e.stopPropagation();e.preventDefault();refreshStatus()}}
                 >
+                  <span className="sr-only">Status</span>
                   <span
-                    className={`inline-block h-1.5 w-1.5 rounded-full ${
+                    className={`absolute inset-[6px] rounded-full ${
                       status.connected
                         ? isStale
-                          ? "bg-amber-300"
-                          : "bg-green-400"
+                          ? "bg-amber-500/40"
+                          : "bg-green-500/40"
                         : status.connecting
-                        ? "bg-yellow-300"
-                        : "bg-red-500"
-                    } animate-pulse`}
+                        ? "bg-yellow-500/30"
+                        : "bg-red-500/30"
+                    }`}
                   />
-                </span>
+                  <span className="absolute inset-0 rounded-full bg-accent/10 blur" />
+                  {lastPulseTs && lastStatusAge !== null && Date.now() - lastPulseTs < 1200 && (
+                    <span className="absolute inset-0 animate-ping rounded-full bg-accent/35 blur-sm" />
+                  )}
+                </button>
               </div>
             </button>
 
