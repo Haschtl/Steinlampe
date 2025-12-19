@@ -39,7 +39,7 @@ void saveSettings();
 static std::vector<String> trustedBle;
 static std::vector<String> trustedBt;
 static uint32_t trustBootMs = 0;
-static const uint32_t TRUST_GRACE_MS = 60000; // 1 minute open window
+static const uint32_t TRUST_GRACE_MS = Settings::BT_TRUST_GRACE_MS; 
 static const size_t TRUST_MAX = 12;
 
 static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
@@ -47,7 +47,12 @@ static String bleName = Settings::BLE_NAME_DEFAULT;
 static String btName = Settings::BT_NAME_DEFAULT;
 static uint32_t bootMsComm = 0;
 static uint32_t lastBtActivityMs = 0;
-
+#if ENABLE_BT_PAIRING
+static bool btPairPending = false;
+static uint32_t btPairStartMs = 0;
+static String btPendingAddr;
+static const uint32_t BT_PAIR_TIMEOUT_MS = 20000;
+#endif
 // Line buffers
 static String bufferUsb;
 #if ENABLE_BT_SERIAL
@@ -144,6 +149,8 @@ void parseList(const String &csv, std::vector<String> &out)
 
 bool withinGrace()
 {
+  if (TRUST_GRACE_MS==0)
+    return true;
   return (millis() - trustBootMs) < TRUST_GRACE_MS;
 }
 
@@ -269,18 +276,36 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     if (param)
     {
       lastSppAddr = formatMac(param->srv_open.rem_bda);
-      // Trust check moved to global helper, forward-declared above.
-      if (!allowBtAddr(lastSppAddr))
+      bool known = listContains(trustedBt, lastSppAddr);
+      if (!known)
       {
+        if (!allowBtAddr(lastSppAddr))
+        {
+          if (feedbackAllowed())
+            Serial.println(F("[BT] Rejected unknown device"));
+          esp_spp_disconnect(param->srv_open.handle);
+          return;
+        }
+#if ENABLE_BT_PAIRING
+        btPairPending = true;
+        btPairStartMs = millis();
+        btPendingAddr = lastSppAddr;
         if (feedbackAllowed())
-          Serial.println(F("[BT] Rejected unknown device"));
-        esp_spp_disconnect(param->srv_open.handle);
-        return;
+          sendFeedback(String(F("[BT] Pair request ")) + lastSppAddr + F(" – confirm via switch or poti"));
       }
+      else
+      {
+        btPairPending = false;
+        btPendingAddr = "";
+      }
+      // Always allow the connection attempt; commands are gated until confirmed.
+#else
+      known=true;
+#endif
       lastBtActivityMs = millis();
       if (addToList(trustedBt, lastSppAddr) && feedbackAllowed())
         saveSettings();
-      if (feedbackAllowed())
+      if (known && feedbackAllowed())
       {
         Serial.print(F("[BT] Client connected: "));
         Serial.println(lastSppAddr);
@@ -310,6 +335,10 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
       if (feedbackAllowed())
         Serial.println(F("[BT] Client disconnected"));
     }
+#if ENABLE_BT_PAIRING
+    btPairPending = false;
+    btPendingAddr = "";
+#endif
     break;
   default:
     break;
@@ -561,6 +590,44 @@ bool trustRemoveBt(const String &addr, bool persist)
   return false;
 }
 
+void confirmBtPairing(const char *reason)
+{
+#if ENABLE_BT_PAIRING
+#if ENABLE_BT_SERIAL
+  if (!btPairPending)
+    return;
+  if (!serialBt.hasClient())
+  {
+    btPairPending = false;
+    btPendingAddr = "";
+    return;
+  }
+  btPairPending = false;
+  btPairStartMs = 0;
+  if (btPendingAddr.length() > 0)
+  {
+    trustAddBt(btPendingAddr);
+    lastSppAddr = btPendingAddr;
+  }
+  btPendingAddr = "";
+  if (feedbackAllowed())
+  {
+    String msg = F("[BT] Pair confirmed");
+    if (reason && reason[0])
+    {
+      msg += F(" (");
+      msg += reason;
+      msg += F(")");
+    }
+    sendFeedback(msg);
+  }
+  lastBtActivityMs = millis();
+#else
+  (void)reason;
+#endif
+#endif
+}
+
 void trustListFeedback()
 {
   sendFeedback(String(F("[Trust] BLE: ")) + trustGetBleCsv());
@@ -610,6 +677,17 @@ void pollCommunications()
 
 #if ENABLE_BT_SERIAL
   maybeSleepBtSerial(millis());
+#if ENABLE_BT_PAIRING
+  if (btPairPending && btPairStartMs > 0 && (millis() - btPairStartMs) > BT_PAIR_TIMEOUT_MS)
+  {
+    if (feedbackAllowed())
+      sendFeedback(F("[BT] Pair request timed out"));
+    if (serialBt.hasClient())
+      serialBt.disconnect();
+    btPairPending = false;
+    btPendingAddr = "";
+  }
+#endif
   if (serialBt.hasClient())
   {
     while (serialBt.available())
@@ -619,7 +697,10 @@ void pollCommunications()
 #if ENABLE_BT_MIDI
       processBtMidiByte((uint8_t)c);
 #endif
-      processInputChar(bufferBt, c);
+#if ENABLE_BT_PAIRING
+      if (!btPairPending)
+        processInputChar(bufferBt, c);
+#endif
     }
   }
 #endif

@@ -151,4 +151,6 @@ constexpr uint32_t BT_SLEEP_AFTER_BLE_MS = 0;  ///< Turn off BT-SERIAL after X m
 
 // PWM curve
 constexpr float PWM_GAMMA_DEFAULT = 2.8f; ///< Gamma/curve to linearize perceived brightness
+
+constexpr uint32_t BT_TRUST_GRACE_MS = 60000; // 1 minute open window
 } // namespace Settings

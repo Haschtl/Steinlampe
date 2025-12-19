@@ -51,3 +51,9 @@
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 1
 #endif
+
+#if ENABLE_POTI||ENABLE_SWITCH
+#ifndef ENABLE_BT_PAIRING
+#define ENABLE_BT_PAIRING 1
+#endif
+#endif

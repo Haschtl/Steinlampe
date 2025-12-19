@@ -44,6 +44,11 @@ bool trustRemoveBle(const String &addr, bool persist = true);
 bool trustRemoveBt(const String &addr, bool persist = true);
 void trustListFeedback();
 
+/**
+ * @brief Confirm a pending BT-Serial pairing via a hardware gesture (switch/poti).
+ */
+void confirmBtPairing(const char *reason);
+
 // Device names
 String getBleName();
 String getBtName();

@@ -42,6 +42,7 @@ Send plain text lines (newline-terminated) over USB serial, BLE, or Classic BT S
 - Presence: `presence on|off`, `presence set <MAC>|me`, `presence clear`, `presence grace <ms>`
 - Profiles/quick: `profile save|load <1-3>`, `quick 1,5,7,...`
 - Config: `cfg export`, `cfg import key=val ...`, `factory`, `status`, `help`
+- Classic BT-Serial pairing: connect from host, then confirm within ~20s by toggling the hardware switch or moving the potentiometer. Accepted device is stored in the trust list.
 
 BLE UUIDs (default):
 - Service: `d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b`

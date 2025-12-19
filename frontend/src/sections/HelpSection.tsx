@@ -139,6 +139,11 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
               No filters/patterns run until the window closes; use this gesture if the device is wedged or misconfigured.
             </Trans>
           </p>
+          <p className="text-muted">
+            <Trans k="help.btPairingHint">
+              Classic BT-Serial pairing: connect from the host, then confirm within ~20s by toggling the switch or moving the potentiometer. The device will be trusted afterwards.
+            </Trans>
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -131,6 +131,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.trustController": "Controller trusted devices",
     "title.btSleep": "Classic BT Sleep",
     "desc.btSleep": "Turn off Classic Bluetooth serial after a timeout (0 = disabled). BLE stays active.",
+    "desc.btPairing": "First BT-Serial connection needs a hardware confirmation: toggle the switch or move the potentiometer within ~20s to trust the device.",
     "label.btSleepBoot": "After boot (min)",
     "label.btSleepBle": "After last command (min)",
     "label.bleName": "BLE Name",
@@ -248,6 +249,8 @@ const translations: Record<Lang, Record<string, string>> = {
       "After power-up the lamp stays dark for ~1s. Toggle the hardware switch twice in that window to factory-reset and start at 20% brightness.",
     "help.secureBootNote":
       "No patterns/filters run until the window closes. Use this gesture if the device is wedged or misconfigured.",
+    "help.btPairingHint":
+      "Classic BT-Serial pairing: connect from the host, then confirm within ~20s by toggling the switch or moving the potentiometer. The device will be trusted afterwards.",
   },
   de: {
     "nav.home": "Start",
@@ -378,6 +381,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.trustController": "Controller vertrauenswürdige Geräte",
     "title.btSleep": "Classic-BT-Schlaf",
     "desc.btSleep": "Schaltet klassisches Bluetooth (Serial) nach einem Timeout aus (0 = aus). BLE bleibt aktiv.",
+    "desc.btPairing": "Erste BT-Serial-Verbindung braucht Hardware-Bestätigung: Schalter kippen oder Poti bewegen (ca. 20s), dann wird das Gerät vertraut.",
     "label.btSleepBoot": "Nach Boot (Min)",
     "label.btSleepBle": "Nach letzter Aktion (Min)",
     "label.bleName": "BLE-Name",
@@ -495,6 +499,8 @@ const translations: Record<Lang, Record<string, string>> = {
       "Nach dem Einschalten bleibt die Lampe ca. 1s aus. In diesem Fenster den Hardware-Schalter zweimal toggeln, um auf Werkseinstellungen zu setzen und mit 20% Helligkeit zu starten.",
     "help.secureBootNote":
       "Keine Patterns/Filter laufen, bis das Fenster zu ist. Nutze dies, wenn das Gerät hängt oder falsch konfiguriert ist.",
+    "help.btPairingHint":
+      "Classic BT-Serial-Pairing: Host verbindet, dann innerhalb von ~20s Schalter kippen oder Poti bewegen. Danach wird das Gerät vertraut.",
   },
 };
 

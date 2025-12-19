@@ -183,6 +183,7 @@ void updateSwitchLogic()
             modeTapArmed = false;
             setLampEnabled(true, "switch on");
             sendFeedback(F("[Switch] ON"));
+            confirmBtPairing("switch");
         }
         else
         {
@@ -191,6 +192,7 @@ void updateSwitchLogic()
             lastSwitchOffMs = now;
             setLampEnabled(false, "switch off");
             sendFeedback(F("[Switch] OFF"));
+            confirmBtPairing("switch");
         }
         saveSettings();
         lastActivityMs = now;
@@ -558,6 +560,7 @@ void updatePoti()
         return;
 
     potiLastApplied = potiFiltered;
+    confirmBtPairing("poti");
     if (potiFiltered <= potiOffThreshold)
     {
         if (lampEnabled)
