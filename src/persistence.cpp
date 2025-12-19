@@ -952,6 +952,7 @@ void importConfig(const String &args)
             if (v >= 50 && v <= 10000)
                 rampOffDurationMs = v;
         }
+#if ENABLE_LIGHT_SENSOR
         else if (key == "ramp_amb")
         {
             float v = val.toFloat();
@@ -961,6 +962,7 @@ void importConfig(const String &args)
                 v = 5.0f;
             rampAmbientFactor = v;
         }
+#endif
         else if (key == "idle")
         {
             int minutes = val.toInt();

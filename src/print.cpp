@@ -347,8 +347,10 @@ void printStatusStructured(const bool &force)
     line += String(rampEaseOnPower, 2);
     line += F("|ramp_off_pow=");
     line += String(rampEaseOffPower, 2);
+#if ENABLE_LIGHT_SENSOR
     line += F("|ramp_amb=");
     line += String(rampAmbientFactor, 2);
+#endif
     line += F("|idle_min=");
     line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
     line += F("|pat_speed=");
