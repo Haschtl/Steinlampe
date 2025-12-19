@@ -60,9 +60,9 @@ void updateLightSensor()
     if (target > lightClampMax)
         target = lightClampMax;
     target = clamp01(target);
-    const float blend = 0.03f; // slow IIR for ambience
+    const float blend = 0.02f; // slow IIR for ambience
     float next = ambientScale + (target - ambientScale) * blend;
-    const float maxStep = 0.02f; // cap per update to hide sudden jumps
+    const float maxStep = 0.005f; // cap per update to hide sudden jumps (per sample)
     float delta = next - ambientScale;
     if (delta > maxStep)
         next = ambientScale + maxStep;
