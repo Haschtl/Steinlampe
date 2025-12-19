@@ -12,6 +12,8 @@ export function LedConfigCard() {
   const [pwmCurve, setPwmCurve] = useState(1.8);
   const pwmRaw = status.pwmRaw;
   const pwmMax = status.pwmMax ?? 65535;
+  // pwmMax reflects DAC range in analog mode too
+  const outputMode = status.outputMode ?? "pwm";
   const pwmPct =
     typeof pwmRaw === "number" && typeof pwmMax === "number" && pwmMax > 0
       ? (pwmRaw / pwmMax) * 100
@@ -110,18 +112,31 @@ export function LedConfigCard() {
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             <Trans k="desc.pwm">
-              Gamma to linearize LED brightness (0.5–4). Pick a simple step pattern (e.g. “Stufen”) and tweak until each step looks equally bright.
+              Gamma to linearize LED brightness (0.5–4). Pick a simple step
+              pattern (e.g. “Stufen”) and tweak until each step looks equally
+              bright.
             </Trans>
           </p>
         </div>
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div>
+            <Label>
+              <Trans k="label.outputMode">Output mode</Trans>
+            </Label>
+            <div className="mt-1">
+              {outputMode === "analog" ? "Analog (DAC)" : "PWM"}
+            </div>
+          </div>
+        </div>
         <div>
           <Label>
-            <Trans k="label.pwmRaw">PWM raw</Trans>
+            <Trans k="label.pwmRaw">Output raw</Trans>
           </Label>
           <div className="text-sm text-muted-foreground">
             {typeof pwmRaw === "number" ? (
               <>
-                {pwmRaw}/{pwmMax} {typeof pwmPct === "number" ? `(${pwmPct.toFixed(1)}%)` : null}
+                {pwmRaw}/{pwmMax}{" "}
+                {typeof pwmPct === "number" ? `(${pwmPct.toFixed(1)}%)` : null}
               </>
             ) : (
               <>-</>
@@ -134,7 +149,8 @@ export function LedConfigCard() {
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
             <Trans k="desc.gammaCurve">
-              Shows how brightness maps to PWM with the current gamma. Dot = live PWM.
+              Shows how brightness maps to PWM with the current gamma. Dot =
+              live PWM.
             </Trans>
           </p>
           <div className="rounded-lg border border-border bg-gradient-to-br from-background to-muted p-3 overflow-hidden">
@@ -146,8 +162,16 @@ export function LedConfigCard() {
             >
               <defs>
                 <linearGradient id="gammaFill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent-color)" stopOpacity="0.15" />
-                  <stop offset="100%" stopColor="var(--accent-color)" stopOpacity="0" />
+                  <stop
+                    offset="0%"
+                    stopColor="var(--accent-color)"
+                    stopOpacity="0.15"
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--accent-color)"
+                    stopOpacity="0"
+                  />
                 </linearGradient>
               </defs>
               <rect
@@ -170,8 +194,14 @@ export function LedConfigCard() {
               {typeof pwmRatio === "number" && typeof pwmInput === "number" && (
                 <>
                   <line
-                    x1={curvePath.pad + pwmInput * (curvePath.width - 2 * curvePath.pad)}
-                    x2={curvePath.pad + pwmInput * (curvePath.width - 2 * curvePath.pad)}
+                    x1={
+                      curvePath.pad +
+                      pwmInput * (curvePath.width - 2 * curvePath.pad)
+                    }
+                    x2={
+                      curvePath.pad +
+                      pwmInput * (curvePath.width - 2 * curvePath.pad)
+                    }
                     y1={curvePath.pad}
                     y2={curvePath.height - curvePath.pad}
                     stroke="var(--accent-color)"
@@ -181,15 +211,27 @@ export function LedConfigCard() {
                   <line
                     x1={curvePath.pad}
                     x2={curvePath.width - curvePath.pad}
-                    y1={curvePath.pad + (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)}
-                    y2={curvePath.pad + (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)}
+                    y1={
+                      curvePath.pad +
+                      (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)
+                    }
+                    y2={
+                      curvePath.pad +
+                      (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)
+                    }
                     stroke="var(--accent-color)"
                     strokeDasharray="4 4"
                     strokeOpacity="0.4"
                   />
                   <circle
-                    cx={curvePath.pad + pwmInput * (curvePath.width - 2 * curvePath.pad)}
-                    cy={curvePath.pad + (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)}
+                    cx={
+                      curvePath.pad +
+                      pwmInput * (curvePath.width - 2 * curvePath.pad)
+                    }
+                    cy={
+                      curvePath.pad +
+                      (1 - pwmRatio) * (curvePath.height - 2 * curvePath.pad)
+                    }
                     r="5"
                     fill="var(--accent-color)"
                     stroke="white"
@@ -220,7 +262,7 @@ export function LedConfigCard() {
               <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-3">
                 <span>γ={safeGamma.toFixed(2)}</span>
                 <span>
-                  PWM: {(pwmRatio * 100).toFixed(1)}% ({pwmRaw}/{pwmMax})
+                  PWM/Analog: {(pwmRatio * 100).toFixed(1)}% ({pwmRaw}/{pwmMax})
                 </span>
                 {typeof pwmInput === "number" && (
                   <span>equiv input: {(pwmInput * 100).toFixed(1)}%</span>

@@ -30,7 +30,6 @@ const int PWM_MAX = (1 << LEDC_RES) - 1;
 #endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 uint32_t lastPwmValue = 0;
-float lastPwmNormalized = 0.0f;
 
 static inline void writeOutputRaw(uint32_t value)
 {
@@ -114,7 +113,6 @@ void applyPwmLevel(float normalized)
   uint32_t pwmValue = (uint32_t)(pwm + 0.5f);
   if (pwmValue > (uint32_t)PWM_MAX)
     pwmValue = (uint32_t)PWM_MAX;
-  lastPwmNormalized = level;
   lastPwmValue = pwmValue;
   writeOutputRaw(pwmValue);
 }

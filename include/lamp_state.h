@@ -11,7 +11,6 @@ extern const int LEDC_RES;
 extern const int PWM_MAX;
 extern float outputGamma;
 extern uint32_t lastPwmValue;    // last written PWM value (0..PWM_MAX)
-extern float lastPwmNormalized;  // last normalized brightness after scaling/gamma
 
 // Brightness state
 extern float masterBrightness;   // user-facing brightness 0..1

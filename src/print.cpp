@@ -396,6 +396,12 @@ void printStatusStructured(const bool &force)
     lineIO += String(customStepMs);
     lineIO += F("|demo=");
     lineIO += demoActive ? F("ON") : F("OFF");
+    lineIO += F("|out=");
+#if ENABLE_ANALOG_OUTPUT
+    lineIO += F("ana");
+#else
+    lineIO += F("pwm");
+#endif
     lineIO += F("|gamma=");
     lineIO += String(outputGamma, 2);
     lineIO += F("|pwm_raw=");

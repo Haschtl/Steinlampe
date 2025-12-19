@@ -62,6 +62,7 @@ export default function App() {
   const { t, lang, setLang } = useI18n();
   const {
     status,
+    deviceName,
     log,
     liveLog,
     setLiveLog,
@@ -82,6 +83,10 @@ export default function App() {
   const [showConnectOverlay, setShowConnectOverlay] = useState(true);
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
+  const headerTitle =
+    status.connected && (status.deviceName || deviceName)
+      ? status.deviceName || deviceName
+      : undefined;
   const logLines = log.slice(-150);
   const logRef = useRef<HTMLDivElement | null>(null);
   const lastStatusAge = status.lastStatusAt ? Date.now() - status.lastStatusAt : null;
@@ -207,7 +212,7 @@ export default function App() {
               />
               <div className="flex flex-1 flex-col">
                 <h1 className="text-xl font-semibold tracking-wide">
-                  <Trans k="title.app">Quarzlampe</Trans>
+                  {headerTitle || <Trans k="title.app">Quarzlampe</Trans>}
                 </h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">

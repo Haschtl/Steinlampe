@@ -52,6 +52,7 @@ export type DeviceStatus = {
   patternSpeed?: number;
   patternFade?: number;
   patternInvert?: boolean;
+  outputMode?: "pwm" | "analog";
   idleOffMin?: number;
   idleMinutes?: number;
   pwmCurve?: number;
@@ -166,8 +167,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
       const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
       const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
-      const pwmRaw = kv.pwm_raw ? asInt('pwm_raw') : undefined;
-      const pwmMax = kv.pwm_max ? asInt('pwm_max') : undefined;
+      const pwmRaw = kv.pwm_raw ? asInt("pwm_raw") : undefined;
+      const pwmMax = kv.pwm_max ? asInt("pwm_max") : undefined;
+      const outputMode = kv.out ? (kv.out.toLowerCase().startsWith('ana') ? 'analog' : 'pwm') : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
@@ -219,6 +221,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         quickCsv: kv.quick ?? s.quickCsv,
         presence: kv.presence ?? s.presence,
         hasPresence,
+        outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,
         customLen: asInt('custom_len') ?? s.customLen,
