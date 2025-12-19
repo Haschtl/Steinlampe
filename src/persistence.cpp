@@ -701,15 +701,19 @@ void loadSettings()
         rampDurationMs = Settings::DEFAULT_RAMP_MS;
     rampOnDurationMs = prefs.getUInt(PREF_KEY_RAMP_ON_MS, Settings::DEFAULT_RAMP_ON_MS);
     rampOffDurationMs = prefs.getUInt(PREF_KEY_RAMP_OFF_MS, Settings::DEFAULT_RAMP_OFF_MS);
+#if ENABLE_LIGHT_SENSOR
     rampAmbientFactor = prefs.getFloat(PREF_KEY_RAMP_AMB, Settings::RAMP_AMBIENT_FACTOR_DEFAULT);
+#endif
     if (rampOnDurationMs < 50)
         rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
     if (rampOffDurationMs < 50)
         rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
+#if ENABLE_LIGHT_SENSOR
     if (rampAmbientFactor < 0.0f)
         rampAmbientFactor = 0.0f;
     if (rampAmbientFactor > 5.0f)
         rampAmbientFactor = 5.0f;
+#endif
     idleOffMs = prefs.getUInt(PREF_KEY_IDLE_OFF, Settings::DEFAULT_IDLE_OFF_MS);
     rampEaseOnType = prefs.getUChar(PREF_KEY_RAMP_EASE_ON, Settings::DEFAULT_RAMP_EASE_ON);
     rampEaseOffType = prefs.getUChar(PREF_KEY_RAMP_EASE_OFF, Settings::DEFAULT_RAMP_EASE_OFF);

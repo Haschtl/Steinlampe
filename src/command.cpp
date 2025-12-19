@@ -968,6 +968,7 @@ void handleCommand(String line)
             }
             saveSettings();
         }
+#if ENABLE_LIGHT_SENSOR
         else if (lower.startsWith("ramp ambient") || lower.startsWith("ramp amb"))
         {
             arg = arg.substring(arg.indexOf(' ') + 1);
@@ -983,6 +984,7 @@ void handleCommand(String line)
             sendFeedback(String(F("[Ramp] ambient factor=")) + String(rampAmbientFactor, 2));
             saveSettings();
         }
+#endif
         else
         {
             bool isOn = arg.startsWith("on");

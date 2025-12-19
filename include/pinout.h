@@ -21,9 +21,9 @@ static const int PIN_SWITCH = 32; // Kippschalter (digital)
 #endif
 static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO27)
 #if ENABLE_POTI
-static const int PIN_POTI = Settings::POTI_PIN;
+static const int PIN_POTI = 39;
 #endif
 #if ENABLE_PUSH_BUTTON
-static const int PIN_PUSHBTN = Settings::PUSH_BUTTON_PIN;
+static const int PIN_PUSHBTN = 34;
 static const int PUSH_ACTIVE_LEVEL = LOW;
 #endif

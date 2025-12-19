@@ -101,7 +101,6 @@ constexpr float EXT_INPUT_DELTA = 0.02f;         ///< minimum change to apply br
 #endif
 
 #if ENABLE_POTI
-constexpr int POTI_PIN = 39;                    ///< ADC pin for optional brightness knob
 constexpr uint32_t POTI_SAMPLE_MS = 80;
 constexpr float POTI_ALPHA = 0.25f;
 constexpr float POTI_DELTA_MIN = 0.025f;
@@ -109,7 +108,6 @@ constexpr float POTI_OFF_THRESHOLD = 0.02f;
 #endif
 
 #if ENABLE_PUSH_BUTTON
-constexpr int PUSH_BUTTON_PIN = 34;            ///< GPIO for optional momentary push button
 constexpr uint32_t PUSH_DEBOUNCE_MS = 25;
 constexpr uint32_t PUSH_DOUBLE_MS = 450;
 constexpr uint32_t PUSH_HOLD_MS = 700;
