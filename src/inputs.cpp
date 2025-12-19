@@ -98,6 +98,8 @@ float potiDeltaMin = Settings::POTI_DELTA_MIN;
 float potiOffThreshold = Settings::POTI_OFF_THRESHOLD;
 bool potiEnabled = true;
 int potiLastRaw = -1;
+float potiCalibMin = Settings::POTI_MIN_DEFAULT;
+float potiCalibMax = Settings::POTI_MAX_DEFAULT;
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -539,7 +541,17 @@ void updatePoti()
 
     int raw = analogRead(PIN_POTI);
     potiLastRaw = raw;
-    float level = clamp01((float)raw / 4095.0f);
+    float levelRaw = (float)raw / 4095.0f;
+    float minCal = potiCalibMin;
+    float maxCal = potiCalibMax;
+    float span = maxCal - minCal;
+    if (span < 0.05f) // avoid division noise; fallback to raw scale
+    {
+        minCal = 0.0f;
+        maxCal = 1.0f;
+        span = 1.0f;
+    }
+    float level = clamp01((levelRaw - minCal) / span);
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 
     if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)

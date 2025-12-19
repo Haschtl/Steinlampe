@@ -1419,11 +1419,39 @@ void handleCommand(String line)
                 sendFeedback(F("Usage: poti sample 10-2000"));
             }
         }
+        else if (arg.startsWith("calib"))
+        {
+            float minV = 0.0f, maxV = 1.0f;
+            int sep = arg.indexOf(' ');
+            if (sep > 0)
+            {
+                String rest = arg.substring(sep + 1);
+                rest.trim();
+                int sep2 = rest.indexOf(' ');
+                if (sep2 > 0)
+                {
+                    minV = rest.substring(0, sep2).toFloat();
+                    maxV = rest.substring(sep2 + 1).toFloat();
+                }
+            }
+            if (minV >= 0.0f && maxV > minV && maxV <= 1.5f)
+            {
+                potiCalibMin = minV;
+                potiCalibMax = maxV;
+                saveSettings();
+                sendFeedback(String(F("[Poti] calib min=")) + String(minV, 3) + F(" max=") + String(maxV, 3));
+            }
+            else
+            {
+                sendFeedback(F("Usage: poti calib <min 0..1> <max 0..1.5>"));
+            }
+        }
         else
         {
             sendFeedback(String(F("[Poti] ")) + (potiEnabled ? F("ON ") : F("OFF ")) + F("a=") + String(potiAlpha, 2) +
                          F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
-                         F(" smpl=") + String(potiSampleMs) + F("ms"));
+                         F(" smpl=") + String(potiSampleMs) + F("ms") +
+                         F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3));
         }
         return;
     }

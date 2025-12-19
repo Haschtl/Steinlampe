@@ -143,7 +143,7 @@ void logBrightnessChange(const char *reason)
 void logLampState(const char *reason)
 {
   bool forceSerial = (reason && (strstr(reason, "init") != nullptr || strstr(reason, "startup") != nullptr));
-  String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : F("OFF"));
+  String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : (lampOffPending ? F("OFF-PEND"):F("OFF")));
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");

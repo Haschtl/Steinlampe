@@ -82,6 +82,8 @@ static const char *PREF_KEY_POTI_ALPHA = "poti_a";
 static const char *PREF_KEY_POTI_DELTA = "poti_d";
 static const char *PREF_KEY_POTI_OFF = "poti_off";
 static const char *PREF_KEY_POTI_SAMPLE = "poti_s";
+static const char *PREF_KEY_POTI_MIN = "poti_min";
+static const char *PREF_KEY_POTI_MAX = "poti_max";
 #endif
 #if ENABLE_PUSH_BUTTON
 static const char *PREF_KEY_PUSH_EN = "push_en";
@@ -462,6 +464,8 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_POTI_DELTA, potiDeltaMin);
     prefs.putFloat(PREF_KEY_POTI_OFF, potiOffThreshold);
     prefs.putUInt(PREF_KEY_POTI_SAMPLE, potiSampleMs);
+    prefs.putFloat(PREF_KEY_POTI_MIN, potiCalibMin);
+    prefs.putFloat(PREF_KEY_POTI_MAX, potiCalibMax);
 #endif
 #if ENABLE_PUSH_BUTTON
     prefs.putBool(PREF_KEY_PUSH_EN, pushEnabled);
@@ -544,6 +548,15 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     briMaxUser = Settings::BRI_MAX_DEFAULT;
     customLen = 0;
     customStepMs = Settings::CUSTOM_STEP_MS_DEFAULT;
+#if ENABLE_POTI
+    potiEnabled = true;
+    potiAlpha = Settings::POTI_ALPHA;
+    potiDeltaMin = Settings::POTI_DELTA_MIN;
+    potiOffThreshold = Settings::POTI_OFF_THRESHOLD;
+    potiSampleMs = Settings::POTI_SAMPLE_MS;
+    potiCalibMin = Settings::POTI_MIN_DEFAULT;
+    potiCalibMax = Settings::POTI_MAX_DEFAULT;
+#endif
 #if ENABLE_LIGHT_SENSOR
     rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
     lightSensorEnabled = Settings::LIGHT_SENSOR_DEFAULT_ENABLED;
@@ -842,6 +855,13 @@ void loadSettings()
         potiSampleMs = 10;
     if (potiSampleMs > 2000)
         potiSampleMs = 2000;
+    potiCalibMin = prefs.getFloat(PREF_KEY_POTI_MIN, Settings::POTI_MIN_DEFAULT);
+    potiCalibMax = prefs.getFloat(PREF_KEY_POTI_MAX, Settings::POTI_MAX_DEFAULT);
+    if (potiCalibMax < potiCalibMin + 0.05f)
+    {
+        potiCalibMin = Settings::POTI_MIN_DEFAULT;
+        potiCalibMax = Settings::POTI_MAX_DEFAULT;
+    }
 #endif
 #if ENABLE_PUSH_BUTTON
     pushEnabled = prefs.getBool(PREF_KEY_PUSH_EN, true);

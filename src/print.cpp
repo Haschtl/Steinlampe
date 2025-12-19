@@ -235,7 +235,8 @@ void printStatus(const bool &force)
 #if ENABLE_POTI
     String potiLine = String(F("[Poti] ")) + (potiEnabled ? F("ON") : F("OFF")) + F(" a=") + String(potiAlpha, 2) +
                       F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
-                      F(" smpl=") + String(potiSampleMs) + F("ms");
+                      F(" smpl=") + String(potiSampleMs) + F("ms") +
+                      F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3);
 #else
     String potiLine = F("[Poti] N/A");
 #endif
@@ -479,6 +480,10 @@ void printStatusStructured(const bool &force)
     lineIO += String(potiOffThreshold, 3);
     lineIO += F("|poti_sample=");
     lineIO += String(potiSampleMs);
+    lineIO += F("|poti_min=");
+    lineIO += String(potiCalibMin, 3);
+    lineIO += F("|poti_max=");
+    lineIO += String(potiCalibMax, 3);
     lineIO += F("|poti_val=");
     lineIO += String(potiFiltered, 3);
     lineIO += F("|poti_raw=");
@@ -612,7 +617,7 @@ void printHelp(const bool &force)
         "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
         "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/Presence/Quick",
         "  light gain <f>     - Verstärkung Lichtsensor",
-        "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms> - Poti-Config",
+        "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms>/calib <min> <max> - Poti-Config",
         "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",
         "  midi map           - CC7=bri, CC20=mode(1-8), Note59 toggle, Note60 prev, Note62 next, Note70-77 mode 1-8",
         "  calibrate touch    - Geführte Touch-Kalibrierung",

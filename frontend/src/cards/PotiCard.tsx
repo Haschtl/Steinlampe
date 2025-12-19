@@ -12,6 +12,8 @@ export function PotiCard() {
   const [off, setOff] = useState(0.02);
   const [sample, setSample] = useState(80);
   const [history, setHistory] = useState<number[]>([]);
+  const [calMin, setCalMin] = useState(0);
+  const [calMax, setCalMax] = useState(1);
 
   useEffect(() => {
     if (typeof status.potiEnabled === 'boolean') setEnabled(status.potiEnabled);
@@ -19,7 +21,9 @@ export function PotiCard() {
     if (typeof status.potiDelta === 'number') setDelta(status.potiDelta);
     if (typeof status.potiOff === 'number') setOff(status.potiOff);
     if (typeof status.potiSample === 'number') setSample(status.potiSample);
-  }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiOff, status.potiSample]);
+    if (typeof status.potiMin === 'number') setCalMin(status.potiMin);
+    if (typeof status.potiMax === 'number') setCalMax(status.potiMax);
+  }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiMax, status.potiMin, status.potiOff, status.potiSample]);
 
   useEffect(() => {
     if (typeof status.potiVal === 'number') {
@@ -89,6 +93,66 @@ export function PotiCard() {
           }}
           disabled={!enabled}
         />
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div>
+            <label className="text-sm font-medium">
+              <Trans k="label.potiCalMin">Calib min</Trans>
+            </label>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1.2"
+                value={calMin}
+                onChange={(e) => setCalMin(Number(e.target.value))}
+                className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
+              />
+              <button
+                className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
+                onClick={() => {
+                  const vMin = Math.max(0, Math.min(1.2, calMin));
+                  const vMax = Math.min(1.5, Math.max(vMin + 0.05, calMax));
+                  setCalMin(vMin);
+                  setCalMax(vMax);
+                  apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
+                }}
+                disabled={!enabled}
+              >
+                <Trans k="btn.apply">Apply</Trans>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium">
+              <Trans k="label.potiCalMax">Calib max</Trans>
+            </label>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="number"
+                step="0.01"
+                min="0.05"
+                max="1.5"
+                value={calMax}
+                onChange={(e) => setCalMax(Number(e.target.value))}
+                className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
+              />
+              <button
+                className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
+                onClick={() => {
+                  const vMin = Math.max(0, Math.min(1.2, calMin));
+                  const vMax = Math.max(vMin + 0.05, Math.min(1.5, calMax));
+                  setCalMin(vMin);
+                  setCalMax(vMax);
+                  apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
+                }}
+                disabled={!enabled}
+              >
+                <Trans k="btn.apply">Apply</Trans>
+              </button>
+            </div>
+          </div>
+        </div>
         <SliderRow
           label={<Trans k="label.delta">Delta</Trans>}
           description={<Trans k="desc.potiDelta">Min. change before updating</Trans>}
