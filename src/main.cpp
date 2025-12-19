@@ -24,6 +24,7 @@
 #include "utils.h"
 #include "persistence.h"
 #include "print.h"
+#include "pinout.h"
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
@@ -373,8 +374,12 @@ void maybeLightSleep()
  */
 void setup()
 {
-  pinMode(PIN_PWM, OUTPUT);
-  digitalWrite(PIN_PWM, LOW); // keep LED off during init
+  pinMode(PIN_OUTPUT, OUTPUT);
+#if ENABLE_ANALOG_OUTPUT
+  dacWrite(PIN_OUTPUT, 0); // explicit off for analog driver
+#else
+  digitalWrite(PIN_OUTPUT, LOW); // keep LED off during init
+#endif
 
   Serial.begin(115200);
   delay(200);
@@ -427,9 +432,13 @@ void setup()
   loadSettings();
   trustSetBootMs(millis());
 
+#if !ENABLE_ANALOG_OUTPUT
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
-  ledcAttachPin(PIN_PWM, LEDC_CH);
+  ledcAttachPin(PIN_OUTPUT, LEDC_CH);
   ledcWrite(LEDC_CH, 0); // explicit off at startup
+#else
+  dacWrite(PIN_OUTPUT, 0);
+#endif
   patternStartMs = millis();
 
   announcePattern(true);
@@ -456,7 +465,11 @@ void loop()
     {
       if (lampEnabled)
         setLampEnabled(false, "startup-hold");
+#if ENABLE_ANALOG_OUTPUT
+      dacWrite(PIN_OUTPUT, 0);
+#else
       ledcWrite(LEDC_CH, 0);
+#endif
       delay(10);
       return;
     }

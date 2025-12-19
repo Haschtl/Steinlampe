@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "lamp_config.h"
+#include "pinout.h"
 #include "comms.h"
 #include "utils.h"
 #include "notifications.h"
@@ -11,19 +12,36 @@
 #include "inputs.h"
 #include <string.h>
 
-// ---------- LEDC ----------
+// ---------- Output driver (PWM or DAC) ----------
 const int LEDC_CH = 0;
 // more conservative
 // const int LEDC_FREQ = 2000;
 // const int LEDC_RES = 15; // 15-bit resolution @2 kHz still fits LEDC clock
 
+#if ENABLE_ANALOG_OUTPUT
+const int LEDC_FREQ = 0;
+const int LEDC_RES = 8; // DAC uses 8-bit values
+const int PWM_MAX = 255;
+#else
 // Lower PWM frequency to gain one more bit of resolution (quieter LEDs).
 const int LEDC_FREQ = 1000;
 const int LEDC_RES = 16; // 16-bit @1 kHz fits LEDC clock
 const int PWM_MAX = (1 << LEDC_RES) - 1;
+#endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 uint32_t lastPwmValue = 0;
 float lastPwmNormalized = 0.0f;
+
+static inline void writeOutputRaw(uint32_t value)
+{
+#if ENABLE_ANALOG_OUTPUT
+  if (value > (uint32_t)PWM_MAX)
+    value = (uint32_t)PWM_MAX;
+  dacWrite(PIN_OUTPUT, (uint8_t)value);
+#else
+  ledcWrite(LEDC_CH, value);
+#endif
+}
 
 // ---------- Brightness State ----------
 float masterBrightness = Settings::DEFAULT_BRIGHTNESS;
@@ -79,7 +97,7 @@ void applyPwmLevel(float normalized)
   float levelScaled = briMinUser + (levelEff - briMinUser) * capFactor;
   if (level <= 0.0f)
   {
-    ledcWrite(LEDC_CH, 0);
+    writeOutputRaw(0);
     lastPwmValue = 0;
     return;
   }
@@ -98,7 +116,7 @@ void applyPwmLevel(float normalized)
     pwmValue = (uint32_t)PWM_MAX;
   lastPwmNormalized = level;
   lastPwmValue = pwmValue;
-  ledcWrite(LEDC_CH, pwmValue);
+  writeOutputRaw(pwmValue);
 }
 
 /**
@@ -275,7 +293,7 @@ void updateBrightnessRamp()
     {
       lampEnabled = false;
       lampOffPending = false;
-      ledcWrite(LEDC_CH, 0);
+      writeOutputRaw(0);
       lastPwmValue = 0;
     }
     if (rampAffectsMaster)

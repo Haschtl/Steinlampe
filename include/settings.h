@@ -89,7 +89,10 @@ constexpr bool FEEDBACK_NEEDS_HANDSHAKE = REQUIRE_FEEDBACK_HANDSHAKE;
 #endif
 
 #if ENABLE_EXT_INPUT
-constexpr int EXT_INPUT_PIN = 33;                ///< GPIO for optional external input
+#ifndef EXT_INPUT_PIN_NUM
+#define EXT_INPUT_PIN_NUM 33
+#endif
+constexpr int EXT_INPUT_PIN = EXT_INPUT_PIN_NUM; ///< GPIO for optional external input
 constexpr bool EXT_INPUT_ANALOG_DEFAULT = true;  ///< true=analog brightness, false=digital on/off
 constexpr bool EXT_INPUT_ACTIVE_LOW = true;      ///< for digital mode
 constexpr uint32_t EXT_INPUT_SAMPLE_MS = 50;     ///< sample interval for analog

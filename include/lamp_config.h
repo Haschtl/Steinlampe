@@ -44,6 +44,10 @@
 #ifndef ENABLE_EXT_INPUT
 #define ENABLE_EXT_INPUT 0
 #endif
+
+#ifndef ENABLE_ANALOG_OUTPUT
+#define ENABLE_ANALOG_OUTPUT 0
+#endif
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 1
 #endif
