@@ -352,6 +352,27 @@ void handleCommand(String line)
         }
         return;
     }
+    if (lower.startsWith("pat invert") || lower.startsWith("pattern invert"))
+    {
+        int pos = lower.indexOf("invert");
+        String arg = line.substring(pos + 6);
+        arg.trim();
+        bool v;
+        if (arg.length() == 0)
+        {
+            patternInvert = !patternInvert;
+            v = patternInvert;
+        }
+        else if (!parseBool(arg, v))
+        {
+            sendFeedback(F("Usage: pat invert on|off"));
+            return;
+        }
+        patternInvert = v;
+        saveSettings();
+        sendFeedback(String(F("[Pattern] invert ")) + (patternInvert ? F("ON") : F("OFF")));
+        return;
+    }
     if (lower.startsWith("pat margin") || lower.startsWith("pattern margin"))
     {
         int pos = lower.indexOf("margin");

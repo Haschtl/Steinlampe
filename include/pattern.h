@@ -13,6 +13,7 @@ extern size_t currentModeIndex; // tracks current mode (patterns + profile slots
 
 extern bool patternFadeEnabled;
 extern float patternFadeStrength; // multiplier for smoothing duration (1.0 = rampDurationMs)
+extern bool patternInvert;
 extern float patternMarginLow;
 extern float patternMarginHigh;
 extern float patternFilteredLevel;

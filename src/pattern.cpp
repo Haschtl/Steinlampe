@@ -18,6 +18,7 @@ size_t currentModeIndex = 0; // tracks current mode (patterns + profile slots)
 
 bool patternFadeEnabled = false;
 float patternFadeStrength = 1.0f; // multiplier for smoothing duration (1.0 = rampDurationMs)
+bool patternInvert = Settings::PATTERN_INVERT_DEFAULT;
 float patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
 float patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
 float patternFilteredLevel = 0.0f;

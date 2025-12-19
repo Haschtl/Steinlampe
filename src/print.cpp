@@ -46,7 +46,8 @@ void printStatus(const bool &force)
 #ifdef ENABLE_HUMAN_STATUS
     String line1 = String(F("Pattern ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" '") +
                    PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF")) +
-                   F(" | Speed=") + String(patternSpeedScale, 2);
+                   F(" | Speed=") + String(patternSpeedScale, 2) +
+                   F(" | Invert=") + (patternInvert ? F("ON") : F("OFF"));
     if (wakeFadeActive)
         line1 += F(" | Wake");
     if (sleepFadeActive)
@@ -354,6 +355,8 @@ void printStatusStructured(const bool &force)
     line += String(patternSpeedScale, 2);
     line += F("|pat_fade=");
     line += patternFadeEnabled ? String(patternFadeStrength, 2) : F("off");
+    line += F("|pat_inv=");
+    line += patternInvert ? F("1") : F("0");
     line += F("|pat_lo=");
     line += String(patternMarginLow, 3);
     line += F("|pat_hi=");

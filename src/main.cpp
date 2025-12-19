@@ -234,6 +234,8 @@ void updatePatternEngine()
   uint32_t elapsed = now - patternStartMs;
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
+  if (patternInvert)
+    relative = 1.0f - relative;
   float span = patternMarginHigh - patternMarginLow;
   if (span < 0.0f)
     span = 0.0f;

@@ -61,11 +61,12 @@ export function LampPowerCard() {
   const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
   const simMs = Math.max(0, tick - patternAnchor);
   const rawEnergy = lampOn && status.currentPattern ? getPatternBrightness(status.currentPattern, simMs * speed) : 0;
+  const invert = status.patternInvert ?? false;
   const marginLow = typeof status.patternMarginLow === 'number' ? status.patternMarginLow : 0;
   const marginHigh = typeof status.patternMarginHigh === 'number' ? status.patternMarginHigh : 1;
   const span = Math.max(0, marginHigh - marginLow);
   const rawClamped = Math.min(1, Math.max(0, rawEnergy));
-  const adjustedEnergy = marginLow + rawClamped * span;
+  const adjustedEnergy = marginLow + (invert ? 1 - rawClamped : rawClamped) * span;
   const [energy, setEnergy] = useState(0);
 
   useEffect(() => {

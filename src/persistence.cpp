@@ -67,6 +67,7 @@ static const char *PREF_KEY_PAT_FADE = "pat_fade";
 static const char *PREF_KEY_PAT_FADE_AMT = "pat_fade_amt";
 static const char *PREF_KEY_PAT_LO = "pat_lo";
 static const char *PREF_KEY_PAT_HI = "pat_hi";
+static const char *PREF_KEY_PAT_INV = "pat_inv";
 static const char *PREF_KEY_RAMP_EASE_ON = "ramp_e_on";
 static const char *PREF_KEY_RAMP_EASE_OFF = "ramp_e_off";
 static const char *PREF_KEY_RAMP_POW_ON = "ramp_p_on";
@@ -169,6 +170,8 @@ String buildProfileString()
     cfg += patternFadeEnabled ? F("on") : F("off");
     cfg += F(" pat_fade_amt=");
     cfg += String(patternFadeStrength, 2);
+    cfg += F(" pat_inv=");
+    cfg += patternInvert ? F("on") : F("off");
     cfg += F(" pat_lo=");
     cfg += String(patternMarginLow, 3);
     cfg += F(" pat_hi=");
@@ -229,13 +232,13 @@ String defaultProfileString(uint8_t slot)
     switch (slot)
     {
     case 1: // A: full brightness, constant
-        cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
         break;
     case 2: // B: half brightness, constant
-        cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
         break;
     case 3: // C: half brightness, pulsierend
-        cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
         break;
     default:
         break;
@@ -363,6 +366,8 @@ void exportConfig()
     cfg += patternFadeEnabled ? F("on") : F("off");
     cfg += F(" pat_fade_amt=");
     cfg += String(patternFadeStrength, 2);
+    cfg += F(" pat_inv=");
+    cfg += patternInvert ? F("on") : F("off");
     cfg += F(" pat_lo=");
     cfg += String(patternMarginLow, 3);
     cfg += F(" pat_hi=");
@@ -415,6 +420,7 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_RAMP_POW_OFF, rampEaseOffPower);
     prefs.putFloat(PREF_KEY_PAT_LO, patternMarginLow);
     prefs.putFloat(PREF_KEY_PAT_HI, patternMarginHigh);
+    prefs.putBool(PREF_KEY_PAT_INV, patternInvert);
 #if ENABLE_BT_SERIAL
     prefs.putUInt(PREF_KEY_BT_SLEEP_BOOT, getBtSleepAfterBootMs());
     prefs.putUInt(PREF_KEY_BT_SLEEP_BLE, getBtSleepAfterBleMs());
@@ -566,6 +572,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     patternFadeStrength = 1.0f;
     patternFilteredLevel = 0.0f;
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
+    patternInvert = Settings::PATTERN_INVERT_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
 #if ENABLE_EXT_INPUT
@@ -620,6 +627,7 @@ void loadSettings()
         patternMarginHigh = 1.0f;
     if (patternMarginHigh < patternMarginLow)
         patternMarginHigh = patternMarginLow;
+    patternInvert = prefs.getBool(PREF_KEY_PAT_INV, Settings::PATTERN_INVERT_DEFAULT);
     touchDeltaOn = prefs.getShort(PREF_KEY_THR_ON, TOUCH_DELTA_ON_DEFAULT);
     touchDeltaOff = prefs.getShort(PREF_KEY_THR_OFF, TOUCH_DELTA_OFF_DEFAULT);
     if (touchDeltaOn < 1)
@@ -995,6 +1003,12 @@ void importConfig(const String &args)
             float v = val.toFloat();
             if (v >= 0.01f && v <= 10.0f)
                 patternFadeStrength = v;
+        }
+        else if (key == "pat_inv")
+        {
+            bool v;
+            if (parseBool(val, v))
+                patternInvert = v;
         }
         else if (key == "pat_lo")
         {

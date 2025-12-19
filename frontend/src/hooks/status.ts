@@ -51,6 +51,7 @@ export type DeviceStatus = {
   autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
+  patternInvert?: boolean;
   idleOffMin?: number;
   idleMinutes?: number;
   pwmCurve?: number;
@@ -206,6 +207,13 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
         patternFade: kv.pat_fade ? (kv.pat_fade === 'off' ? 0 : parseFloat(kv.pat_fade)) : s.patternFade,
+        patternInvert: kv.pat_inv
+          ? ['1', 'on', 'true'].includes(kv.pat_inv.toLowerCase())
+            ? true
+            : ['0', 'off', 'false'].includes(kv.pat_inv.toLowerCase())
+              ? false
+              : s.patternInvert
+          : s.patternInvert,
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,

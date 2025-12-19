@@ -32,6 +32,7 @@ constexpr float DEFAULT_RAMP_POW_OFF = 2.0f;    ///< easing power for off-ramp
 constexpr float RAMP_AMBIENT_FACTOR_DEFAULT = 0.0f; ///< Extra ramp length per darkness (0 = off)
 constexpr float PATTERN_MARGIN_LOW_DEFAULT = 0.0f;  ///< lower bound for pattern output
 constexpr float PATTERN_MARGIN_HIGH_DEFAULT = 1.0f; ///< upper bound for pattern output
+constexpr bool PATTERN_INVERT_DEFAULT = false;      ///< invert pattern output
 constexpr bool FILTER_IIR_DEFAULT = false;
 constexpr float FILTER_IIR_ALPHA_DEFAULT = 0.2f;
 constexpr bool FILTER_CLIP_DEFAULT = false;

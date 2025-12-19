@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeftCircle, ArrowRightCircle, Palette } from 'lucide-react';
+import { Activity, ArrowLeftCircle, ArrowRightCircle, ArrowUpDown, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ export function ModesCard() {
   const [fadeEnabled, setFadeEnabled] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [margin, setMargin] = useState<[number, number]>([0, 1]);
+  const [invert, setInvert] = useState(false);
 
   useEffect(() => {
     if (status.currentPattern) setPattern(status.currentPattern);
@@ -35,6 +36,10 @@ export function ModesCard() {
       setFadeEnabled(status.patternFade > 0);
     }
   }, [status.patternFade]);
+
+  useEffect(() => {
+    if (typeof status.patternInvert === 'boolean') setInvert(status.patternInvert);
+  }, [status.patternInvert]);
 
   useEffect(() => {
     const lo = typeof status.patternMarginLow === 'number' ? status.patternMarginLow : undefined;
@@ -80,6 +85,11 @@ export function ModesCard() {
   const handleMargin = (vals: [number, number]) => {
     setMargin(vals);
     sendCmd(`pat margin ${vals[0].toFixed(2)} ${vals[1].toFixed(2)}`).catch((e) => console.warn(e));
+  };
+
+  const handleInvert = (val: boolean) => {
+    setInvert(val);
+    sendCmd(`pat invert ${val ? "on" : "off"}`).catch((e) => console.warn(e));
   };
 
   return (
@@ -182,6 +192,18 @@ export function ModesCard() {
             />{" "}
             <span className="inline-flex items-center gap-1">
               <Activity className="h-4 w-4" /> AutoCycle
+            </span>
+          </label>
+          <label className="pill cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={invert}
+              onChange={(e) => handleInvert(e.target.checked)}
+            />{" "}
+            <span className="inline-flex items-center gap-1">
+              <ArrowUpDown className="h-4 w-4" />{" "}
+              <Trans k="label.patternInvert">Invert Pattern</Trans>
             </span>
           </label>
         </div>
