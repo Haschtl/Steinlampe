@@ -53,15 +53,22 @@ void updateLightSensor()
     {
         norm = clamp01((float)raw / 4095.0f);
     }
-    // Map ambient reading to a dimming factor; smooth via low-pass
+    // Map ambient reading to a dimming factor; smooth via low-pass + step clamp to avoid visible jumps
     float target = (0.2f + 0.8f * norm) * lightGain;
     if (target < lightClampMin)
         target = lightClampMin;
     if (target > lightClampMax)
         target = lightClampMax;
     target = clamp01(target);
-    // Heavier smoothing to avoid visible steps when dimming by ambient light
-    ambientScale = 0.92f * ambientScale + 0.08f * target;
+    const float blend = 0.03f; // slow IIR for ambience
+    float next = ambientScale + (target - ambientScale) * blend;
+    const float maxStep = 0.02f; // cap per update to hide sudden jumps
+    float delta = next - ambientScale;
+    if (delta > maxStep)
+        next = ambientScale + maxStep;
+    else if (delta < -maxStep)
+        next = ambientScale - maxStep;
+    ambientScale = next;
     // Darker rooms -> longer ramps: multiplier = 1 + factor * darkness
     float span = lightClampMax - lightClampMin;
     float normAmbient = span > 0.001f ? clamp01((ambientScale - lightClampMin) / span) : 1.0f;
