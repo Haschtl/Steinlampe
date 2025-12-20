@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
+import { X } from 'lucide-react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -81,6 +82,7 @@ export default function App() {
   const [commandInput, setCommandInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [showConnectOverlay, setShowConnectOverlay] = useState(true);
+  const [pendingCfg, setPendingCfg] = useState<string | null>(null);
 
   const iconHref = `${import.meta.env.BASE_URL}icon-lamp.svg`;
   const headerTitle =
@@ -110,6 +112,18 @@ export default function App() {
     const fallback = prefersDark ? 'fancy' : 'fancy-light';
     const theme = localStorage.getItem('ql-theme') || fallback;
     document.body.setAttribute('data-theme', theme);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const cfg = params.get('cfg');
+    if (cfg) {
+      try {
+        setPendingCfg(decodeURIComponent(cfg));
+      } catch {
+        setPendingCfg(cfg);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -151,6 +165,18 @@ export default function App() {
     },
     [sendCmd],
   );
+  const clearPendingCfg = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('cfg');
+    window.history.replaceState({}, '', url.toString());
+    setPendingCfg(null);
+  }, []);
+
+  const applyPendingCfg = useCallback(() => {
+    if (!pendingCfg) return;
+    sendCmd(pendingCfg).catch((e) => console.warn(e));
+    clearPendingCfg();
+  }, [clearPendingCfg, pendingCfg, sendCmd]);
 
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
@@ -164,6 +190,21 @@ export default function App() {
   return (
     <>
       <div className="min-h-screen bg-bg text-text">
+        {pendingCfg && (
+          <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-border bg-panel/90 px-3 py-2 shadow-lg backdrop-blur">
+            <Button size="sm" variant="primary" onClick={applyPendingCfg}>
+              <Send className="mr-1 h-4 w-4" /> {t("btn.applyLink", "Apply settings")}
+            </Button>
+            <button
+              type="button"
+              className="rounded-full p-1 text-muted hover:text-text"
+              onClick={clearPendingCfg}
+              aria-label={t("btn.close", "Close")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <AnimatePresence>
           {showConnectOverlay && !status.connected && (
             <motion.div

@@ -92,6 +92,11 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
     }
   };
 
+  const buildCfgLink = (cfg: string) => {
+    const base = `${window.location.origin}${window.location.pathname}`;
+    return `${base}?cfg=${encodeURIComponent(cfg)}`;
+  };
+
   return (
       <Card>
         <CardHeader>
@@ -148,8 +153,14 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
                     <Copy className="mr-1 h-4 w-4" /> Copy
                   </Button>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Input className="w-full font-mono" value={buildCfgLink(exportText)} readOnly />
+                  <Button size="sm" onClick={() => navigator.clipboard.writeText(buildCfgLink(exportText))}>
+                    <Copy className="mr-1 h-4 w-4" /> Link
+                  </Button>
+                </div>
                 <div className="w-full rounded-lg border border-border bg-panel p-3">
-                  <QRCodeSVG value={exportText} width={200} height={200} className="mx-auto" />
+                  <QRCodeSVG value={buildCfgLink(exportText)} width={200} height={200} className="mx-auto" />
                 </div>
               </div>
             )}
