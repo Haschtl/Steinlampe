@@ -36,6 +36,7 @@ export function useSerial(): SerialApi {
     const stored = localStorage.getItem('ql-log-filter');
     return stored !== 'false';
   });
+  const filterParsedRef = useRef<boolean>(filterParsed);
   const knownSerialsRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-serials') || '{}'));
   const [knownSerials, setKnownSerials] = useState<Record<string, string>>(knownSerialsRef.current);
   const forgetSerial = useCallback((id: string) => {
@@ -61,7 +62,7 @@ export function useSerial(): SerialApi {
       if (!line) return;
       console.debug('[Serial]', line);
       if (
-        filterParsed &&
+        filterParsedRef.current &&
         (/^Status[:=]/i.test(line) ||
           /^Lamp=/.test(line) ||
           /^Ramp=/.test(line) ||
@@ -82,10 +83,11 @@ export function useSerial(): SerialApi {
       const entry = { ts: Date.now(), line };
       setLog((prev) => [...prev.slice(-400), entry]);
     },
-    [filterParsed],
+    [],
   );
 
   useEffect(() => {
+    filterParsedRef.current = filterParsed;
     localStorage.setItem('ql-log-filter', filterParsed ? 'true' : 'false');
   }, [filterParsed]);
 

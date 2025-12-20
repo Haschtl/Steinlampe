@@ -3,7 +3,11 @@
 #include <Arduino.h>
 
 // ---------- Pins ----------
-static const int PIN_PWM = 23; // MOSFET-Gate
+
+// MOSFET-Gate
+#ifndef PIN_PWM
+#define PIN_PWM 23
+#endif
 
 #ifndef ANALOG_OUT_PIN
 #define ANALOG_OUT_PIN 25

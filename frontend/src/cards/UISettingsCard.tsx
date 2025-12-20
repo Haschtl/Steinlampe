@@ -139,7 +139,7 @@ export function UISettingsCard() {
             <div className="text-xs text-muted mb-1"><Trans k="label.bleDevices">BLE</Trans></div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(knownDevices || {}).map(([id, name]) => (
-                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
+                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs" title={id}>
                   <span className="max-w-[140px] truncate">{name || 'Device'}</span>
                   <button
                     type="button"
@@ -171,7 +171,7 @@ export function UISettingsCard() {
             <div className="text-xs text-muted mb-1"><Trans k="label.serialDevices">Serial</Trans></div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(knownSerials || {}).map(([id]) => (
-                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
+                <div key={id} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs" title={id}>
                   <span className="max-w-[180px] truncate">{knownSerials[id] || formatSerialLabel(id)}</span>
                   <button
                     type="button"

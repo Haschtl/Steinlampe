@@ -39,6 +39,7 @@ export function useBle(): BleApi {
     const stored = localStorage.getItem('ql-log-filter');
     return stored !== 'false';
   });
+  const filterParsedRef = useRef<boolean>(filterParsed);
   const [autoReconnect, setAutoReconnect] = useState<boolean>(() => {
     const stored = localStorage.getItem('ql-auto-reconnect');
     return stored !== 'false';
@@ -76,7 +77,7 @@ export function useBle(): BleApi {
       console.debug('[BLE]', line);
       // Filter out noisy status-only lines when enabled
       if (
-        filterParsed &&
+        filterParsedRef.current &&
         (
           /^Status[:=]/i.test(line) ||
           /^Lamp=/.test(line) ||
@@ -104,7 +105,7 @@ export function useBle(): BleApi {
         pendingLogRef.current = [...pendingLogRef.current.slice(-400), entry];
       }
     },
-    [filterParsed],
+    [],
   );
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function useBle(): BleApi {
   }, [autoReconnect]);
 
   useEffect(() => {
+    filterParsedRef.current = filterParsed;
     localStorage.setItem('ql-log-filter', filterParsed ? 'true' : 'false');
   }, [filterParsed]);
 
@@ -200,7 +202,8 @@ export function useBle(): BleApi {
     async (dev: BluetoothDevice, cmdChar: BluetoothRemoteGATTCharacteristic, statusChar: BluetoothRemoteGATTCharacteristic) => {
       const lineHandler = (line: string) => {
         const handled = parseStatus(line);
-        if (!handled || !filterParsed) pushLog(line);
+        if (!handled || !filterParsedRef.current) pushLog(line);
+        if (handled) setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
       };
 
       // Only subscribe to the status characteristic; command char stays write-only.
