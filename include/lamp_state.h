@@ -49,4 +49,4 @@ void startBrightnessRamp(float target, uint32_t durationMs, bool affectMaster = 
 void updateBrightnessRamp();
 void setLampEnabled(bool enable, const char *reason = nullptr);
 void forceLampOff(const char *reason = nullptr);
-void setBrightnessPercent(float percent, bool persist = false, bool announce = true);
+void setBrightnessPercent(float percent, bool persist = false, bool announce = true, bool fast = false);

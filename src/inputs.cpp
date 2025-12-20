@@ -576,7 +576,8 @@ void updatePoti()
 
     if (!lampEnabled)
         setLampEnabled(true, "poti");
-    setBrightnessPercent(target * 100.0f, true);
+    // Fast, non-persisted updates for smooth knob response (no flash wear).
+    setBrightnessPercent(target * 100.0f, false, false, true);
 }
 #endif
 

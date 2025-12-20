@@ -355,10 +355,10 @@ void forceLampOff(const char *reason)
 /**
  * @brief Set the master brightness in percent, optionally persisting/announcing.
  */
-void setBrightnessPercent(float percent, bool persist, bool announce)
+void setBrightnessPercent(float percent, bool persist, bool announce, bool fast)
 {
   float target = clamp01(percent / 100.0f);
-  uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
+  uint32_t dur = fast ? 0 : ((target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs);
   startBrightnessRamp(target, dur);
   if (announce)
   {
