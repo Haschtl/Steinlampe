@@ -25,6 +25,9 @@
  */
 void printTouchDebug(const bool &force)
 {
+#if !ENABLE_TOUCH_DIM
+    sendFeedback(F("[Touch] disabled"), force);
+#else
     long acc = 0;
     const int samples = 10;
     for (int i = 0; i < samples; ++i)
@@ -36,6 +39,7 @@ void printTouchDebug(const bool &force)
     int delta = touchBaseline - raw;
     sendFeedback(String(F("[Touch] raw=")) + String(raw) + F(" baseline=") + String(touchBaseline) +
                  F(" delta=") + String(delta) + F(" thrOn=") + String(touchDeltaOn) + F(" thrOff=") + String(touchDeltaOff),force);
+#endif
 }
 
 /**
@@ -82,11 +86,13 @@ void printStatus(const bool &force)
         line3 += String(idleOffMs / 60000);
         line3 += F("m");
     }
+#if ENABLE_TOUCH_DIM
     line3 += F(" | TouchDim=");
     line3 += touchDimEnabled ? F("ON") : F("OFF");
     line3 += F(" (step=");
     line3 += String(touchDimStep, 3);
     line3 += F(")");
+#endif
     line3 += F(" | PatFade=");
     if (patternFadeEnabled)
     {
@@ -198,13 +204,19 @@ void printStatus(const bool &force)
     String customLine = String(F("[Custom] len=")) + String(customLen) + F(" stepMs=") + String(customStepMs);
     sendFeedback(customLine,force);
 
-    int raw = touchRead(PIN_TOUCH_DIM);
-    int delta = raw - touchBaseline;
-    int mag = abs(delta);
-    String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
-                       F(" delta=") + String(delta) + F(" |mag=") + String(mag) + F(" thrOn=") + String(touchDeltaOn) +
-                       F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
-    sendFeedback(touchLine,force);
+#if ENABLE_TOUCH_DIM
+    {
+        int raw = touchRead(PIN_TOUCH_DIM);
+        int delta = raw - touchBaseline;
+        int mag = abs(delta);
+        String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
+                           F(" delta=") + String(delta) + F(" |mag=") + String(mag) + F(" thrOn=") + String(touchDeltaOn) +
+                           F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
+        sendFeedback(touchLine,force);
+    }
+#else
+    sendFeedback(F("[Touch] N/A"),force);
+#endif
 
 #if ENABLE_LIGHT_SENSOR
     String lightLine = F("[Light] ");
@@ -261,6 +273,7 @@ void printStatus(const bool &force)
 void printSensorsStructured(const bool &force)
 {
     String line = F("SENSORS|");
+#if ENABLE_TOUCH_DIM
     line += F("touch_base=");
     line += String(touchBaseline);
     int raw = touchRead(PIN_TOUCH_DIM);
@@ -270,6 +283,9 @@ void printSensorsStructured(const bool &force)
     line += String(touchBaseline - raw);
     line += F("|touch_active=");
     line += touchActive ? F("1") : F("0");
+#else
+    line += F("touch=N/A");
+#endif
 #if ENABLE_LIGHT_SENSOR
     line += F("|light_raw=");
     line += String((int)lightFiltered);
@@ -331,10 +347,14 @@ void printStatusStructured(const bool &force)
 #else
     line += F("|switch=N/A");
 #endif
+#if ENABLE_TOUCH_DIM
     line += F("|touch_dim=");
     line += touchDimEnabled ? F("1") : F("0");
     line += F("|touch_dim_step=");
     line += String(touchDimStep, 3);
+#else
+    line += F("|touch=N/A");
+#endif
     line += F("|ramp_on_ms=");
     line += String(rampOnDurationMs);
     line += F("|ramp_off_ms=");

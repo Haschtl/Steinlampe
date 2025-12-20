@@ -62,6 +62,7 @@ extern const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode
 extern const uint32_t TOUCH_DOUBLE_MS = 500; // Touch-Doppeltipp Erkennung
 extern const uint32_t SECURE_BOOT_WINDOW_MS = 1000;
 
+#if ENABLE_TOUCH_DIM
 // Touch-Schwellwerte-Defaults
 extern const int TOUCH_DELTA_ON_DEFAULT = 12; // Counts relativ zur Baseline
 extern const int TOUCH_DELTA_OFF_DEFAULT = 8; // Hysterese
@@ -87,6 +88,7 @@ int touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
 bool touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
 uint32_t touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
 float touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
+#endif
 
 #if ENABLE_POTI
 float potiFiltered = 0.0f;
@@ -293,6 +295,9 @@ void processStartupSwitch()
  */
 void calibrateTouchBaseline()
 {
+#if !ENABLE_TOUCH_DIM
+    sendFeedback(F("Touch disabled in build"));
+#else
     long acc = 0;
     const int samples = 32;
     for (int i = 0; i < samples; ++i)
@@ -301,6 +306,7 @@ void calibrateTouchBaseline()
         delay(5);
     }
     touchBaseline = (int)(acc / samples);
+#endif
 }
 
 /**
@@ -308,6 +314,9 @@ void calibrateTouchBaseline()
  */
 void calibrateTouchGuided()
 {
+#if !ENABLE_TOUCH_DIM
+    sendFeedback(F("Touch disabled in build"));
+#else
     sendFeedback(F("[Calib] Release electrode for 2s"));
     delay(200);
     uint32_t t0 = millis();
@@ -357,10 +366,11 @@ void calibrateTouchGuided()
 
     touchBaseline = baseAvg;
     touchDeltaOn = newOn;
-    touchDeltaOff = newOff;
+        touchDeltaOff = newOff;
     saveSettings();
     sendFeedback(String(F("[Calib] base=")) + String(baseAvg) + F(" touch=") + String(touchAvg) +
                  F(" delta=") + String(delta) + F(" thrOn=") + String(newOn) + F(" thrOff=") + String(newOff));
+#endif
 }
 
 /**
@@ -368,6 +378,9 @@ void calibrateTouchGuided()
  */
 void updateTouchBrightness()
 {
+#if !ENABLE_TOUCH_DIM
+    return;
+#else
     uint32_t now = millis();
     if (now - touchLastSampleMs < TOUCH_SAMPLE_DT_MS)
         return;
@@ -451,6 +464,7 @@ void updateTouchBrightness()
         brightnessChangedByTouch = true;
         logBrightnessChange("touch hold");
     }
+#endif
 }
 
 

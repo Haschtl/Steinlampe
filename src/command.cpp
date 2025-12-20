@@ -131,16 +131,25 @@ void handleCommand(String line)
     }
     if (lower == "touch")
     {
+#if ENABLE_TOUCH_DIM
         printTouchDebug();
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower == "calibrate touch")
     {
+#if ENABLE_TOUCH_DIM
         calibrateTouchGuided();
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower.startsWith("touch tune"))
     {
+#if ENABLE_TOUCH_DIM
         String args = line.substring(10);
         args.trim();
         int on = 0, off = 0;
@@ -155,10 +164,14 @@ void handleCommand(String line)
         {
             sendFeedback(F("Usage: touch tune <on> <off>"));
         }
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower.startsWith("touch hold"))
     {
+#if ENABLE_TOUCH_DIM
         uint32_t v = line.substring(line.indexOf("hold") + 4).toInt();
         if (v >= 500 && v <= 5000)
         {
@@ -170,24 +183,36 @@ void handleCommand(String line)
         {
             sendFeedback(F("Usage: touch hold 500-5000"));
         }
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower == "touchdim on")
     {
+#if ENABLE_TOUCH_DIM
         touchDimEnabled = true;
         saveSettings();
         sendFeedback(F("[TouchDim] Enabled"));
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower == "touchdim off")
     {
+#if ENABLE_TOUCH_DIM
         touchDimEnabled = false;
         saveSettings();
         sendFeedback(F("[TouchDim] Disabled"));
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower.startsWith("touch dim speed") || lower.startsWith("touchdim speed"))
     {
+#if ENABLE_TOUCH_DIM
         float v = line.substring(line.indexOf("speed") + 5).toFloat();
         if (v < 0.001f)
             v = 0.001f;
@@ -196,6 +221,9 @@ void handleCommand(String line)
         touchDimStep = v;
         saveSettings();
         sendFeedback(String(F("[TouchDim] speed=")) + String(v, 3));
+#else
+        sendFeedback(F("[Touch] disabled in build"));
+#endif
         return;
     }
     if (lower.startsWith("custom"))

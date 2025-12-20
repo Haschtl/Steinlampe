@@ -52,6 +52,7 @@ extern const uint32_t MODE_TAP_MAX_MS; // max. Dauer für "kurz Aus" (Mode-Wechs
 extern const uint32_t TOUCH_DOUBLE_MS; // Touch-Doppeltipp Erkennung
 extern const uint32_t SECURE_BOOT_WINDOW_MS;
 
+#if ENABLE_TOUCH_DIM
 // Touch-Schwellwerte-Defaults
 extern const int TOUCH_DELTA_ON_DEFAULT; // Counts relativ zur Baseline
 extern const int TOUCH_DELTA_OFF_DEFAULT; // Hysterese
@@ -77,6 +78,7 @@ extern int touchDeltaOff;
 extern bool touchDimEnabled;
 extern uint32_t touchHoldStartMs;
 extern float touchDimStep;
+#endif
 
 #if ENABLE_POTI
 extern float potiFiltered;

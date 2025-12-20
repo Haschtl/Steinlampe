@@ -407,7 +407,9 @@ void setup()
 #if ENABLE_SWITCH
   pinMode(PIN_SWITCH, INPUT_PULLUP);
 #endif
+#if ENABLE_TOUCH_DIM
   calibrateTouchBaseline();
+#endif
 
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
   analogReadResolution(12);
@@ -490,7 +492,9 @@ void loop()
 #if ENABLE_SWITCH
   updateSwitchLogic();
 #endif
+#if ENABLE_TOUCH_DIM
   updateTouchBrightness();
+#endif
   updateBrightnessRamp();
   updatePatternEngine();
   updateLightSensor();

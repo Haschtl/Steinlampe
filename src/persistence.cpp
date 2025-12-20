@@ -303,10 +303,12 @@ void exportConfig()
     cfg += autoCycle ? F("on") : F("off");
     cfg += F(" pat_scale=");
     cfg += String(patternSpeedScale, 2);
+#if ENABLE_TOUCH_DIM
     cfg += F(" touch_on=");
     cfg += touchDeltaOn;
     cfg += F(" touch_off=");
     cfg += touchDeltaOff;
+#endif
     cfg += F(" ramp=");
     cfg += rampDurationMs;
     cfg += F(" idle=");
@@ -315,12 +317,14 @@ void exportConfig()
     cfg += presenceEnabled ? F("on") : F("off");
     cfg += F(" presence_addr=");
     cfg += presenceAddr;
+#if ENABLE_TOUCH_DIM
     cfg += F(" touch_dim=");
     cfg += touchDimEnabled ? F("on") : F("off");
     cfg += F(" touch_hold=");
     cfg += touchHoldStartMs;
     cfg += F(" touch_dim_step=");
     cfg += String(touchDimStep, 3);
+#endif
     FilterState filt;
     filtersGetState(filt);
     cfg += F(" filter_iir=");
@@ -400,10 +404,11 @@ void saveSettings()
     prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
     prefs.putBool(PREF_KEY_AUTO, autoCycle);
     prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
+#if ENABLE_TOUCH_DIM
     prefs.putShort(PREF_KEY_THR_ON, (int16_t)touchDeltaOn);
     prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
     prefs.putUInt(PREF_KEY_TOUCH_HOLD, touchHoldStartMs);
-    prefs.putFloat(PREF_KEY_PAT_SCALE, patternSpeedScale);
+#endif
     prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
     prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
@@ -473,8 +478,10 @@ void saveSettings()
     prefs.putUInt(PREF_KEY_PUSH_STEP_MS, pushStepMs);
     prefs.putFloat(PREF_KEY_PUSH_STEP, pushStep);
 #endif
+#if ENABLE_TOUCH_DIM
     prefs.putBool(PREF_KEY_TOUCH_DIM, touchDimEnabled);
     prefs.putFloat(PREF_KEY_TOUCH_DIM_STEP, touchDimStep);
+#endif
     prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
     prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
     prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
@@ -525,10 +532,13 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     masterBrightness = (brightnessOverride >= 0.0f) ? clamp01(brightnessOverride) : Settings::DEFAULT_BRIGHTNESS;
     autoCycle = Settings::DEFAULT_AUTOCYCLE;
     patternSpeedScale = 1.0f;
+#if ENABLE_TOUCH_DIM
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
     touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
     touchDimEnabled = Settings::TOUCH_DIM_DEFAULT_ENABLED;
     touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
+    touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
+#endif
     quickMask = computeDefaultQuickMask();
     presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
     presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
@@ -582,7 +592,6 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     patternFadeEnabled = false;
     patternFadeStrength = 1.0f;
     patternFilteredLevel = 0.0f;
-    touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
     patternInvert = Settings::PATTERN_INVERT_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
@@ -640,17 +649,14 @@ void loadSettings()
     if (patternMarginHigh < patternMarginLow)
         patternMarginHigh = patternMarginLow;
     patternInvert = prefs.getBool(PREF_KEY_PAT_INV, Settings::PATTERN_INVERT_DEFAULT);
+#if ENABLE_TOUCH_DIM
     touchDeltaOn = prefs.getShort(PREF_KEY_THR_ON, TOUCH_DELTA_ON_DEFAULT);
     touchDeltaOff = prefs.getShort(PREF_KEY_THR_OFF, TOUCH_DELTA_OFF_DEFAULT);
     if (touchDeltaOn < 1)
         touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
     if (touchDeltaOff < 1 || touchDeltaOff >= touchDeltaOn)
         touchDeltaOff = TOUCH_DELTA_OFF_DEFAULT;
-    patternSpeedScale = prefs.getFloat(PREF_KEY_PAT_SCALE, 1.0f);
-    if (patternSpeedScale < 0.1f)
-        patternSpeedScale = 0.1f;
-    else if (patternSpeedScale > 5.0f)
-        patternSpeedScale = 5.0f;
+    touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
     touchHoldStartMs = prefs.getUInt(PREF_KEY_TOUCH_HOLD, Settings::TOUCH_HOLD_MS_DEFAULT);
     if (touchHoldStartMs < 500)
         touchHoldStartMs = 500;
@@ -661,6 +667,7 @@ void loadSettings()
         touchDimStep = 0.001f;
     if (touchDimStep > 0.05f)
         touchDimStep = 0.05f;
+#endif
     {
         uint64_t lo = prefs.getUInt(PREF_KEY_QUICK_MASK, (uint32_t)(computeDefaultQuickMask() & 0xFFFFFFFFULL));
         uint64_t hi = prefs.getUInt(PREF_KEY_QUICK_MASK_HI, 0);
@@ -894,7 +901,6 @@ void loadSettings()
     outputGamma = prefs.getFloat(PREF_KEY_PWM_GAMMA, Settings::PWM_GAMMA_DEFAULT);
     if (outputGamma < 0.5f || outputGamma > 4.0f)
         outputGamma = Settings::PWM_GAMMA_DEFAULT;
-    touchDimEnabled = prefs.getBool(PREF_KEY_TOUCH_DIM, Settings::TOUCH_DIM_DEFAULT_ENABLED);
 #if ENABLE_LIGHT_SENSOR
     lightGain = prefs.getFloat(PREF_KEY_LIGHT_GAIN, Settings::LIGHT_GAIN_DEFAULT);
     lightClampMin = prefs.getFloat(PREF_KEY_LCLAMP_MIN, Settings::LIGHT_CLAMP_MIN_DEFAULT);
@@ -994,6 +1000,7 @@ void importConfig(const String &args)
                 minutes = 0;
             idleOffMs = minutes == 0 ? 0 : (uint32_t)minutes * 60000U;
         }
+#if ENABLE_TOUCH_DIM
         else if (key == "touch_on")
         {
             int v = val.toInt();
@@ -1012,6 +1019,7 @@ void importConfig(const String &args)
             if (v >= 500 && v <= 5000)
                 touchHoldStartMs = v;
         }
+#endif
         else if (key == "pat_scale")
         {
             float v = val.toFloat();
@@ -1072,6 +1080,7 @@ void importConfig(const String &args)
         {
             presenceAddr = val;
         }
+#if ENABLE_TOUCH_DIM
         else if (key == "touch_dim")
         {
             bool v;
@@ -1087,6 +1096,7 @@ void importConfig(const String &args)
                 v = 0.05f;
             touchDimStep = v;
         }
+#endif
         else if (key == "filter_iir")
         {
             bool v;
