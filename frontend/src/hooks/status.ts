@@ -95,6 +95,7 @@ export type DeviceStatus = {
   musicEnv?: number;
   musicLevel?: number;
   musicKickMs?: number;
+  notifyMin?: number;
   clapEnabled?: boolean;
   clapThreshold?: number;
   clapCooldownMs?: number;
@@ -148,6 +149,16 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     }));
     return true;
   }
+  if (line.startsWith('[Brightness]')) {
+    const match = line.match(/Brightness\]\s*([0-9.]+)/i);
+    const val = match ? parseFloat(match[1]) : undefined;
+    setStatus((s) => ({
+      ...s,
+      brightness: Number.isFinite(val ?? NaN) ? val : s.brightness,
+      lastStatusAt: Date.now(),
+    }));
+    return true;
+  }
   if (line.startsWith('STATUS')) {
     const parts = line.split('|').slice(1);
     const kv: Record<string, string> = {};
@@ -176,6 +187,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const outputMode = kv.out ? (kv.out.toLowerCase().startsWith('ana') ? 'analog' : 'pwm') : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
+      const notifyMin = kv.notif_min ? asNum('notif_min') : s.notifyMin;
       const potiVal = Object.prototype.hasOwnProperty.call(kv, 'poti_val') ? asNum('poti_val') : undefined;
       const potiRaw = Object.prototype.hasOwnProperty.call(kv, 'poti_raw') ? asInt('poti_raw') : undefined;
       const potiMin = Object.prototype.hasOwnProperty.call(kv, 'poti_min') ? asNum('poti_min') : undefined;
@@ -284,6 +296,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         musicMode: kv.music_mode ?? s.musicMode,
         musicMod: asNum('music_mod') ?? s.musicMod,
         musicKickMs: asNum('music_kick_ms') ?? s.musicKickMs,
+        notifyMin,
         clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
         clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
         clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,

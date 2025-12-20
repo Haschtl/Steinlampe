@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MorseCard } from '@/cards/MorseCard';
 import { NotifyCard } from '@/cards/NotifyCard';
 import { WakeSleepCard } from '@/cards/WakeSleepCard';
@@ -10,6 +10,7 @@ export function ActionsSection() {
   const [notifySeq, setNotifySeq] = useState('80 40 80 120');
   const [notifyFade, setNotifyFade] = useState(0);
   const [notifyRepeat, setNotifyRepeat] = useState(1);
+  const [notifyMin, setNotifyMin] = useState(10);
   const [wakeDuration, setWakeDuration] = useState(180);
   const [wakeMode, setWakeMode] = useState('');
   const [wakeBri, setWakeBri] = useState('');
@@ -42,6 +43,13 @@ export function ActionsSection() {
     if (!cmd) return;
     sendCmd(cmd).catch((e) => console.warn(e));
   };
+
+  // Sync min notify brightness from status if available
+  useEffect(() => {
+    if (typeof status.notifyMin === 'number' && !Number.isNaN(status.notifyMin)) {
+      setNotifyMin(status.notifyMin);
+    }
+  }, [status.notifyMin]);
 
   const handleWake = () => {
     const parts = ['wake'];
@@ -76,6 +84,8 @@ export function ActionsSection() {
         setNotifyFade={setNotifyFade}
         notifyRepeat={notifyRepeat}
         setNotifyRepeat={setNotifyRepeat}
+        notifyMin={notifyMin}
+        setNotifyMin={setNotifyMin}
         handleNotify={handleNotify}
         sendCmd={sendCmd}
       />

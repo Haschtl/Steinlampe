@@ -12,11 +12,13 @@ type Props = {
   setNotifyFade: (v: number) => void;
   notifyRepeat: number;
   setNotifyRepeat: (v: number) => void;
+  notifyMin: number;
+  setNotifyMin: (v: number) => void;
   handleNotify: (seq: string, fade?: number, repeat?: number) => void;
   sendCmd: (cmd: string) => void;
 };
 
-export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade, notifyRepeat, setNotifyRepeat, handleNotify, sendCmd }: Props) {
+export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade, notifyRepeat, setNotifyRepeat, notifyMin, setNotifyMin, handleNotify, sendCmd }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -75,6 +77,26 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                   value={notifyRepeat}
                   onChange={(e) => setNotifyRepeat(Number(e.target.value))}
                   className="w-20"
+                />
+              </div>
+              <div>
+                <Label className="m-0 text-muted">
+                  <Trans k="label.notifyMin">Notify min (%)</Trans>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={notifyMin}
+                  onChange={(e) => setNotifyMin(Number(e.target.value))}
+                  onBlur={(e) => {
+                    const v = Math.min(100, Math.max(0, Number(e.target.value)));
+                    setNotifyMin(v);
+                    sendCmd(`notify min ${v.toFixed(1)}`);
+                  }}
+                  className="w-24"
+                  suffix="%"
                 />
               </div>
             </div>

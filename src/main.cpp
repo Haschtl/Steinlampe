@@ -247,10 +247,8 @@ void updatePatternEngine()
     adjusted = 1.0f;
   relative = adjusted;
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
-#ifndef ENABLE_MUSIC_MODE
-  if (musicEnabled)
-    combined *= musicModScale;
-#endif
+
+  // Notifications: ignore pattern; use brightness+ambient only with a floor.
   if (notifyActive && !notifySeq.empty())
   {
     uint32_t dtStage = now - notifyStageStartMs;
@@ -279,6 +277,12 @@ void updatePatternEngine()
     }
     if (notifyActive)
     {
+      // Start from brightness * ambient, with a minimum brightness to stay visible.
+      float base = masterBrightness;
+      if (base < notifyMinBrightness)
+        base = notifyMinBrightness;
+      base *= ambientScale;
+
       bool onPhase = (notifyIdx % 2 == 0);
       float scale = notifyInvert ? (onPhase ? 0.0f : 1.0f) : (onPhase ? 1.0f : 0.0f);
       if (notifyFadeMs > 0)
@@ -299,9 +303,14 @@ void updatePatternEngine()
         else
           scale = onPhase ? s : (1.0f - s);
       }
-      combined *= scale;
+      combined = base * scale;
     }
   }
+
+#ifndef ENABLE_MUSIC_MODE
+  if (musicEnabled && !notifyActive)
+    combined *= musicModScale;
+#endif
   if (patternFadeEnabled)
   {
     if (patternFilterLastMs == 0)

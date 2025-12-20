@@ -1,5 +1,6 @@
 
 #include "Arduino.h"
+#include "settings.h"
 #include <vector>
 
 // Notify blink
@@ -11,3 +12,4 @@ bool notifyRestoreLamp = false;
 bool notifyPrevLampOn = false;
 bool notifyActive = false;
 uint32_t notifyFadeMs = 0;
+float notifyMinBrightness = Settings::NOTIFY_MIN_BRI_DEFAULT;

@@ -142,6 +142,7 @@ class LampStatusStore:
                     "music_mode": kv.get("music_mode"),
                     "music_mod": float_or_none("music_mod"),
                     "music_kick_ms": float_or_none("music_kick_ms"),
+                    "notif_min": float_or_none("notif_min"),
                     "music_env": float_or_none("music_env"),
                     "music_level": float_or_none("music_level"),
                     "music_smooth": float_or_none("music_smooth"),

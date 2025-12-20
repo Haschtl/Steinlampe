@@ -1014,6 +1014,19 @@ void handleCommand(String line)
     {
         std::vector<uint32_t> seq;
         notifyFadeMs = 0;
+        if (lower.startsWith("notify min"))
+        {
+            float v = line.substring(10).toFloat();
+            v = clamp01(v / 100.0f);
+            if (v < 0.0f)
+                v = 0.0f;
+            if (v > 1.0f)
+                v = 1.0f;
+            notifyMinBrightness = v;
+            saveSettings();
+            sendFeedback(String(F("[Notify] min_bri=")) + String(v * 100.0f, 1) + F("%"));
+            return;
+        }
         String args = line.substring(6);
         args.trim();
         while (args.length() > 0)

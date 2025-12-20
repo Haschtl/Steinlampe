@@ -75,6 +75,7 @@ static const char *PREF_KEY_LCLAMP_MIN = "lcl_min";
 static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
 static const char *PREF_KEY_LIGHT_ALPHA = "light_a";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
+static const char *PREF_KEY_NOTIFY_MIN = "notif_min";
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
 static const char *PREF_KEY_POTI_ALPHA = "poti_a";
@@ -418,6 +419,7 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_PAT_LO, patternMarginLow);
     prefs.putFloat(PREF_KEY_PAT_HI, patternMarginHigh);
     prefs.putBool(PREF_KEY_PAT_INV, patternInvert);
+    prefs.putFloat(PREF_KEY_NOTIFY_MIN, notifyMinBrightness);
 #if ENABLE_BT_SERIAL
     prefs.putUInt(PREF_KEY_BT_SLEEP_BOOT, getBtSleepAfterBootMs());
     prefs.putUInt(PREF_KEY_BT_SLEEP_BLE, getBtSleepAfterBleMs());
@@ -584,6 +586,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     patternInvert = Settings::PATTERN_INVERT_DEFAULT;
     patternMarginLow = Settings::PATTERN_MARGIN_LOW_DEFAULT;
     patternMarginHigh = Settings::PATTERN_MARGIN_HIGH_DEFAULT;
+    notifyMinBrightness = Settings::NOTIFY_MIN_BRI_DEFAULT;
 #if ENABLE_EXT_INPUT
     extInputEnabled = false;
     extInputAnalog = Settings::EXT_INPUT_ANALOG_DEFAULT;
@@ -698,6 +701,11 @@ void loadSettings()
         patternMarginHigh = 1.0f;
     if (patternMarginHigh < patternMarginLow)
         patternMarginHigh = patternMarginLow;
+    notifyMinBrightness = prefs.getFloat(PREF_KEY_NOTIFY_MIN, Settings::NOTIFY_MIN_BRI_DEFAULT);
+    if (notifyMinBrightness < 0.0f)
+        notifyMinBrightness = 0.0f;
+    if (notifyMinBrightness > 1.0f)
+        notifyMinBrightness = 1.0f;
     presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
     presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
@@ -1383,6 +1391,11 @@ void importConfig(const String &args)
         else if (key == "bri_max")
         {
             briMaxUser = clamp01(val.toFloat());
+        }
+        else if (key == "notif_min")
+        {
+            float v = clamp01(val.toFloat());
+            notifyMinBrightness = v;
         }
         else if (key == "pres_grace")
         {

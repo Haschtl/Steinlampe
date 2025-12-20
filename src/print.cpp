@@ -412,6 +412,8 @@ void printStatusStructured(const bool &force)
     lineIO += String(briMinUser * 100.0f, 1);
     lineIO += F("|bri_max=");
     lineIO += String(briMaxUser * 100.0f, 1);
+    lineIO += F("|notif_min=");
+    lineIO += String(notifyMinBrightness * 100.0f, 1);
 #if ENABLE_LIGHT_SENSOR
     lineIO += F("|light=");
     lineIO += lightSensorEnabled ? F("ON") : F("OFF");
