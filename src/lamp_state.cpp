@@ -51,7 +51,6 @@ bool lampOffPending = false;
 float lastLoggedBrightness = Settings::DEFAULT_BRIGHTNESS;
 float briMinUser = Settings::BRI_MIN_DEFAULT;
 float briMaxUser = Settings::BRI_MAX_DEFAULT;
-float brightnessCap = Settings::BRI_CAP_DEFAULT;
 float ambientScale = 1.0f;
 float outputScale = 1.0f;
 
@@ -83,30 +82,29 @@ uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 void applyPwmLevel(float normalized)
 {
   float level = clamp01(normalized);
-  if (briMaxUser < briMinUser)
-    briMaxUser = briMinUser;
-  float cap = brightnessCap;
-  if (cap < briMinUser)
-    cap = briMinUser;
-  if (cap > 1.0f)
-    cap = 1.0f;
-  float capFactor = 1.0f;
-  if (briMaxUser > 0.0f)
-    capFactor = fminf(1.0f, cap / briMaxUser);
-  float levelEff = briMinUser + (briMaxUser - briMinUser) * level;
-  float levelScaled = briMinUser + (levelEff - briMinUser) * capFactor;
   if (level <= 0.0f)
   {
     writeOutputRaw(OFF_RAW);
     lastPwmValue = OFF_RAW;
     return;
   }
+  float effMin = clamp01(briMinUser);
+  float effMax = clamp01(briMaxUser);
+  if (effMax < effMin)
+    effMax = effMin;
+
   float gamma = outputGamma;
   if (gamma < 0.5f)
     gamma = 0.5f;
   if (gamma > 4.0f)
     gamma = 4.0f;
-  float pwm = powf(levelScaled, gamma) * PWM_MAX;
+  float pwmNorm = powf(level, gamma);
+  pwmNorm = effMin + (effMax - effMin) * pwmNorm;
+  if (pwmNorm < 0.0f)
+    pwmNorm = 0.0f;
+  if (pwmNorm > 1.0f)
+    pwmNorm = 1.0f;
+  float pwm = pwmNorm * PWM_MAX;
   if (pwm < 0.0f)
     pwm = 0.0f;
   if (pwm > PWM_MAX)
@@ -320,8 +318,8 @@ void setLampEnabled(bool enable, const char *reason)
     float target = (masterBrightness > briMinUser) ? masterBrightness : fallback;
     if (target < briMinUser)
       target = briMinUser;
-    if (target > briMaxUser)
-      target = briMaxUser;
+    if (target > 1.0f)
+      target = 1.0f;
     masterBrightness = target;
     startBrightnessRamp(1.0f, rampOnDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
     lastOnBrightness = target;
@@ -359,14 +357,7 @@ void forceLampOff(const char *reason)
  */
 void setBrightnessPercent(float percent, bool persist, bool announce)
 {
-  float cap = brightnessCap;
-  if (cap < briMinUser)
-    cap = briMinUser;
-  if (cap > 1.0f)
-    cap = 1.0f;
   float target = clamp01(percent / 100.0f);
-  if (target > cap)
-    target = cap;
   uint32_t dur = (target >= masterBrightness) ? rampOnDurationMs : rampOffDurationMs;
   startBrightnessRamp(target, dur);
   if (announce)

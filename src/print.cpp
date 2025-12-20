@@ -58,7 +58,7 @@ void printStatus(const bool &force)
     sendFeedback(quickLine,force);
 
     String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Brightness=") +
-                   String(masterBrightness * 100.0f, 1) + F("% | Cap=") + String(brightnessCap * 100.0f, 1) + F("%");
+                   String(masterBrightness * 100.0f, 1) + F("%");
 #if ENABLE_SWITCH
     line2 += F(" | Switch=");
     line2 += (switchDebouncedState ? F("ON") : F("OFF"));
@@ -323,8 +323,6 @@ void printStatusStructured(const bool &force)
     line += autoCycle ? F("1") : F("0");
     line += F("|bri=");
     line += String(masterBrightness * 100.0f, 1);
-    line += F("|cap=");
-    line += String(brightnessCap * 100.0f, 1);
     line += F("|lamp=");
     line += lampEnabled ? F("ON") : F("OFF");
 #if ENABLE_SWITCH

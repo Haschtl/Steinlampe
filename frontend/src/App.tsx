@@ -25,7 +25,7 @@ const commands = [
   { cmd: 'mode N / next / prev', desc: 'Select pattern' },
   { cmd: 'auto on/off', desc: 'Enable auto-cycle' },
   { cmd: 'quick <csv|default>', desc: 'Set quick-list' },
-  { cmd: 'bri X / bri cap X / bri min/max X', desc: 'Brightness and limits' },
+  { cmd: 'bri X / bri min/max X', desc: 'Brightness and limits' },
   { cmd: 'ramp <ms> / ramp on/off <ms>', desc: 'Ramp durations' },
   { cmd: 'ramp ease on|off <type> [pow]', desc: 'Ramp easing curve' },
   { cmd: 'pat scale X / pat fade on|off / pat fade amt X', desc: 'Pattern speed & fade' },
@@ -292,7 +292,6 @@ export default function App() {
                     className={`inline-flex h-3 w-3 rounded-full ${
                       status.patternCount > 0 &&
                       status.brightness !== undefined &&
-                      status.cap !== undefined &&
                       status.rampOnMs !== undefined &&
                       status.rampOffMs !== undefined &&
                       status.customLen !== undefined &&

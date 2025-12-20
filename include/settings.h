@@ -80,7 +80,6 @@ constexpr float LIGHT_CLAMP_MIN_DEFAULT = 0.2f;
 constexpr float LIGHT_CLAMP_MAX_DEFAULT = 1.0f;
 constexpr float BRI_MIN_DEFAULT = 0.00f;
 constexpr float BRI_MAX_DEFAULT = 1.00f;
-constexpr float BRI_CAP_DEFAULT = 1.0f;       ///< Hard cap for brightness (0..1)
 constexpr uint32_t CUSTOM_STEP_MS_DEFAULT = 800;///< default step time for custom pattern
 // Require an incoming command before any feedback is printed/sent (set via -DREQUIRE_FEEDBACK_HANDSHAKE=1)
 #ifndef REQUIRE_FEEDBACK_HANDSHAKE

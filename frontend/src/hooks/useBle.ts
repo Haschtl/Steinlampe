@@ -186,7 +186,6 @@ export function useBle(): BleApi {
       deviceName: '',
       currentPattern: undefined,
       brightness: undefined,
-      cap: undefined,
       lampState: undefined,
       switchState: undefined,
       touchState: undefined,

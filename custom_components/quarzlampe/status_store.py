@@ -97,7 +97,6 @@ class LampStatusStore:
                     "pattern_elapsed_ms": int_or_none("pat_ms"),
                     "auto": kv.get("auto") == "1",
                     "brightness": float_or_none("bri"),
-                    "cap": float_or_none("cap"),
                     "lamp": kv.get("lamp"),
                     "switch": kv.get("switch"),
                     "touch_dim": kv.get("touch_dim") == "1" if "touch_dim" in kv else None,

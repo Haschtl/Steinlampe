@@ -9,7 +9,6 @@ export type DeviceStatus = {
   patternName?: string;
   currentPattern?: number;
   brightness?: number;
-  cap?: number;
   lampState?: string;
   switchState?: string;
   hasSwitch?: boolean;
@@ -195,7 +194,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternElapsedMs: asInt('pat_ms') ?? s.patternElapsedMs,
         autoCycle: kv.auto ? kv.auto === '1' : s.autoCycle,
         brightness: asNum('bri') ?? s.brightness,
-        cap: asNum('cap') ?? s.cap,
         lampState: kv.lamp ?? s.lampState,
         switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
         hasSwitch,
@@ -394,13 +392,11 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
   if (line.includes('Lamp=')) {
     handled = true;
     const b = line.match(/Brightness=([0-9.]+)/);
-    const c = line.match(/Cap=([0-9.]+)/);
     const lamp = line.match(/Lamp=([A-Z]+)/);
     const sw = line.match(/Switch=([A-Z]+)/);
     setStatus((s) => ({
       ...s,
       brightness: b ? parseFloat(b[1]) : s.brightness,
-      cap: c ? parseFloat(c[1]) : s.cap,
       lampState: lamp ? lamp[1] : s.lampState,
       switchState: sw ? sw[1] : s.switchState,
       lastStatusAt: Date.now(),

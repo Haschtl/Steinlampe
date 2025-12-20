@@ -571,10 +571,7 @@ void updatePoti()
         return;
     }
 
-    float target = briMinUser + (briMaxUser - briMinUser) * potiFiltered;
-    float cap = brightnessCap > 0.0f ? brightnessCap : 1.0f;
-    if (target > cap)
-        target = cap;
+    float target = potiFiltered;
     target = clamp01(target);
 
     if (!lampEnabled)

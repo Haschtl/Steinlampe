@@ -821,19 +821,6 @@ void handleCommand(String line)
         sendFeedback(String(F("[Bri] max=")) + String(v, 3));
         return;
     }
-    if (lower.startsWith("bri cap"))
-    {
-        float v = line.substring(7).toFloat();
-        v = clamp01(v / 100.0f);
-        if (v < briMinUser)
-            v = briMinUser;
-        brightnessCap = v;
-        if (briMaxUser > brightnessCap)
-            briMaxUser = brightnessCap;
-        saveSettings();
-        sendFeedback(String(F("[Bri] cap=")) + String(brightnessCap * 100.0f, 1) + F("%"));
-        return;
-    }
     if (lower.startsWith("bri"))
     {
         float value = line.substring(3).toFloat();

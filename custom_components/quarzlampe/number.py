@@ -19,16 +19,6 @@ def _pct_to_unit(val: float | None) -> float | None:
 
 NUMBER_DEFS: tuple[dict[str, Any], ...] = (
     {
-        "key": "cap",
-        "name": "Brightness Cap (%)",
-        "min": 1,
-        "max": 100,
-        "step": 1,
-        "mode": NumberMode.SLIDER,
-        "get": _pct_to_unit,
-        "cmd": lambda v: f"bri cap {v:.1f}",
-    },
-    {
         "key": "bri_min",
         "name": "Brightness Min (%)",
         "min": 0,

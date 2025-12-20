@@ -8,8 +8,9 @@ import { Trans } from '@/i18n';
 
 export function LedConfigCard() {
   const { status, sendCmd } = useConnection();
-  const [cap, setCap] = useState(100);
   const [pwmCurve, setPwmCurve] = useState(1.8);
+  const [briMin, setBriMin] = useState<number | undefined>(undefined);
+  const [briMax, setBriMax] = useState<number | undefined>(undefined);
   const pwmRaw = status.pwmRaw;
   const pwmMax = status.pwmMax ?? 65535;
   // pwmMax reflects DAC range in analog mode too
@@ -20,20 +21,29 @@ export function LedConfigCard() {
       : undefined;
 
   useEffect(() => {
-    if (typeof status.cap === "number") setCap(Math.round(status.cap));
     if (typeof status.pwmCurve === "number") setPwmCurve(status.pwmCurve);
-  }, [status.cap, status.pwmCurve]);
-
-  const handleCap = () => {
-    const clamped = Math.min(100, Math.max(1, Math.round(cap)));
-    setCap(clamped);
-    sendCmd(`bri cap ${clamped}`).catch((e) => console.warn(e));
-  };
+    if (typeof status.briMin === "number") setBriMin(Math.round(status.briMin));
+    if (typeof status.briMax === "number") setBriMax(Math.round(status.briMax));
+  }, [status.briMax, status.briMin, status.pwmCurve]);
 
   const handlePwm = (val: number) => {
     setPwmCurve(val);
     if (!Number.isNaN(val))
       sendCmd(`pwm curve ${val.toFixed(2)}`).catch((e) => console.warn(e));
+  };
+
+  const handleBriMin = () => {
+    if (typeof briMin !== "number" || Number.isNaN(briMin)) return;
+    const clamped = Math.min(100, Math.max(0, briMin));
+    setBriMin(clamped);
+    sendCmd(`bri min ${(clamped / 100).toFixed(3)}`).catch((e) => console.warn(e));
+  };
+
+  const handleBriMax = () => {
+    if (typeof briMax !== "number" || Number.isNaN(briMax)) return;
+    const clamped = Math.min(100, Math.max(0, briMax));
+    setBriMax(clamped);
+    sendCmd(`bri max ${(clamped / 100).toFixed(3)}`).catch((e) => console.warn(e));
   };
 
   const safeGamma = useMemo(() => {
@@ -76,19 +86,52 @@ export function LedConfigCard() {
       <CardContent className="space-y-3">
         <div>
           <Label>
-            <Trans k="label.cap">Max. Helligkeit (%)</Trans>
+            <Trans k="label.briMin">Min brightness after gamma (%)</Trans>
           </Label>
-          <div className="flex items-center gap-2">
+          <p className="text-xs text-muted-foreground mt-1">
+            <Trans k="desc.briMin">
+              Sets the low end of the post-gamma range; output 0% maps here.
+            </Trans>
+          </p>
+          <div className="flex items-center gap-2 mt-1">
             <Input
               type="number"
-              min={1}
+              min={0}
               max={100}
-              value={cap}
-              onChange={(e) => setCap(Number(e.target.value))}
+              value={typeof briMin === "number" ? briMin : ""}
+              onChange={(e) =>
+                setBriMin(e.target.value === "" ? undefined : Number(e.target.value))
+              }
               className="w-28"
               suffix="%"
             />
-            <Button onClick={handleCap}>
+            <Button onClick={handleBriMin}>
+              <Trans k="btn.apply">Apply</Trans>
+            </Button>
+          </div>
+        </div>
+        <div>
+          <Label>
+            <Trans k="label.briMax">Max brightness after gamma (%)</Trans>
+          </Label>
+          <p className="text-xs text-muted-foreground mt-1">
+            <Trans k="desc.briMax">
+              Sets the high end of the post-gamma range; output 100% maps here.
+            </Trans>
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={typeof briMax === "number" ? briMax : ""}
+              onChange={(e) =>
+                setBriMax(e.target.value === "" ? undefined : Number(e.target.value))
+              }
+              className="w-28"
+              suffix="%"
+            />
+            <Button onClick={handleBriMax}>
               <Trans k="btn.apply">Apply</Trans>
             </Button>
           </div>

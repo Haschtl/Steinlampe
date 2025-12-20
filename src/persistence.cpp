@@ -23,7 +23,6 @@ static const char *PREF_KEY_MODE = "mode";
 static const char *PREF_KEY_AUTO = "auto";
 static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
-static const char *PREF_KEY_BRI_CAP = "bri_cap";
 static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
@@ -179,8 +178,6 @@ String buildProfileString()
     cfg += String(patternMarginLow, 3);
     cfg += F(" pat_hi=");
     cfg += String(patternMarginHigh, 3);
-    cfg += F(" bri_cap=");
-    cfg += String(brightnessCap, 3);
     cfg += F(" ramp_on_ease=");
     cfg += easeToString(rampEaseOnType);
     cfg += F(" ramp_off_ease=");
@@ -193,8 +190,6 @@ String buildProfileString()
     cfg += String(briMinUser, 3);
     cfg += F(" bri_max=");
     cfg += String(briMaxUser, 3);
-    cfg += F(" bri_cap=");
-    cfg += String(brightnessCap, 3);
     cfg += F(" pwm_gamma=");
     cfg += String(outputGamma, 2);
 #if ENABLE_LIGHT_SENSOR
@@ -412,7 +407,6 @@ void saveSettings()
     prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
-    prefs.putFloat(PREF_KEY_BRI_CAP, brightnessCap);
     prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
     prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
     prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
@@ -527,7 +521,6 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     prefs.end();
 
     masterBrightness = (brightnessOverride >= 0.0f) ? clamp01(brightnessOverride) : Settings::DEFAULT_BRIGHTNESS;
-    brightnessCap = Settings::BRI_CAP_DEFAULT;
     autoCycle = Settings::DEFAULT_AUTOCYCLE;
     patternSpeedScale = 1.0f;
     touchDeltaOn = TOUCH_DELTA_ON_DEFAULT;
@@ -707,11 +700,6 @@ void loadSettings()
         patternMarginHigh = patternMarginLow;
     presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
     presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
-    brightnessCap = prefs.getFloat(PREF_KEY_BRI_CAP, Settings::BRI_CAP_DEFAULT);
-    if (brightnessCap < briMinUser)
-        brightnessCap = briMinUser;
-    if (brightnessCap > 1.0f)
-        brightnessCap = 1.0f;
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
         rampDurationMs = Settings::DEFAULT_RAMP_MS;
@@ -1395,15 +1383,6 @@ void importConfig(const String &args)
         else if (key == "bri_max")
         {
             briMaxUser = clamp01(val.toFloat());
-        }
-        else if (key == "bri_cap")
-        {
-            float v = clamp01(val.toFloat());
-            if (v < briMinUser)
-                v = briMinUser;
-            brightnessCap = v;
-            if (briMaxUser > brightnessCap)
-                briMaxUser = brightnessCap;
         }
         else if (key == "pres_grace")
         {

@@ -31,7 +31,7 @@ ESP32 firmware for a stone lamp with rich PWM patterns, touch/knob/switch contro
 Send plain text lines (newline-terminated) over USB serial, BLE, or Classic BT SPP:
 
 - Power & patterns: `on|off|toggle`, `mode <n>`, `next`, `prev`, `list`
-- Brightness: `bri <0..100>`, `bri min <0..1>`, `bri max <0..1>`, `bri cap <0..100>`
+- Brightness: `bri <0..100>`, `bri min <0..1>`, `bri max <0..1>`
 - Ramps: `ramp on|off <ms>`, `ramp <ms>`, `ramp ease on|off <ease> [pow]`, `ramp ambient <0..5>`
 - Pattern tuning: `pat scale <0.1-5>`, `pat fade on|off|amt <v>`, `pat margin <low> <high>`
 - Sleep/Wake: `wake [soft] [mode=N] [bri=XX] <sec>`, `wake stop`, `sleep [min]`, `sleep stop`
@@ -62,7 +62,7 @@ BLE UUIDs (default):
 - Entities:
   - `light.quarzlampe_lamp` with brightness and effect list (patterns).
   - Switches: auto-cycle, touch dim, presence, ambient light sensor, clap.
-  - Numbers: brightness cap/min/max, ramp on/off, ambient factor, idle-off, pattern speed, pattern fade, PWM gamma.
+  - Numbers: brightness min/max, ramp on/off, ambient factor, idle-off, pattern speed, pattern fade, PWM gamma.
   - Sensors: pattern index/name, light raw, music level, touch delta, presence state.
   - Buttons: next/prev pattern, status refresh, sync switch.
 - Services (`quarzlampe.*`):
