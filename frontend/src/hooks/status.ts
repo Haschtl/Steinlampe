@@ -111,6 +111,7 @@ export type DeviceStatus = {
   potiSample?: number;
   potiMin?: number;
   potiMax?: number;
+  potiInvert?: boolean;
   potiVal?: number;
   potiRaw?: number;
   hasPush?: boolean;
@@ -180,6 +181,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const potiRaw = Object.prototype.hasOwnProperty.call(kv, 'poti_raw') ? asInt('poti_raw') : undefined;
       const potiMin = Object.prototype.hasOwnProperty.call(kv, 'poti_min') ? asNum('poti_min') : undefined;
       const potiMax = Object.prototype.hasOwnProperty.call(kv, 'poti_max') ? asNum('poti_max') : undefined;
+      const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresence = kv.presence ? isAvailable('presence') : s.hasPresence;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
@@ -298,6 +300,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         potiSample: asInt('poti_sample') ?? s.potiSample,
         potiMin: potiMin ?? s.potiMin,
         potiMax: potiMax ?? s.potiMax,
+        potiInvert: typeof potiInvert === 'boolean' ? potiInvert : s.potiInvert,
         potiVal: potiVal ?? s.potiVal,
         potiRaw: potiRaw ?? s.potiRaw,
         hasPush,

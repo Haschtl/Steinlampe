@@ -376,7 +376,7 @@ void setup()
 {
   pinMode(PIN_OUTPUT, OUTPUT);
 #if ENABLE_ANALOG_OUTPUT
-  dacWrite(PIN_OUTPUT, 0); // explicit off for analog driver
+  dacWrite(PIN_OUTPUT, OFF_RAW); // explicit off for analog driver
 #else
   digitalWrite(PIN_OUTPUT, LOW); // keep LED off during init
 #endif
@@ -436,9 +436,9 @@ void setup()
 #if !ENABLE_ANALOG_OUTPUT
   ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
   ledcAttachPin(PIN_OUTPUT, LEDC_CH);
-  ledcWrite(LEDC_CH, 0); // explicit off at startup
+  ledcWrite(LEDC_CH, OFF_RAW); // explicit off at startup
 #else
-  dacWrite(PIN_OUTPUT, 0);
+  dacWrite(PIN_OUTPUT, OFF_RAW);
 #endif
   patternStartMs = millis();
 
@@ -467,9 +467,9 @@ void loop()
       if (lampEnabled)
         setLampEnabled(false, "startup-hold");
 #if ENABLE_ANALOG_OUTPUT
-      dacWrite(PIN_OUTPUT, 0);
+      dacWrite(PIN_OUTPUT, OFF_RAW);
 #else
-      ledcWrite(LEDC_CH, 0);
+      ledcWrite(LEDC_CH, OFF_RAW);
 #endif
       delay(10);
       return;

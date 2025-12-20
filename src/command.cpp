@@ -1446,12 +1446,22 @@ void handleCommand(String line)
                 sendFeedback(F("Usage: poti calib <min 0..1> <max 0..1.5>"));
             }
         }
+        else if (arg.startsWith("invert"))
+        {
+            String v = arg.substring(6);
+            v.trim();
+            bool val = (v == "1" || v == "on" || v == "true");
+            potiInvert = val;
+            saveSettings();
+            sendFeedback(String(F("[Poti] invert=")) + (potiInvert ? F("ON") : F("OFF")));
+        }
         else
         {
             sendFeedback(String(F("[Poti] ")) + (potiEnabled ? F("ON ") : F("OFF ")) + F("a=") + String(potiAlpha, 2) +
                          F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
                          F(" smpl=") + String(potiSampleMs) + F("ms") +
-                         F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3));
+                         F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
+                         F(" inv=") + (potiInvert ? F("1") : F("0")));
         }
         return;
     }

@@ -90,6 +90,7 @@ extern bool potiEnabled;
 extern int potiLastRaw; // last ADC sample (0..4095)
 extern float potiCalibMin;
 extern float potiCalibMax;
+extern bool potiInvert;
 #endif
 
 #if ENABLE_PUSH_BUTTON

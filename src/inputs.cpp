@@ -100,6 +100,7 @@ bool potiEnabled = true;
 int potiLastRaw = -1;
 float potiCalibMin = Settings::POTI_MIN_DEFAULT;
 float potiCalibMax = Settings::POTI_MAX_DEFAULT;
+bool potiInvert = Settings::POTI_INVERT_DEFAULT;
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -554,6 +555,8 @@ void updatePoti()
         span = 1.0f;
     }
     float level = clamp01((levelRaw - minCal) / span);
+    if (potiInvert)
+        level = 1.0f - level;
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 
     if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)

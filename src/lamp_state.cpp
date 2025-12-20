@@ -30,6 +30,7 @@ const int PWM_MAX = (1 << LEDC_RES) - 1;
 #endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 uint32_t lastPwmValue = 0;
+static const uint32_t OFF_RAW = PWM_INVERT_OUTPUT ? (uint32_t)PWM_MAX : 0;
 
 static inline void writeOutputRaw(uint32_t value)
 {
@@ -96,8 +97,8 @@ void applyPwmLevel(float normalized)
   float levelScaled = briMinUser + (levelEff - briMinUser) * capFactor;
   if (level <= 0.0f)
   {
-    writeOutputRaw(0);
-    lastPwmValue = 0;
+    writeOutputRaw(OFF_RAW);
+    lastPwmValue = OFF_RAW;
     return;
   }
   float gamma = outputGamma;
@@ -113,7 +114,6 @@ void applyPwmLevel(float normalized)
   uint32_t pwmValue = (uint32_t)(pwm + 0.5f);
   if (pwmValue > (uint32_t)PWM_MAX)
     pwmValue = (uint32_t)PWM_MAX;
-  lastPwmNormalized = level;
 #if PWM_INVERT_OUTPUT
   pwmValue = (uint32_t)PWM_MAX - pwmValue;
 #endif

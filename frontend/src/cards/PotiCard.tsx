@@ -14,6 +14,7 @@ export function PotiCard() {
   const [history, setHistory] = useState<number[]>([]);
   const [calMin, setCalMin] = useState(0);
   const [calMax, setCalMax] = useState(1);
+  const [invert, setInvert] = useState(false);
 
   useEffect(() => {
     if (typeof status.potiEnabled === 'boolean') setEnabled(status.potiEnabled);
@@ -23,7 +24,8 @@ export function PotiCard() {
     if (typeof status.potiSample === 'number') setSample(status.potiSample);
     if (typeof status.potiMin === 'number') setCalMin(status.potiMin);
     if (typeof status.potiMax === 'number') setCalMax(status.potiMax);
-  }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiMax, status.potiMin, status.potiOff, status.potiSample]);
+    if (typeof status.potiInvert === 'boolean') setInvert(status.potiInvert);
+  }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiMax, status.potiMin, status.potiOff, status.potiSample, status.potiInvert]);
 
   useEffect(() => {
     if (typeof status.potiVal === 'number') {
@@ -153,6 +155,19 @@ export function PotiCard() {
             </div>
           </div>
         </div>
+        <label className="pill cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-accent"
+            checked={invert}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setInvert(next);
+              apply(`poti invert ${next ? 'on' : 'off'}`);
+            }}
+          />{' '}
+          <Trans k="label.potiInvert">Invert poti</Trans>
+        </label>
         <SliderRow
           label={<Trans k="label.delta">Delta</Trans>}
           description={<Trans k="desc.potiDelta">Min. change before updating</Trans>}

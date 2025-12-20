@@ -113,6 +113,7 @@ constexpr uint32_t POTI_SAMPLE_MS = 80;
 constexpr float POTI_ALPHA = 0.25f;
 constexpr float POTI_DELTA_MIN = 0.025f;
 constexpr float POTI_OFF_THRESHOLD = 0.02f;
+constexpr bool POTI_INVERT_DEFAULT = false;
 constexpr float POTI_MIN_DEFAULT = 0.0f;   ///< normalized min after calibration (0..1)
 constexpr float POTI_MAX_DEFAULT = 1.0f;   ///< normalized max after calibration (0..1)
 #endif

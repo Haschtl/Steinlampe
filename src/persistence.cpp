@@ -84,6 +84,7 @@ static const char *PREF_KEY_POTI_OFF = "poti_off";
 static const char *PREF_KEY_POTI_SAMPLE = "poti_s";
 static const char *PREF_KEY_POTI_MIN = "poti_min";
 static const char *PREF_KEY_POTI_MAX = "poti_max";
+static const char *PREF_KEY_POTI_INV = "poti_inv";
 #endif
 #if ENABLE_PUSH_BUTTON
 static const char *PREF_KEY_PUSH_EN = "push_en";
@@ -466,6 +467,7 @@ void saveSettings()
     prefs.putUInt(PREF_KEY_POTI_SAMPLE, potiSampleMs);
     prefs.putFloat(PREF_KEY_POTI_MIN, potiCalibMin);
     prefs.putFloat(PREF_KEY_POTI_MAX, potiCalibMax);
+    prefs.putBool(PREF_KEY_POTI_INV, potiInvert);
 #endif
 #if ENABLE_PUSH_BUTTON
     prefs.putBool(PREF_KEY_PUSH_EN, pushEnabled);
@@ -556,6 +558,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     potiSampleMs = Settings::POTI_SAMPLE_MS;
     potiCalibMin = Settings::POTI_MIN_DEFAULT;
     potiCalibMax = Settings::POTI_MAX_DEFAULT;
+    potiInvert = Settings::POTI_INVERT_DEFAULT;
 #endif
 #if ENABLE_LIGHT_SENSOR
     rampAmbientFactor = Settings::RAMP_AMBIENT_FACTOR_DEFAULT;
@@ -862,6 +865,7 @@ void loadSettings()
         potiCalibMin = Settings::POTI_MIN_DEFAULT;
         potiCalibMax = Settings::POTI_MAX_DEFAULT;
     }
+    potiInvert = prefs.getBool(PREF_KEY_POTI_INV, Settings::POTI_INVERT_DEFAULT);
 #endif
 #if ENABLE_PUSH_BUTTON
     pushEnabled = prefs.getBool(PREF_KEY_PUSH_EN, true);

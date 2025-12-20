@@ -11,6 +11,7 @@ extern const int LEDC_RES;
 extern const int PWM_MAX;
 extern float outputGamma;
 extern uint32_t lastPwmValue;    // last written PWM value (0..PWM_MAX)
+extern const uint32_t OFF_RAW;   // raw output representing "off" (respects inversion)
 
 // Brightness state
 extern float masterBrightness;   // user-facing brightness 0..1
