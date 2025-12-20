@@ -570,7 +570,7 @@ void updatePoti()
     if (nowBelow)
     {
         if (crossedOff && lampEnabled)
-            setLampEnabled(false, "poti", true);
+            setLampEnabled(false, "poti", false);
         // Force next sample to be applied once we rise above the threshold.
         potiLastApplied = -1.0f;
         potiWasBelowOff = true;
