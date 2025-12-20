@@ -13,6 +13,56 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
       <Card>
         <CardHeader>
           <CardTitle>
+            <Trans k="help.inputs">Inputs & Controls</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted">
+          <div className="rounded-lg border border-border/60 bg-panel/70 p-3">
+            <p className="text-text font-semibold">
+              <Trans k="help.input.switch">Switch</Trans>
+            </p>
+            <p>
+              <Trans k="help.input.switchDesc">
+                Toggle ON/OFF. A short OFF→ON pulse advances Quick Modes. Use the sync button to match app ↔ hardware.
+              </Trans>
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-panel/70 p-3">
+            <p className="text-text font-semibold">
+              <Trans k="help.input.poti">Poti</Trans>
+            </p>
+            <p>
+              <Trans k="help.input.potiDesc">
+                Sets brightness directly; below the off-threshold the lamp turns off. Invert/calibrate in Hardware settings.
+              </Trans>
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-panel/70 p-3">
+            <p className="text-text font-semibold">
+              <Trans k="help.input.touch">Touch</Trans>
+            </p>
+            <p>
+              <Trans k="help.input.touchDesc">
+                Hold to dim up/down (auto reverses at min/max). Double-tap is detected for feedback; touch-dim can be toggled.
+              </Trans>
+            </p>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-panel/70 p-3">
+            <p className="text-text font-semibold">
+              <Trans k="help.input.push">Push Button</Trans>
+            </p>
+            <p>
+              <Trans k="help.input.pushDesc">
+                Single click toggles the lamp; double click steps Quick Modes; hold to ramp brightness in steps.
+              </Trans>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
             <Trans k="help.bleGuids">BLE GUIDs</Trans>
           </CardTitle>
         </CardHeader>

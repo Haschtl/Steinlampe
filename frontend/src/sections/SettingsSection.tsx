@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Trans } from '@/i18n';
 import { useConnection } from '@/context/connection';
+import { DeviceBTCard } from '@/cards/DeviceBTCard';
 
 function FactoryResetCard() {
   const { sendCmd } = useConnection();
@@ -64,9 +65,10 @@ export function SettingsSection() {
 
   return (
     <div className="space-y-4">
-      <UISettingsCard />
+      <DeviceBTCard />
       <SettingsCard />
       <QuickCustomCard />
+      <UISettingsCard />
       <ProfilesCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
       <FactoryResetCard />
     </div>

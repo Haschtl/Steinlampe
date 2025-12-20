@@ -22,6 +22,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.notify": "Notify",
     "title.wake": "Wake",
     "title.sleep": "Sleep",
+    "title.btsettings": "BT-Settings",
     "title.settings": "Settings",
     "title.log": "Log",
     "title.quick": "Quick Tap Modes",
@@ -101,10 +102,14 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.idle": "Idle off (min)",
     "label.pwm": "PWM Curve",
     "label.gammaCurve": "Gamma curve",
-    "desc.gammaCurve": "Shows how brightness maps to PWM with the current gamma. Dot = live PWM.",
-    "desc.pwm": "Gamma to linearize LED brightness (0.5–4). Use a step pattern like “Gamma Probe”/“Stufen” and adjust until all steps look evenly spaced.",
-    "desc.briMin": "Sets the low end of the post-gamma range; output 0% maps here.",
-    "desc.briMax": "Sets the high end of the post-gamma range; output 100% maps here.",
+    "desc.gammaCurve":
+      "Shows how brightness maps to PWM with the current gamma. Dot = live PWM.",
+    "desc.pwm":
+      "Gamma to linearize LED brightness (0.5–4). Use a step pattern like “Gamma Probe”/“Stufen” and adjust until all steps look evenly spaced.",
+    "desc.briMin":
+      "Sets the low end of the post-gamma range; output 0% maps here.",
+    "desc.briMax":
+      "Sets the high end of the post-gamma range; output 100% maps here.",
     "label.rampOn": "Ramp On",
     "label.rampOff": "Ramp Off",
     "label.pow": "Power",
@@ -134,8 +139,10 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.noDevices": "No trusted devices yet",
     "title.trustController": "Controller trusted devices",
     "title.btSleep": "Classic BT Sleep",
-    "desc.btSleep": "Turn off Classic Bluetooth serial after a timeout (0 = disabled). BLE stays active.",
-    "desc.btPairing": "First BT-Serial connection needs a hardware confirmation: toggle the switch or move the potentiometer within ~20s to trust the device.",
+    "desc.btSleep":
+      "Turn off Classic Bluetooth serial after a timeout (0 = disabled). BLE stays active.",
+    "desc.btPairing":
+      "First BT-Serial connection needs a hardware confirmation: toggle the switch or move the potentiometer within ~20s to trust the device.",
     "label.btSleepBoot": "After boot (min)",
     "label.btSleepBle": "After last command (min)",
     "label.bleName": "BLE Name",
@@ -145,7 +152,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.clamp": "Min/Max target brightness from ambient light",
     "desc.clap":
       "Threshold: envelope level to count a clap. Cooldown: minimum delay before a new clap window starts. Actions fire on 1/2/3 claps within the window.",
-    "desc.musicSmooth": "Afterglow for direct mode: higher = softer/slower response.",
+    "desc.musicSmooth":
+      "Afterglow for direct mode: higher = softer/slower response.",
     "music.calibHint": "Start quiet, then clap once during calibration.",
     "desc.alpha": "Low-pass filter for sensor noise",
     "desc.brightness": "Set output level",
@@ -248,6 +256,19 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Characteristic UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.",
+    "help.inputs": "Inputs & Controls",
+    "help.input.switch": "Switch",
+    "help.input.switchDesc":
+      "Toggle ON/OFF. A short OFF→ON pulse advances Quick Modes. Use the sync button to match app ↔ hardware.",
+    "help.input.poti": "Potentiometer",
+    "help.input.potiDesc":
+      "Sets brightness directly; below the off-threshold the lamp turns off. Invert/calibrate in Hardware settings.",
+    "help.input.touch": "Touch",
+    "help.input.touchDesc":
+      "Hold to dim up/down (auto reverses at min/max). Double-tap is detected for feedback; touch-dim can be toggled.",
+    "help.input.push": "Push Button",
+    "help.input.pushDesc":
+      "Single click toggles the lamp; double click steps Quick Modes; hold to ramp brightness in steps.",
     "help.commandsLinks": "Command Reference & Links",
     "help.secureBoot": "Secure Boot / Reset",
     "help.secureBootDesc":
@@ -277,6 +298,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.notify": "Benachrichtigung",
     "title.wake": "Wecken",
     "title.sleep": "Schlafen",
+    "title.btsettings": "Bluetooth",
     "title.settings": "Einstellungen",
     "title.log": "Protokoll",
     "title.quick": "Schnell-Modi",
@@ -318,10 +340,14 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.idle": "Idle aus (Min)",
     "label.pwm": "PWM Kurve",
     "label.gammaCurve": "Gamma-Kurve",
-    "desc.gammaCurve": "Zeigt die Abbildung Helligkeit → PWM mit aktueller Gamma. Punkt = Live-PWM.",
-    "desc.pwm": "Gamma zur Linearisierung der LED-Helligkeit (0.5–4). Nutze z. B. das Pattern „Gamma Probe“/„Stufen“ und stelle so ein, dass die Schritte gleich hell wirken.",
-    "desc.briMin": "Setzt das untere Ende nach der Gamma-Kurve; 0% Helligkeit landet hier.",
-    "desc.briMax": "Setzt das obere Ende nach der Gamma-Kurve; 100% Helligkeit landet hier.",
+    "desc.gammaCurve":
+      "Zeigt die Abbildung Helligkeit → PWM mit aktueller Gamma. Punkt = Live-PWM.",
+    "desc.pwm":
+      "Gamma zur Linearisierung der LED-Helligkeit (0.5–4). Nutze z. B. das Pattern „Gamma Probe“/„Stufen“ und stelle so ein, dass die Schritte gleich hell wirken.",
+    "desc.briMin":
+      "Setzt das untere Ende nach der Gamma-Kurve; 0% Helligkeit landet hier.",
+    "desc.briMax":
+      "Setzt das obere Ende nach der Gamma-Kurve; 100% Helligkeit landet hier.",
     "label.rampOn": "Rampe An",
     "label.rampOff": "Rampe Aus",
     "label.pow": "Power",
@@ -390,8 +416,10 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.noDevices": "Noch keine Geräte",
     "title.trustController": "Controller vertrauenswürdige Geräte",
     "title.btSleep": "Classic-BT-Schlaf",
-    "desc.btSleep": "Schaltet klassisches Bluetooth (Serial) nach einem Timeout aus (0 = aus). BLE bleibt aktiv.",
-    "desc.btPairing": "Erste BT-Serial-Verbindung braucht Hardware-Bestätigung: Schalter kippen oder Poti bewegen (ca. 20s), dann wird das Gerät vertraut.",
+    "desc.btSleep":
+      "Schaltet klassisches Bluetooth (Serial) nach einem Timeout aus (0 = aus). BLE bleibt aktiv.",
+    "desc.btPairing":
+      "Erste BT-Serial-Verbindung braucht Hardware-Bestätigung: Schalter kippen oder Poti bewegen (ca. 20s), dann wird das Gerät vertraut.",
     "label.btSleepBoot": "Nach Boot (Min)",
     "label.btSleepBle": "Nach letzter Aktion (Min)",
     "label.bleName": "BLE-Name",
@@ -401,8 +429,10 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.clamp": "Min/Max Zielhelligkeit aus Umgebungslicht",
     "desc.clap":
       "Schwelle: Envelope-Level für einen Klatscher. Cooldown: Mindestabstand, bevor ein neues Klatsch-Fenster startet. Aktionen feuern bei 1/2/3 Klatschern im Fenster.",
-    "desc.musicSmooth": "Nachglühen im Direkt-Modus: höher = weicher/langsamer.",
-    "music.calibHint": "Erst leise bleiben, dann einmal klatschen während der Kalibrierung.",
+    "desc.musicSmooth":
+      "Nachglühen im Direkt-Modus: höher = weicher/langsamer.",
+    "music.calibHint":
+      "Erst leise bleiben, dann einmal klatschen während der Kalibrierung.",
     "desc.alpha": "Tiefpass gegen Sensorausreißer",
     "desc.brightness": "Ausgangspegel einstellen",
     "desc.tapSwitch":
@@ -423,7 +453,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "desc.pushHold": "Hold-Dauer bis Dimmen startet",
     "desc.pushStepMs": "Verzögerung zwischen Helligkeits-Schritten",
     "desc.pushStep": "Helligkeits-Schrittweite",
-    "desc.factory": "Setzt alle gespeicherten Profile und Einstellungen zurück.",
+    "desc.factory":
+      "Setzt alle gespeicherten Profile und Einstellungen zurück.",
     "desc.factoryConfirm": "Dies löscht gespeicherte Profile und Präferenzen.",
     "log.show": "Anzeigen",
     "log.hide": "Verbergen",
@@ -504,6 +535,19 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Char-UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; per optionalem Flag aktivieren. Write/WriteNR, nur RX.",
+    "help.inputs": "Eingaben & Bedienung",
+    "help.input.switch": "Schalter",
+    "help.input.switchDesc":
+      "Ein/Aus. Kurzer AUS→AN-Impuls blättert Quick-Modes. Sync-Button zum Angleichen App ↔ Hardware.",
+    "help.input.poti": "Poti",
+    "help.input.potiDesc":
+      "Stellt Helligkeit direkt; unter Off-Schwelle geht die Lampe aus. Invert/Kalibrierung unter Hardware.",
+    "help.input.touch": "Touch",
+    "help.input.touchDesc":
+      "Halten dimmt hoch/runter (dreht an Min/Max um). Doppeltipp wird erkannt; Touch-Dim kann deaktiviert werden.",
+    "help.input.push": "Taster",
+    "help.input.pushDesc":
+      "Einzelklick toggelt Lampe; Doppelklick blättert Quick-Modes; halten dimmt in Schritten.",
     "help.commandsLinks": "Befehle",
     "help.secureBoot": "Secure Boot / Reset",
     "help.secureBootDesc":
