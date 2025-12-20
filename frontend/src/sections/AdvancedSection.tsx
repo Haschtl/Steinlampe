@@ -14,6 +14,7 @@ export function AdvancedSection() {
   const showMusic = status.hasMusic !== false;
   const showPoti = status.hasPoti !== false;
   const showPush = status.hasPush !== false;
+  const showTouch = status.hasTouch !== false && status.touchState !== undefined && status.touchState !== 'N/A';
 
   return (
     <div className="space-y-4">
@@ -21,7 +22,7 @@ export function AdvancedSection() {
       {showPoti && <PotiCard />}
       {showPush && <PushButtonCard />}
       {showPresence && <PresenceCard />}
-      <TouchCard />
+      {showTouch && <TouchCard />}
       {showLight && <LightCard />}
       {showMusic && <MusicCard />}
     </div>

@@ -180,10 +180,10 @@ export default function App() {
 
   const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: JSX.Element }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
-    { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
-    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
-    { key: 'filters', label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
+    { key: 'filters', label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },
+    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
+    { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
     { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
 
