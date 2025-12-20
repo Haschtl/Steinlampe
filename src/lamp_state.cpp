@@ -113,6 +113,10 @@ void applyPwmLevel(float normalized)
   uint32_t pwmValue = (uint32_t)(pwm + 0.5f);
   if (pwmValue > (uint32_t)PWM_MAX)
     pwmValue = (uint32_t)PWM_MAX;
+  lastPwmNormalized = level;
+#if PWM_INVERT_OUTPUT
+  pwmValue = (uint32_t)PWM_MAX - pwmValue;
+#endif
   lastPwmValue = pwmValue;
   writeOutputRaw(pwmValue);
 }
@@ -143,7 +147,7 @@ void logBrightnessChange(const char *reason)
 void logLampState(const char *reason)
 {
   bool forceSerial = (reason && (strstr(reason, "init") != nullptr || strstr(reason, "startup") != nullptr));
-  String msg = String(F("[Lamp] ")) + (lampEnabled ? F("ON") : (lampOffPending ? F("OFF-PEND"):F("OFF")));
+  String msg = String(F("[Lamp] ")) + (lampOffPending ? F("OFF-PEND") : (lampEnabled ? F("ON") : F("OFF")));
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");

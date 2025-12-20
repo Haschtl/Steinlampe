@@ -48,6 +48,10 @@
 #ifndef ENABLE_ANALOG_OUTPUT
 #define ENABLE_ANALOG_OUTPUT 0
 #endif
+
+#ifndef PWM_INVERT_OUTPUT
+#define PWM_INVERT_OUTPUT 0
+#endif
 #ifndef DEBUG_BRIGHTNESS_LOG
 #define DEBUG_BRIGHTNESS_LOG 1
 #endif
