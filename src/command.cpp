@@ -1972,6 +1972,12 @@ void handleCommand(String line)
         String arg = line.substring(8);
         arg.trim();
         arg.toLowerCase();
+        auto sendStatus = []() {
+            sendFeedback(String(F("[Presence] ")) + (presenceEnabled ? F("ON") : F("OFF")) +
+                         F(" devices=") + (presenceListCsv().length() ? presenceListCsv() : String(F("none"))) +
+                         F(" thr=") + String(presenceRssiThreshold) + F("dBm on=") + (presenceAutoOn ? F("1") : F("0")) +
+                         F(" off=") + (presenceAutoOff ? F("1") : F("0")) + F(" grace=") + String(presenceGraceMs) + F("ms"));
+        };
         if (arg == "on")
         {
             presenceEnabled = true;
@@ -1992,9 +1998,10 @@ void handleCommand(String line)
             {
                 if (lastBleAddr.length() > 0)
                 {
-                    presenceAddr = lastBleAddr;
+                    presenceClearDevices();
+                    presenceAddDevice(lastBleAddr);
                     saveSettings();
-                    sendFeedback(String(F("[Presence] Set to connected device ")) + presenceAddr);
+                    sendFeedback(String(F("[Presence] Set to connected device ")) + lastBleAddr);
                 }
                 else
                 {
@@ -2003,18 +2010,56 @@ void handleCommand(String line)
             }
             else if (addr.length() >= 11)
             {
-                presenceAddr = addr;
+                presenceClearDevices();
+                presenceAddDevice(addr);
                 saveSettings();
-                sendFeedback(String(F("[Presence] Set to ")) + presenceAddr);
+                sendFeedback(String(F("[Presence] Set to ")) + addr);
             }
             else
             {
                 sendFeedback(F("Usage: presence set <MAC>"));
             }
         }
+        else if (arg.startsWith("add"))
+        {
+            String addr = line.substring(line.indexOf("add") + 3);
+            addr.trim();
+            if (addr == "me" && lastBleAddr.length() > 0)
+            {
+                presenceAddDevice(lastBleAddr);
+                saveSettings();
+                sendFeedback(String(F("[Presence] Added connected ")) + lastBleAddr);
+            }
+            else if (addr.length() >= 11)
+            {
+                if (presenceAddDevice(addr))
+                    sendFeedback(String(F("[Presence] Added ")) + addr);
+                else
+                    sendFeedback(F("[Presence] Already on list"));
+                saveSettings();
+            }
+            else
+            {
+                sendFeedback(F("Usage: presence add <MAC>"));
+            }
+        }
+        else if (arg.startsWith("del"))
+        {
+            String addr = line.substring(line.indexOf("del") + 3);
+            addr.trim();
+            if (presenceRemoveDevice(addr))
+            {
+                sendFeedback(String(F("[Presence] Removed ")) + addr);
+                saveSettings();
+            }
+            else
+            {
+                sendFeedback(F("[Presence] Not found"));
+            }
+        }
         else if (arg == "clear")
         {
-            presenceAddr = "";
+            presenceClearDevices();
             saveSettings();
             sendFeedback(F("[Presence] Cleared"));
         }
@@ -2025,10 +2070,68 @@ void handleCommand(String line)
             saveSettings();
             sendFeedback(String(F("[Presence] Grace ")) + String(v) + F(" ms"));
         }
+        else if (arg.startsWith("thr"))
+        {
+            int v = line.substring(line.indexOf("thr") + 3).toInt();
+            if (v < -120)
+                v = -120;
+            if (v > -5)
+                v = -5;
+            presenceRssiThreshold = v;
+            saveSettings();
+            sendFeedback(String(F("[Presence] RSSI >= ")) + String(v) + F(" dBm"));
+        }
+        else if (arg.startsWith("auto on"))
+        {
+            String vstr = arg.substring(7);
+            vstr.trim();
+            bool v;
+            if (parseBool(vstr, v))
+            {
+                presenceAutoOn = v;
+                saveSettings();
+                sendFeedback(String(F("[Presence] Auto-ON ")) + (v ? F("ON") : F("OFF")));
+            }
+        }
+        else if (arg.startsWith("auto off"))
+        {
+            String vstr = arg.substring(8);
+            vstr.trim();
+            bool v;
+            if (parseBool(vstr, v))
+            {
+                presenceAutoOff = v;
+                saveSettings();
+                sendFeedback(String(F("[Presence] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
+            }
+        }
+        else if (arg.startsWith("on "))
+        {
+            bool v;
+            if (parseBool(arg.substring(3), v))
+            {
+                presenceAutoOn = v;
+                saveSettings();
+                sendFeedback(String(F("[Presence] Auto-ON ")) + (v ? F("ON") : F("OFF")));
+            }
+        }
+        else if (arg.startsWith("off "))
+        {
+            bool v;
+            if (parseBool(arg.substring(4), v))
+            {
+                presenceAutoOff = v;
+                saveSettings();
+                sendFeedback(String(F("[Presence] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
+            }
+        }
+        else if (arg == "list")
+        {
+            sendStatus();
+        }
         else
         {
-            sendFeedback(String(F("[Presence] ")) + (presenceEnabled ? F("ON ") : F("OFF ")) +
-                         F("dev=") + (presenceAddr.isEmpty() ? F("none") : presenceAddr));
+            sendStatus();
         }
         return;
     }

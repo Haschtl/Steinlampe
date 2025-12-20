@@ -61,6 +61,12 @@ export type DeviceStatus = {
   patternMarginHigh?: number;
   presence?: string;
   hasPresence?: boolean;
+  presenceCount?: number;
+  presenceThreshold?: number;
+  presenceAutoOn?: boolean;
+  presenceAutoOff?: boolean;
+  presenceList?: string[];
+  presenceGraceMs?: number;
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
@@ -195,6 +201,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresence = kv.presence ? isAvailable('presence') : s.hasPresence;
+      const presenceList = kv.presence_list
+        ? kv.presence_list.split(',').map((x) => x.trim()).filter(Boolean)
+        : s.presenceList;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
       const hasTouch = kv.touch ? isAvailable('touch') : s.hasTouch;
       return {
@@ -241,6 +250,16 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         quickCsv: kv.quick ?? s.quickCsv,
         presence: kv.presence ?? s.presence,
         hasPresence,
+        presenceCount: asInt('presence_count') ?? s.presenceCount,
+        presenceThreshold: asInt('presence_thr') ?? s.presenceThreshold,
+        presenceAutoOn: kv.presence_on
+          ? ['1', 'on', 'true'].includes(kv.presence_on.toLowerCase())
+          : s.presenceAutoOn,
+        presenceAutoOff: kv.presence_off
+          ? ['1', 'on', 'true'].includes(kv.presence_off.toLowerCase())
+          : s.presenceAutoOff,
+        presenceList,
+        presenceGraceMs: asInt('presence_grace') ?? s.presenceGraceMs,
         outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,

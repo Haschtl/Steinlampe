@@ -174,7 +174,14 @@ void printStatus(const bool &force)
     if (presenceEnabled)
     {
         line4 += F("ON (");
-        line4 += (presenceAddr.isEmpty() ? F("no device") : presenceAddr);
+        String devices = presenceListCsv();
+        line4 += (devices.isEmpty() ? F("no device") : devices);
+        line4 += F(" thr=");
+        line4 += presenceRssiThreshold;
+        line4 += F("dBm on=");
+        line4 += presenceAutoOn ? F("1") : F("0");
+        line4 += F(" off=");
+        line4 += presenceAutoOff ? F("1") : F("0");
         line4 += F(")");
     }
     else
@@ -386,7 +393,19 @@ void printStatusStructured(const bool &force)
     line += F("|quick=");
     line += quickMaskToCsv();
     line += F("|presence=");
-    line += presenceEnabled ? (presenceAddr.isEmpty() ? F("ON(no-dev)") : presenceAddr) : F("OFF");
+    line += presenceEnabled ? F("ON") : F("OFF");
+    line += F("|presence_count=");
+    line += (int)presenceDevices.size();
+    line += F("|presence_thr=");
+    line += presenceRssiThreshold;
+    line += F("|presence_on=");
+    line += presenceAutoOn ? F("1") : F("0");
+    line += F("|presence_off=");
+    line += presenceAutoOff ? F("1") : F("0");
+    line += F("|presence_list=");
+    line += presenceListCsv();
+    line += F("|presence_grace=");
+    line += presenceGraceMs;
     sendFeedback(line,force);
     updateBleStatus(line);
 
@@ -630,8 +649,11 @@ void printHelp(const bool &force)
         "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
         "  clap on|off/thr <0..1>/cool <ms>/train [on|off] - Klatschsteuerung (Audio)",
         "  clap <1|2|3> <cmd> - Befehl bei 1/2/3 Klatschen",
-        "  presence on|off   - Auto-Off wenn Gerät weg",
-        "  presence set <addr>/clear - Gerät binden oder löschen",
+        "  presence on|off   - Presence aktivieren/deaktivieren",
+        "  presence add <addr>/del <addr>/clear - Geräte-Liste verwalten",
+        "  presence set <addr> - Liste überschreiben (Kompatibilität)",
+        "  presence thr <-dBm> - RSSI-Schwelle (z.B. -75)",
+        "  presence auto on|off <on|off> - Auto-Licht AN/OFF Aktionen",
         "  presence grace <ms> - Verzögerung vor Auto-Off",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",

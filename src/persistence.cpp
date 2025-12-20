@@ -25,6 +25,7 @@ static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
 static const char *PREF_KEY_PRESENCE_EN = "pres_en";
 static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
+static const char *PREF_KEY_PRESENCE_LIST = "pres_list";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
 static const char *PREF_KEY_RAMP_ON_MS = "ramp_on_ms";
 static const char *PREF_KEY_RAMP_OFF_MS = "ramp_off_ms";
@@ -76,6 +77,9 @@ static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
 static const char *PREF_KEY_LIGHT_ALPHA = "light_a";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
 static const char *PREF_KEY_NOTIFY_MIN = "notif_min";
+static const char *PREF_KEY_PRESENCE_RSSI = "pres_rssi";
+static const char *PREF_KEY_PRESENCE_AUTO_ON = "pres_auto_on";
+static const char *PREF_KEY_PRESENCE_AUTO_OFF = "pres_auto_off";
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
 static const char *PREF_KEY_POTI_ALPHA = "poti_a";
@@ -317,6 +321,14 @@ void exportConfig()
     cfg += presenceEnabled ? F("on") : F("off");
     cfg += F(" presence_addr=");
     cfg += presenceAddr;
+    cfg += F(" presence_list=");
+    cfg += presenceListCsv();
+    cfg += F(" presence_thr=");
+    cfg += presenceRssiThreshold;
+    cfg += F(" presence_on=");
+    cfg += presenceAutoOn ? F("on") : F("off");
+    cfg += F(" presence_off=");
+    cfg += presenceAutoOff ? F("on") : F("off");
 #if ENABLE_TOUCH_DIM
     cfg += F(" touch_dim=");
     cfg += touchDimEnabled ? F("on") : F("off");
@@ -411,6 +423,10 @@ void saveSettings()
 #endif
     prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
     prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
+    prefs.putString(PREF_KEY_PRESENCE_LIST, presenceListCsv());
+    prefs.putInt(PREF_KEY_PRESENCE_RSSI, presenceRssiThreshold);
+    prefs.putBool(PREF_KEY_PRESENCE_AUTO_ON, presenceAutoOn);
+    prefs.putBool(PREF_KEY_PRESENCE_AUTO_OFF, presenceAutoOff);
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
     prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
@@ -543,6 +559,11 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
     presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
     presenceAddr = "";
+    presenceClearDevices();
+    presenceRssiThreshold = Settings::PRESENCE_RSSI_THRESHOLD_DEFAULT;
+    presenceAutoOn = Settings::PRESENCE_AUTO_ON_DEFAULT;
+    presenceAutoOff = Settings::PRESENCE_AUTO_OFF_DEFAULT;
+    presenceLastOffByPresence = false;
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
     rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
@@ -715,6 +736,26 @@ void loadSettings()
         notifyMinBrightness = 1.0f;
     presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
     presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
+    presenceClearDevices();
+    {
+        String list = prefs.getString(PREF_KEY_PRESENCE_LIST, presenceAddr);
+        list.trim();
+        int start = 0;
+        while (start < list.length())
+        {
+            int comma = list.indexOf(',', start);
+            if (comma < 0)
+                comma = list.length();
+            String tok = list.substring(start, comma);
+            tok.trim();
+            if (tok.length() > 0)
+                presenceAddDevice(tok);
+            start = comma + 1;
+        }
+    }
+    presenceRssiThreshold = prefs.getInt(PREF_KEY_PRESENCE_RSSI, Settings::PRESENCE_RSSI_THRESHOLD_DEFAULT);
+    presenceAutoOn = prefs.getBool(PREF_KEY_PRESENCE_AUTO_ON, Settings::PRESENCE_AUTO_ON_DEFAULT);
+    presenceAutoOff = prefs.getBool(PREF_KEY_PRESENCE_AUTO_OFF, Settings::PRESENCE_AUTO_OFF_DEFAULT);
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
         rampDurationMs = Settings::DEFAULT_RAMP_MS;
@@ -1079,6 +1120,50 @@ void importConfig(const String &args)
         else if (key == "presence_addr")
         {
             presenceAddr = val;
+            presenceClearDevices();
+            if (presenceAddr.length() > 0)
+                presenceAddDevice(presenceAddr);
+        }
+        else if (key == "presence_list")
+        {
+            presenceClearDevices();
+            int start = 0;
+            while (start < val.length())
+            {
+                int comma = val.indexOf(',', start);
+                if (comma < 0)
+                    comma = val.length();
+                String tok = val.substring(start, comma);
+                tok.trim();
+                if (tok.length() > 0)
+                    presenceAddDevice(tok);
+                start = comma + 1;
+            }
+            if (presenceHasDevices())
+                presenceAddr = presenceDevices.back();
+            else
+                presenceAddr = "";
+        }
+        else if (key == "presence_thr")
+        {
+            int v = val.toInt();
+            if (v < -120)
+                v = -120;
+            if (v > 0)
+                v = -10;
+            presenceRssiThreshold = v;
+        }
+        else if (key == "presence_on")
+        {
+            bool v;
+            if (parseBool(val, v))
+                presenceAutoOn = v;
+        }
+        else if (key == "presence_off")
+        {
+            bool v;
+            if (parseBool(val, v))
+                presenceAutoOff = v;
         }
 #if ENABLE_TOUCH_DIM
         else if (key == "touch_dim")

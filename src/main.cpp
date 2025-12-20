@@ -93,6 +93,12 @@ void updatePatternEngine()
     }
     return;
   }
+  else
+  {
+    presenceDetected = false;
+    presencePrevConnected = false;
+    presenceGraceDeadline = 0;
+  }
 
   // Presence polling with occasional scan
   bool anyClient = btHasClient();
@@ -102,31 +108,38 @@ void updatePatternEngine()
     if (lastBleAddr.length() == 0)
       lastBleAddr = getLastBleAddr();
   }
-  if (presenceEnabled)
+  if (presenceEnabled && presenceHasDevices())
   {
+    uint32_t nowMs = millis();
     bool wasDetected = presenceDetected;
-    bool detected = anyClient;
-    if (presenceAddr.isEmpty())
+    bool detected = false;
+
+    // Connected client counts if it matches one of the targets
+    if (anyClient && lastBleAddr.length() > 0 && presenceIsTarget(lastBleAddr))
     {
-      if (lastBleAddr.length() > 0)
-        presenceAddr = lastBleAddr;
-      else if (lastBtAddr.length() > 0)
-        presenceAddr = lastBtAddr;
+      detected = true;
+      lastPresenceSeenMs = nowMs;
+    }
+
+    // fall back to legacy single addr for BT serial if we ever capture it
+    if (!detected && anyClient && presenceAddr.length() > 0 && presenceIsTarget(presenceAddr))
+    {
+      detected = true;
+      lastPresenceSeenMs = nowMs;
     }
 
     // occasionally try to spot the target via scan
     const uint32_t SCAN_INTERVAL_MS = 25000;
-    if (presenceAddr.length() > 0 && millis() - lastPresenceScanMs >= SCAN_INTERVAL_MS)
+    if (!detected && nowMs - lastPresenceScanMs >= SCAN_INTERVAL_MS)
     {
-      lastPresenceScanMs = millis();
+      lastPresenceScanMs = nowMs;
       if (presenceScanOnce())
       {
         detected = true;
-        lastPresenceSeenMs = millis();
       }
     }
 
-    if (lastPresenceSeenMs > 0 && (millis() - lastPresenceSeenMs) <= presenceGraceMs)
+    if (lastPresenceSeenMs > 0 && (nowMs - lastPresenceSeenMs) <= presenceGraceMs)
       detected = true;
 
     if (detected)
@@ -134,46 +147,39 @@ void updatePatternEngine()
       presenceGraceDeadline = 0;
       presencePrevConnected = true;
       if (!presenceDetected)
-        sendFeedback(F("[Presence] detected (client match)"));
+        sendFeedback(F("[Presence] detected"));
       presenceDetected = true;
-      lastPresenceSeenMs = millis();
+      lastPresenceSeenMs = nowMs;
+      if (lampEnabled)
+        presenceLastOffByPresence = false;
 #if ENABLE_SWITCH
-      if (switchDebouncedState && !lampEnabled)
+      if (presenceAutoOn && presenceLastOffByPresence && switchDebouncedState && !lampEnabled)
 #else
-      if (!lampEnabled)
+      if (presenceAutoOn && presenceLastOffByPresence && !lampEnabled)
 #endif
       {
         setLampEnabled(true, "presence connect");
+        presenceLastOffByPresence = false;
         sendFeedback(F("[Presence] Detected -> Lamp ON"));
       }
     }
-    else if (presenceGraceDeadline == 0 && presenceAddr.length() > 0 &&
-             (presencePrevConnected || lastPresenceSeenMs > 0))
+    else if (presenceGraceDeadline == 0 && (presencePrevConnected || lastPresenceSeenMs > 0))
     {
-      presenceGraceDeadline = millis() + presenceGraceMs;
-      sendFeedback(String(F("[Presence] No client -> pending OFF in ")) + String(presenceGraceMs) + F("ms"));
+      presenceGraceDeadline = nowMs + presenceGraceMs;
+      sendFeedback(String(F("[Presence] No device -> pending OFF in ")) + String(presenceGraceMs) + F("ms"));
       presenceDetected = false;
     }
     else if (!detected && wasDetected)
     {
       presenceDetected = false;
-      sendFeedback(F("[Presence] no client detected"));
+      sendFeedback(F("[Presence] no device detected"));
     }
   }
 
   if (presenceGraceDeadline > 0 && millis() >= presenceGraceDeadline)
   {
     presenceGraceDeadline = 0;
-#if PRESENCE_ALWAYS_OFF
-
-    if (lampEnabled)
-    {
-      setLampEnabled(false, "presence grace");
-      sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
-      return;
-    }
-#else
-    if (lampEnabled)
+    if (presenceAutoOff && lampEnabled)
     {
       // Do not force off if the hardware switch is ON.
 #if ENABLE_SWITCH
@@ -185,11 +191,11 @@ void updatePatternEngine()
 #endif
       {
         setLampEnabled(false, "presence grace");
+        presenceLastOffByPresence = true;
         sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
         return;
       }
     }
-#endif
   }
 
   // idle-off timer
