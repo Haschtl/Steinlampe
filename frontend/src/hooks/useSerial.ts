@@ -170,8 +170,11 @@ export function useSerial(): SerialApi {
                 const trimmed = line.trim();
                 if (!trimmed) return;
                 const handled = parseStatusLine(trimmed, setStatus);
-                if (!handled || !filterParsed) pushLog(trimmed);
-                else setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+                if (!handled || !filterParsedRef.current) {
+                  pushLog(trimmed);
+                } else {
+                  setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+                }
               });
             }
           }
@@ -179,7 +182,7 @@ export function useSerial(): SerialApi {
           if (buffer.trim()) {
             const trimmed = buffer.trim();
             const handled = parseStatusLine(trimmed, setStatus);
-            if (!handled || !filterParsed) pushLog(trimmed);
+            if (!handled || !filterParsedRef.current) pushLog(trimmed);
             buffer = '';
           }
         } catch (err) {

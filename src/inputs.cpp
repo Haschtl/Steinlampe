@@ -101,6 +101,7 @@ int potiLastRaw = -1;
 float potiCalibMin = Settings::POTI_MIN_DEFAULT;
 float potiCalibMax = Settings::POTI_MAX_DEFAULT;
 bool potiInvert = Settings::POTI_INVERT_DEFAULT;
+bool potiWasBelowOff = false;
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -559,23 +560,30 @@ void updatePoti()
         level = 1.0f - level;
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 
-    if (potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)
+    bool nowBelow = (potiFiltered <= potiOffThreshold);
+    bool crossedOff = (!potiWasBelowOff && nowBelow);
+    bool crossedOn = (potiWasBelowOff && !nowBelow);
+    if (!crossedOn && !crossedOff && potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)
         return;
 
-    potiLastApplied = potiFiltered;
     confirmBtPairing("poti");
-    if (potiFiltered <= potiOffThreshold)
+    if (nowBelow)
     {
-        if (lampEnabled)
-            setLampEnabled(false, "poti");
+        if (crossedOff && lampEnabled)
+            setLampEnabled(false, "poti", true);
+        // Force next sample to be applied once we rise above the threshold.
+        potiLastApplied = -1.0f;
+        potiWasBelowOff = true;
         return;
     }
 
     float target = potiFiltered;
     target = clamp01(target);
 
-    if (!lampEnabled)
-        setLampEnabled(true, "poti");
+    if (crossedOn && !lampEnabled)
+        setLampEnabled(true, "poti", true);
+    potiWasBelowOff = nowBelow;
+    potiLastApplied = potiFiltered;
     // Fast, non-persisted updates for smooth knob response (no flash wear).
     setBrightnessPercent(target * 100.0f, false, false, true);
 }

@@ -65,7 +65,7 @@ uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
 uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
-uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;   // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
+uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
 uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
 float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
 float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
@@ -304,7 +304,7 @@ void updateBrightnessRamp()
 /**
  * @brief Enable or disable the lamp output (keeps brightness state).
  */
-void setLampEnabled(bool enable, const char *reason)
+void setLampEnabled(bool enable, const char *reason, bool skipRamp)
 {
   if (lampEnabled == enable && !(enable && lampOffPending))
     return;
@@ -321,19 +321,47 @@ void setLampEnabled(bool enable, const char *reason)
     if (target > 1.0f)
       target = 1.0f;
     masterBrightness = target;
-    startBrightnessRamp(1.0f, rampOnDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
+    if (skipRamp)
+    {
+      rampActive = false;
+      outputScale = 1.0f;
+      applyPwmLevel(masterBrightness * ambientScale);
+    }
+    else
+    {
+      startBrightnessRamp(1.0f, rampOnDurationMs, false, rampEaseOnType, rampEaseOnPower); // ramp output only
+    }
     lastOnBrightness = target;
     logLampState(reason);
   }
   else
   {
-    // Fade out output to 0, keep master for next ON
-    lampOffPending = true;
-    if (masterBrightness > briMinUser)
-      lastOnBrightness = masterBrightness;
-    else if (lastOnBrightness < briMinUser)
-      lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
-    startBrightnessRamp(0.0f, rampOffDurationMs, false, rampEaseOffType, rampEaseOffPower);
+
+    if (skipRamp)
+    {
+      rampActive = false;
+      lampOffPending = false;
+      lampEnabled = false;
+      outputScale = 0.0f;
+      if (masterBrightness > briMinUser)
+        lastOnBrightness = masterBrightness;
+      else if (lastOnBrightness < briMinUser)
+        lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
+      applyPwmLevel(0.0f);
+    }
+    else
+    {
+      // Already ramping off? Avoid re-triggering/log spamming; allow later ON to cancel.
+      if (lampOffPending)
+        return;
+      // Fade out output to 0, keep master for next ON
+      lampOffPending = true;
+      if (masterBrightness > briMinUser)
+        lastOnBrightness = masterBrightness;
+      else if (lastOnBrightness < briMinUser)
+        lastOnBrightness = Settings::DEFAULT_BRIGHTNESS;
+      startBrightnessRamp(0.0f, rampOffDurationMs, false, rampEaseOffType, rampEaseOffPower);
+    }
     logLampState(reason);
   }
 }
