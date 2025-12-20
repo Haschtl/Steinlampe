@@ -17,6 +17,21 @@ export function LampPowerCard() {
   const [brightness, setBrightness] = useState(70);
   const [lampOn, setLampOn] = useState(false);
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
+  const hasSwitch = status.hasSwitch !== false && status.switchState !== undefined && status.switchState !== 'N/A';
+  const hasPoti = status.hasPoti !== false && status.potiVal !== undefined;
+  const potiPct = typeof status.potiVal === 'number' ? Math.round(status.potiVal * 100) : null;
+  const hasTouch = status.hasTouch !== false && status.touchState !== undefined && status.touchState !== 'N/A';
+  const hasPush = status.hasPush !== false && status.pushEnabled !== undefined && status.pushEnabled !== null;
+  const hasMusic = status.hasMusic !== false && status.musicEnabled !== undefined && status.musicEnabled !== null;
+  const hasLight = status.hasLight !== false;
+  const ambientPct = (() => {
+    if (typeof status.lightRaw === 'number' && typeof status.lightRawMin === 'number' && typeof status.lightRawMax === 'number' && status.lightRawMax > status.lightRawMin) {
+      const n = (status.lightRaw - status.lightRawMin) / (status.lightRawMax - status.lightRawMin);
+      const pct = Math.round(Math.min(1, Math.max(0, n)) * 100);
+      return pct;
+    }
+    return null;
+  })();
   const [tick, setTick] = useState(0);
   const [patternAnchor, setPatternAnchor] = useState(0);
   const lightActive = status.lightEnabled && status.hasLight !== false;
@@ -101,16 +116,34 @@ export function LampPowerCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="chip-muted inline-flex items-center gap-2">
-            Switch: {status.switchState ?? "--"}
-            <Button size="sm" variant="ghost" onClick={() => sendCmd("sync")} disabled={!canSync} className="h-6 px-2 text-xs">
-              <RefreshCw className="mr-1 h-3 w-3" />
-              <span className="hidden sm:inline">Sync</span>
-            </Button>
-          </span>
-          <span className="chip-muted">Touch: {status.touchState ?? "--"}</span>
+          {hasSwitch && (
+            <span className="chip-muted inline-flex items-center gap-2">
+              Switch: {status.switchState ?? "--"}
+              <Button size="sm" variant="ghost" onClick={() => sendCmd("sync")} disabled={!canSync} className="h-6 px-2 text-xs">
+                <RefreshCw className="mr-1 h-3 w-3" />
+                <span className="hidden sm:inline">Sync</span>
+              </Button>
+            </span>
+          )}
+          {hasPoti && (
+            <span className="chip-muted inline-flex items-center gap-2">
+              Poti: {potiPct !== null ? `${potiPct}%` : "--"}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs"
+                onClick={() => sendCmd(`bri ${Math.max(1, Math.min(100, potiPct ?? 0))}`)}
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                <span className="hidden sm:inline">Sync</span>
+              </Button>
+            </span>
+          )}
+          {hasTouch && <span className="chip-muted">Touch: {status.touchState ?? "--"}</span>}
+          {hasPush && <span className="chip-muted">Push: {status.pushEnabled ? "ON" : "OFF"}</span>}
           {lightActive && <span className="chip-muted"><Trans k="title.light">Light</Trans></span>}
-          {musicActive && <span className="chip-muted"><Trans k="title.music">Music</Trans></span>}
+          {typeof ambientPct === 'number' && <span className="chip-muted">Ambient: {ambientPct}%</span>}
+          {hasMusic && <span className="chip-muted"><Trans k="title.music">Music</Trans></span>}
           {touchDimActive && <span className="chip-muted">Touch-Dim</span>}
           {presenceActive && <span className="chip-muted"><Trans k="title.presence">Presence</Trans></span>}
         </div>
