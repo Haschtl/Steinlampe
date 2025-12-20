@@ -23,11 +23,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      - name: Build (upesy_wroom)
-        run: pio run -e upesy_wroom
+
+      - name: Build (quarzlampe)
+        run: pio run -e quarzlampe
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-upesy_wroom
-          path: .pio/build/upesy_wroom/firmware.bin
+          name: firmware-quarzlampe
+          path: .pio/build/quarzlampe/firmware.bin
+
+      - name: Build (desk_lamp)
+        run: pio run -e desk_lamp
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-desk_lamp
+          path: .pio/build/desk_lamp/firmware.bin
