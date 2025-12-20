@@ -30,7 +30,7 @@ const int PWM_MAX = (1 << LEDC_RES) - 1;
 #endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 uint32_t lastPwmValue = 0;
-static const uint32_t OFF_RAW = PWM_INVERT_OUTPUT ? (uint32_t)PWM_MAX : 0;
+const uint32_t OFF_RAW = PWM_INVERT_OUTPUT ? (uint32_t)PWM_MAX : 0;
 
 static inline void writeOutputRaw(uint32_t value)
 {
