@@ -2,7 +2,7 @@
   "domain": "quarzlampe",
   "name": "Quarzlampe BLE",
   "version": "0.1.0",
-  "documentation": "https://github.com/haschtl/quarzlampe",
+  "documentation": "https://github.com/haschtl/steinlampe",
   "requirements": ["pyserial-asyncio"],
   "codeowners": ["@haschtl"],
   "config_flow": true,
