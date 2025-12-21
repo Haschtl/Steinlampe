@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.components import bluetooth
 
 from .ble import QuarzlampeClient
 from .bt_serial import QuarzlampeBtSerialClient
@@ -40,6 +41,8 @@ class QuarzlampeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Poll the lamp for status."""
         try:
-            return await self.client.async_request_status()
+            data = await self.client.async_request_status()
+            data["host_ble_available"] = bluetooth.async_scanner_count(self.hass) > 0
+            return data
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Failed to refresh Quarzlampe status: {err}") from err

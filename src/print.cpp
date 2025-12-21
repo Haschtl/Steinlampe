@@ -205,6 +205,8 @@ void printStatus(const bool &force)
     line4b += Settings::BLE_COMMAND_CHAR_UUID;
     line4b += F(" | Status=");
     line4b += Settings::BLE_STATUS_CHAR_UUID;
+    line4b += F(" | BLE=");
+    line4b += bleActive() ? F("UP") : F("DOWN");
     sendFeedback(line4b,force);
 #endif
 
@@ -406,6 +408,10 @@ void printStatusStructured(const bool &force)
     line += presenceListCsv();
     line += F("|presence_grace=");
     line += presenceGraceMs;
+#if ENABLE_BLE
+    line += F("|ble=");
+    line += bleActive() ? F("UP") : F("DOWN");
+#endif
     sendFeedback(line,force);
     updateBleStatus(line);
 
@@ -428,6 +434,8 @@ void printStatusStructured(const bool &force)
     lineIO += String(getBtSleepAfterBootMs());
     lineIO += F("|bt_sleep_ble_ms=");
     lineIO += String(getBtSleepAfterBleMs());
+#else
+    lineIO += F("|bt_sleep_boot_ms=N/A|bt_sleep_ble_ms=N/A");
 #endif
     lineIO += F("|custom_len=");
     lineIO += String(customLen);

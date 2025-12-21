@@ -17,6 +17,7 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(key="music_level", name="Music Level"),
     SensorEntityDescription(key="touch_delta", name="Touch Delta"),
     SensorEntityDescription(key="presence", name="Presence"),
+    SensorEntityDescription(key="host_ble_available", name="Host BLE Available"),
 )
 
 
@@ -52,4 +53,3 @@ class QuarzlampeSensor(QuarzlampeEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get(self.entity_description.key)
-

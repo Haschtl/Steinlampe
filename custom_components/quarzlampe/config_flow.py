@@ -7,10 +7,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.components import bluetooth
+from serial.tools import list_ports
 
 from .const import (
     DEFAULT_NAME,
     DOMAIN,
+    BLE_SERVICE_UUID,
     TRANSPORT_BLE,
     TRANSPORT_BT_SERIAL,
 )
@@ -41,13 +44,38 @@ class QuarzlampeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 },
             )
 
+        # Discover nearby BLE lamps advertising our service UUID
+        discovered: dict[str, str] = {}
+        for info in bluetooth.async_discovered_service_info(self.hass):
+            if not info.address:
+                continue
+            uuids = [u.lower() for u in info.service_uuids]
+            if BLE_SERVICE_UUID.lower() in uuids:
+                name = info.name or "Quarzlampe"
+                label = f"{name} ({info.address}, RSSI {info.rssi})"
+                discovered[info.address] = label
+
+        # List available serial ports (for BT-Serial adapters or USB-RFCOMM)
+        serial_choices: dict[str, str] = {}
+        for port in list_ports.comports():
+            label = port.device
+            if port.description:
+                label += f" ({port.description})"
+            serial_choices[port.device] = label
+
         data_schema = vol.Schema(
             {
                 vol.Required("transport", default=TRANSPORT_BLE): vol.In(
                     {TRANSPORT_BLE: "BLE", TRANSPORT_BT_SERIAL: "BT Serial (/dev/rfcomm...)"}
                 ),
-                vol.Optional("address"): cv.string,
-                vol.Optional("serial_port", default="/dev/rfcomm0"): cv.string,
+                vol.Optional(
+                    "address",
+                    default=next(iter(discovered)) if discovered else "",
+                ): vol.In(discovered) if discovered else cv.string,
+                vol.Optional(
+                    "serial_port",
+                    default=next(iter(serial_choices)) if serial_choices else "/dev/rfcomm0",
+                ): vol.In(serial_choices) if serial_choices else cv.string,
                 vol.Optional("name", default=DEFAULT_NAME): cv.string,
             }
         )

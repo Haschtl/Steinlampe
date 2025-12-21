@@ -92,6 +92,7 @@ export type DeviceStatus = {
   lightAmbMult?: number;
   hasMusic?: boolean;
   musicEnabled?: boolean;
+  bleAvailable?: boolean;
   musicGain?: number;
   musicSmooth?: number;
   musicAuto?: boolean;
@@ -295,6 +296,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         filterEnv: kv.filter_env ? kv.filter_env.toUpperCase() === 'ON' : s.filterEnv,
         filterEnvAttack: asInt('filter_env_att') ?? s.filterEnvAttack,
         filterEnvRelease: asInt('filter_env_rel') ?? s.filterEnvRelease,
+        bleAvailable: kv.ble ? kv.ble.toUpperCase() !== 'DOWN' : s.bleAvailable,
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
         lightGain: asNum('light_gain') ?? s.lightGain,

@@ -57,13 +57,16 @@ BLE UUIDs (default):
 
 ## Home Assistant (HACS) Integration
 
+- HACS: add custom repo `https://github.com/haschtl/steinlampe` (type: Integration).
 - Paths: `custom_components/quarzlampe`, metadata `hacs.json`.
-- Transport choice: BLE (enter lamp MAC) or BT-Serial (e.g., `/dev/rfcomm0`, 115200 baud).
+- Config-Flow scan: Nearby lamps advertising the Quarzlampe BLE service UUID are listed, so you rarely need to type the MAC.
+- Transport choice: BLE (preferred on HA OS) or BT-Serial (e.g., `/dev/rfcomm0`, 115200 baud; requires rfcomm binding on host).
+  - Hinweis BT-Serial auf HA OS: Classic-Bluetooth ist auf HA OS/Container meist nicht vorkonfiguriert. Du brauchst einen unterstützten USB-BT-Dongle, ein rfcomm-Binding (z.B. via SSH add-on: `rfcomm bind 0 <mac> 1`), und musst die serielle Device-Datei (`/dev/rfcomm0`) in den Container durchreichen (z.B. per udev rule + add-on config). Wenn das nicht gesetzt ist, schlägt BT-Serial mit “No such file or directory /dev/rfcomm0” fehl.
 - Entities:
   - `light.quarzlampe_lamp` with brightness and effect list (patterns).
   - Switches: auto-cycle, touch dim, presence, ambient light sensor, clap.
   - Numbers: brightness min/max, ramp on/off, ambient factor, idle-off, pattern speed, pattern fade, PWM gamma.
-  - Sensors: pattern index/name, light raw, music level, touch delta, presence state.
+  - Sensors: pattern index/name, light raw, music level, touch delta, presence state, host BLE availability.
   - Buttons: next/prev pattern, status refresh, sync switch.
 - Services (`quarzlampe.*`):
   - `send_command` (raw CLI over configured transport), `wake`, `sleep`, `notify`, `morse`,
