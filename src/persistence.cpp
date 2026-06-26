@@ -448,8 +448,6 @@ void saveSettings()
 #if ENABLE_LIGHT_SENSOR
     prefs.putFloat(PREF_KEY_RAMP_AMB, rampAmbientFactor);
     prefs.putBool(PREF_KEY_LS_EN, lightSensorEnabled);
-    lightMinRaw = 4095;
-    lightMaxRaw = 0;
     prefs.putFloat(PREF_KEY_LCLAMP_MIN, lightClampMin);
     prefs.putFloat(PREF_KEY_LCLAMP_MAX, lightClampMax);
     prefs.putFloat(PREF_KEY_LIGHT_ALPHA, lightAlpha);
@@ -1494,10 +1492,10 @@ void importConfig(const String &args)
         }
         else if (key == "pres_grace")
         {
-            uint32_t v = val.toInt();
+            long v = val.toInt();
             if (v < 0)
                 v = 0;
-            presenceGraceMs = v;
+            presenceGraceMs = (uint32_t)v;
         }
 #if ENABLE_MUSIC_MODE
         else if (key == "music_gain")

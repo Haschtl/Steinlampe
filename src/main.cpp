@@ -313,7 +313,7 @@ void updatePatternEngine()
     }
   }
 
-#ifndef ENABLE_MUSIC_MODE
+#if ENABLE_MUSIC_MODE
   if (musicEnabled && !notifyActive)
     combined *= musicModScale;
 #endif

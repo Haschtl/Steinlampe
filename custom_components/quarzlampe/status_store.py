@@ -177,6 +177,9 @@ class LampStatusStore:
                 if "=" in part:
                     key, val = part.split("=", 1)
                     kv[key] = val
+            ramp_amb = _as_float(kv.get("ramp_amb"))
+            if ramp_amb is None:
+                ramp_amb = self.data.get("ramp_amb")
             self.data.update(
                 {
                     "touch_base": _as_int(kv.get("touch_base")),
@@ -189,8 +192,7 @@ class LampStatusStore:
                     "light_raw_min": _as_float(kv.get("light_min")),
                     "light_raw_max": _as_float(kv.get("light_max")),
                     "light_amb_mult": _as_float(kv.get("light_amb_mult")),
-                    "ramp_amb": _as_float(kv.get("ramp_amb"))
-                    or self.data.get("ramp_amb"),
+                    "ramp_amb": ramp_amb,
                     "music_env": _as_float(kv.get("music_env")),
                     "music_level": _as_float(kv.get("music_level")),
                     "music_smooth": _as_float(kv.get("music_smooth")),
@@ -257,11 +259,16 @@ class LampStatusStore:
                 if "=" in part:
                     key, val = part.split("=", 1)
                     kv[key] = val
+            custom_len = _as_int(kv.get("len"))
+            if custom_len is None:
+                custom_len = self.data.get("custom_len")
+            custom_step = _as_int(kv.get("step"))
+            if custom_step is None:
+                custom_step = self.data.get("custom_step_ms")
             self.data.update(
                 {
-                    "custom_len": _as_int(kv.get("len")) or self.data.get("custom_len"),
-                    "custom_step_ms": _as_int(kv.get("step"))
-                    or self.data.get("custom_step_ms"),
+                    "custom_len": custom_len,
+                    "custom_step_ms": custom_step,
                     "custom_csv": kv.get("vals") or self.data.get("custom_csv"),
                 }
             )

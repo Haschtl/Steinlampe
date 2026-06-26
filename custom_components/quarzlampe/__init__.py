@@ -137,6 +137,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if coordinator:
         await coordinator.client.async_disconnect()
+
+    # Remove services once the last entry is gone so they don't linger orphaned.
+    if not data.get("entries") and data.get("services_registered"):
+        for service in SERVICE_SCHEMAS:
+            hass.services.async_remove(DOMAIN, service)
+        data["services_registered"] = False
+
     return unload_ok
 
 

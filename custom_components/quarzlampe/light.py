@@ -82,6 +82,10 @@ class QuarzlampeLight(QuarzlampeEntity, LightEntity):
                 commands.append(f"mode {idx}")
         if not commands:
             commands.append("on")
+        elif not self.is_on:
+            # Setting brightness/effect implies turning the lamp on; the firmware
+            # "bri" command alone does not enable output when the lamp is off.
+            commands.insert(0, "on")
         for cmd in commands:
             await self.coordinator.client.async_send_command(cmd)
         await self.coordinator.async_request_refresh()

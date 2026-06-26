@@ -452,6 +452,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     if (!line.isEmpty())
     {
       lastBtActivityMs = millis();
+      armFeedback();
       handleCommand(line);
     }
   }
@@ -698,9 +699,10 @@ void pollCommunications()
       processBtMidiByte((uint8_t)c);
 #endif
 #if ENABLE_BT_PAIRING
-      if (!btPairPending)
-        processInputChar(bufferBt, c);
+      if (btPairPending)
+        continue; // commands are gated until pairing is confirmed
 #endif
+      processInputChar(bufferBt, c);
     }
   }
 #endif
@@ -724,9 +726,11 @@ void sendFeedback(const String &line, const bool &force)
 #endif
 #if ENABLE_BLE
   // Send feedback only via status characteristic (notify/indicate) to keep GATT simple for clients.
+  // Append a newline so clients can split concatenated notifications into lines.
   if (allow && bleClientConnected && bleStatusCharacteristic)
   {
-    bleStatusCharacteristic->setValue(line.c_str());
+    String payload = line + "\n";
+    bleStatusCharacteristic->setValue(payload.c_str());
     bleStatusCharacteristic->notify();
   }
 #endif
@@ -741,9 +745,11 @@ void updateBleStatus(const String &statusPayload)
 #if ENABLE_BLE
   if (!bleStatusCharacteristic)
     return;
-  bleStatusCharacteristic->setValue(statusPayload.c_str());
-  if (bleClientConnected)
-    bleStatusCharacteristic->notify();
+  // Only refresh the readable characteristic value (with newline terminator).
+  // Notification is handled by the preceding sendFeedback() of the same line,
+  // so we avoid sending each status line twice.
+  String payload = statusPayload + "\n";
+  bleStatusCharacteristic->setValue(payload.c_str());
 #else
   (void)statusPayload;
 #endif

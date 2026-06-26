@@ -198,7 +198,8 @@ void updateSwitchLogic()
             sendFeedback(F("[Switch] OFF"));
             confirmBtPairing("switch");
         }
-        saveSettings();
+        // Lamp on/off is not persisted; a mode-tap already saves via applyQuickMode(),
+        // so avoid an extra NVS write on every toggle to reduce flash wear.
         lastActivityMs = now;
     }
 }
