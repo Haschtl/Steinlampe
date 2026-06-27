@@ -24,6 +24,25 @@ bool modeTapArmed = false;
 #if ENABLE_POTI
 static const float SECURE_POTI_LOW = 0.2f;  // normalized 0..1
 static const float SECURE_POTI_HIGH = 0.8f; // normalized 0..1
+
+static int readPotiMedian()
+{
+    static_assert(Settings::POTI_MEDIAN_SAMPLES > 0 && (Settings::POTI_MEDIAN_SAMPLES % 2) == 1,
+                  "POTI_MEDIAN_SAMPLES must be a positive odd number");
+
+    int samples[Settings::POTI_MEDIAN_SAMPLES];
+    for (uint8_t i = 0; i < Settings::POTI_MEDIAN_SAMPLES; ++i)
+    {
+        samples[i] = analogRead(PIN_POTI);
+        for (uint8_t j = i; j > 0 && samples[j] < samples[j - 1]; --j)
+        {
+            int tmp = samples[j];
+            samples[j] = samples[j - 1];
+            samples[j - 1] = tmp;
+        }
+    }
+    return samples[Settings::POTI_MEDIAN_SAMPLES / 2];
+}
 #endif
 
 uint32_t bootStartMs = 0;
@@ -558,7 +577,7 @@ void updatePoti()
         return;
     lastPotiSampleMs = now;
 
-    int raw = analogRead(PIN_POTI);
+    int raw = readPotiMedian();
     potiLastRaw = raw;
     float levelRaw = (float)raw / 4095.0f;
     float minCal = potiCalibMin;

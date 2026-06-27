@@ -116,6 +116,7 @@ constexpr float EXT_INPUT_DELTA = 0.02f;         ///< minimum change to apply br
 
 #if ENABLE_POTI
 constexpr uint32_t POTI_SAMPLE_MS = 80;
+constexpr uint8_t POTI_MEDIAN_SAMPLES = 5; ///< Odd-sized ADC burst used to reject outliers
 constexpr float POTI_ALPHA = 0.25f;
 constexpr float POTI_DELTA_MIN = 0.025f;
 constexpr float POTI_OFF_THRESHOLD = 0.02f;
