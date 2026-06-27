@@ -2,15 +2,28 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
+import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { Trans } from '@/i18n';
 
 export function PotiCard() {
   const { status, sendCmd } = useConnection();
   const [enabled, setEnabled] = useState(true);
-  const [alpha, setAlpha] = useState(0.25);
-  const [delta, setDelta] = useState(0.025);
-  const [off, setOff] = useState(0.02);
-  const [sample, setSample] = useState(80);
+  const [alpha, editAlpha] = useSyncedValue(status.potiAlpha, {
+    tolerance: 0.01,
+    send: (v) => sendCmd(`poti alpha ${v.toFixed(2)}`).catch((e) => console.warn(e)),
+  });
+  const [delta, editDelta] = useSyncedValue(status.potiDelta, {
+    tolerance: 0.002,
+    send: (v) => sendCmd(`poti delta ${v.toFixed(3)}`).catch((e) => console.warn(e)),
+  });
+  const [off, editOff] = useSyncedValue(status.potiOff, {
+    tolerance: 0.005,
+    send: (v) => sendCmd(`poti off ${v.toFixed(3)}`).catch((e) => console.warn(e)),
+  });
+  const [sample, editSample] = useSyncedValue(status.potiSample, {
+    tolerance: 5,
+    send: (v) => sendCmd(`poti sample ${Math.round(v)}`).catch((e) => console.warn(e)),
+  });
   const [history, setHistory] = useState<number[]>([]);
   const [calMin, setCalMin] = useState(0);
   const [calMax, setCalMax] = useState(1);
@@ -18,14 +31,10 @@ export function PotiCard() {
 
   useEffect(() => {
     if (typeof status.potiEnabled === 'boolean') setEnabled(status.potiEnabled);
-    if (typeof status.potiAlpha === 'number') setAlpha(status.potiAlpha);
-    if (typeof status.potiDelta === 'number') setDelta(status.potiDelta);
-    if (typeof status.potiOff === 'number') setOff(status.potiOff);
-    if (typeof status.potiSample === 'number') setSample(status.potiSample);
     if (typeof status.potiMin === 'number') setCalMin(status.potiMin);
     if (typeof status.potiMax === 'number') setCalMax(status.potiMax);
     if (typeof status.potiInvert === 'boolean') setInvert(status.potiInvert);
-  }, [status.potiAlpha, status.potiDelta, status.potiEnabled, status.potiMax, status.potiMin, status.potiOff, status.potiSample, status.potiInvert]);
+  }, [status.potiEnabled, status.potiMax, status.potiMin, status.potiInvert]);
 
   useEffect(() => {
     if (typeof status.potiVal === 'number') {
@@ -87,11 +96,10 @@ export function PotiCard() {
             min: 0.01,
             max: 1,
             step: 0.01,
-            value: alpha,
+            value: alpha ?? 0.25,
           }}
           onInputChange={(val) => {
-            setAlpha(val);
-            if (!Number.isNaN(val)) apply(`poti alpha ${val.toFixed(2)}`);
+            if (!Number.isNaN(val)) editAlpha(val);
           }}
           disabled={!enabled}
         />
@@ -175,11 +183,10 @@ export function PotiCard() {
             min: 0.001,
             max: 0.3,
             step: 0.001,
-            value: delta,
+            value: delta ?? 0.025,
           }}
           onInputChange={(val) => {
-            setDelta(val);
-            if (!Number.isNaN(val)) apply(`poti delta ${val.toFixed(3)}`);
+            if (!Number.isNaN(val)) editDelta(val);
           }}
           disabled={!enabled}
         />
@@ -190,11 +197,10 @@ export function PotiCard() {
             min: 0,
             max: 0.4,
             step: 0.005,
-            value: off,
+            value: off ?? 0.02,
           }}
           onInputChange={(val) => {
-            setOff(val);
-            if (!Number.isNaN(val)) apply(`poti off ${val.toFixed(3)}`);
+            if (!Number.isNaN(val)) editOff(val);
           }}
           disabled={!enabled}
         />
@@ -205,11 +211,10 @@ export function PotiCard() {
             min: 10,
             max: 2000,
             step: 10,
-            value: sample,
+            value: sample ?? 80,
           }}
           onInputChange={(val) => {
-            setSample(val);
-            if (!Number.isNaN(val)) apply(`poti sample ${Math.round(val)}`);
+            if (!Number.isNaN(val)) editSample(val);
           }}
           disabled={!enabled}
         />

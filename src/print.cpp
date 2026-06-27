@@ -24,10 +24,31 @@ static constexpr uint32_t LIVE_STATE_MIN_INTERVAL_MS = 100;
 static uint32_t liveStateLastMs = 0;
 static bool liveStatePending = false;
 
+static String liveStateLastKey;
+
 static void emitLiveState(const bool &force)
 {
+    const bool lampOn = (lampEnabled && !lampOffPending);
+    // Noise-tolerant change key: drops the raw ADC value and rounds the
+    // normalized poti to 1%, so jittery sensor reads don't spam identical
+    // STATE events. Only a meaningful change (or a forced emit) goes out.
+    String key = lampOn ? F("1|") : F("0|");
+    key += String(masterBrightness * 100.0f, 1);
+    key += '|';
+    key += String(currentPattern + 1);
+#if ENABLE_POTI
+    key += '|';
+    key += String(potiFiltered, 2);
+#endif
+    if (!force && key == liveStateLastKey)
+    {
+        liveStatePending = false;
+        return;
+    }
+    liveStateLastKey = key;
+
     String line = F("STATE|lamp=");
-    line += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
+    line += lampOn ? F("ON") : F("OFF");
     line += F("|bri=");
     line += String(masterBrightness * 100.0f, 1);
     line += F("|pattern=");

@@ -8,6 +8,7 @@ import { SliderRow } from '@/components/ui/slider-row';
 import { RangeSliderRow } from '@/components/ui/range-slider-row';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
+import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 import { PatternPalette } from '@/components/PatternPalette';
@@ -15,9 +16,21 @@ import { PatternPalette } from '@/components/PatternPalette';
 export function ModesCard() {
   const { status, sendCmd } = useConnection();
   const [pattern, setPattern] = useState(1);
-  const [patternSpeed, setPatternSpeed] = useState(1.0);
-  const [patternFade, setPatternFade] = useState(1.0);
-  const [fadeEnabled, setFadeEnabled] = useState(false);
+  const [patternSpeed, editPatternSpeed] = useSyncedValue(status.patternSpeed, {
+    tolerance: 0.05,
+    send: (v) => sendCmd(`pat scale ${v.toFixed(2)}`).catch((e) => console.warn(e)),
+  });
+  const [patternFade, editPatternFade] = useSyncedValue(status.patternFade, {
+    tolerance: 0.05,
+    send: (v) => {
+      if (v <= 0) {
+        sendCmd('pat fade off').catch((e) => console.warn(e));
+        return;
+      }
+      sendCmd('pat fade on').catch((e) => console.warn(e));
+      sendCmd(`pat fade amt ${v.toFixed(2)}`).catch((e) => console.warn(e));
+    },
+  });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [margin, setMargin] = useState<[number, number]>([0, 1]);
   const [invert, setInvert] = useState(false);
@@ -25,17 +38,6 @@ export function ModesCard() {
   useEffect(() => {
     if (status.currentPattern) setPattern(status.currentPattern);
   }, [status.currentPattern]);
-
-  useEffect(() => {
-    if (typeof status.patternSpeed === 'number') setPatternSpeed(status.patternSpeed);
-  }, [status.patternSpeed]);
-
-  useEffect(() => {
-    if (typeof status.patternFade === 'number') {
-      setPatternFade(status.patternFade || 1);
-      setFadeEnabled(status.patternFade > 0);
-    }
-  }, [status.patternFade]);
 
   useEffect(() => {
     if (typeof status.patternInvert === 'boolean') setInvert(status.patternInvert);
@@ -65,21 +67,7 @@ export function ModesCard() {
   };
 
   const handlePatternSpeed = (val: number) => {
-    const clamped = Math.max(0.1, Math.min(5, val));
-    setPatternSpeed(clamped);
-    sendCmd(`pat scale ${clamped.toFixed(2)}`).catch((e) => console.warn(e));
-  };
-
-  const handlePatternFade = (val: number, enable: boolean) => {
-    const nextVal = val || 1;
-    setPatternFade(nextVal);
-    setFadeEnabled(enable);
-    if (!enable) {
-      sendCmd('pat fade off').catch((e) => console.warn(e));
-      return;
-    }
-    sendCmd('pat fade on').catch((e) => console.warn(e));
-    sendCmd(`pat fade amt ${nextVal.toFixed(2)}`).catch((e) => console.warn(e));
+    editPatternSpeed(Math.max(0.1, Math.min(5, val)));
   };
 
   const handleMargin = (vals: [number, number]) => {
@@ -144,7 +132,7 @@ export function ModesCard() {
               min: 0.1,
               max: 5,
               step: 0.1,
-              value: patternSpeed,
+              value: patternSpeed ?? 1,
             }}
             onInputChange={(val) => handlePatternSpeed(val)}
           />
@@ -168,17 +156,14 @@ export function ModesCard() {
                 Smooth transitions between patterns
               </Trans>
             }
-            valueLabel={patternFade > 0 ? `${patternFade.toFixed(1)}x` : "Off"}
+            valueLabel={(patternFade ?? 0) > 0 ? `${(patternFade ?? 0).toFixed(1)}x` : "Off"}
             inputProps={{
               min: 0,
               max: 2,
               step: 0.01,
-              value: patternFade,
+              value: patternFade ?? 0,
             }}
-            onInputChange={(val) => {
-              const v = Math.max(0, val);
-              handlePatternFade(v || 1, v > 0);
-            }}
+            onInputChange={(val) => editPatternFade(Math.max(0, val))}
           />
         </div>
         <div className="flex flex-wrap gap-2">

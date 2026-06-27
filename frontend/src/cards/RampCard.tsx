@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
+import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { Trans } from '@/i18n';
 
 type EaseType = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'flash' | 'wave' | 'blink';
@@ -144,19 +145,27 @@ export function RampCard() {
   const [rampOff, setRampOff] = useState<number | undefined>();
   const [rampOnEase, setRampOnEase] = useState('linear');
   const [rampOffEase, setRampOffEase] = useState('linear');
-  const [rampOnPow, setRampOnPow] = useState(2);
-  const [rampOffPow, setRampOffPow] = useState(2);
-  const [rampAmbient, setRampAmbient] = useState(0);
+  const [rampOnPow, editRampOnPow] = useSyncedValue(status.rampOnPow, {
+    tolerance: 0.05,
+    send: (v) => sendCmd(`ramp ease on ${rampOnEase} ${v.toFixed(1)}`).catch((e) => console.warn(e)),
+  });
+  const [rampOffPow, editRampOffPow] = useSyncedValue(status.rampOffPow, {
+    tolerance: 0.05,
+    send: (v) => sendCmd(`ramp ease off ${rampOffEase} ${v.toFixed(1)}`).catch((e) => console.warn(e)),
+  });
+  const [rampAmbient, editRampAmbient] = useSyncedValue(status.rampAmbient, {
+    tolerance: 0.02,
+    send: (v) => sendCmd(`ramp ambient ${v.toFixed(2)}`).catch((e) => console.warn(e)),
+  });
+  const onPow = rampOnPow ?? 2;
+  const offPow = rampOffPow ?? 2;
 
   useEffect(() => {
     if (typeof status.rampOnMs === 'number') setRampOn(status.rampOnMs);
     if (typeof status.rampOffMs === 'number') setRampOff(status.rampOffMs);
-    if (typeof status.rampOnPow === 'number') setRampOnPow(status.rampOnPow);
-    if (typeof status.rampOffPow === 'number') setRampOffPow(status.rampOffPow);
     if (status.rampOnEase) setRampOnEase(status.rampOnEase as EaseType);
     if (status.rampOffEase) setRampOffEase(status.rampOffEase as EaseType);
-    if (typeof status.rampAmbient === 'number') setRampAmbient(status.rampAmbient);
-  }, [status.rampOnMs, status.rampOffMs, status.rampOnPow, status.rampOffPow, status.rampOnEase, status.rampOffEase, status.rampAmbient]);
+  }, [status.rampOnMs, status.rampOffMs, status.rampOnEase, status.rampOffEase]);
 
   const handleRampOn = (val: number) => {
     setRampOn(val);
@@ -171,26 +180,21 @@ export function RampCard() {
   const handleRampEase = (dir: 'on' | 'off', ease: string) => {
     if (dir === 'on') {
       setRampOnEase(ease);
-      sendCmd(`ramp ease on ${ease} ${rampOnPow}`).catch((e) => console.warn(e));
+      sendCmd(`ramp ease on ${ease} ${onPow.toFixed(1)}`).catch((e) => console.warn(e));
     } else {
       setRampOffEase(ease);
-      sendCmd(`ramp ease off ${ease} ${rampOffPow}`).catch((e) => console.warn(e));
+      sendCmd(`ramp ease off ${ease} ${offPow.toFixed(1)}`).catch((e) => console.warn(e));
     }
   };
 
   const handleRampPow = (dir: 'on' | 'off', pow: number) => {
-    if (dir === 'on') {
-      setRampOnPow(pow);
-      if (!Number.isNaN(pow)) sendCmd(`ramp ease on ${rampOnEase} ${pow}`);
-    } else {
-      setRampOffPow(pow);
-      if (!Number.isNaN(pow)) sendCmd(`ramp ease off ${rampOffEase} ${pow}`);
-    }
+    if (Number.isNaN(pow)) return;
+    if (dir === 'on') editRampOnPow(pow);
+    else editRampOffPow(pow);
   };
 
   const handleRampAmbient = (val: number) => {
-    setRampAmbient(val);
-    if (!Number.isNaN(val)) sendCmd(`ramp ambient ${val.toFixed(2)}`);
+    if (!Number.isNaN(val)) editRampAmbient(val);
   };
 
   return (
@@ -220,12 +224,12 @@ export function RampCard() {
               </div>
               <SliderRow
                 label={<Trans k="label.pow">Power</Trans>}
-                valueLabel={`γ = ${rampOnPow.toFixed(1)}`}
+                valueLabel={`γ = ${onPow.toFixed(1)}`}
                 inputProps={{
                   min: 0.1,
                   max: 10,
                   step: 0.1,
-                  value: rampOnPow,
+                  value: onPow,
                 }}
                 onInputChange={(v) => handleRampPow('on', v)}
               />
@@ -242,7 +246,7 @@ export function RampCard() {
                   suffix="ms"
                 />
               </div>
-              <RampGraph duration={rampOn} pow={rampOnPow} ease={rampOnEase as EaseType} />
+              <RampGraph duration={rampOn} pow={onPow} ease={rampOnEase as EaseType} />
             </div>
           </Card>
           <Card className="p-3">
@@ -265,12 +269,12 @@ export function RampCard() {
               </div>
               <SliderRow
                 label={<Trans k="label.pow">Power</Trans>}
-                valueLabel={`γ = ${rampOffPow.toFixed(1)}`}
+                valueLabel={`γ = ${offPow.toFixed(1)}`}
                 inputProps={{
                   min: 0.1,
                   max: 10,
                   step: 0.1,
-                  value: rampOffPow,
+                  value: offPow,
                 }}
                 onInputChange={(v) => handleRampPow('off', v)}
               />
@@ -287,7 +291,7 @@ export function RampCard() {
                   suffix="ms"
                 />
               </div>
-              <RampGraph duration={rampOff} reverse pow={rampOffPow} ease={rampOffEase as EaseType} />
+              <RampGraph duration={rampOff} reverse pow={offPow} ease={rampOffEase as EaseType} />
             </div>
           </Card>
         </div>
@@ -297,12 +301,12 @@ export function RampCard() {
             <SliderRow
               label={<Trans k="label.rampAmbient">Ambient ramps</Trans>}
               description={<Trans k="desc.rampAmbient">Dark rooms stretch ramps by this factor (0 disables)</Trans>}
-              valueLabel={`x${(1 + rampAmbient).toFixed(2)} in dark`}
+              valueLabel={`x${(1 + (rampAmbient ?? 0)).toFixed(2)} in dark`}
               inputProps={{
                 min: 0,
                 max: 5,
                 step: 0.05,
-                value: rampAmbient,
+                value: rampAmbient ?? 0,
               }}
               onInputChange={handleRampAmbient}
             />

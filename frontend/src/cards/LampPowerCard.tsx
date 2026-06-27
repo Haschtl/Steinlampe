@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SliderRow } from '@/components/ui/slider-row';
 import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
+import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
 import { getPatternBrightness } from '@/lib/patternSim';
@@ -14,7 +15,13 @@ const UPDATE_INTERVAL = 5;
 export function LampPowerCard() {
   const { status, sendCmd } = useConnection();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [brightness, setBrightness] = useState(70);
+  // Optimistic brightness: hold the dragged value until the device's (possibly
+  // ramping) feedback converges, so the slider doesn't flicker back mid-ramp.
+  // Sends are throttled while dragging; the final value always lands.
+  const [brightness, editBrightness] = useSyncedValue(status.brightness, {
+    tolerance: 1,
+    send: (v) => sendCmd(`bri ${v}`).catch((e) => console.warn(e)),
+  });
   const [lampOn, setLampOn] = useState(false);
   const canSync = !!status.switchState && !!status.lampState && status.switchState !== status.lampState;
   const hasSwitch = status.hasSwitch !== false && status.switchState !== undefined && status.switchState !== 'N/A';
@@ -38,10 +45,6 @@ export function LampPowerCard() {
   const musicActive = status.musicEnabled && status.hasMusic !== false;
   const touchDimActive = status.touchState === 'TOUCHDIM' || status.touchState === 'DIM';
   const presenceActive = !!(status.presence && status.presence.toUpperCase().startsWith('ON'));
-
-  useEffect(() => {
-    if (typeof status.brightness === 'number') setBrightness(Math.round(status.brightness));
-  }, [status.brightness]);
 
   useEffect(() => {
     setLampOn(status.lampState === 'ON');
@@ -97,9 +100,7 @@ export function LampPowerCard() {
   }, [adjustedEnergy, fade]);
 
   const handleBrightness = (value: number) => {
-    const clamped = Math.min(100, Math.max(1, Math.round(value)));
-    setBrightness(clamped);
-    sendCmd(`bri ${clamped}`).catch((e) => console.warn(e));
+    editBrightness(Math.min(100, Math.max(1, Math.round(value))));
   };
 
   const handleLampToggle = (next: boolean) => {
@@ -223,7 +224,7 @@ export function LampPowerCard() {
           inputProps={{
             min: 1,
             max: 100,
-            value: brightness,
+            value: Math.round(brightness ?? 70),
           }}
           onInputChange={(val) => handleBrightness(val)}
         />
