@@ -48,6 +48,7 @@ export function useBle(): BleApi {
   const cmdCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const statusCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const deviceRef = useRef<BluetoothDevice | null>(null);
+  const connectingRef = useRef(false);
   const liveLogRef = useRef(true);
   const lastLogRef = useRef<{ line: string; ms: number }>({ line: '', ms: 0 });
   const pendingLogRef = useRef<LogEntry[]>([]);
@@ -228,9 +229,16 @@ export function useBle(): BleApi {
   const connectWithDevice = useCallback(
     async (dev?: BluetoothDevice | null, silent = false) => {
       if (!dev) return;
+      // Guard against concurrent gatt.connect() (manual connect racing the
+      // auto-reconnect effect / StrictMode double-invoke) — BlueZ rejects
+      // parallel connects on the same device with a generic NetworkError.
+      if (connectingRef.current) return;
+      // Already connected to this device (e.g. auto-reconnect firing again):
+      // don't tear down the live link with a fresh connect.
+      if (dev.gatt?.connected) return;
+      connectingRef.current = true;
       deviceRef.current = dev;
       try {
-        console.log(dev)
         const { cmdChar, statusChar } = await connectDevice(dev);
         cmdCharRef.current = cmdChar;
         statusCharRef.current = statusChar;
@@ -268,6 +276,8 @@ export function useBle(): BleApi {
         setStatus((s) => ({ ...s, connecting: false }));
         cleanup();
         throw e;
+      } finally {
+        connectingRef.current = false;
       }
     },
     [attachListeners, cleanup, pushLog, refreshStatus],
@@ -321,7 +331,14 @@ export function useBle(): BleApi {
   }, [cleanup]);
 
   useEffect(() => {
-    tryReconnectLast();
+    // Delay auto-reconnect so it doesn't kick off a gatt.connect() during
+    // React StrictMode's mount→unmount→mount churn: the unmount cleanup would
+    // disconnect the in-flight connect and surface a spurious NetworkError.
+    // The timer is cancelled on unmount, so only the settled mount reconnects.
+    const t = setTimeout(() => {
+      tryReconnectLast();
+    }, 600);
+    return () => clearTimeout(t);
   }, [tryReconnectLast]);
 
   return useMemo(

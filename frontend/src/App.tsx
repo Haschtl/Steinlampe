@@ -432,10 +432,17 @@ export default function App() {
             aria-hidden
           />
           <div className="mx-auto max-w-6xl px-4 py-2">
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => setLogOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-lg border border-border bg-panel px-3 py-2 text-left hover:border-accent"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setLogOpen((v) => !v);
+                }
+              }}
+              className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-border bg-panel px-3 py-2 text-left hover:border-accent"
             >
               <div className="flex items-center gap-2">
                 <span className="font-semibold">
@@ -484,7 +491,7 @@ export default function App() {
                   )}
                 </button>
               </div>
-            </button>
+            </div>
 
             {logOpen && (
               <div className="mt-2 space-y-2">
