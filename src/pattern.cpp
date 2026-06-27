@@ -6,6 +6,7 @@
 #include "comms.h"
 #include "microphone.h"
 #include "persistence.h"
+#include "print.h"
 
 // Active pattern state (index and start time)
 size_t currentPattern = 0;
@@ -44,6 +45,7 @@ float patternCustom(uint32_t ms)
 void announcePattern(const bool &force)
 {
     sendFeedback(String(F("[Mode] ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" - ") + PATTERNS[currentPattern].name,force);
+    queueLiveState(force);
 }
 
 /**

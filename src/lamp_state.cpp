@@ -10,6 +10,7 @@
 #include "persistence.h"
 #include "pattern.h"
 #include "inputs.h"
+#include "print.h"
 #include <string.h>
 
 // ---------- Output driver (PWM or DAC) ----------
@@ -136,6 +137,7 @@ void logBrightnessChange(const char *reason)
     msg += F(")");
   }
   sendFeedback(msg);
+  queueLiveState();
 #if DEBUG_BRIGHTNESS_LOG
   Serial.print(F("[DBG] masterBrightness="));
   Serial.println(masterBrightness, 4);
@@ -153,6 +155,7 @@ void logLampState(const char *reason)
     msg += F(")");
   }
   sendFeedback(msg, forceSerial);
+  queueLiveState(forceSerial);
 }
 
 static float applyEase(float t, uint8_t type, float power)

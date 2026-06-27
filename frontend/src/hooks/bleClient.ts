@@ -91,10 +91,11 @@ export async function subscribeToLines(
   handler: LineHandler,
 ): Promise<() => void> {
   let buffer = '';
+  const decoder = new TextDecoder();
   const onNotify = (ev: Event) => {
     const target = ev.target as BluetoothRemoteGATTCharacteristic;
     const value = (target.value as DataView) || new DataView(new ArrayBuffer(0));
-    buffer += new TextDecoder().decode(value);
+    buffer += decoder.decode(value, { stream: true });
     const parts = buffer.split(/\r?\n/);
     buffer = parts.pop() || '';
     parts.forEach((line) => {

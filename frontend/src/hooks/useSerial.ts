@@ -118,8 +118,7 @@ export function useSerial(): SerialApi {
 
   const refreshStatus = useCallback(async () => {
     try {
-      await sendCmd('status');
-      await sendCmd('custom export');
+      await sendCmd('status raw');
     } catch (e) {
       pushLog('Status error: ' + e);
       disconnect();
@@ -210,6 +209,7 @@ export function useSerial(): SerialApi {
       }));
       localStorage.setItem('ql-last-device-name', label);
       await refreshStatus();
+      await sendCmd('custom export');
     } catch (e) {
       pushLog('Serial connect error: ' + e);
       setStatus((s) => ({ ...s, connecting: false }));

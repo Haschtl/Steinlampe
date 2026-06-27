@@ -140,6 +140,42 @@ export type DeviceStatus = {
  */
 export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction<DeviceStatus>>): boolean {
   if (!line) return false;
+  if (line.startsWith('STATE|')) {
+    const kv: Record<string, string> = {};
+    line
+      .split('|')
+      .slice(1)
+      .forEach((part) => {
+        const eq = part.indexOf('=');
+        if (eq > 0) kv[part.slice(0, eq)] = part.slice(eq + 1);
+      });
+    const brightness = kv.bri !== undefined ? parseFloat(kv.bri) : undefined;
+    const pattern = kv.pattern !== undefined ? parseInt(kv.pattern, 10) : undefined;
+    const poti = kv.poti !== undefined && kv.poti.toUpperCase() !== 'N/A' ? parseFloat(kv.poti) : undefined;
+    const potiRaw = kv.poti_raw !== undefined ? parseInt(kv.poti_raw, 10) : undefined;
+    setStatus((s) => ({
+      ...s,
+      lampState: kv.lamp ?? s.lampState,
+      brightness: Number.isFinite(brightness ?? NaN) ? brightness : s.brightness,
+      currentPattern: Number.isFinite(pattern ?? NaN) ? pattern : s.currentPattern,
+      hasPoti: kv.poti !== undefined ? kv.poti.toUpperCase() !== 'N/A' : s.hasPoti,
+      potiVal: Number.isFinite(poti ?? NaN) ? poti : s.potiVal,
+      potiRaw: Number.isFinite(potiRaw ?? NaN) ? potiRaw : s.potiRaw,
+      lastStatusAt: Date.now(),
+    }));
+    return true;
+  }
+  if (line.startsWith('[Lamp]')) {
+    const match = line.match(/\[Lamp\]\s+(ON|OFF(?:-PEND)?)/i);
+    if (match) {
+      setStatus((s) => ({
+        ...s,
+        lampState: match[1].toUpperCase().startsWith('ON') ? 'ON' : 'OFF',
+        lastStatusAt: Date.now(),
+      }));
+      return true;
+    }
+  }
   // Parse clap summary lines: "[Clap] ON thr=0.35 cool=800"
   if (line.startsWith('[Clap]')) {
     const lower = line.toLowerCase();

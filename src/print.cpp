@@ -20,6 +20,48 @@
 #include "pattern.h"
 #include "demo.h"
 
+static constexpr uint32_t LIVE_STATE_MIN_INTERVAL_MS = 100;
+static uint32_t liveStateLastMs = 0;
+static bool liveStatePending = false;
+
+static void emitLiveState(const bool &force)
+{
+    String line = F("STATE|lamp=");
+    line += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
+    line += F("|bri=");
+    line += String(masterBrightness * 100.0f, 1);
+    line += F("|pattern=");
+    line += String(currentPattern + 1);
+#if ENABLE_POTI
+    line += F("|poti=");
+    line += String(potiFiltered, 3);
+    line += F("|poti_raw=");
+    line += String(potiLastRaw);
+#else
+    line += F("|poti=N/A");
+#endif
+    sendFeedback(line, force);
+    liveStateLastMs = millis();
+    liveStatePending = false;
+}
+
+void queueLiveState(const bool &force)
+{
+    uint32_t now = millis();
+    if (force || liveStateLastMs == 0 || (now - liveStateLastMs) >= LIVE_STATE_MIN_INTERVAL_MS)
+    {
+        emitLiveState(force);
+        return;
+    }
+    liveStatePending = true;
+}
+
+void flushLiveState()
+{
+    if (liveStatePending && (millis() - liveStateLastMs) >= LIVE_STATE_MIN_INTERVAL_MS)
+        emitLiveState(false);
+}
+
 /**
  * @brief Print averaged touch sensor data for calibration purposes.
  */
@@ -61,7 +103,7 @@ void printStatus(const bool &force)
     String quickLine = String(F("[Quick] ")) + quickMaskToCsv();
     sendFeedback(quickLine,force);
 
-    String line2 = String(F("Lamp=")) + (lampEnabled ? F("ON") : F("OFF")) + F(" | Brightness=") +
+    String line2 = String(F("Lamp=")) + ((lampEnabled && !lampOffPending) ? F("ON") : F("OFF")) + F(" | Brightness=") +
                    String(masterBrightness * 100.0f, 1) + F("%");
 #if ENABLE_SWITCH
     line2 += F(" | Switch=");
@@ -349,7 +391,7 @@ void printStatusStructured(const bool &force)
     line += F("|bri=");
     line += String(masterBrightness * 100.0f, 1);
     line += F("|lamp=");
-    line += lampEnabled ? F("ON") : F("OFF");
+    line += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
 #if ENABLE_SWITCH
     line += F("|switch=");
     line += switchDebouncedState ? F("ON") : F("OFF");

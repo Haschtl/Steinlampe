@@ -25,6 +25,16 @@ void printSensorsStructured(const bool &force=false);
 void printStatusStructured(const bool &force=false);
 
 /**
+ * @brief Queue a compact state event for connected UIs.
+ */
+void queueLiveState(const bool &force=false);
+
+/**
+ * @brief Emit a pending rate-limited state event when due.
+ */
+void flushLiveState();
+
+/**
  * @brief Print available serial/BLE command usage.
  */
 void printHelp(const bool &force=false);

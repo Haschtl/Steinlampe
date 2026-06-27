@@ -516,6 +516,7 @@ void loop()
 #if ENABLE_EXT_INPUT
   updateExternalInput();
 #endif
+  flushLiveState();
   maybeLightSleep();
   delay(10);
 }

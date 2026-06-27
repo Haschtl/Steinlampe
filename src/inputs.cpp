@@ -618,6 +618,7 @@ void updatePoti()
         setLampEnabled(true, "poti", true);
     potiWasBelowOff = nowBelow;
     potiLastApplied = potiFiltered;
+    queueLiveState();
     // Fast, non-persisted updates for smooth knob response (no flash wear).
     setBrightnessPercent(target * 100.0f, false, false, true);
 }

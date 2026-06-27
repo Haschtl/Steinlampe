@@ -150,8 +150,7 @@ export function useBle(): BleApi {
 
   const refreshStatus = useCallback(async () => {
     try {
-      await sendCmd('status');
-      await sendCmd('custom export');
+      await sendCmd('status raw');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       pushLog('Status error: ' + msg);
@@ -259,6 +258,7 @@ export function useBle(): BleApi {
         }
         if (!silent) pushLog('Connected to ' + (dev.name || 'BLE'));
         await refreshStatus();
+        await sendCmd('custom export');
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const lower = msg.toLowerCase();

@@ -3,6 +3,7 @@
 #include "lamp_config.h"
 #include "settings.h"
 #include <vector>
+#include <deque>
 #include <algorithm>
 #if ENABLE_BT_SERIAL && ENABLE_BT_MIDI
 #include "midi_bt.h"
@@ -24,6 +25,8 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #endif
 
 /**
@@ -353,6 +356,100 @@ BLECharacteristic *bleStatusCharacteristic = nullptr;
 bool bleClientConnected = false;
 // Most recent BLE client address
 String bleLastAddr;
+static std::deque<String> bleNotifyQueue;
+static String bleNotifyCurrent;
+static size_t bleNotifyOffset = 0;
+static uint32_t bleLastNotifyMs = 0;
+static SemaphoreHandle_t bleNotifyMutex = nullptr;
+static constexpr size_t BLE_NOTIFY_QUEUE_MAX = 64;
+static constexpr uint32_t BLE_NOTIFY_INTERVAL_MS = 8;
+
+static void queueBleNotification(const String &line)
+{
+  if (!bleNotifyMutex)
+    return;
+
+  String payload = line;
+  payload += '\n';
+  if (xSemaphoreTake(bleNotifyMutex, pdMS_TO_TICKS(20)) != pdTRUE)
+    return;
+
+  if (line.startsWith(F("STATE|")))
+  {
+    for (auto it = bleNotifyQueue.begin(); it != bleNotifyQueue.end();)
+    {
+      if (it->startsWith(F("STATE|")))
+        it = bleNotifyQueue.erase(it);
+      else
+        ++it;
+    }
+  }
+  while (bleNotifyQueue.size() >= BLE_NOTIFY_QUEUE_MAX)
+    bleNotifyQueue.pop_front();
+  bleNotifyQueue.push_back(payload);
+  xSemaphoreGive(bleNotifyMutex);
+}
+
+static void flushBleNotification()
+{
+  if (!bleClientConnected || !bleStatusCharacteristic || !bleServer)
+  {
+    bleNotifyCurrent = "";
+    bleNotifyOffset = 0;
+    if (bleNotifyMutex && xSemaphoreTake(bleNotifyMutex, 0) == pdTRUE)
+    {
+      bleNotifyQueue.clear();
+      xSemaphoreGive(bleNotifyMutex);
+    }
+    return;
+  }
+
+  uint32_t now = millis();
+  if ((now - bleLastNotifyMs) < BLE_NOTIFY_INTERVAL_MS)
+    return;
+
+  if (bleNotifyCurrent.isEmpty())
+  {
+    if (!bleNotifyMutex || xSemaphoreTake(bleNotifyMutex, 0) != pdTRUE)
+      return;
+    if (!bleNotifyQueue.empty())
+    {
+      bleNotifyCurrent = bleNotifyQueue.front();
+      bleNotifyQueue.pop_front();
+      bleNotifyOffset = 0;
+    }
+    xSemaphoreGive(bleNotifyMutex);
+    if (bleNotifyCurrent.isEmpty())
+      return;
+  }
+
+  size_t chunkSize = 20;
+  const auto peers = bleServer->getPeerDevices(false);
+  if (!peers.empty())
+  {
+    chunkSize = 514;
+    for (const auto &peer : peers)
+    {
+      size_t peerChunkSize = peer.second.mtu > 3 ? peer.second.mtu - 3 : 20;
+      if (peerChunkSize < chunkSize)
+        chunkSize = peerChunkSize;
+    }
+  }
+
+  size_t remaining = bleNotifyCurrent.length() - bleNotifyOffset;
+  size_t length = remaining < chunkSize ? remaining : chunkSize;
+  const uint8_t *data = reinterpret_cast<const uint8_t *>(bleNotifyCurrent.c_str() + bleNotifyOffset);
+  bleStatusCharacteristic->setValue(const_cast<uint8_t *>(data), length);
+  bleStatusCharacteristic->notify();
+  bleNotifyOffset += length;
+  bleLastNotifyMs = now;
+
+  if (bleNotifyOffset >= bleNotifyCurrent.length())
+  {
+    bleNotifyCurrent = "";
+    bleNotifyOffset = 0;
+  }
+}
 
 /**
  * @brief Handles BLE server connection events.
@@ -464,6 +561,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
 void startBle()
 {
   BLEDevice::init(bleName.c_str());
+  BLEDevice::setMTU(517);
   bleServer = BLEDevice::createServer();
   bleServer->setCallbacks(new LampBleServerCallbacks());
   BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
@@ -639,9 +737,13 @@ void trustListFeedback()
 
 void setupCommunications()
 {
-  #if ENABLE_BT_SERIAL
+#if ENABLE_BLE
+  if (!bleNotifyMutex)
+    bleNotifyMutex = xSemaphoreCreateMutex();
+#endif
+#if ENABLE_BT_SERIAL
   startBtSerial();
-  #endif
+#endif
 #if ENABLE_BLE
   startBle();
 #else
@@ -706,6 +808,9 @@ void pollCommunications()
     }
   }
 #endif
+#if ENABLE_BLE
+  flushBleNotification();
+#endif
 }
 
 /**
@@ -725,14 +830,11 @@ void sendFeedback(const String &line, const bool &force)
   }
 #endif
 #if ENABLE_BLE
-  // Send feedback only via status characteristic (notify/indicate) to keep GATT simple for clients.
-  // Append a newline so clients can split concatenated notifications into lines.
+  // Queue newline-delimited feedback and split it according to the negotiated
+  // ATT MTU. The main loop drains the queue so BLE callbacks never burst large
+  // status snapshots into a single oversized notification.
   if (allow && bleClientConnected && bleStatusCharacteristic)
-  {
-    String payload = line + "\n";
-    bleStatusCharacteristic->setValue(payload.c_str());
-    bleStatusCharacteristic->notify();
-  }
+    queueBleNotification(line);
 #endif
 }
 
