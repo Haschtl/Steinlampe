@@ -80,6 +80,10 @@ extern const uint32_t SWITCH_DEBOUNCE_MS = 35;
 extern const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 extern const uint32_t TOUCH_DOUBLE_MS = 500; // Touch-Doppeltipp Erkennung
 extern const uint32_t SECURE_BOOT_WINDOW_MS = 1000;
+// Number of switch toggles / poti full-swings within the boot window required to
+// trigger a factory reset. Kept high so adjusting the knob right after power-on
+// doesn't wipe settings (incl. ramp values) by accident.
+static const int SECURE_BOOT_TOGGLES_REQUIRED = 5;
 
 #if ENABLE_TOUCH_DIM
 // Touch-Schwellwerte-Defaults
@@ -246,7 +250,7 @@ void processStartupSwitch()
             if (!secureBootLatched && !secureBootWindowClosed)
             {
                 secureBootToggleCount++;
-                if (secureBootToggleCount >= 2)
+                if (secureBootToggleCount >= SECURE_BOOT_TOGGLES_REQUIRED)
                 {
                     secureBootLatched = true;
                     secureBootWindowClosed = true;
@@ -257,7 +261,7 @@ void processStartupSwitch()
                 }
                 else
                 {
-                    sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/2"));
+                    sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/") + String(SECURE_BOOT_TOGGLES_REQUIRED));
                 }
             }
         }
@@ -290,7 +294,7 @@ void processStartupSwitch()
             if (!secureBootLatched && !secureBootWindowClosed)
             {
                 secureBootToggleCount++;
-                if (secureBootToggleCount >= 2)
+                if (secureBootToggleCount >= SECURE_BOOT_TOGGLES_REQUIRED)
                 {
                     secureBootLatched = true;
                     secureBootWindowClosed = true;
@@ -301,7 +305,7 @@ void processStartupSwitch()
                 }
                 else
                 {
-                    sendFeedback(String(F("[SecureBoot] Poti swing ")) + String(secureBootToggleCount) + F("/2"));
+                    sendFeedback(String(F("[SecureBoot] Poti swing ")) + String(secureBootToggleCount) + F("/") + String(SECURE_BOOT_TOGGLES_REQUIRED));
                 }
             }
         }
