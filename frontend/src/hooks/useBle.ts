@@ -308,11 +308,21 @@ export function useBle(): BleApi {
 
   const tryReconnectLast = useCallback(async () => {
     if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
-    if (!autoReconnectRef.current) return;
+    // A `?bleId=` in the URL is an explicit connect intent (e.g. a per-lamp
+    // bookmark), so honor it even when auto-reconnect is disabled. It takes
+    // precedence over the last-used device. Without one, fall back to the
+    // normal last-device reconnect, which only runs when auto-reconnect is on.
+    const urlBleId = new URLSearchParams(window.location.search).get('bleId');
+    const allowAuto = autoReconnectRef.current;
+    if (!urlBleId && !allowAuto) return;
     const lastId = lastDeviceIdRef.current;
     try {
       const devices = await navigator.bluetooth.getDevices();
-      const match = devices.find((d: BluetoothDevice) => (lastId && d.id === lastId) || (!lastId && d.name));
+      const byId = (id: string | null) => (id ? devices.find((d) => d.id === id) : undefined);
+      const match =
+        byId(urlBleId) ||
+        (allowAuto ? byId(lastId) : undefined) ||
+        (allowAuto && !urlBleId && !lastId ? devices.find((d) => d.name) : undefined);
       if (match) {
         setStatus((s) => ({ ...s, connecting: true }));
         await connectWithDevice(match, true);

@@ -1,5 +1,8 @@
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trans } from '@/i18n';
+import { Link2 } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { Trans, useI18n } from '@/i18n';
 
 type HelpProps = {
   bleGuids: { label: string; value: string }[];
@@ -8,6 +11,24 @@ type HelpProps = {
 };
 
 export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
+  const { t } = useI18n();
+
+  const copyConnectLink = async () => {
+    const id = localStorage.getItem('ql-last-device-id');
+    if (!id) {
+      toast.info(t('help.connectLinkNoDevice', 'Connect to a lamp once to create a link.'));
+      return;
+    }
+    const url = `${window.location.origin}${window.location.pathname}?bleId=${encodeURIComponent(id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(t('help.connectLinkCopied', 'Connect link copied to clipboard.'));
+    } catch {
+      // Clipboard API is unavailable in insecure contexts; surface the URL so it can be copied manually.
+      window.prompt(t('help.copyConnectLink', 'Copy connect link'), url);
+    }
+  };
+
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card>
@@ -106,6 +127,20 @@ export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
             <p className="mt-3 text-xs text-muted">
               <Trans k="help.bleMidiNote">Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.</Trans>
             </p>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-panel/70 p-4 text-sm shadow-inner">
+            <p className="text-text font-semibold">
+              <Trans k="help.connectLink">Direct connect link</Trans>
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              <Trans k="help.connectLinkDesc">
+                Creates a link with this lamp's id (?bleId=…). Opening it auto-connects to this lamp. Works only in this browser, where the lamp was paired before.
+              </Trans>
+            </p>
+            <Button type="button" variant="ghost" size="sm" className="mt-3" onClick={copyConnectLink}>
+              <Link2 className="mr-2 h-4 w-4" />
+              <Trans k="help.copyConnectLink">Copy connect link</Trans>
+            </Button>
           </div>
         </CardContent>
       </Card>

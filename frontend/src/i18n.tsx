@@ -257,6 +257,12 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Characteristic UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.",
+    "help.connectLink": "Direct connect link",
+    "help.copyConnectLink": "Copy connect link",
+    "help.connectLinkDesc":
+      "Creates a link with this lamp's id (?bleId=…). Opening it auto-connects to this lamp. Works only in this browser, where the lamp was paired before.",
+    "help.connectLinkCopied": "Connect link copied to clipboard.",
+    "help.connectLinkNoDevice": "Connect to a lamp once to create a link.",
     "help.inputs": "Inputs & Controls",
     "help.input.switch": "Switch",
     "help.input.switchDesc":
@@ -537,6 +543,12 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Char-UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; per optionalem Flag aktivieren. Write/WriteNR, nur RX.",
+    "help.connectLink": "Direkt-Verbindungslink",
+    "help.copyConnectLink": "Verbindungs-Link kopieren",
+    "help.connectLinkDesc":
+      "Erstellt einen Link mit der ID dieser Lampe (?bleId=…). Beim Öffnen verbindet er automatisch mit dieser Lampe. Funktioniert nur in diesem Browser, in dem die Lampe zuvor gekoppelt wurde.",
+    "help.connectLinkCopied": "Verbindungs-Link in die Zwischenablage kopiert.",
+    "help.connectLinkNoDevice": "Erst einmal mit einer Lampe verbinden, um einen Link zu erstellen.",
     "help.inputs": "Eingaben & Bedienung",
     "help.input.switch": "Schalter",
     "help.input.switchDesc":
