@@ -37,6 +37,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const ble = useBle();
   const serial = useSerial();
   const [transport, setTransportState] = useState<TransportType>(() => {
+    if (new URLSearchParams(window.location.search).has('bleId')) return 'ble';
     const cached = localStorage.getItem('ql-last-transport');
     return cached === 'ble' || cached === 'serial' ? (cached as TransportType) : null;
   });

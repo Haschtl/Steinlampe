@@ -1,4 +1,4 @@
-const CACHE = 'quarzlampe-pwa-v2';
+const CACHE = 'quarzlampe-pwa-v3';
 const PRE_CACHE = ['./', './index.html', './manifest.webmanifest', './icon-lamp.svg'];
 
 self.addEventListener('install', (event) => {
@@ -22,6 +22,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
   const sameOrigin = url.origin === self.location.origin;
+
+  if (event.request.mode === 'navigate' && sameOrigin) {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        return (await caches.match('./index.html')) || (await caches.match('./')) || Response.error();
+      }),
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
