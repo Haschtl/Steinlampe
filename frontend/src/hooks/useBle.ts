@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { BLE_UUIDS, connectDevice, disconnectDevice, requestDevice, subscribeToLines, writeLine } from './bleClient';
+import { BLE_UUIDS, connectDevice, disconnectDevice, readLines, requestDevice, subscribeToLines, writeLine } from './bleClient';
 import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
@@ -53,6 +53,9 @@ export function useBle(): BleApi {
   const lastLogRef = useRef<{ line: string; ms: number }>({ line: '', ms: 0 });
   const pendingLogRef = useRef<LogEntry[]>([]);
   const unsubRef = useRef<(() => void)[]>([]);
+  const statusEndWaiterRef = useRef<(() => void) | null>(null);
+  const statusSnapshotPagesRef = useRef(0);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
   const knownDevicesRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-devices') || '{}'));
@@ -130,6 +133,18 @@ export function useBle(): BleApi {
 
   const parseStatus = useCallback((line: string) => parseStatusLine(line, setStatus), []);
 
+  const handleLine = useCallback((line: string) => {
+    const handled = parseStatus(line);
+    if (!handled || !filterParsedRef.current) pushLog(line);
+    if (handled) setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
+    if (line.startsWith('STATUS|')) statusSnapshotPagesRef.current |= 1;
+    else if (line.startsWith('STATUS1|')) statusSnapshotPagesRef.current |= 2;
+    else if (line.startsWith('STATUS2|')) statusSnapshotPagesRef.current |= 4;
+    if (line.startsWith('STATUS_END|')) {
+      statusEndWaiterRef.current?.();
+    }
+  }, [parseStatus, pushLog]);
+
   const lastToast = useRef<string>('');
 
   const sendCmd = useCallback(
@@ -150,25 +165,73 @@ export function useBle(): BleApi {
   );
 
   const refreshStatus = useCallback(async () => {
-    try {
-      await sendCmd('status raw');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      pushLog('Status error: ' + msg);
-      if (lastToast.current !== msg) {
-        toast.error('Status error: ' + msg);
-        lastToast.current = msg;
-      }
-      cleanup();
-      if (autoReconnectRef.current && deviceRef.current) {
-        setTimeout(() => {
-          if (deviceRef.current && !deviceRef.current.gatt?.connected) {
-            connectWithDevice(deviceRef.current, true).catch(() => undefined);
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+
+    const refresh = (async () => {
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          statusSnapshotPagesRef.current = 0;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const completed = new Promise<boolean>((resolve) => {
+            statusEndWaiterRef.current = () => {
+              if (timer) clearTimeout(timer);
+              statusEndWaiterRef.current = null;
+              resolve(true);
+            };
+            timer = setTimeout(() => {
+              statusEndWaiterRef.current = null;
+              resolve(false);
+            }, 1800);
+          });
+
+          await sendCmd('status raw');
+          if (await completed) return;
+
+          // The firmware leaves STATUS_END (including core state) as the
+          // readable value. This recovers initial power state when notify
+          // setup failed and also distinguishes a complete snapshot.
+          if (statusCharRef.current) {
+            try {
+              const lines = await readLines(statusCharRef.current);
+              lines.forEach(handleLine);
+              if (lines.some((line) => line.startsWith('STATUS_END|'))) return;
+            } catch (readError) {
+              pushLog('Status read fallback failed: ' + (readError instanceof Error ? readError.message : String(readError)));
+            }
           }
-        }, 800);
+
+          // Compatibility with firmware versions predating STATUS_END: all
+          // three legacy status pages still prove that the snapshot arrived.
+          if (statusSnapshotPagesRef.current === 7) return;
+        }
+        throw new Error('Incomplete status snapshot');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        pushLog('Status error: ' + msg);
+        if (lastToast.current !== msg) {
+          toast.error('Status error: ' + msg);
+          lastToast.current = msg;
+        }
+        cleanup();
+        if (autoReconnectRef.current && deviceRef.current) {
+          setTimeout(() => {
+            if (deviceRef.current && !deviceRef.current.gatt?.connected) {
+              connectWithDevice(deviceRef.current, true).catch(() => undefined);
+            }
+          }, 800);
+        }
+      } finally {
+        statusEndWaiterRef.current = null;
       }
+    })();
+
+    refreshInFlightRef.current = refresh;
+    try {
+      await refresh;
+    } finally {
+      refreshInFlightRef.current = null;
     }
-  }, [pushLog, sendCmd]);
+  }, [handleLine, pushLog, sendCmd]);
 
   const cleanup = useCallback(() => {
     unsubRef.current.forEach((fn) => fn());
@@ -199,14 +262,8 @@ export function useBle(): BleApi {
 
   const attachListeners = useCallback(
     async (dev: BluetoothDevice, cmdChar: BluetoothRemoteGATTCharacteristic, statusChar: BluetoothRemoteGATTCharacteristic) => {
-      const lineHandler = (line: string) => {
-        const handled = parseStatus(line);
-        if (!handled || !filterParsedRef.current) pushLog(line);
-        if (handled) setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
-      };
-
       // Only subscribe to the status characteristic; command char stays write-only.
-      const unsubStat = await subscribeToLines(statusChar, lineHandler);
+      const unsubStat = await subscribeToLines(statusChar, handleLine);
       unsubRef.current = [unsubStat];
 
       const onDisc = () => {
@@ -223,7 +280,7 @@ export function useBle(): BleApi {
       dev.addEventListener('gattserverdisconnected', onDisc);
       unsubRef.current.push(() => dev.removeEventListener('gattserverdisconnected', onDisc));
     },
-    [cleanup, parseStatus, pushLog, filterParsed],
+    [cleanup, handleLine, pushLog],
   );
 
   const connectWithDevice = useCallback(

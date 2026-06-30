@@ -86,6 +86,12 @@ export function decodeLines(ev: Event): string[] {
   return txt.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
 
+export async function readLines(char: BluetoothRemoteGATTCharacteristic): Promise<string[]> {
+  const value = await char.readValue();
+  const text = new TextDecoder().decode(value);
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
 export async function subscribeToLines(
   char: BluetoothRemoteGATTCharacteristic,
   handler: LineHandler,

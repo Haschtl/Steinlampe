@@ -681,6 +681,20 @@ void printStatusStructured(const bool &force)
     }
     sendFeedback(line2,force);
     updateBleStatus(line2);
+
+#if SEND_STATUS_END
+    // Marks a complete structured snapshot. Keep the core state in the marker
+    // as well so a BLE client can recover it with a characteristic read when
+    // notifications were unavailable or a notification chunk was lost.
+    String lineEnd = F("STATUS_END|lamp=");
+    lineEnd += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
+    lineEnd += F("|bri=");
+    lineEnd += String(masterBrightness * 100.0f, 1);
+    lineEnd += F("|pattern=");
+    lineEnd += String(currentPattern + 1);
+    sendFeedback(lineEnd, force);
+    updateBleStatus(lineEnd);
+#endif
 }
 
 /**
