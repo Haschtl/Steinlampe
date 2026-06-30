@@ -10,8 +10,12 @@ import { Trans, useI18n } from '@/i18n';
 import { useConnection } from '@/context/connection';
 import { PatternPalette } from '@/components/PatternPalette';
 
-export function HomeSection() {
-  const [profileSlot, setProfileSlot] = useState('1');
+type HomeSectionProps = {
+  profileSlot: string;
+  setProfileSlot: (value: string) => void;
+};
+
+export function HomeSection({ profileSlot, setProfileSlot }: HomeSectionProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { sendCmd, status } = useConnection();
   const { t } = useI18n();

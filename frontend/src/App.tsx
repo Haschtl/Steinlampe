@@ -78,6 +78,7 @@ export default function App() {
     setLog,
   } = useConnection();
   const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'>('home');
+  const [profileSlot, setProfileSlot] = useState('1');
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -369,7 +370,7 @@ export default function App() {
               }}
               className="space-y-4"
             >
-              {activeTab === "home" && <HomeSection />}
+              {activeTab === "home" && <HomeSection profileSlot={profileSlot} setProfileSlot={setProfileSlot} />}
               {activeTab === "settings" && <SettingsSection />}
               {activeTab === "advanced" && <AdvancedSection />}
               {activeTab === "filters" && <FilterSection />}
