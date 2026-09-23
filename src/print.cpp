@@ -37,6 +37,8 @@ static void emitLiveState(const bool &force)
     key += String(masterBrightness * 100.0f, 1);
     key += '|';
     key += String(currentPattern + 1);
+    key += '|';
+    key += String(lastAppliedLevel * 100.0f, 1);
 #if ENABLE_POTI
     key += '|';
     key += String(potiFiltered, 2);
@@ -54,6 +56,8 @@ static void emitLiveState(const bool &force)
     line += String(masterBrightness * 100.0f, 1);
     line += F("|pattern=");
     line += String(currentPattern + 1);
+    line += F("|out=");
+    line += String(lastAppliedLevel * 100.0f, 1);
 #if ENABLE_POTI
     line += F("|poti=");
     line += String(potiFiltered, 3);

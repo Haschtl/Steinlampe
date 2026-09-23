@@ -31,6 +31,7 @@ const int PWM_MAX = (1 << LEDC_RES) - 1;
 #endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
 uint32_t lastPwmValue = 0;
+float lastAppliedLevel = 0.0f;
 const uint32_t OFF_RAW = PWM_INVERT_OUTPUT ? (uint32_t)PWM_MAX : 0;
 
 static inline void writeOutputRaw(uint32_t value)
@@ -83,10 +84,12 @@ uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
 void applyPwmLevel(float normalized)
 {
   float level = clamp01(normalized);
+  lastAppliedLevel = level;
   if (level <= 0.0f)
   {
     writeOutputRaw(OFF_RAW);
     lastPwmValue = OFF_RAW;
+    queueLiveState();
     return;
   }
   float effMin = clamp01(briMinUser);
@@ -118,6 +121,7 @@ void applyPwmLevel(float normalized)
 #endif
   lastPwmValue = pwmValue;
   writeOutputRaw(pwmValue);
+  queueLiveState();
 }
 
 /**

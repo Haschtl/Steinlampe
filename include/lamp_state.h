@@ -11,6 +11,7 @@ extern const int LEDC_RES;
 extern const int PWM_MAX;
 extern float outputGamma;
 extern uint32_t lastPwmValue;    // last written PWM value (0..PWM_MAX)
+extern float lastAppliedLevel;   // last applied normalized brightness (0..1, pre-gamma, un-inverted) - for live telemetry
 extern const uint32_t OFF_RAW;   // raw output representing "off" (respects inversion)
 
 // Brightness state
