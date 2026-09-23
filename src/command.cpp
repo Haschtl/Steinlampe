@@ -17,7 +17,7 @@
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
-#include "presence.h"
+#include "presence_ble.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -1967,57 +1967,57 @@ void handleCommand(String line)
         }
         return;
     }
-    if (lower.startsWith("presence"))
+    if (lower.startsWith("presence_ble"))
     {
-        String arg = line.substring(8);
+        String arg = line.substring(12);
         arg.trim();
         arg.toLowerCase();
         auto sendStatus = []() {
-            sendFeedback(String(F("[Presence] ")) + (presenceEnabled ? F("ON") : F("OFF")) +
-                         F(" devices=") + (presenceListCsv().length() ? presenceListCsv() : String(F("none"))) +
-                         F(" thr=") + String(presenceRssiThreshold) + F("dBm on=") + (presenceAutoOn ? F("1") : F("0")) +
-                         F(" off=") + (presenceAutoOff ? F("1") : F("0")) + F(" grace=") + String(presenceGraceMs) + F("ms"));
+            sendFeedback(String(F("[PresenceBLE] ")) + (presenceBleEnabled ? F("ON") : F("OFF")) +
+                         F(" devices=") + (presenceBleListCsv().length() ? presenceBleListCsv() : String(F("none"))) +
+                         F(" thr=") + String(presenceBleRssiThreshold) + F("dBm on=") + (presenceBleAutoOn ? F("1") : F("0")) +
+                         F(" off=") + (presenceBleAutoOff ? F("1") : F("0")) + F(" grace=") + String(presenceBleGraceMs) + F("ms"));
         };
         if (arg == "on")
         {
-            presenceEnabled = true;
+            presenceBleEnabled = true;
             saveSettings();
-            sendFeedback(F("[Presence] Enabled"));
+            sendFeedback(F("[PresenceBLE] Enabled"));
         }
         else if (arg == "off")
         {
-            presenceEnabled = false;
+            presenceBleEnabled = false;
             saveSettings();
-            sendFeedback(F("[Presence] Disabled"));
+            sendFeedback(F("[PresenceBLE] Disabled"));
         }
         else if (arg.startsWith("set"))
         {
-            String addr = line.substring(12);
+            String addr = line.substring(16);
             addr.trim();
             if (addr.isEmpty() || addr == "me")
             {
                 if (lastBleAddr.length() > 0)
                 {
-                    presenceClearDevices();
-                    presenceAddDevice(lastBleAddr);
+                    presenceBleClearDevices();
+                    presenceBleAddDevice(lastBleAddr);
                     saveSettings();
-                    sendFeedback(String(F("[Presence] Set to connected device ")) + lastBleAddr);
+                    sendFeedback(String(F("[PresenceBLE] Set to connected device ")) + lastBleAddr);
                 }
                 else
                 {
-                    sendFeedback(F("[Presence] Kein aktives BLE-Geraet gefunden."));
+                    sendFeedback(F("[PresenceBLE] Kein aktives BLE-Geraet gefunden."));
                 }
             }
             else if (addr.length() >= 11)
             {
-                presenceClearDevices();
-                presenceAddDevice(addr);
+                presenceBleClearDevices();
+                presenceBleAddDevice(addr);
                 saveSettings();
-                sendFeedback(String(F("[Presence] Set to ")) + addr);
+                sendFeedback(String(F("[PresenceBLE] Set to ")) + addr);
             }
             else
             {
-                sendFeedback(F("Usage: presence set <MAC>"));
+                sendFeedback(F("Usage: presence_ble set <MAC>"));
             }
         }
         else if (arg.startsWith("add"))
@@ -2026,49 +2026,49 @@ void handleCommand(String line)
             addr.trim();
             if (addr == "me" && lastBleAddr.length() > 0)
             {
-                presenceAddDevice(lastBleAddr);
+                presenceBleAddDevice(lastBleAddr);
                 saveSettings();
-                sendFeedback(String(F("[Presence] Added connected ")) + lastBleAddr);
+                sendFeedback(String(F("[PresenceBLE] Added connected ")) + lastBleAddr);
             }
             else if (addr.length() >= 11)
             {
-                if (presenceAddDevice(addr))
-                    sendFeedback(String(F("[Presence] Added ")) + addr);
+                if (presenceBleAddDevice(addr))
+                    sendFeedback(String(F("[PresenceBLE] Added ")) + addr);
                 else
-                    sendFeedback(F("[Presence] Already on list"));
+                    sendFeedback(F("[PresenceBLE] Already on list"));
                 saveSettings();
             }
             else
             {
-                sendFeedback(F("Usage: presence add <MAC>"));
+                sendFeedback(F("Usage: presence_ble add <MAC>"));
             }
         }
         else if (arg.startsWith("del"))
         {
             String addr = line.substring(line.indexOf("del") + 3);
             addr.trim();
-            if (presenceRemoveDevice(addr))
+            if (presenceBleRemoveDevice(addr))
             {
-                sendFeedback(String(F("[Presence] Removed ")) + addr);
+                sendFeedback(String(F("[PresenceBLE] Removed ")) + addr);
                 saveSettings();
             }
             else
             {
-                sendFeedback(F("[Presence] Not found"));
+                sendFeedback(F("[PresenceBLE] Not found"));
             }
         }
         else if (arg == "clear")
         {
-            presenceClearDevices();
+            presenceBleClearDevices();
             saveSettings();
-            sendFeedback(F("[Presence] Cleared"));
+            sendFeedback(F("[PresenceBLE] Cleared"));
         }
         else if (arg.startsWith("grace"))
         {
             uint32_t v = line.substring(line.indexOf("grace") + 5).toInt();
-            presenceGraceMs = v;
+            presenceBleGraceMs = v;
             saveSettings();
-            sendFeedback(String(F("[Presence] Grace ")) + String(v) + F(" ms"));
+            sendFeedback(String(F("[PresenceBLE] Grace ")) + String(v) + F(" ms"));
         }
         else if (arg.startsWith("thr"))
         {
@@ -2077,9 +2077,9 @@ void handleCommand(String line)
                 v = -120;
             if (v > -5)
                 v = -5;
-            presenceRssiThreshold = v;
+            presenceBleRssiThreshold = v;
             saveSettings();
-            sendFeedback(String(F("[Presence] RSSI >= ")) + String(v) + F(" dBm"));
+            sendFeedback(String(F("[PresenceBLE] RSSI >= ")) + String(v) + F(" dBm"));
         }
         else if (arg.startsWith("auto on"))
         {
@@ -2088,9 +2088,9 @@ void handleCommand(String line)
             bool v;
             if (parseBool(vstr, v))
             {
-                presenceAutoOn = v;
+                presenceBleAutoOn = v;
                 saveSettings();
-                sendFeedback(String(F("[Presence] Auto-ON ")) + (v ? F("ON") : F("OFF")));
+                sendFeedback(String(F("[PresenceBLE] Auto-ON ")) + (v ? F("ON") : F("OFF")));
             }
         }
         else if (arg.startsWith("auto off"))
@@ -2100,9 +2100,9 @@ void handleCommand(String line)
             bool v;
             if (parseBool(vstr, v))
             {
-                presenceAutoOff = v;
+                presenceBleAutoOff = v;
                 saveSettings();
-                sendFeedback(String(F("[Presence] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
+                sendFeedback(String(F("[PresenceBLE] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
             }
         }
         else if (arg.startsWith("on "))
@@ -2110,9 +2110,9 @@ void handleCommand(String line)
             bool v;
             if (parseBool(arg.substring(3), v))
             {
-                presenceAutoOn = v;
+                presenceBleAutoOn = v;
                 saveSettings();
-                sendFeedback(String(F("[Presence] Auto-ON ")) + (v ? F("ON") : F("OFF")));
+                sendFeedback(String(F("[PresenceBLE] Auto-ON ")) + (v ? F("ON") : F("OFF")));
             }
         }
         else if (arg.startsWith("off "))
@@ -2120,9 +2120,9 @@ void handleCommand(String line)
             bool v;
             if (parseBool(arg.substring(4), v))
             {
-                presenceAutoOff = v;
+                presenceBleAutoOff = v;
                 saveSettings();
-                sendFeedback(String(F("[Presence] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
+                sendFeedback(String(F("[PresenceBLE] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
             }
         }
         else if (arg == "list")

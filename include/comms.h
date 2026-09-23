@@ -68,18 +68,18 @@ void updateBleStatus(const String &statusPayload);
 
 String getBLEAddress();
 
-bool presenceScanOnce();
+bool presenceBleScanOnce();
 
-// Presence tracking (defined in main.cpp)
-// extern String presenceAddr;
-// extern bool presenceEnabled;
-// extern uint32_t presenceGraceMs;
-// extern uint32_t presenceGraceDeadline;
-// extern bool presencePrevConnected;
+// PresenceBLE tracking (defined in presence_ble.cpp)
+// extern String presenceBleAddr;
+// extern bool presenceBleEnabled;
+// extern uint32_t presenceBleGraceMs;
+// extern uint32_t presenceBleGraceDeadline;
+// extern bool presenceBlePrevConnected;
 // extern String lastBleAddr;
 // extern String lastBtAddr;
-// extern uint32_t lastPresenceSeenMs;
-// extern uint32_t lastPresenceScanMs;
+// extern uint32_t lastPresenceBleSeenMs;
+// extern uint32_t lastPresenceBleScanMs;
 
 void setBtName(const String &name);
 void setBleName(const String &name);

@@ -12,7 +12,7 @@
 #include "notifications.h"
 #include "inputs.h"
 #include "filters.h"
-#include "presence.h"
+#include "presence_ble.h"
 #include "print.h"
 
 // ---------- Persistenz ----------
@@ -23,9 +23,9 @@ static const char *PREF_KEY_MODE = "mode";
 static const char *PREF_KEY_AUTO = "auto";
 static const char *PREF_KEY_THR_ON = "thr_on";
 static const char *PREF_KEY_THR_OFF = "thr_off";
-static const char *PREF_KEY_PRESENCE_EN = "pres_en";
-static const char *PREF_KEY_PRESENCE_ADDR = "pres_addr";
-static const char *PREF_KEY_PRESENCE_LIST = "pres_list";
+static const char *PREF_KEY_PBLE_EN = "pble_en";
+static const char *PREF_KEY_PBLE_ADDR = "pble_addr";
+static const char *PREF_KEY_PBLE_LIST = "pble_list";
 static const char *PREF_KEY_RAMP_MS = "ramp_ms";
 static const char *PREF_KEY_RAMP_ON_MS = "ramp_on_ms";
 static const char *PREF_KEY_RAMP_OFF_MS = "ramp_off_ms";
@@ -58,7 +58,7 @@ static const char *PREF_KEY_TOUCH_DIM_STEP = "touch_dim_step";
 static const char *PREF_KEY_LIGHT_GAIN = "light_gain";
 static const char *PREF_KEY_BRI_MIN = "bri_min";
 static const char *PREF_KEY_BRI_MAX = "bri_max";
-static const char *PREF_KEY_PRES_GRACE = "pres_grace";
+static const char *PREF_KEY_PBLE_GRACE = "pble_grace";
 static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
@@ -77,9 +77,9 @@ static const char *PREF_KEY_LCLAMP_MAX = "lcl_max";
 static const char *PREF_KEY_LIGHT_ALPHA = "light_a";
 static const char *PREF_KEY_MUSIC_GAIN = "mus_gain";
 static const char *PREF_KEY_NOTIFY_MIN = "notif_min";
-static const char *PREF_KEY_PRESENCE_RSSI = "pres_rssi";
-static const char *PREF_KEY_PRESENCE_AUTO_ON = "pres_auto_on";
-static const char *PREF_KEY_PRESENCE_AUTO_OFF = "pres_auto_off";
+static const char *PREF_KEY_PBLE_RSSI = "pble_rssi";
+static const char *PREF_KEY_PBLE_AUTO_ON = "pble_auto_on";
+static const char *PREF_KEY_PBLE_AUTO_OFF = "pble_auto_off";
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
 static const char *PREF_KEY_POTI_ALPHA = "poti_a";
@@ -154,7 +154,7 @@ bool parseQuickCsv(const String &csv, uint64_t &outMask)
 }
 
 /**
- * @brief Build a profile string (cfg import style) without presence/touch/quick.
+ * @brief Build a profile string (cfg import style) without presence_ble/touch/quick.
  */
 String buildProfileString()
 {
@@ -317,18 +317,18 @@ void exportConfig()
     cfg += rampDurationMs;
     cfg += F(" idle=");
     cfg += idleOffMs / 60000;
-    cfg += F(" presence_en=");
-    cfg += presenceEnabled ? F("on") : F("off");
-    cfg += F(" presence_addr=");
-    cfg += presenceAddr;
-    cfg += F(" presence_list=");
-    cfg += presenceListCsv();
-    cfg += F(" presence_thr=");
-    cfg += presenceRssiThreshold;
-    cfg += F(" presence_on=");
-    cfg += presenceAutoOn ? F("on") : F("off");
-    cfg += F(" presence_off=");
-    cfg += presenceAutoOff ? F("on") : F("off");
+    cfg += F(" presence_ble_en=");
+    cfg += presenceBleEnabled ? F("on") : F("off");
+    cfg += F(" presence_ble_addr=");
+    cfg += presenceBleAddr;
+    cfg += F(" presence_ble_list=");
+    cfg += presenceBleListCsv();
+    cfg += F(" presence_ble_thr=");
+    cfg += presenceBleRssiThreshold;
+    cfg += F(" presence_ble_on=");
+    cfg += presenceBleAutoOn ? F("on") : F("off");
+    cfg += F(" presence_ble_off=");
+    cfg += presenceBleAutoOff ? F("on") : F("off");
 #if ENABLE_TOUCH_DIM
     cfg += F(" touch_dim=");
     cfg += touchDimEnabled ? F("on") : F("off");
@@ -375,8 +375,8 @@ void exportConfig()
     cfg += String(briMinUser, 3);
     cfg += F(" bri_max=");
     cfg += String(briMaxUser, 3);
-    cfg += F(" pres_grace=");
-    cfg += presenceGraceMs;
+    cfg += F(" presence_ble_grace=");
+    cfg += presenceBleGraceMs;
     cfg += F(" pat_fade=");
     cfg += patternFadeEnabled ? F("on") : F("off");
     cfg += F(" pat_fade_amt=");
@@ -421,12 +421,12 @@ void saveSettings()
     prefs.putShort(PREF_KEY_THR_OFF, (int16_t)touchDeltaOff);
     prefs.putUInt(PREF_KEY_TOUCH_HOLD, touchHoldStartMs);
 #endif
-    prefs.putBool(PREF_KEY_PRESENCE_EN, presenceEnabled);
-    prefs.putString(PREF_KEY_PRESENCE_ADDR, presenceAddr);
-    prefs.putString(PREF_KEY_PRESENCE_LIST, presenceListCsv());
-    prefs.putInt(PREF_KEY_PRESENCE_RSSI, presenceRssiThreshold);
-    prefs.putBool(PREF_KEY_PRESENCE_AUTO_ON, presenceAutoOn);
-    prefs.putBool(PREF_KEY_PRESENCE_AUTO_OFF, presenceAutoOff);
+    prefs.putBool(PREF_KEY_PBLE_EN, presenceBleEnabled);
+    prefs.putString(PREF_KEY_PBLE_ADDR, presenceBleAddr);
+    prefs.putString(PREF_KEY_PBLE_LIST, presenceBleListCsv());
+    prefs.putInt(PREF_KEY_PBLE_RSSI, presenceBleRssiThreshold);
+    prefs.putBool(PREF_KEY_PBLE_AUTO_ON, presenceBleAutoOn);
+    prefs.putBool(PREF_KEY_PBLE_AUTO_OFF, presenceBleAutoOff);
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
     prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
@@ -499,7 +499,7 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_LIGHT_GAIN, lightGain);
     prefs.putFloat(PREF_KEY_BRI_MIN, briMinUser);
     prefs.putFloat(PREF_KEY_BRI_MAX, briMaxUser);
-    prefs.putUInt(PREF_KEY_PRES_GRACE, presenceGraceMs);
+    prefs.putUInt(PREF_KEY_PBLE_GRACE, presenceBleGraceMs);
     prefs.putBool(PREF_KEY_PAT_FADE, patternFadeEnabled);
     prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
     prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
@@ -554,14 +554,14 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
 #endif
     quickMask = computeDefaultQuickMask();
-    presenceEnabled = Settings::PRESENCE_DEFAULT_ENABLED;
-    presenceGraceMs = Settings::PRESENCE_GRACE_MS_DEFAULT;
-    presenceAddr = "";
-    presenceClearDevices();
-    presenceRssiThreshold = Settings::PRESENCE_RSSI_THRESHOLD_DEFAULT;
-    presenceAutoOn = Settings::PRESENCE_AUTO_ON_DEFAULT;
-    presenceAutoOff = Settings::PRESENCE_AUTO_OFF_DEFAULT;
-    presenceLastOffByPresence = false;
+    presenceBleEnabled = Settings::PRESENCE_BLE_DEFAULT_ENABLED;
+    presenceBleGraceMs = Settings::PRESENCE_BLE_GRACE_MS_DEFAULT;
+    presenceBleAddr = "";
+    presenceBleClearDevices();
+    presenceBleRssiThreshold = Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT;
+    presenceBleAutoOn = Settings::PRESENCE_BLE_AUTO_ON_DEFAULT;
+    presenceBleAutoOff = Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT;
+    presenceBleLastOffByPresence = false;
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
     rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
@@ -732,11 +732,11 @@ void loadSettings()
         notifyMinBrightness = 0.0f;
     if (notifyMinBrightness > 1.0f)
         notifyMinBrightness = 1.0f;
-    presenceEnabled = prefs.getBool(PREF_KEY_PRESENCE_EN, Settings::PRESENCE_DEFAULT_ENABLED);
-    presenceAddr = prefs.getString(PREF_KEY_PRESENCE_ADDR, "");
-    presenceClearDevices();
+    presenceBleEnabled = prefs.getBool(PREF_KEY_PBLE_EN, Settings::PRESENCE_BLE_DEFAULT_ENABLED);
+    presenceBleAddr = prefs.getString(PREF_KEY_PBLE_ADDR, "");
+    presenceBleClearDevices();
     {
-        String list = prefs.getString(PREF_KEY_PRESENCE_LIST, presenceAddr);
+        String list = prefs.getString(PREF_KEY_PBLE_LIST, presenceBleAddr);
         list.trim();
         int start = 0;
         while (start < list.length())
@@ -747,13 +747,13 @@ void loadSettings()
             String tok = list.substring(start, comma);
             tok.trim();
             if (tok.length() > 0)
-                presenceAddDevice(tok);
+                presenceBleAddDevice(tok);
             start = comma + 1;
         }
     }
-    presenceRssiThreshold = prefs.getInt(PREF_KEY_PRESENCE_RSSI, Settings::PRESENCE_RSSI_THRESHOLD_DEFAULT);
-    presenceAutoOn = prefs.getBool(PREF_KEY_PRESENCE_AUTO_ON, Settings::PRESENCE_AUTO_ON_DEFAULT);
-    presenceAutoOff = prefs.getBool(PREF_KEY_PRESENCE_AUTO_OFF, Settings::PRESENCE_AUTO_OFF_DEFAULT);
+    presenceBleRssiThreshold = prefs.getInt(PREF_KEY_PBLE_RSSI, Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT);
+    presenceBleAutoOn = prefs.getBool(PREF_KEY_PBLE_AUTO_ON, Settings::PRESENCE_BLE_AUTO_ON_DEFAULT);
+    presenceBleAutoOff = prefs.getBool(PREF_KEY_PBLE_AUTO_OFF, Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT);
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
         rampDurationMs = Settings::DEFAULT_RAMP_MS;
@@ -961,7 +961,7 @@ void loadSettings()
 #endif
     briMinUser = prefs.getFloat(PREF_KEY_BRI_MIN, Settings::BRI_MIN_DEFAULT);
     briMaxUser = prefs.getFloat(PREF_KEY_BRI_MAX, Settings::BRI_MAX_DEFAULT);
-    presenceGraceMs = prefs.getUInt(PREF_KEY_PRES_GRACE, Settings::PRESENCE_GRACE_MS_DEFAULT);
+    presenceBleGraceMs = prefs.getUInt(PREF_KEY_PBLE_GRACE, Settings::PRESENCE_BLE_GRACE_MS_DEFAULT);
 #if ENABLE_LIGHT_SENSOR
     lastLoggedBrightness = masterBrightness;
     lightMinRaw = 4095;
@@ -973,7 +973,7 @@ void loadSettings()
 
 void importConfig(const String &args)
 {
-    // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_en=on)
+    // Format: key=value whitespace separated (e.g., ramp=400 idle=0 touch_on=8 touch_off=5 presence_ble_en=on)
     int idx = 0;
     String rest = args;
     rest.trim();
@@ -1109,22 +1109,22 @@ void importConfig(const String &args)
             if (parseBool(val, v))
                 autoCycle = v;
         }
-        else if (key == "presence_en")
+        else if (key == "presence_ble_en")
         {
             bool v;
             if (parseBool(val, v))
-                presenceEnabled = v;
+                presenceBleEnabled = v;
         }
-        else if (key == "presence_addr")
+        else if (key == "presence_ble_addr")
         {
-            presenceAddr = val;
-            presenceClearDevices();
-            if (presenceAddr.length() > 0)
-                presenceAddDevice(presenceAddr);
+            presenceBleAddr = val;
+            presenceBleClearDevices();
+            if (presenceBleAddr.length() > 0)
+                presenceBleAddDevice(presenceBleAddr);
         }
-        else if (key == "presence_list")
+        else if (key == "presence_ble_list")
         {
-            presenceClearDevices();
+            presenceBleClearDevices();
             int start = 0;
             while (start < val.length())
             {
@@ -1134,34 +1134,34 @@ void importConfig(const String &args)
                 String tok = val.substring(start, comma);
                 tok.trim();
                 if (tok.length() > 0)
-                    presenceAddDevice(tok);
+                    presenceBleAddDevice(tok);
                 start = comma + 1;
             }
-            if (presenceHasDevices())
-                presenceAddr = presenceDevices.back();
+            if (presenceBleHasDevices())
+                presenceBleAddr = presenceBleDevices.back();
             else
-                presenceAddr = "";
+                presenceBleAddr = "";
         }
-        else if (key == "presence_thr")
+        else if (key == "presence_ble_thr")
         {
             int v = val.toInt();
             if (v < -120)
                 v = -120;
             if (v > 0)
                 v = -10;
-            presenceRssiThreshold = v;
+            presenceBleRssiThreshold = v;
         }
-        else if (key == "presence_on")
+        else if (key == "presence_ble_on")
         {
             bool v;
             if (parseBool(val, v))
-                presenceAutoOn = v;
+                presenceBleAutoOn = v;
         }
-        else if (key == "presence_off")
+        else if (key == "presence_ble_off")
         {
             bool v;
             if (parseBool(val, v))
-                presenceAutoOff = v;
+                presenceBleAutoOff = v;
         }
 #if ENABLE_TOUCH_DIM
         else if (key == "touch_dim")
@@ -1490,12 +1490,12 @@ void importConfig(const String &args)
             float v = clamp01(val.toFloat());
             notifyMinBrightness = v;
         }
-        else if (key == "pres_grace")
+        else if (key == "presence_ble_grace")
         {
             long v = val.toInt();
             if (v < 0)
                 v = 0;
-            presenceGraceMs = (uint32_t)v;
+            presenceBleGraceMs = (uint32_t)v;
         }
 #if ENABLE_MUSIC_MODE
         else if (key == "music_gain")

@@ -11,7 +11,7 @@ extern const char *PREF_KEY_PROFILE_BASE;
 bool parseQuickCsv(const String &csv, uint64_t &outMask);
 
 /**
- * @brief Build a profile string (cfg import style) without presence/touch/quick.
+ * @brief Build a profile string (cfg import style) without presence_ble/touch/quick.
  */
 String buildProfileString();
 

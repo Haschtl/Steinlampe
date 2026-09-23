@@ -28,7 +28,7 @@
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
-#include "presence.h"
+#include "presence_ble.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -95,12 +95,12 @@ void updatePatternEngine()
   }
   else
   {
-    presenceDetected = false;
-    presencePrevConnected = false;
-    presenceGraceDeadline = 0;
+    presenceBleDetected = false;
+    presenceBlePrevConnected = false;
+    presenceBleGraceDeadline = 0;
   }
 
-  // Presence polling with occasional scan
+  // PresenceBLE polling with occasional scan
   bool anyClient = btHasClient();
   if (bleActive())
   {
@@ -108,91 +108,91 @@ void updatePatternEngine()
     if (lastBleAddr.length() == 0)
       lastBleAddr = getLastBleAddr();
   }
-  if (presenceEnabled && presenceHasDevices())
+  if (presenceBleEnabled && presenceBleHasDevices())
   {
     uint32_t nowMs = millis();
-    bool wasDetected = presenceDetected;
+    bool wasDetected = presenceBleDetected;
     bool detected = false;
 
     // Connected client counts if it matches one of the targets
-    if (anyClient && lastBleAddr.length() > 0 && presenceIsTarget(lastBleAddr))
+    if (anyClient && lastBleAddr.length() > 0 && presenceBleIsTarget(lastBleAddr))
     {
       detected = true;
-      lastPresenceSeenMs = nowMs;
+      lastPresenceBleSeenMs = nowMs;
     }
 
     // fall back to legacy single addr for BT serial if we ever capture it
-    if (!detected && anyClient && presenceAddr.length() > 0 && presenceIsTarget(presenceAddr))
+    if (!detected && anyClient && presenceBleAddr.length() > 0 && presenceBleIsTarget(presenceBleAddr))
     {
       detected = true;
-      lastPresenceSeenMs = nowMs;
+      lastPresenceBleSeenMs = nowMs;
     }
 
     // occasionally try to spot the target via scan
     const uint32_t SCAN_INTERVAL_MS = 25000;
-    if (!detected && nowMs - lastPresenceScanMs >= SCAN_INTERVAL_MS)
+    if (!detected && nowMs - lastPresenceBleScanMs >= SCAN_INTERVAL_MS)
     {
-      lastPresenceScanMs = nowMs;
-      if (presenceScanOnce())
+      lastPresenceBleScanMs = nowMs;
+      if (presenceBleScanOnce())
       {
         detected = true;
       }
     }
 
-    if (lastPresenceSeenMs > 0 && (nowMs - lastPresenceSeenMs) <= presenceGraceMs)
+    if (lastPresenceBleSeenMs > 0 && (nowMs - lastPresenceBleSeenMs) <= presenceBleGraceMs)
       detected = true;
 
     if (detected)
     {
-      presenceGraceDeadline = 0;
-      presencePrevConnected = true;
-      if (!presenceDetected)
-        sendFeedback(F("[Presence] detected"));
-      presenceDetected = true;
-      lastPresenceSeenMs = nowMs;
+      presenceBleGraceDeadline = 0;
+      presenceBlePrevConnected = true;
+      if (!presenceBleDetected)
+        sendFeedback(F("[PresenceBLE] detected"));
+      presenceBleDetected = true;
+      lastPresenceBleSeenMs = nowMs;
       if (lampEnabled)
-        presenceLastOffByPresence = false;
+        presenceBleLastOffByPresence = false;
 #if ENABLE_SWITCH
-      if (presenceAutoOn && presenceLastOffByPresence && switchDebouncedState && !lampEnabled)
+      if (presenceBleAutoOn && presenceBleLastOffByPresence && switchDebouncedState && !lampEnabled)
 #else
-      if (presenceAutoOn && presenceLastOffByPresence && !lampEnabled)
+      if (presenceBleAutoOn && presenceBleLastOffByPresence && !lampEnabled)
 #endif
       {
-        setLampEnabled(true, "presence connect");
-        presenceLastOffByPresence = false;
-        sendFeedback(F("[Presence] Detected -> Lamp ON"));
+        setLampEnabled(true, "presence_ble connect");
+        presenceBleLastOffByPresence = false;
+        sendFeedback(F("[PresenceBLE] Detected -> Lamp ON"));
       }
     }
-    else if (presenceGraceDeadline == 0 && (presencePrevConnected || lastPresenceSeenMs > 0))
+    else if (presenceBleGraceDeadline == 0 && (presenceBlePrevConnected || lastPresenceBleSeenMs > 0))
     {
-      presenceGraceDeadline = nowMs + presenceGraceMs;
-      sendFeedback(String(F("[Presence] No device -> pending OFF in ")) + String(presenceGraceMs) + F("ms"));
-      presenceDetected = false;
+      presenceBleGraceDeadline = nowMs + presenceBleGraceMs;
+      sendFeedback(String(F("[PresenceBLE] No device -> pending OFF in ")) + String(presenceBleGraceMs) + F("ms"));
+      presenceBleDetected = false;
     }
     else if (!detected && wasDetected)
     {
-      presenceDetected = false;
-      sendFeedback(F("[Presence] no device detected"));
+      presenceBleDetected = false;
+      sendFeedback(F("[PresenceBLE] no device detected"));
     }
   }
 
-  if (presenceGraceDeadline > 0 && millis() >= presenceGraceDeadline)
+  if (presenceBleGraceDeadline > 0 && millis() >= presenceBleGraceDeadline)
   {
-    presenceGraceDeadline = 0;
-    if (presenceAutoOff && lampEnabled)
+    presenceBleGraceDeadline = 0;
+    if (presenceBleAutoOff && lampEnabled)
     {
       // Do not force off if the hardware switch is ON.
 #if ENABLE_SWITCH
       if (switchDebouncedState)
       {
-        sendFeedback(F("[Presence] Grace timeout ignored (switch ON)"));
+        sendFeedback(F("[PresenceBLE] Grace timeout ignored (switch ON)"));
       }
       else
 #endif
       {
-        setLampEnabled(false, "presence grace");
-        presenceLastOffByPresence = true;
-        sendFeedback(F("[Presence] Grace timeout -> Lamp OFF"));
+        setLampEnabled(false, "presence_ble grace");
+        presenceBleLastOffByPresence = true;
+        sendFeedback(F("[PresenceBLE] Grace timeout -> Lamp OFF"));
         return;
       }
     }

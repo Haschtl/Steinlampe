@@ -13,7 +13,7 @@
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
-#include "presence.h"
+#include "presence_ble.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -233,18 +233,18 @@ void printStatus(const bool &force)
     filtLine += F(")");
     sendFeedback(filtLine,force);
 
-    String line4 = F("Presence=");
-    if (presenceEnabled)
+    String line4 = F("PresenceBLE=");
+    if (presenceBleEnabled)
     {
         line4 += F("ON (");
-        String devices = presenceListCsv();
+        String devices = presenceBleListCsv();
         line4 += (devices.isEmpty() ? F("no device") : devices);
         line4 += F(" thr=");
-        line4 += presenceRssiThreshold;
+        line4 += presenceBleRssiThreshold;
         line4 += F("dBm on=");
-        line4 += presenceAutoOn ? F("1") : F("0");
+        line4 += presenceBleAutoOn ? F("1") : F("0");
         line4 += F(" off=");
-        line4 += presenceAutoOff ? F("1") : F("0");
+        line4 += presenceBleAutoOff ? F("1") : F("0");
         line4 += F(")");
     }
     else
@@ -457,20 +457,20 @@ void printStatusStructured(const bool &force)
     line += String(patternMarginHigh, 3);
     line += F("|quick=");
     line += quickMaskToCsv();
-    line += F("|presence=");
-    line += presenceEnabled ? F("ON") : F("OFF");
-    line += F("|presence_count=");
-    line += (int)presenceDevices.size();
-    line += F("|presence_thr=");
-    line += presenceRssiThreshold;
-    line += F("|presence_on=");
-    line += presenceAutoOn ? F("1") : F("0");
-    line += F("|presence_off=");
-    line += presenceAutoOff ? F("1") : F("0");
-    line += F("|presence_list=");
-    line += presenceListCsv();
-    line += F("|presence_grace=");
-    line += presenceGraceMs;
+    line += F("|presence_ble=");
+    line += presenceBleEnabled ? F("ON") : F("OFF");
+    line += F("|presence_ble_count=");
+    line += (int)presenceBleDevices.size();
+    line += F("|presence_ble_thr=");
+    line += presenceBleRssiThreshold;
+    line += F("|presence_ble_on=");
+    line += presenceBleAutoOn ? F("1") : F("0");
+    line += F("|presence_ble_off=");
+    line += presenceBleAutoOff ? F("1") : F("0");
+    line += F("|presence_ble_list=");
+    line += presenceBleListCsv();
+    line += F("|presence_ble_grace=");
+    line += presenceBleGraceMs;
 #if ENABLE_BLE
     line += F("|ble=");
     line += bleActive() ? F("UP") : F("DOWN");
@@ -734,18 +734,18 @@ void printHelp(const bool &force)
         "  touchdim on/off   - Touch-Dimmen aktivieren/deaktivieren",
         "  clap on|off/thr <0..1>/cool <ms>/train [on|off] - Klatschsteuerung (Audio)",
         "  clap <1|2|3> <cmd> - Befehl bei 1/2/3 Klatschen",
-        "  presence on|off   - Presence aktivieren/deaktivieren",
-        "  presence add <addr>/del <addr>/clear - Geräte-Liste verwalten",
-        "  presence set <addr> - Liste überschreiben (Kompatibilität)",
-        "  presence thr <-dBm> - RSSI-Schwelle (z.B. -75)",
-        "  presence auto on|off <on|off> - Auto-Licht AN/OFF Aktionen",
-        "  presence grace <ms> - Verzögerung vor Auto-Off",
+        "  presence_ble on|off   - PresenceBLE aktivieren/deaktivieren",
+        "  presence_ble add <addr>/del <addr>/clear - Geräte-Liste verwalten",
+        "  presence_ble set <addr> - Liste überschreiben (Kompatibilität)",
+        "  presence_ble thr <-dBm> - RSSI-Schwelle (z.B. -75)",
+        "  presence_ble auto on|off <on|off> - Auto-Licht AN/OFF Aktionen",
+        "  presence_ble grace <ms> - Verzögerung vor Auto-Off",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",
         "  music sens <f>/smooth <0-1>/auto on|off/thr <f> - Musik-Parameter (Patterns Music Direct/Beat)",
         "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
-        "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/Presence/Quick",
+        "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/PresenceBLE/Quick",
         "  light gain <f>     - Verstärkung Lichtsensor",
         "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms>/calib <min> <max>/invert on|off - Poti-Config",
         "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",
