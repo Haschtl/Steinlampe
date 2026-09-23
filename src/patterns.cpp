@@ -978,6 +978,143 @@ float patternSanftesWiegen(uint32_t ms)
   return clamp01(0.20f + 0.66f * pendulum + drift);
 }
 
+/// Box Breathing (4-4-4-4): equal rise / hold-high / fall / hold-low quarters
+float patternBoxBreathing(uint32_t ms)
+{
+  const uint32_t phase = 4000;
+  const float low = 0.06f;
+  const float high = 0.88f;
+  uint32_t t = ms % (phase * 4);
+  if (t < phase)
+  {
+    float x = t / (float)phase;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= phase;
+  if (t < phase)
+    return clamp01(high + (smoothNoise(ms, 300, 0xB1) - 0.5f) * 0.03f);
+  t -= phase;
+  if (t < phase)
+  {
+    float x = t / (float)phase;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(high - (high - low) * x);
+  }
+  return clamp01(low + (smoothNoise(ms, 300, 0xB2) - 0.5f) * 0.02f);
+}
+
+/// Dr. Weil 4-7-8: inhale 4s, hold 7s, very slow exhale 8s (relaxing breath technique)
+float patternDrWeil478(uint32_t ms)
+{
+  const uint32_t riseMs = 4000;
+  const uint32_t holdMs = 7000;
+  const uint32_t fallMs = 8000;
+  const float low = 0.06f;
+  const float high = 0.90f;
+  uint32_t t = ms % (riseMs + holdMs + fallMs);
+  if (t < riseMs)
+  {
+    float x = t / (float)riseMs;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= riseMs;
+  if (t < holdMs)
+    return clamp01(high + (smoothNoise(ms, 320, 0xB3) - 0.5f) * 0.03f);
+  t -= holdMs;
+  float x = t / (float)fallMs;
+  x = x * x * (3.0f - 2.0f * x);
+  return clamp01(high - (high - low) * x);
+}
+
+/// Langes Ausatmen: quick inhale, long curved exhale, short rest (vagal calming breath)
+float patternLangesAusatmen(uint32_t ms)
+{
+  const uint32_t riseMs = 3000;
+  const uint32_t fallMs = 6000;
+  const uint32_t pauseMs = 1000;
+  const float low = 0.08f;
+  const float high = 0.82f;
+  uint32_t t = ms % (riseMs + fallMs + pauseMs);
+  if (t < riseMs)
+  {
+    float x = t / (float)riseMs;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= riseMs;
+  if (t < fallMs)
+  {
+    float x = t / (float)fallMs;
+    float eased = 1.0f - (1.0f - x) * (1.0f - x) * (1.0f - x); // ease-out cubic, gentler than smoothstep
+    return clamp01(high - (high - low) * eased);
+  }
+  return clamp01(low + (smoothNoise(ms, 300, 0xB4) - 0.5f) * 0.02f);
+}
+
+/// Ocean Waves: rhythmic swell with an occasional bigger "set" wave and crest-only foam shimmer
+float patternOceanWaves(uint32_t ms)
+{
+  const uint32_t period = 9000;
+  uint32_t idx = ms / period;
+  float phase = (ms % period) / (float)period;
+  float wave;
+  if (phase < 0.55f)
+  {
+    float x = phase / 0.55f;
+    wave = x * x * (3.0f - 2.0f * x);
+  }
+  else
+  {
+    float x = (phase - 0.55f) / 0.45f;
+    wave = 1.0f - (x * x * (3.0f - 2.0f * x));
+  }
+  float setBoost = (hash11(idx * 0x2F7u) > 0.72f) ? 0.18f : 0.0f;
+  float shimmer = (wave > 0.7f) ? (smoothNoise(ms, 60, 0xB5) - 0.5f) * 0.10f * wave : 0.0f;
+  return clamp01(0.20f + (0.55f + setBoost) * wave + shimmer);
+}
+
+/// Unterwasser Lichtspiel: fast, cool ripple shimmer with occasional brighter glints (caustics)
+float patternUnterwasserLichtspiel(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float base = 0.42f + 0.10f * sinf(t * 0.6f * TWO_PI);
+  float ripple = 0.14f * sinf(t * 4.8f * TWO_PI) + 0.09f * sinf(t * 7.3f * TWO_PI + 1.3f) + 0.05f * sinf(t * 11.7f * TWO_PI + 2.4f);
+  float glint = 0.0f;
+  if (hash11(ms / 140u) > 0.90f)
+  {
+    float x = (ms % 140u) / 140.0f;
+    glint = 0.22f * expf(-x * 6.0f);
+  }
+  return clamp01(base + ripple + glint);
+}
+
+/// Tiefsee Biolumineszenz: near-dark base with rare, slow soft glowing blooms
+float patternTiefseeBiolumineszenz(uint32_t ms)
+{
+  float base = 0.025f + (smoothNoise(ms, 2600, 0xB6) - 0.5f) * 0.015f;
+  const uint32_t window = 5200;
+  uint32_t idx = ms / window;
+  uint32_t start = idx * window;
+  float bloom = 0.0f;
+  uint32_t salt = idx * 0x6F3u;
+  if (hash11(salt) > 0.35f)
+  {
+    uint32_t offset = (uint32_t)(hash11(salt ^ 0x2Au) * (window - 1800));
+    uint32_t t = ms - start;
+    if (t >= offset && t < offset + 1800)
+    {
+      uint32_t dt = t - offset;
+      float x = dt / 1800.0f;
+      float rise = x < 0.35f ? (x / 0.35f) : 1.0f;
+      float decay = expf(-(x > 0.35f ? (x - 0.35f) : 0.0f) * 2.6f);
+      bloom = 0.30f * rise * decay * (0.7f + 0.3f * hash11(salt ^ 0x77u));
+    }
+  }
+  return clamp01(base + bloom);
+}
+
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
 #if ENABLE_MUSIC_MODE
@@ -1043,6 +1180,12 @@ const Pattern PATTERNS[] = {
     {"Scheinwerfer", patternScheinwerfer, 0},
     {"Festzug", patternFestzug, 0},
     {"Sanftes Wiegen", patternSanftesWiegen, 0},
+    {"Box Breathing", patternBoxBreathing, 0},
+    {"Dr. Weil 4-7-8", patternDrWeil478, 0},
+    {"Langes Ausatmen", patternLangesAusatmen, 0},
+    {"Ocean Waves", patternOceanWaves, 0},
+    {"Unterwasser Lichtspiel", patternUnterwasserLichtspiel, 0},
+    {"Tiefsee Biolumineszenz", patternTiefseeBiolumineszenz, 0},
     {"Custom", patternCustom, 0},
 #if ENABLE_MUSIC_MODE
     {"Music Direct", patternMusicDirect, 0},

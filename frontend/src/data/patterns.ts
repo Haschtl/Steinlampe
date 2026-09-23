@@ -55,6 +55,12 @@ export const patternLabels = [
   'Scheinwerfer',
   'Festzug',
   'Sanftes Wiegen',
+  'Box Breathing',
+  'Dr. Weil 4-7-8',
+  'Langes Ausatmen',
+  'Ocean Waves',
+  'Unterwasser Lichtspiel',
+  'Tiefsee Biolumineszenz',
   'Custom',
   'Musik',
 ];
@@ -73,5 +79,7 @@ export const patternGroups: { title: string; indices: number[] }[] = [
   { title: 'Weather', indices: [40, 41, 42, 43, 44, 45, 46] },
   { title: 'Culture / Signals', indices: [27, 50] },
   { title: 'Deco / Banner', indices: [51, 52, 53, 54, 55, 56] },
-  { title: 'Utility', indices: [48, 49, 57, 58] },
+  { title: 'Meditation / Breathing', indices: [57, 58, 59] },
+  { title: 'Water / Ocean', indices: [60, 61, 62] },
+  { title: 'Utility', indices: [48, 49, 63, 64] },
 ];
