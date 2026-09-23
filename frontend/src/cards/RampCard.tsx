@@ -9,7 +9,42 @@ import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { Trans } from '@/i18n';
 
-type EaseType = 'linear' | 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'flash' | 'wave' | 'blink';
+type EaseType =
+  | 'linear'
+  | 'ease'
+  | 'ease-in'
+  | 'ease-out'
+  | 'ease-in-out'
+  | 'flash'
+  | 'wave'
+  | 'blink'
+  | 'sine'
+  | 'circ'
+  | 'expo'
+  | 'back'
+  | 'elastic'
+  | 'bounce'
+  | 'stepped'
+  | 'flicker';
+
+const EASE_OPTIONS: EaseType[] = [
+  'linear',
+  'ease',
+  'ease-in',
+  'ease-out',
+  'ease-in-out',
+  'flash',
+  'wave',
+  'blink',
+  'sine',
+  'circ',
+  'expo',
+  'back',
+  'elastic',
+  'bounce',
+  'stepped',
+  'flicker',
+];
 
 const easeSample = (t: number, ease: EaseType, pow: number) => {
   switch (ease) {
@@ -51,6 +86,68 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       const u = (t - 0.4) / 0.6;
       const p = pow > 0.1 ? pow : 2;
       return Math.pow(Math.max(0, Math.min(1, u)), 1 / p);
+    }
+    case 'sine':
+      return 0.5 - 0.5 * Math.cos(Math.PI * t);
+    case 'circ': {
+      if (t < 0.5) {
+        const x = 2 * t;
+        return 0.5 * (1 - Math.sqrt(1 - x * x));
+      }
+      const x = 2 * t - 2;
+      return 0.5 * (Math.sqrt(1 - x * x) + 1);
+    }
+    case 'expo': {
+      if (t <= 0) return 0;
+      if (t >= 1) return 1;
+      const k = pow > 0.1 ? pow * 2 : 20;
+      if (t < 0.5) return 0.5 * Math.pow(2, k * t - k * 0.5);
+      return 1 - 0.5 * Math.pow(2, -k * t + k * 0.5);
+    }
+    case 'back': {
+      const c1 = pow > 0.1 ? pow : 1.70158;
+      const c2 = c1 * 1.525;
+      if (t < 0.5) {
+        const x = 2 * t;
+        return (x * x * ((c2 + 1) * x - c2)) * 0.5;
+      }
+      const x = 2 * t - 2;
+      return (x * x * ((c2 + 1) * x + c2) + 2) * 0.5;
+    }
+    case 'elastic': {
+      const n = pow > 0.1 ? pow : 3;
+      const amp = 0.16;
+      return t + amp * Math.sin(2 * Math.PI * n * t) * (1 - t);
+    }
+    case 'bounce': {
+      const n1 = 7.5625;
+      const d1 = 2.75;
+      let x = t;
+      if (x < 1 / d1) return n1 * x * x;
+      if (x < 2 / d1) {
+        x -= 1.5 / d1;
+        return n1 * x * x + 0.75;
+      }
+      if (x < 2.5 / d1) {
+        x -= 2.25 / d1;
+        return n1 * x * x + 0.9375;
+      }
+      x -= 2.625 / d1;
+      return n1 * x * x + 0.984375;
+    }
+    case 'stepped': {
+      const n = Math.max(2, pow > 1.5 ? Math.floor(pow) : 8);
+      let idx = Math.floor(t * n);
+      if (idx >= n) idx = n - 1;
+      return idx / (n - 1);
+    }
+    case 'flicker': {
+      // Illustrative only - the device seeds this randomly per activation.
+      const amp = pow > 0.1 ? Math.min(1, pow / 10) : 0.25;
+      const n1 = Math.sin(t * 71.7 + 1.3) * 0.5;
+      const n2 = Math.sin(t * 133.1 + 4.7) * 0.5;
+      const flicker = (n1 * 0.7 + n2 * 0.3) * amp * (1 - t);
+      return t + flicker * t;
     }
     default:
       return t;
@@ -214,7 +311,7 @@ export function RampCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash', 'wave', 'blink'].map((v) => (
+                    {EASE_OPTIONS.map((v) => (
                       <SelectItem key={v} value={v}>
                         {v}
                       </SelectItem>
@@ -259,7 +356,7 @@ export function RampCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'flash', 'wave', 'blink'].map((v) => (
+                    {EASE_OPTIONS.map((v) => (
                       <SelectItem key={v} value={v}>
                         {v}
                       </SelectItem>

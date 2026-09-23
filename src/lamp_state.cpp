@@ -66,7 +66,7 @@ uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
 uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
-uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout
+uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout,5=flash,6=wave,7=blink,8=sine,9=circ,10=expo,11=back,12=elastic,13=bounce,14=stepped,15=flicker
 uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
 float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
 float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
@@ -158,6 +158,16 @@ void logLampState(const char *reason)
   queueLiveState(forceSerial);
 }
 
+// Small deterministic hash used only by the "flicker" ease (case 15) below.
+static inline float easeHash11(uint32_t x)
+{
+  x ^= x * 0x27d4eb2du;
+  x ^= x >> 15;
+  x *= 0x85ebca6bu;
+  x ^= x >> 13;
+  return (x & 0x00FFFFFFu) / 16777215.0f;
+}
+
 static float applyEase(float t, uint8_t type, float power)
 {
   t = clamp01(t);
@@ -232,6 +242,88 @@ static float applyEase(float t, uint8_t type, float power)
     float u = (t - 0.4f) / 0.6f;
     float p = power > 0.1f ? power : 2.0f;
     return powf(u, 1.0f / p); // smooth fade to 1
+  }
+  case 8: // sine ease-in-out
+  {
+    return 0.5f - 0.5f * cosf(PI * t);
+  }
+  case 9: // circ ease-in-out (quarter-circle acceleration)
+  {
+    if (t < 0.5f)
+    {
+      float x = 2.0f * t;
+      return 0.5f * (1.0f - sqrtf(1.0f - x * x));
+    }
+    float x = 2.0f * t - 2.0f;
+    return 0.5f * (sqrtf(1.0f - x * x) + 1.0f);
+  }
+  case 10: // expo ease-in-out (near-flat then a sharp exponential snap)
+  {
+    if (t <= 0.0f)
+      return 0.0f;
+    if (t >= 1.0f)
+      return 1.0f;
+    float k = power > 0.1f ? power * 2.0f : 20.0f;
+    if (t < 0.5f)
+      return 0.5f * powf(2.0f, k * t - k * 0.5f);
+    return 1.0f - 0.5f * powf(2.0f, -k * t + k * 0.5f);
+  }
+  case 11: // back: overshoots past the target then settles (power = overshoot strength)
+  {
+    float c1 = power > 0.1f ? power : 1.70158f;
+    float c2 = c1 * 1.525f;
+    if (t < 0.5f)
+    {
+      float x = 2.0f * t;
+      return (x * x * ((c2 + 1.0f) * x - c2)) * 0.5f;
+    }
+    float x = 2.0f * t - 2.0f;
+    return (x * x * ((c2 + 1.0f) * x + c2) + 2.0f) * 0.5f;
+  }
+  case 12: // elastic: spring wobble settling to the target (power = oscillation count)
+  {
+    float n = power > 0.1f ? power : 3.0f;
+    const float amp = 0.16f;
+    return clamp01(t + amp * sinf(TWO_PI * n * t) * (1.0f - t));
+  }
+  case 13: // bounce: decreasing bounces arriving at the target, like a dropped ball settling
+  {
+    const float n1 = 7.5625f;
+    const float d1 = 2.75f;
+    float x = t;
+    if (x < 1.0f / d1)
+      return n1 * x * x;
+    if (x < 2.0f / d1)
+    {
+      x -= 1.5f / d1;
+      return n1 * x * x + 0.75f;
+    }
+    if (x < 2.5f / d1)
+    {
+      x -= 2.25f / d1;
+      return n1 * x * x + 0.9375f;
+    }
+    x -= 2.625f / d1;
+    return n1 * x * x + 0.984375f;
+  }
+  case 14: // stepped: quantized detents, like an old rotary dimmer (power = step count)
+  {
+    int n = (power > 1.5f) ? (int)power : 8;
+    if (n < 2)
+      n = 2;
+    int idx = (int)(t * n);
+    if (idx >= n)
+      idx = n - 1;
+    return clamp01(idx / (float)(n - 1));
+  }
+  case 15: // flicker: organic randomized jitter that settles exactly on target, unique per activation
+  {
+    uint32_t seed = rampStartMs * 2654435761u;
+    float amp = power > 0.1f ? clamp01(power / 10.0f) : 0.25f;
+    float n1 = easeHash11(seed ^ (uint32_t)(t * 37.0f)) - 0.5f;
+    float n2 = easeHash11(seed ^ 0x9E3779B9u ^ (uint32_t)(t * 91.0f)) - 0.5f;
+    float flicker = (n1 * 0.7f + n2 * 0.3f) * amp * (1.0f - t);
+    return clamp01(t + flicker * t);
   }
   case 1: // smooth ease (default)
   default:

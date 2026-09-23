@@ -50,6 +50,22 @@ uint8_t easeFromString(const String &s)
         return 6;
     if (l == "blink")
         return 7;
+    if (l == "sine")
+        return 8;
+    if (l == "circ")
+        return 9;
+    if (l == "expo")
+        return 10;
+    if (l == "back")
+        return 11;
+    if (l == "elastic")
+        return 12;
+    if (l == "bounce")
+        return 13;
+    if (l == "stepped" || l == "steps")
+        return 14;
+    if (l == "flicker")
+        return 15;
     return 1;
 }
 
@@ -71,6 +87,22 @@ String easeToString(uint8_t t)
         return F("wave");
     case 7:
         return F("blink");
+    case 8:
+        return F("sine");
+    case 9:
+        return F("circ");
+    case 10:
+        return F("expo");
+    case 11:
+        return F("back");
+    case 12:
+        return F("elastic");
+    case 13:
+        return F("bounce");
+    case 14:
+        return F("stepped");
+    case 15:
+        return F("flicker");
     case 1:
     default:
         return F("ease");
