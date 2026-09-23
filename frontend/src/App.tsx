@@ -45,7 +45,7 @@ const commands = [
   { cmd: 'poti on/off/alpha/delta/off/sample', desc: 'Brightness knob (if built)' },
   { cmd: 'push on/off/debounce/double/hold/step_ms/step', desc: 'Push button (if built)' },
   { cmd: 'custom v1,v2.. / custom step ms', desc: 'Custom pattern' },
-  { cmd: 'profile save/load', desc: 'User profiles' },
+  { cmd: 'profile save/load/show', desc: 'Scene profiles (pattern/brightness/ramp, no calibration)' },
   { cmd: 'cfg export / cfg import ...', desc: 'Backup/restore settings' },
   { cmd: 'status / status json', desc: 'Print status snapshot' },
   { cmd: 'factory / help', desc: 'Reset or list commands' }

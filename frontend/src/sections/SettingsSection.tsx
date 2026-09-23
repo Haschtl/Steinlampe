@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SettingsCard } from '@/cards/SettingsCard';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
-import { ProfilesCard } from '@/cards/ProfilesCard';
+import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -61,15 +61,13 @@ function FactoryResetCard() {
 }
 
 export function SettingsSection() {
-  const [profileSlot, setProfileSlot] = useState('1');
-
   return (
     <div className="space-y-4">
       <DeviceBTCard />
       <SettingsCard />
       <QuickCustomCard />
       <UISettingsCard />
-      <ProfilesCard profileSlot={profileSlot} setProfileSlot={setProfileSlot} />
+      <BackupRestoreCard />
       <FactoryResetCard />
     </div>
   );

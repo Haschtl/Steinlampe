@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
+/**
+ * Raw device config backup/restore via text or QR code (`cfg export`/`cfg import`).
+ * Unrelated to the three numbered scene slots on the Home tab (see ProfileSlotsCard) -
+ * this covers the device's full settings, not a quick-switchable scene.
+ */
+export function BackupRestoreCard() {
   const { sendCmd, log } = useConnection();
   const [cfgText, setCfgText] = useState('');
   const [exportText, setExportText] = useState('');
@@ -100,7 +105,7 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
   return (
       <Card>
         <CardHeader>
-          <CardTitle><Trans k="title.import">Import / Export</Trans></CardTitle>
+          <CardTitle><Trans k="title.import">Backup / Restore</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -112,7 +117,7 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
             </div>
             <Dialog open={scanOpen} onOpenChange={setScanOpen}>
               <DialogTrigger asChild>
-                <Button variant="secondary">
+                <Button variant="ghost">
                   <Camera className="mr-1 h-4 w-4" /> <Trans k="btn.scanQr">Scan QR</Trans>
                 </Button>
               </DialogTrigger>
@@ -128,7 +133,7 @@ export function ProfilesCard({ profileSlot, setProfileSlot }: { profileSlot: str
                   </div>
                   <div className="flex items-center justify-between text-sm text-muted">
                     <span>{scanning ? <Trans k="status.scanning">Scanning…</Trans> : <Trans k="status.ready">Bereit</Trans>}</span>
-                    <Button size="sm" variant="outline" onClick={startScan} disabled={scanning}>
+                    <Button size="sm" variant="ghost" onClick={startScan} disabled={scanning}>
                       <Camera className="mr-1 h-4 w-4" /> <Trans k="btn.startScan">Start</Trans>
                     </Button>
                   </div>
