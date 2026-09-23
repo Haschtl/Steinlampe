@@ -28,6 +28,7 @@ type ConnectionContextValue = {
   connectSerial: () => Promise<void>;
   disconnect: () => void;
   sendCmd: (cmd: string) => Promise<void>;
+  sendCmdReliable: (cmd: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
 };
 
@@ -99,6 +100,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('ql-last-transport');
       },
       sendCmd: active.sendCmd,
+      sendCmdReliable: active.sendCmdReliable,
       refreshStatus: active.refreshStatus,
     };
   }, [ble, serial, transport]);

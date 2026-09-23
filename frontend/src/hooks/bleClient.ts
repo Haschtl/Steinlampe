@@ -134,6 +134,19 @@ export async function writeLine(
   await char.writeValueWithoutResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n'));
 }
 
+/**
+ * Same as writeLine, but waits for a GATT write response instead of firing-and-forgetting.
+ * Used for OTA chunks: unlike normal commands, a silently-dropped chunk would only surface
+ * as a checksum failure at the very end of the transfer, after sending everything for nothing.
+ */
+export async function writeLineWithResponse(
+  char: BluetoothRemoteGATTCharacteristic | null,
+  line: string,
+): Promise<void> {
+  if (!char) throw new Error('Not connected');
+  await char.writeValueWithResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n'));
+}
+
 export function disconnectDevice(device: BluetoothDevice | null) {
   if (device?.gatt?.connected) device.gatt.disconnect();
 }

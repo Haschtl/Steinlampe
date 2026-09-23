@@ -3,6 +3,7 @@ import { SettingsCard } from '@/cards/SettingsCard';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
+import { OtaUpdateCard } from '@/cards/OtaUpdateCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -68,6 +69,7 @@ export function SettingsSection() {
       <QuickCustomCard />
       <UISettingsCard />
       <BackupRestoreCard />
+      <OtaUpdateCard />
       <FactoryResetCard />
     </div>
   );

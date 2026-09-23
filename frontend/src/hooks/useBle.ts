@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { BLE_UUIDS, connectDevice, disconnectDevice, readLines, requestDevice, subscribeToLines, writeLine } from './bleClient';
+import { BLE_UUIDS, connectDevice, disconnectDevice, readLines, requestDevice, subscribeToLines, writeLine, writeLineWithResponse } from './bleClient';
 import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
@@ -22,6 +22,7 @@ type BleApi = {
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
   sendCmd: (cmd: string) => Promise<void>;
+  sendCmdReliable: (cmd: string) => Promise<void>;
 };
 
 export function useBle(): BleApi {
@@ -163,6 +164,12 @@ export function useBle(): BleApi {
     },
     [pushLog],
   );
+
+  // Waits for the GATT write response instead of firing-and-forgetting, for OTA chunks - see
+  // writeLineWithResponse. Intentionally doesn't toast/log per-chunk (would spam during a transfer).
+  const sendCmdReliable = useCallback(async (cmd: string) => {
+    await writeLineWithResponse(cmdCharRef.current, cmd);
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
@@ -427,6 +434,7 @@ export function useBle(): BleApi {
       disconnect: cleanup,
       refreshStatus,
       sendCmd,
+      sendCmdReliable,
     }),
     [
       autoReconnect,
@@ -438,6 +446,7 @@ export function useBle(): BleApi {
       log,
       refreshStatus,
       sendCmd,
+      sendCmdReliable,
       setAutoReconnect,
       setFilterParsed,
       setLiveLog,

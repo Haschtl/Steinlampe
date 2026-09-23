@@ -11,6 +11,9 @@ export type DeviceStatus = {
   brightness?: number;
   outputLevel?: number; // last applied normalized output (0..100), pre-gamma - what's actually being driven to the LED
   outputSamples?: { t: number; v: number }[]; // rolling window for the live output graph
+  firmwareVersion?: string;
+  firmwareEnv?: string;
+  otaActive?: boolean;
   lampState?: string;
   switchState?: string;
   hasSwitch?: boolean;
@@ -343,6 +346,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
         radarHwOverride: kv.radar_hwoverride ? kv.radar_hwoverride === '1' : s.radarHwOverride,
         radarVelocityFactor: asNum('radar_velocity') ?? s.radarVelocityFactor,
+        firmwareVersion: kv.fw_ver ?? s.firmwareVersion,
+        firmwareEnv: kv.fw_env ?? s.firmwareEnv,
+        otaActive: kv.ota_active !== undefined ? kv.ota_active === '1' : s.otaActive,
         outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,
