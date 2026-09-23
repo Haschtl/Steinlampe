@@ -49,6 +49,12 @@ export const patternLabels = [
   'Gamma Probe',
   'Alert',
   'SOS',
+  'Fahnenwind',
+  'Fahnenwelle',
+  'Enthuellung',
+  'Scheinwerfer',
+  'Festzug',
+  'Sanftes Wiegen',
   'Custom',
   'Musik',
 ];
@@ -66,5 +72,6 @@ export const patternGroups: { title: string; indices: number[] }[] = [
   { title: 'Sci-Fi / Media', indices: [15, 16, 17, 28, 29, 30, 31, 32, 33, 34, 37] },
   { title: 'Weather', indices: [40, 41, 42, 43, 44, 45, 46] },
   { title: 'Culture / Signals', indices: [27, 50] },
-  { title: 'Utility', indices: [48, 49, 51, 52] },
+  { title: 'Deco / Banner', indices: [51, 52, 53, 54, 55, 56] },
+  { title: 'Utility', indices: [48, 49, 57, 58] },
 ];

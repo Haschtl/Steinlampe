@@ -883,6 +883,101 @@ float patternSOS(uint32_t ms)
   return evalSequence(ms, durations, levels, sizeof(durations) / sizeof(durations[0]));
 }
 
+/// Fahnenwind: calm baseline broken by irregular gusts of flutter (banner catching wind)
+float patternFahnenwind(uint32_t ms)
+{
+  float gustStrength = smoothNoise(ms, 6000, 0x91); // 0..1, how gusty it is right now
+  float base = 0.40f;
+  float calm = (smoothNoise(ms, 900, 0x92) - 0.5f) * 0.06f;
+  float flutter = (smoothNoise(ms, 90, 0x93) - 0.5f) * 0.55f * gustStrength;
+  float flap = (smoothNoise(ms, 220, 0x94) - 0.5f) * 0.30f * gustStrength;
+  return clamp01(base + calm + flutter + flap);
+}
+
+/// Fahnenwelle: amplitude-modulated double sine, a wave crossing the fabric
+float patternFahnenwelle(uint32_t ms)
+{
+  float t = ms / 1000.0f;
+  float waveFront = 0.5f + 0.5f * sinf(t * 0.28f * TWO_PI);
+  float ripple = 0.5f + 0.5f * sinf(t * 2.6f * TWO_PI);
+  float shimmer = (smoothNoise(ms, 110, 0x95) - 0.5f) * 0.05f;
+  return clamp01(0.28f + 0.62f * waveFront * ripple + shimmer);
+}
+
+/// Enthuellung: dark hold -> slow reveal -> bright hold ("presented") -> slow fade -> pause
+float patternEnthuellung(uint32_t ms)
+{
+  const uint32_t holdDarkMs = 2000;
+  const uint32_t riseMs = 3500;
+  const uint32_t holdBrightMs = 5000;
+  const uint32_t fallMs = 3000;
+  const uint32_t pauseMs = 2500;
+  const uint32_t total = holdDarkMs + riseMs + holdBrightMs + fallMs + pauseMs;
+  uint32_t t = ms % total;
+  if (t < holdDarkMs)
+    return 0.04f;
+  t -= holdDarkMs;
+  if (t < riseMs)
+  {
+    float x = t / (float)riseMs;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(0.04f + 0.90f * x);
+  }
+  t -= riseMs;
+  if (t < holdBrightMs)
+    return clamp01(0.94f + (smoothNoise(ms, 300, 0x96) - 0.5f) * 0.04f);
+  t -= holdBrightMs;
+  if (t < fallMs)
+  {
+    float x = t / (float)fallMs;
+    x = x * x * (3.0f - 2.0f * x);
+    return clamp01(0.94f - 0.90f * x);
+  }
+  return 0.04f;
+}
+
+/// Scheinwerfer: soft spotlight pass at a steady interval, otherwise dim
+float patternScheinwerfer(uint32_t ms)
+{
+  const uint32_t period = 4200;
+  const uint32_t sweepMs = 900;
+  uint32_t t = ms % period;
+  float base = 0.16f;
+  float sweep = (t < sweepMs) ? 0.75f * sinf(PI * (t / (float)sweepMs)) : 0.0f;
+  float shimmer = (smoothNoise(ms, 200, 0x97) - 0.5f) * 0.03f;
+  return clamp01(base + sweep + shimmer);
+}
+
+/// Festzug: cheerful, steady march-tempo double-beat (festive, not alarm-like)
+float patternFestzug(uint32_t ms)
+{
+  const uint32_t period = 1000;
+  uint32_t t = ms % period;
+  auto beat = [](uint32_t dt, uint32_t width, float peak) {
+    if (dt >= width) return 0.0f;
+    float x = dt / (float)width;
+    float rise = x < 0.25f ? (x / 0.25f) : 1.0f;
+    float decay = expf(-(x > 0.25f ? (x - 0.25f) : 0.0f) * 5.0f);
+    return peak * rise * decay;
+  };
+  float level = 0.22f;
+  level += beat(t, 340, 0.85f);
+  if (t > 430)
+    level += beat(t - 430, 300, 0.55f);
+  return clamp01(level);
+}
+
+/// Sanftes Wiegen: pendulum-style ease (lingers at the extremes) with organic micro-drift
+float patternSanftesWiegen(uint32_t ms)
+{
+  const uint32_t period = 6400;
+  float phase = (ms % period) / (float)period;
+  float wave = 0.5f - 0.5f * cosf(TWO_PI * phase);
+  float pendulum = powf(wave, 0.7f);
+  float drift = (smoothNoise(ms, 2600, 0x98) - 0.5f) * 0.05f;
+  return clamp01(0.20f + 0.66f * pendulum + drift);
+}
+
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
 #if ENABLE_MUSIC_MODE
@@ -942,6 +1037,12 @@ const Pattern PATTERNS[] = {
     {"Gamma Probe", patternGammaProbe, 0},
     {"Alert", patternAlert, 0},
     {"SOS", patternSOS, 0},
+    {"Fahnenwind", patternFahnenwind, 0},
+    {"Fahnenwelle", patternFahnenwelle, 0},
+    {"Enthuellung", patternEnthuellung, 0},
+    {"Scheinwerfer", patternScheinwerfer, 0},
+    {"Festzug", patternFestzug, 0},
+    {"Sanftes Wiegen", patternSanftesWiegen, 0},
     {"Custom", patternCustom, 0},
 #if ENABLE_MUSIC_MODE
     {"Music Direct", patternMusicDirect, 0},
