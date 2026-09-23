@@ -9,6 +9,8 @@ export type DeviceStatus = {
   patternName?: string;
   currentPattern?: number;
   brightness?: number;
+  outputLevel?: number; // last applied normalized output (0..100), pre-gamma - what's actually being driven to the LED
+  outputSamples?: { t: number; v: number }[]; // rolling window for the live output graph
   lampState?: string;
   switchState?: string;
   hasSwitch?: boolean;
@@ -172,6 +174,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     const pattern = kv.pattern !== undefined ? parseInt(kv.pattern, 10) : undefined;
     const poti = kv.poti !== undefined && kv.poti.toUpperCase() !== 'N/A' ? parseFloat(kv.poti) : undefined;
     const potiRaw = kv.poti_raw !== undefined ? parseInt(kv.poti_raw, 10) : undefined;
+    const outputLevel = kv.out !== undefined ? parseFloat(kv.out) : undefined;
     setStatus((s) => ({
       ...s,
       lampState: kv.lamp ?? s.lampState,
@@ -180,6 +183,10 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       hasPoti: kv.poti !== undefined ? kv.poti.toUpperCase() !== 'N/A' : s.hasPoti,
       potiVal: Number.isFinite(poti ?? NaN) ? poti : s.potiVal,
       potiRaw: Number.isFinite(potiRaw ?? NaN) ? potiRaw : s.potiRaw,
+      outputLevel: Number.isFinite(outputLevel ?? NaN) ? outputLevel : s.outputLevel,
+      outputSamples: Number.isFinite(outputLevel ?? NaN)
+        ? [...(s.outputSamples ?? []).slice(-299), { t: Date.now(), v: outputLevel as number }]
+        : s.outputSamples,
       lastStatusAt: Date.now(),
     }));
     return true;

@@ -675,6 +675,197 @@ const patternSOS = (ms: number) => {
   return evalSequence(ms, durations, levels);
 };
 
+const patternFahnenwind = (ms: number) => {
+  const gustStrength = smoothNoise(ms, 6000, 0x91);
+  const base = 0.4;
+  const calm = (smoothNoise(ms, 900, 0x92) - 0.5) * 0.06;
+  const flutter = (smoothNoise(ms, 90, 0x93) - 0.5) * 0.55 * gustStrength;
+  const flap = (smoothNoise(ms, 220, 0x94) - 0.5) * 0.3 * gustStrength;
+  return clamp01(base + calm + flutter + flap);
+};
+
+const patternFahnenwelle = (ms: number) => {
+  const t = ms / 1000;
+  const waveFront = 0.5 + 0.5 * Math.sin(t * 0.28 * TWO_PI);
+  const ripple = 0.5 + 0.5 * Math.sin(t * 2.6 * TWO_PI);
+  const shimmer = (smoothNoise(ms, 110, 0x95) - 0.5) * 0.05;
+  return clamp01(0.28 + 0.62 * waveFront * ripple + shimmer);
+};
+
+const patternEnthuellung = (ms: number) => {
+  const holdDarkMs = 2000;
+  const riseMs = 3500;
+  const holdBrightMs = 5000;
+  const fallMs = 3000;
+  const pauseMs = 2500;
+  const total = holdDarkMs + riseMs + holdBrightMs + fallMs + pauseMs;
+  let t = ms % total;
+  if (t < holdDarkMs) return 0.04;
+  t -= holdDarkMs;
+  if (t < riseMs) {
+    let x = t / riseMs;
+    x = x * x * (3 - 2 * x);
+    return clamp01(0.04 + 0.9 * x);
+  }
+  t -= riseMs;
+  if (t < holdBrightMs) return clamp01(0.94 + (smoothNoise(ms, 300, 0x96) - 0.5) * 0.04);
+  t -= holdBrightMs;
+  if (t < fallMs) {
+    let x = t / fallMs;
+    x = x * x * (3 - 2 * x);
+    return clamp01(0.94 - 0.9 * x);
+  }
+  return 0.04;
+};
+
+const patternScheinwerfer = (ms: number) => {
+  const period = 4200;
+  const sweepMs = 900;
+  const t = ms % period;
+  const base = 0.16;
+  const sweep = t < sweepMs ? 0.75 * Math.sin(Math.PI * (t / sweepMs)) : 0;
+  const shimmer = (smoothNoise(ms, 200, 0x97) - 0.5) * 0.03;
+  return clamp01(base + sweep + shimmer);
+};
+
+const patternFestzug = (ms: number) => {
+  const period = 1000;
+  const t = ms % period;
+  const beat = (dt: number, width: number, peak: number) => {
+    if (dt >= width) return 0;
+    const x = dt / width;
+    const rise = x < 0.25 ? x / 0.25 : 1;
+    const decay = Math.exp(-(x > 0.25 ? x - 0.25 : 0) * 5);
+    return peak * rise * decay;
+  };
+  let level = 0.22;
+  level += beat(t, 340, 0.85);
+  if (t > 430) level += beat(t - 430, 300, 0.55);
+  return clamp01(level);
+};
+
+const patternSanftesWiegen = (ms: number) => {
+  const period = 6400;
+  const phase = (ms % period) / period;
+  const wave = 0.5 - 0.5 * Math.cos(TWO_PI * phase);
+  const pendulum = Math.pow(wave, 0.7);
+  const drift = (smoothNoise(ms, 2600, 0x98) - 0.5) * 0.05;
+  return clamp01(0.2 + 0.66 * pendulum + drift);
+};
+
+const patternBoxBreathing = (ms: number) => {
+  const phase = 4000;
+  const low = 0.06;
+  const high = 0.88;
+  let t = ms % (phase * 4);
+  if (t < phase) {
+    let x = t / phase;
+    x = x * x * (3 - 2 * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= phase;
+  if (t < phase) return clamp01(high + (smoothNoise(ms, 300, 0xb1) - 0.5) * 0.03);
+  t -= phase;
+  if (t < phase) {
+    let x = t / phase;
+    x = x * x * (3 - 2 * x);
+    return clamp01(high - (high - low) * x);
+  }
+  return clamp01(low + (smoothNoise(ms, 300, 0xb2) - 0.5) * 0.02);
+};
+
+const patternDrWeil478 = (ms: number) => {
+  const riseMs = 4000;
+  const holdMs = 7000;
+  const fallMs = 8000;
+  const low = 0.06;
+  const high = 0.9;
+  let t = ms % (riseMs + holdMs + fallMs);
+  if (t < riseMs) {
+    let x = t / riseMs;
+    x = x * x * (3 - 2 * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= riseMs;
+  if (t < holdMs) return clamp01(high + (smoothNoise(ms, 320, 0xb3) - 0.5) * 0.03);
+  t -= holdMs;
+  let x = t / fallMs;
+  x = x * x * (3 - 2 * x);
+  return clamp01(high - (high - low) * x);
+};
+
+const patternLangesAusatmen = (ms: number) => {
+  const riseMs = 3000;
+  const fallMs = 6000;
+  const pauseMs = 1000;
+  const low = 0.08;
+  const high = 0.82;
+  let t = ms % (riseMs + fallMs + pauseMs);
+  if (t < riseMs) {
+    let x = t / riseMs;
+    x = x * x * (3 - 2 * x);
+    return clamp01(low + (high - low) * x);
+  }
+  t -= riseMs;
+  if (t < fallMs) {
+    const x = t / fallMs;
+    const eased = 1 - (1 - x) * (1 - x) * (1 - x);
+    return clamp01(high - (high - low) * eased);
+  }
+  return clamp01(low + (smoothNoise(ms, 300, 0xb4) - 0.5) * 0.02);
+};
+
+const patternOceanWaves = (ms: number) => {
+  const period = 9000;
+  const idx = Math.floor(ms / period);
+  const phase = (ms % period) / period;
+  let wave;
+  if (phase < 0.55) {
+    const x = phase / 0.55;
+    wave = x * x * (3 - 2 * x);
+  } else {
+    const x = (phase - 0.55) / 0.45;
+    wave = 1 - x * x * (3 - 2 * x);
+  }
+  const setBoost = hash11((idx * 0x2f7) >>> 0) > 0.72 ? 0.18 : 0;
+  const shimmer = wave > 0.7 ? (smoothNoise(ms, 60, 0xb5) - 0.5) * 0.1 * wave : 0;
+  return clamp01(0.2 + (0.55 + setBoost) * wave + shimmer);
+};
+
+const patternUnterwasserLichtspiel = (ms: number) => {
+  const t = ms / 1000;
+  const base = 0.42 + 0.1 * Math.sin(t * 0.6 * TWO_PI);
+  const ripple =
+    0.14 * Math.sin(t * 4.8 * TWO_PI) + 0.09 * Math.sin(t * 7.3 * TWO_PI + 1.3) + 0.05 * Math.sin(t * 11.7 * TWO_PI + 2.4);
+  let glint = 0;
+  if (hash11(Math.floor(ms / 140)) > 0.9) {
+    const x = (ms % 140) / 140;
+    glint = 0.22 * Math.exp(-x * 6);
+  }
+  return clamp01(base + ripple + glint);
+};
+
+const patternTiefseeBiolumineszenz = (ms: number) => {
+  const base = 0.025 + (smoothNoise(ms, 2600, 0xb6) - 0.5) * 0.015;
+  const window = 5200;
+  const idx = Math.floor(ms / window);
+  const start = idx * window;
+  let bloom = 0;
+  const salt = (idx * 0x6f3) >>> 0;
+  if (hash11(salt) > 0.35) {
+    const offset = Math.floor(hash11(salt ^ 0x2a) * (window - 1800));
+    const t = ms - start;
+    if (t >= offset && t < offset + 1800) {
+      const dt = t - offset;
+      const x = dt / 1800;
+      const rise = x < 0.35 ? x / 0.35 : 1;
+      const decay = Math.exp(-(x > 0.35 ? x - 0.35 : 0) * 2.6);
+      bloom = 0.3 * rise * decay * (0.7 + 0.3 * hash11(salt ^ 0x77));
+    }
+  }
+  return clamp01(base + bloom);
+};
+
 const patternCustom = (ms: number) => clamp01(0.5 + 0.4 * Math.sin((ms / 1000) * TWO_PI));
 const patternMusic = (ms: number) => clamp01(0.5 + 0.25 * Math.sin((ms / 400) * TWO_PI));
 
@@ -730,6 +921,18 @@ export const patternFns: ((ms: number) => number)[] = [
   patternGammaProbe,
   patternAlert,
   patternSOS,
+  patternFahnenwind,
+  patternFahnenwelle,
+  patternEnthuellung,
+  patternScheinwerfer,
+  patternFestzug,
+  patternSanftesWiegen,
+  patternBoxBreathing,
+  patternDrWeil478,
+  patternLangesAusatmen,
+  patternOceanWaves,
+  patternUnterwasserLichtspiel,
+  patternTiefseeBiolumineszenz,
   patternCustom,
   patternMusic,
 ];

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LiveOutputGraph } from '@/components/LiveOutputGraph';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -300,6 +301,7 @@ export function RampCard() {
         <CardTitle><Trans k="title.ramps">Ramps</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <LiveOutputGraph />
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-3">
             <CardTitle className="text-base text-text"><Trans k="label.rampOn">Ramp On</Trans></CardTitle>
