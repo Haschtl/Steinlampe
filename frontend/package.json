@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ota:prepare": "node ../scripts/copy-firmware.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.6",

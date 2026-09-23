@@ -17,9 +17,11 @@
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
+#include "ota.h"
 #include "presence_ble.h"
 #include "presence_radar.h"
 #include "quickmode.h"
+#include "version.h"
 #include "sleepwake.h"
 #include "notifications.h"
 #include "pattern.h"
@@ -2420,6 +2422,59 @@ void handleCommand(String line)
         }
         return;
     }
+#if ENABLE_OTA
+    if (lower.startsWith("ota"))
+    {
+        String arg = line.substring(3);
+        arg.trim();
+        String argLower = arg;
+        argLower.toLowerCase();
+        if (argLower.startsWith("begin"))
+        {
+            String rest = arg.substring(5);
+            rest.trim();
+            int sp1 = rest.indexOf(' ');
+            int sp2 = sp1 >= 0 ? rest.indexOf(' ', sp1 + 1) : -1;
+            if (sp1 > 0 && sp2 > sp1)
+            {
+                size_t size = (size_t)rest.substring(0, sp1).toInt();
+                String md5 = rest.substring(sp1 + 1, sp2);
+                String version = rest.substring(sp2 + 1);
+                version.trim();
+                otaBegin(size, md5, version);
+            }
+            else
+            {
+                sendFeedback(F("Usage: ota begin <size> <md5hex> <version>"));
+            }
+        }
+        else if (argLower.startsWith("chunk"))
+        {
+            String data = arg.substring(5);
+            data.trim();
+            otaChunk(data);
+        }
+        else if (argLower == "end")
+        {
+            otaEnd();
+        }
+        else if (argLower == "abort")
+        {
+            otaAbort();
+        }
+        else if (argLower == "status")
+        {
+            sendFeedback(String(F("[OTA] version=")) + FIRMWARE_VERSION + F(" env=") + FIRMWARE_ENV +
+                         F(" active=") + (otaActive ? F("1") : F("0")) +
+                         F(" received=") + String(otaReceivedSize) + F("/") + String(otaExpectedSize));
+        }
+        else
+        {
+            sendFeedback(F("Usage: ota begin <size> <md5> <version> | ota chunk <base64> | ota end | ota abort | ota status"));
+        }
+        return;
+    }
+#endif
     if (lower.startsWith("name"))
     {
         String args = line.substring(4);

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "lamp_config.h"
 #include "pinout.h"
 
 #include "comms.h"
@@ -14,8 +15,10 @@
 #include "microphone.h"
 #include "inputs.h"
 #include "presence_ble.h"
+#include "ota.h"
 #include "presence_radar.h"
 #include "quickmode.h"
+#include "version.h"
 #include "sleepwake.h"
 #include "notifications.h"
 #include "pattern.h"
@@ -544,6 +547,14 @@ void printStatusStructured(const bool &force)
     line += F("|ble=");
     line += bleActive() ? F("UP") : F("DOWN");
 #endif
+    line += F("|fw_ver=");
+    line += FIRMWARE_VERSION;
+    line += F("|fw_env=");
+    line += FIRMWARE_ENV;
+#if ENABLE_OTA
+    line += F("|ota_active=");
+    line += otaActive ? F("1") : F("0");
+#endif
     sendFeedback(line,force);
     updateBleStatus(line);
 
@@ -818,6 +829,11 @@ void printHelp(const bool &force)
         "  radar debug on|off - Raw-Frame-Hexdump (Protokoll-Bringup)",
         "  radar hwoverride on|off - Motion/Offdist auch gegen Schalter/Poti erzwingen (default off)",
         "  radar velocity <faktor> - Helligkeits-Modifier bei Geschwindigkeit (1=aus, >1 heller, <1 dunkler)",
+        "  ota begin <size> <md5> <version> - OTA-Update starten",
+        "  ota chunk <base64> - Firmware-Chunk senden",
+        "  ota end - Übertragung abschließen (prüft MD5, startet neu bei Erfolg)",
+        "  ota abort - laufendes OTA-Update abbrechen",
+        "  ota status - aktuelle Version und OTA-Fortschritt",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",

@@ -53,6 +53,10 @@
 #define ENABLE_RD03 0
 #endif
 
+#ifndef ENABLE_OTA
+#define ENABLE_OTA 1
+#endif
+
 #ifndef PWM_INVERT_OUTPUT
 #define PWM_INVERT_OUTPUT 0
 #endif

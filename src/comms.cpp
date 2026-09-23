@@ -175,6 +175,11 @@ bool allowBtAddr(const String &addr)
   return listContains(trustedBt, addr);
 }
 
+// Shared by USB and BT-Serial. Sized to comfortably fit an "ota chunk <base64>" command
+// (Serial/USB OTA chunks are up to 4096 raw bytes -> ~5464 base64 chars, see
+// frontend/src/lib/ota.ts) on top of normal short commands.
+static const size_t LINE_BUFFER_MAX = 5600;
+
 /**
  * @brief Append a character to the line buffer and dispatch full commands.
  */
@@ -192,7 +197,7 @@ void processInputChar(String &buffer, char c)
     }
     buffer = "";
   }
-  else if (buffer.length() < 64)
+  else if (buffer.length() < LINE_BUFFER_MAX)
   {
     buffer += c;
   }
@@ -517,6 +522,11 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   }
 };
 
+// Sized to comfortably fit an "ota chunk <base64>" command (BLE OTA chunks are up to 180 raw
+// bytes -> ~240 base64 chars, kept conservative since a single GATT write can't exceed the
+// negotiated ATT MTU - see frontend/src/lib/ota.ts) on top of normal short commands.
+static const size_t BLE_LINE_BUFFER_MAX = 320;
+
 /**
  * @brief Receives BLE writes, splits into lines, and forwards commands.
  */
@@ -540,7 +550,7 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
         }
         line = "";
       }
-      else if (line.length() < 96)
+      else if (line.length() < BLE_LINE_BUFFER_MAX)
       {
         line += c;
       }

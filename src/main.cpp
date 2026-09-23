@@ -28,6 +28,7 @@
 #include "lightSensor.h"
 #include "microphone.h"
 #include "inputs.h"
+#include "ota.h"
 #include "presence_ble.h"
 #include "presence_radar.h"
 #include "quickmode.h"
@@ -529,6 +530,9 @@ void loop()
 #endif
 #if ENABLE_RD03
   updateRadar();
+#endif
+#if ENABLE_OTA
+  otaLoop();
 #endif
   flushLiveState();
   maybeLightSleep();
