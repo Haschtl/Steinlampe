@@ -26,11 +26,11 @@ SWITCH_DEFS: tuple[dict[str, Any], ...] = (
         "cmd_off": "touchdim off",
     },
     {
-        "key": "presence",
-        "name": "Presence",
-        "cmd_on": "presence on",
-        "cmd_off": "presence off",
-        "available_key": "has_presence",
+        "key": "presence_ble",
+        "name": "Presence BLE",
+        "cmd_on": "presence_ble on",
+        "cmd_off": "presence_ble off",
+        "available_key": "has_presence_ble",
         "is_on": lambda v: isinstance(v, str)
         and v.upper().startswith("ON"),
     },
@@ -47,6 +47,36 @@ SWITCH_DEFS: tuple[dict[str, Any], ...] = (
         "cmd_on": "clap on",
         "cmd_off": "clap off",
         "available_key": "has_music",
+    },
+    {
+        "key": "radar",
+        "name": "Radar",
+        "cmd_on": "radar on",
+        "cmd_off": "radar off",
+        "available_key": "has_radar",
+        "is_on": lambda v: isinstance(v, str)
+        and v.upper().startswith("ON"),
+    },
+    {
+        "key": "radar_dim",
+        "name": "Radar Touchless Dimming",
+        "cmd_on": "radar dim on",
+        "cmd_off": "radar dim off",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_motion",
+        "name": "Radar Motion Auto-On",
+        "cmd_on": "radar motion on",
+        "cmd_off": "radar motion off",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_offdist",
+        "name": "Radar Distance Auto-Off",
+        "cmd_on": "radar offdist on",
+        "cmd_off": "radar offdist off",
+        "available_key": "has_radar",
     },
 )
 

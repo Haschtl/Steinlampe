@@ -25,7 +25,7 @@ SERVICE_WAKE = "wake"
 SERVICE_SLEEP = "sleep"
 SERVICE_NOTIFY = "notify"
 SERVICE_MORSE = "morse"
-SERVICE_PRESENCE_SET = "presence_set"
+SERVICE_PRESENCE_BLE_SET = "presence_ble_set"
 SERVICE_CUSTOM_PATTERN = "custom_pattern"
 SERVICE_QUICK = "quick_modes"
 SERVICE_CFG_IMPORT = "config_import"
@@ -62,7 +62,7 @@ SERVICE_SCHEMAS = {
     SERVICE_MORSE: vol.Schema(
         {vol.Required("text"): str, vol.Optional("config_entry_id"): str}
     ),
-    SERVICE_PRESENCE_SET: vol.Schema(
+    SERVICE_PRESENCE_BLE_SET: vol.Schema(
         {
             vol.Optional("mac"): str,
             vol.Optional("clear", default=False): bool,
@@ -207,13 +207,13 @@ def _register_services(hass: HomeAssistant) -> None:
     async def handle_presence(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass, call)
         if call.data.get("clear"):
-            await coordinator.client.async_send_command("presence clear")
+            await coordinator.client.async_send_command("presence_ble clear")
             return
         mac = call.data.get("mac")
         if mac:
-            await coordinator.client.async_send_command(f"presence set {mac}")
+            await coordinator.client.async_send_command(f"presence_ble set {mac}")
         else:
-            await coordinator.client.async_send_command("presence set me")
+            await coordinator.client.async_send_command("presence_ble set me")
 
     async def handle_custom(call: ServiceCall) -> None:
         coordinator = _get_coordinator(hass, call)
@@ -270,9 +270,9 @@ def _register_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN,
-        SERVICE_PRESENCE_SET,
+        SERVICE_PRESENCE_BLE_SET,
         handle_presence,
-        schema=SERVICE_SCHEMAS[SERVICE_PRESENCE_SET],
+        schema=SERVICE_SCHEMAS[SERVICE_PRESENCE_BLE_SET],
     )
     hass.services.async_register(
         DOMAIN,

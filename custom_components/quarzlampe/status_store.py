@@ -86,8 +86,11 @@ class LampStatusStore:
             has_music = kv.get("music", "").upper() != "N/A" if "music" in kv else None
             has_poti = kv.get("poti", "").upper() != "N/A" if "poti" in kv else None
             has_push = kv.get("push", "").upper() != "N/A" if "push" in kv else None
-            has_presence = kv.get("presence", "").upper() != "N/A" if "presence" in kv else None
+            has_presence_ble = (
+                kv.get("presence_ble", "").upper() != "N/A" if "presence_ble" in kv else None
+            )
             has_touch = kv.get("touch", "").upper() != "N/A" if "touch" in kv else None
+            has_radar = kv.get("radar", "").upper() != "N/A" if "radar" in kv else None
 
             self.data.update(
                 {
@@ -116,7 +119,7 @@ class LampStatusStore:
                     "pattern_margin_low": float_or_none("pat_lo"),
                     "pattern_margin_high": float_or_none("pat_hi"),
                     "quick": kv.get("quick"),
-                    "presence": kv.get("presence"),
+                    "presence_ble": kv.get("presence_ble"),
                     "custom_len": int_or_none("custom_len"),
                     "custom_step_ms": int_or_none("custom_step_ms"),
                     "demo": kv.get("demo") == "ON" if "demo" in kv else None,
@@ -165,8 +168,23 @@ class LampStatusStore:
                     "push_hold": int_or_none("push_hold"),
                     "push_step_ms": int_or_none("push_step_ms"),
                     "push_step": float_or_none("push_step"),
-                    "has_presence": has_presence,
+                    "has_presence_ble": has_presence_ble,
                     "has_touch": has_touch,
+                    "has_radar": has_radar,
+                    "radar": kv.get("radar"),
+                    "radar_present": is_on("radar_present"),
+                    "radar_dist": float_or_none("radar_dist"),
+                    "radar_speed": float_or_none("radar_speed"),
+                    "radar_targets": int_or_none("radar_targets"),
+                    "radar_dim": is_on("radar_dim"),
+                    "radar_dim_near": float_or_none("radar_dim_near"),
+                    "radar_dim_far": float_or_none("radar_dim_far"),
+                    "radar_motion": is_on("radar_motion"),
+                    "radar_motion_thr": float_or_none("radar_motion_thr"),
+                    "radar_motion_hold": int_or_none("radar_motion_hold"),
+                    "radar_offdist": is_on("radar_offdist"),
+                    "radar_off_cm": float_or_none("radar_off_cm"),
+                    "radar_off_grace": int_or_none("radar_off_grace"),
                 }
             )
         elif line.startswith("SENSORS|"):
@@ -287,9 +305,9 @@ class LampStatusStore:
                     "auto": auto_match.group(1) == "ON" if auto_match else self.data.get("auto"),
                 }
             )
-        elif line.startswith("Presence="):
+        elif line.startswith("PresenceBLE="):
             handled = True
-            self.data["presence"] = line.replace("Presence=", "").strip()
+            self.data["presence_ble"] = line.replace("PresenceBLE=", "").strip()
         elif line.startswith("Device="):
             handled = True
             # Example: Device=XX:YY | Service=... | Cmd=... | Status=...

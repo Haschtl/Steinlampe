@@ -94,6 +94,60 @@ NUMBER_DEFS: tuple[dict[str, Any], ...] = (
         "step": 0.05,
         "cmd": lambda v: f"pwm curve {v:.2f}",
     },
+    {
+        "key": "radar_dim_near",
+        "name": "Radar Dim Near (cm)",
+        "min": 0,
+        "max": 500,
+        "step": 1,
+        "cmd": lambda v: f"radar dim near {int(v)}",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_dim_far",
+        "name": "Radar Dim Far (cm)",
+        "min": 0,
+        "max": 1000,
+        "step": 1,
+        "cmd": lambda v: f"radar dim far {int(v)}",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_motion_thr",
+        "name": "Radar Motion Threshold (cm/s)",
+        "min": 0,
+        "max": 200,
+        "step": 1,
+        "cmd": lambda v: f"radar motion thr {int(v)}",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_motion_hold",
+        "name": "Radar Motion Hold (ms)",
+        "min": 0,
+        "max": 60000,
+        "step": 100,
+        "cmd": lambda v: f"radar motion hold {int(v)}",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_off_cm",
+        "name": "Radar Off Distance (cm)",
+        "min": 0,
+        "max": 1000,
+        "step": 1,
+        "cmd": lambda v: f"radar offdist cm {int(v)}",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_off_grace",
+        "name": "Radar Off Grace (ms)",
+        "min": 0,
+        "max": 60000,
+        "step": 100,
+        "cmd": lambda v: f"radar offdist grace {int(v)}",
+        "available_key": "has_radar",
+    },
 )
 
 
@@ -129,7 +183,12 @@ class QuarzlampeNumber(QuarzlampeEntity, NumberEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.client.available
+        if not self.coordinator.client.available:
+            return False
+        key = self._definition.get("available_key")
+        if key is None:
+            return True
+        return self.coordinator.data.get(key) is not False
 
     @property
     def native_value(self) -> float | None:

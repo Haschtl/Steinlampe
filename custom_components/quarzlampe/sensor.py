@@ -16,8 +16,11 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(key="light_raw", name="Light Raw"),
     SensorEntityDescription(key="music_level", name="Music Level"),
     SensorEntityDescription(key="touch_delta", name="Touch Delta"),
-    SensorEntityDescription(key="presence", name="Presence"),
+    SensorEntityDescription(key="presence_ble", name="Presence BLE"),
     SensorEntityDescription(key="host_ble_available", name="Host BLE Available"),
+    SensorEntityDescription(key="radar_dist", name="Radar Distance (cm)"),
+    SensorEntityDescription(key="radar_speed", name="Radar Speed (cm/s)"),
+    SensorEntityDescription(key="radar_targets", name="Radar Targets"),
 )
 
 

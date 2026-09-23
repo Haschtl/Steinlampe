@@ -112,9 +112,9 @@ morse:
       selector:
         text:
 
-presence_set:
-  name: Presence bind
-  description: Bind/unbind a MAC for presence-driven on/off.
+presence_ble_set:
+  name: PresenceBLE bind
+  description: Bind/unbind a MAC for BLE-presence-driven on/off.
   fields:
     mac:
       required: false
