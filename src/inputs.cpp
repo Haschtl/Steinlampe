@@ -151,6 +151,17 @@ void syncLampToSwitch()
 #endif
 }
 
+bool hardwareWantsOn()
+{
+#if ENABLE_SWITCH
+    return switchDebouncedState;
+#elif ENABLE_POTI
+    return potiFiltered > potiOffThreshold;
+#else
+    return true; // no hardware switch/poti compiled in - nothing to gate against
+#endif
+}
+
 
 #if ENABLE_SWITCH
 /**

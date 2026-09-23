@@ -78,6 +78,7 @@ constexpr uint32_t PRESENCE_BLE_GRACE_MS_DEFAULT = 3000; ///< Wait before presen
 constexpr int PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT = -80; ///< Min RSSI (dBm) to count as present
 constexpr bool PRESENCE_BLE_AUTO_ON_DEFAULT = true;  ///< Turn lamp on when presence returns (if presence turned it off)
 constexpr bool PRESENCE_BLE_AUTO_OFF_DEFAULT = true; ///< Turn lamp off when last device leaves
+constexpr bool PRESENCE_BLE_HW_OVERRIDE_DEFAULT = false; ///< false = only act while switch/poti agrees, true = always
 constexpr bool TOUCH_DIM_DEFAULT_ENABLED = false;
 constexpr uint32_t TOUCH_HOLD_MS_DEFAULT = 1000; ///< Default touch hold start (ms)
 constexpr float TOUCH_DIM_STEP_DEFAULT = 0.005f; ///< Default step for touch-dimming per tick
@@ -174,5 +175,6 @@ constexpr bool RD03_MOTION_ON_DEFAULT_ENABLED = false;
 constexpr float RD03_OFF_DISTANCE_CM_DEFAULT = 300.0f; ///< beyond this, target counts as "left"
 constexpr uint32_t RD03_OFF_GRACE_MS_DEFAULT = 5000;   ///< debounce before acting on "left"
 constexpr bool RD03_OFF_DISTANCE_DEFAULT_ENABLED = false;
+constexpr bool RD03_HW_OVERRIDE_DEFAULT = false; ///< false = only act while switch/poti agrees, true = always
 #endif
 } // namespace Settings

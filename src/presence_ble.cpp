@@ -20,6 +20,7 @@ std::vector<String> presenceBleDevices;
 int presenceBleRssiThreshold = Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT;
 bool presenceBleAutoOn = Settings::PRESENCE_BLE_AUTO_ON_DEFAULT;
 bool presenceBleAutoOff = Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT;
+bool presenceBleAlwaysOverride = Settings::PRESENCE_BLE_HW_OVERRIDE_DEFAULT;
 bool presenceBleLastOffByPresence = false;
 String lastBleAddr;
 String lastBtAddr;

@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "comms.h"
+#include "inputs.h"
 #include "lamp_state.h"
 #include "utils.h"
 
@@ -28,6 +29,7 @@ uint32_t radarMotionHoldMs = Settings::RD03_MOTION_HOLD_MS_DEFAULT;
 bool radarOffDistanceEnabled = Settings::RD03_OFF_DISTANCE_DEFAULT_ENABLED;
 float radarOffDistanceCm = Settings::RD03_OFF_DISTANCE_CM_DEFAULT;
 uint32_t radarOffGraceMs = Settings::RD03_OFF_GRACE_MS_DEFAULT;
+bool radarHwOverride = Settings::RD03_HW_OVERRIDE_DEFAULT;
 
 // ---------- UART framing ----------
 static HardwareSerial RadarSerial(RD03_UART_NUM);
@@ -252,12 +254,14 @@ void updateRadar()
     }
 
     // Feature 2: motion-gated auto-on (only reacts to targets moving faster than the threshold).
+    // Actions are gated by hardwareWantsOn() unless radarHwOverride allows overriding it in
+    // both directions (see inputs.h).
     if (radarMotionOnEnabled)
     {
         if (present && fabsf(radarSpeedCmS) >= radarMotionSpeedThreshold)
         {
             radarMotionLastQualifyMs = now;
-            if (!lampEnabled)
+            if (!lampEnabled && (radarHwOverride || hardwareWantsOn()))
             {
                 setLampEnabled(true, "radar-motion");
                 sendFeedback(F("[Radar] Motion -> Lamp ON"));
@@ -265,12 +269,17 @@ void updateRadar()
         }
         else if (radarMotionLastQualifyMs > 0 && (now - radarMotionLastQualifyMs) >= radarMotionHoldMs)
         {
-            if (lampEnabled)
+            if (!lampEnabled)
+            {
+                radarMotionLastQualifyMs = 0;
+            }
+            else if (radarHwOverride || !hardwareWantsOn())
             {
                 setLampEnabled(false, "radar-motion-hold");
                 sendFeedback(F("[Radar] Motion hold expired -> Lamp OFF"));
+                radarMotionLastQualifyMs = 0;
             }
-            radarMotionLastQualifyMs = 0;
+            // else: hardware still wants the lamp on, keep pending and retry next tick.
         }
     }
 
@@ -286,7 +295,7 @@ void updateRadar()
             }
             else if (now >= radarOffGraceDeadline)
             {
-                if (lampEnabled)
+                if (lampEnabled && (radarHwOverride || !hardwareWantsOn()))
                 {
                     setLampEnabled(false, "radar-offdist");
                     sendFeedback(F("[Radar] Off-distance exceeded -> Lamp OFF"));

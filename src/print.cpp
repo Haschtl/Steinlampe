@@ -496,6 +496,8 @@ void printStatusStructured(const bool &force)
     line += presenceBleListCsv();
     line += F("|presence_ble_grace=");
     line += presenceBleGraceMs;
+    line += F("|presence_ble_hwoverride=");
+    line += presenceBleAlwaysOverride ? F("1") : F("0");
 #if ENABLE_RD03
     line += F("|radar=");
     line += radarEnabled ? F("ON") : F("OFF");
@@ -525,6 +527,8 @@ void printStatusStructured(const bool &force)
     line += String(radarOffDistanceCm, 1);
     line += F("|radar_off_grace=");
     line += radarOffGraceMs;
+    line += F("|radar_hwoverride=");
+    line += radarHwOverride ? F("1") : F("0");
 #else
     line += F("|radar=N/A");
 #endif
@@ -797,11 +801,13 @@ void printHelp(const bool &force)
         "  presence_ble thr <-dBm> - RSSI-Schwelle (z.B. -75)",
         "  presence_ble auto on|off <on|off> - Auto-Licht AN/OFF Aktionen",
         "  presence_ble grace <ms> - Verzögerung vor Auto-Off",
+        "  presence_ble hwoverride on|off - Auto on/off auch gegen Schalter/Poti erzwingen (default off)",
         "  radar on|off       - RD-03/RD-03D Radar aktivieren/deaktivieren",
         "  radar dim on|off/near <cm>/far <cm> - Touchless-Dimming per Distanz",
         "  radar motion on|off/thr <cm/s>/hold <ms> - Auto-ON bei Bewegung",
         "  radar offdist on|off/cm <cm>/grace <ms> - Auto-OFF bei Distanz",
         "  radar debug on|off - Raw-Frame-Hexdump (Protokoll-Bringup)",
+        "  radar hwoverride on|off - Motion/Offdist auch gegen Schalter/Poti erzwingen (default off)",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",

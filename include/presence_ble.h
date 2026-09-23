@@ -16,6 +16,7 @@ extern std::vector<String> presenceBleDevices;
 extern int presenceBleRssiThreshold;
 extern bool presenceBleAutoOn;
 extern bool presenceBleAutoOff;
+extern bool presenceBleAlwaysOverride;
 extern bool presenceBleLastOffByPresence;
 extern String lastBleAddr;
 extern String lastBtAddr;

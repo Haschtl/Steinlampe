@@ -67,6 +67,7 @@ export type DeviceStatus = {
   presenceBleAutoOff?: boolean;
   presenceBleList?: string[];
   presenceBleGraceMs?: number;
+  presenceBleHwOverride?: boolean;
   hasRadar?: boolean;
   radarEnabled?: boolean;
   radarPresent?: boolean;
@@ -82,6 +83,7 @@ export type DeviceStatus = {
   radarOffDistanceEnabled?: boolean;
   radarOffDistanceCm?: number;
   radarOffGraceMs?: number;
+  radarHwOverride?: boolean;
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
@@ -313,6 +315,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
           : s.presenceBleAutoOff,
         presenceBleList,
         presenceBleGraceMs: asInt('presence_ble_grace') ?? s.presenceBleGraceMs,
+        presenceBleHwOverride: kv.presence_ble_hwoverride ? kv.presence_ble_hwoverride === '1' : s.presenceBleHwOverride,
         hasRadar,
         radarEnabled: kv.radar ? kv.radar.toUpperCase() === 'ON' : hasRadar === false ? false : s.radarEnabled,
         radarPresent: kv.radar_present ? kv.radar_present === '1' : s.radarPresent,
@@ -328,6 +331,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         radarOffDistanceEnabled: kv.radar_offdist ? kv.radar_offdist === '1' : s.radarOffDistanceEnabled,
         radarOffDistanceCm: asNum('radar_off_cm') ?? s.radarOffDistanceCm,
         radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
+        radarHwOverride: kv.radar_hwoverride ? kv.radar_hwoverride === '1' : s.radarHwOverride,
         outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,

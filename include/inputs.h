@@ -105,6 +105,15 @@ extern float pushStep;
 
 void syncLampToSwitch();
 
+/**
+ * @brief Whether the physical switch/poti currently implies "lamp should be on".
+ * True if ENABLE_SWITCH and the switch is on, or ENABLE_POTI and the poti is above its
+ * off threshold, or true unconditionally if neither hardware input is compiled in (nothing
+ * to gate against). Used by presence-driven auto on/off features to decide whether they may
+ * override the hardware's current intent.
+ */
+bool hardwareWantsOn();
+
 #if ENABLE_SWITCH
 /**
  * @brief Read the current raw logic level of the mechanical switch.

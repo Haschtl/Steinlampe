@@ -107,6 +107,15 @@ export function PresenceBleCard() {
             />{' '}
             Auto-OFF (Last leave)
           </label>
+          <label className="pill cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={status.presenceBleHwOverride ?? false}
+              onChange={(e) => sendCmd(`presence_ble hwoverride ${e.target.checked ? 'on' : 'off'}`)}
+            />{' '}
+            <Trans k="label.hwOverride">Auch gegen Schalter/Poti erzwingen</Trans>
+          </label>
         </div>
         <p className="text-sm text-muted">Status: {status.presenceBle ?? '---'} ({status.presenceBleCount ?? 0} devices)</p>
         <p className="text-xs text-muted">Switch: {status.switchState ?? '--'}</p>

@@ -81,6 +81,7 @@ static const char *PREF_KEY_NOTIFY_MIN = "notif_min";
 static const char *PREF_KEY_PBLE_RSSI = "pble_rssi";
 static const char *PREF_KEY_PBLE_AUTO_ON = "pble_auto_on";
 static const char *PREF_KEY_PBLE_AUTO_OFF = "pble_auto_off";
+static const char *PREF_KEY_PBLE_HWOVR = "pble_hwovr";
 #if ENABLE_RD03
 static const char *PREF_KEY_RD_EN = "rd_en";
 static const char *PREF_KEY_RD_DIM_EN = "rd_dim_en";
@@ -92,6 +93,7 @@ static const char *PREF_KEY_RD_MO_HOLD = "rd_mo_hold";
 static const char *PREF_KEY_RD_OFF_EN = "rd_off_en";
 static const char *PREF_KEY_RD_OFF_CM = "rd_off_cm";
 static const char *PREF_KEY_RD_OFF_GRACE = "rd_off_grace";
+static const char *PREF_KEY_RD_HWOVR = "rd_hwovr";
 #endif
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
@@ -342,6 +344,8 @@ void exportConfig()
     cfg += presenceBleAutoOn ? F("on") : F("off");
     cfg += F(" presence_ble_off=");
     cfg += presenceBleAutoOff ? F("on") : F("off");
+    cfg += F(" presence_ble_hwoverride=");
+    cfg += presenceBleAlwaysOverride ? F("on") : F("off");
 #if ENABLE_TOUCH_DIM
     cfg += F(" touch_dim=");
     cfg += touchDimEnabled ? F("on") : F("off");
@@ -435,6 +439,8 @@ void exportConfig()
     cfg += String(radarOffDistanceCm, 1);
     cfg += F(" radar_off_grace=");
     cfg += radarOffGraceMs;
+    cfg += F(" radar_hwoverride=");
+    cfg += radarHwOverride ? F("on") : F("off");
 #endif
     if (notifyActive)
         cfg += F(" notify=active");
@@ -462,6 +468,7 @@ void saveSettings()
     prefs.putInt(PREF_KEY_PBLE_RSSI, presenceBleRssiThreshold);
     prefs.putBool(PREF_KEY_PBLE_AUTO_ON, presenceBleAutoOn);
     prefs.putBool(PREF_KEY_PBLE_AUTO_OFF, presenceBleAutoOff);
+    prefs.putBool(PREF_KEY_PBLE_HWOVR, presenceBleAlwaysOverride);
 #if ENABLE_RD03
     prefs.putBool(PREF_KEY_RD_EN, radarEnabled);
     prefs.putBool(PREF_KEY_RD_DIM_EN, radarDimEnabled);
@@ -473,6 +480,7 @@ void saveSettings()
     prefs.putBool(PREF_KEY_RD_OFF_EN, radarOffDistanceEnabled);
     prefs.putFloat(PREF_KEY_RD_OFF_CM, radarOffDistanceCm);
     prefs.putUInt(PREF_KEY_RD_OFF_GRACE, radarOffGraceMs);
+    prefs.putBool(PREF_KEY_RD_HWOVR, radarHwOverride);
 #endif
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
@@ -608,6 +616,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     presenceBleRssiThreshold = Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT;
     presenceBleAutoOn = Settings::PRESENCE_BLE_AUTO_ON_DEFAULT;
     presenceBleAutoOff = Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT;
+    presenceBleAlwaysOverride = Settings::PRESENCE_BLE_HW_OVERRIDE_DEFAULT;
     presenceBleLastOffByPresence = false;
 #if ENABLE_RD03
     radarEnabled = Settings::RD03_DEFAULT_ENABLED;
@@ -620,6 +629,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     radarOffDistanceEnabled = Settings::RD03_OFF_DISTANCE_DEFAULT_ENABLED;
     radarOffDistanceCm = Settings::RD03_OFF_DISTANCE_CM_DEFAULT;
     radarOffGraceMs = Settings::RD03_OFF_GRACE_MS_DEFAULT;
+    radarHwOverride = Settings::RD03_HW_OVERRIDE_DEFAULT;
 #endif
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
@@ -813,6 +823,7 @@ void loadSettings()
     presenceBleRssiThreshold = prefs.getInt(PREF_KEY_PBLE_RSSI, Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT);
     presenceBleAutoOn = prefs.getBool(PREF_KEY_PBLE_AUTO_ON, Settings::PRESENCE_BLE_AUTO_ON_DEFAULT);
     presenceBleAutoOff = prefs.getBool(PREF_KEY_PBLE_AUTO_OFF, Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT);
+    presenceBleAlwaysOverride = prefs.getBool(PREF_KEY_PBLE_HWOVR, Settings::PRESENCE_BLE_HW_OVERRIDE_DEFAULT);
 #if ENABLE_RD03
     radarEnabled = prefs.getBool(PREF_KEY_RD_EN, Settings::RD03_DEFAULT_ENABLED);
     radarDimEnabled = prefs.getBool(PREF_KEY_RD_DIM_EN, Settings::RD03_DIM_DEFAULT_ENABLED);
@@ -824,6 +835,7 @@ void loadSettings()
     radarOffDistanceEnabled = prefs.getBool(PREF_KEY_RD_OFF_EN, Settings::RD03_OFF_DISTANCE_DEFAULT_ENABLED);
     radarOffDistanceCm = prefs.getFloat(PREF_KEY_RD_OFF_CM, Settings::RD03_OFF_DISTANCE_CM_DEFAULT);
     radarOffGraceMs = prefs.getUInt(PREF_KEY_RD_OFF_GRACE, Settings::RD03_OFF_GRACE_MS_DEFAULT);
+    radarHwOverride = prefs.getBool(PREF_KEY_RD_HWOVR, Settings::RD03_HW_OVERRIDE_DEFAULT);
 #endif
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
@@ -1234,6 +1246,12 @@ void importConfig(const String &args)
             if (parseBool(val, v))
                 presenceBleAutoOff = v;
         }
+        else if (key == "presence_ble_hwoverride")
+        {
+            bool v;
+            if (parseBool(val, v))
+                presenceBleAlwaysOverride = v;
+        }
 #if ENABLE_RD03
         else if (key == "radar_en")
         {
@@ -1284,6 +1302,12 @@ void importConfig(const String &args)
         {
             long v = val.toInt();
             radarOffGraceMs = v < 0 ? 0 : (uint32_t)v;
+        }
+        else if (key == "radar_hwoverride")
+        {
+            bool v;
+            if (parseBool(val, v))
+                radarHwOverride = v;
         }
 #endif
 #if ENABLE_TOUCH_DIM

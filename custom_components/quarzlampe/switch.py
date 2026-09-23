@@ -35,6 +35,13 @@ SWITCH_DEFS: tuple[dict[str, Any], ...] = (
         and v.upper().startswith("ON"),
     },
     {
+        "key": "presence_ble_hwoverride",
+        "name": "Presence BLE HW-Override",
+        "cmd_on": "presence_ble hwoverride on",
+        "cmd_off": "presence_ble hwoverride off",
+        "available_key": "has_presence_ble",
+    },
+    {
         "key": "light_enabled",
         "name": "Ambient Light Sensor",
         "cmd_on": "light on",
@@ -76,6 +83,13 @@ SWITCH_DEFS: tuple[dict[str, Any], ...] = (
         "name": "Radar Distance Auto-Off",
         "cmd_on": "radar offdist on",
         "cmd_off": "radar offdist off",
+        "available_key": "has_radar",
+    },
+    {
+        "key": "radar_hwoverride",
+        "name": "Radar HW-Override",
+        "cmd_on": "radar hwoverride on",
+        "cmd_off": "radar hwoverride off",
         "available_key": "has_radar",
     },
 )

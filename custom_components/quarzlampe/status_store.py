@@ -120,6 +120,7 @@ class LampStatusStore:
                     "pattern_margin_high": float_or_none("pat_hi"),
                     "quick": kv.get("quick"),
                     "presence_ble": kv.get("presence_ble"),
+                    "presence_ble_hwoverride": is_on("presence_ble_hwoverride"),
                     "custom_len": int_or_none("custom_len"),
                     "custom_step_ms": int_or_none("custom_step_ms"),
                     "demo": kv.get("demo") == "ON" if "demo" in kv else None,
@@ -185,6 +186,7 @@ class LampStatusStore:
                     "radar_offdist": is_on("radar_offdist"),
                     "radar_off_cm": float_or_none("radar_off_cm"),
                     "radar_off_grace": int_or_none("radar_off_grace"),
+                    "radar_hwoverride": is_on("radar_hwoverride"),
                 }
             )
         elif line.startswith("SENSORS|"):

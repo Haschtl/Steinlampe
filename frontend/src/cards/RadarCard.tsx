@@ -140,6 +140,16 @@ export function RadarCard() {
           </div>
         </div>
 
+        <label className="pill cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-accent"
+            checked={status.radarHwOverride ?? false}
+            onChange={(e) => sendCmd(`radar hwoverride ${e.target.checked ? 'on' : 'off'}`)}
+          />{' '}
+          <Trans k="label.hwOverride">Auch gegen Schalter/Poti erzwingen</Trans>
+        </label>
+
         <p className="text-sm text-muted">
           Status: {status.radarPresent ? 'detected' : 'clear'} dist={status.radarDistanceCm ?? '--'}cm speed={status.radarSpeedCmS ?? '--'}cm/s targets={status.radarTargetCount ?? 0}
         </p>

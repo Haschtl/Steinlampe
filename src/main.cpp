@@ -153,11 +153,8 @@ void updatePatternEngine()
       lastPresenceBleSeenMs = nowMs;
       if (lampEnabled)
         presenceBleLastOffByPresence = false;
-#if ENABLE_SWITCH
-      if (presenceBleAutoOn && presenceBleLastOffByPresence && switchDebouncedState && !lampEnabled)
-#else
-      if (presenceBleAutoOn && presenceBleLastOffByPresence && !lampEnabled)
-#endif
+      if (presenceBleAutoOn && presenceBleLastOffByPresence && !lampEnabled &&
+          (presenceBleAlwaysOverride || hardwareWantsOn()))
       {
         setLampEnabled(true, "presence_ble connect");
         presenceBleLastOffByPresence = false;
@@ -182,14 +179,12 @@ void updatePatternEngine()
     presenceBleGraceDeadline = 0;
     if (presenceBleAutoOff && lampEnabled)
     {
-      // Do not force off if the hardware switch is ON.
-#if ENABLE_SWITCH
-      if (switchDebouncedState)
+      // Do not force off if hardware (switch/poti) currently wants the lamp on, unless overridden.
+      if (hardwareWantsOn() && !presenceBleAlwaysOverride)
       {
-        sendFeedback(F("[PresenceBLE] Grace timeout ignored (switch ON)"));
+        sendFeedback(F("[PresenceBLE] Grace timeout ignored (hardware ON)"));
       }
       else
-#endif
       {
         setLampEnabled(false, "presence_ble grace");
         presenceBleLastOffByPresence = true;

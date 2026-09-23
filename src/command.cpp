@@ -1977,7 +1977,8 @@ void handleCommand(String line)
             sendFeedback(String(F("[PresenceBLE] ")) + (presenceBleEnabled ? F("ON") : F("OFF")) +
                          F(" devices=") + (presenceBleListCsv().length() ? presenceBleListCsv() : String(F("none"))) +
                          F(" thr=") + String(presenceBleRssiThreshold) + F("dBm on=") + (presenceBleAutoOn ? F("1") : F("0")) +
-                         F(" off=") + (presenceBleAutoOff ? F("1") : F("0")) + F(" grace=") + String(presenceBleGraceMs) + F("ms"));
+                         F(" off=") + (presenceBleAutoOff ? F("1") : F("0")) + F(" grace=") + String(presenceBleGraceMs) + F("ms") +
+                         F(" hwoverride=") + (presenceBleAlwaysOverride ? F("1") : F("0")));
         };
         if (arg == "on")
         {
@@ -2126,6 +2127,22 @@ void handleCommand(String line)
                 sendFeedback(String(F("[PresenceBLE] Auto-OFF ")) + (v ? F("ON") : F("OFF")));
             }
         }
+        else if (arg.startsWith("hwoverride"))
+        {
+            String sub = arg.substring(10);
+            sub.trim();
+            bool v;
+            if (parseBool(sub, v))
+            {
+                presenceBleAlwaysOverride = v;
+                saveSettings();
+                sendFeedback(String(F("[PresenceBLE] HW-Override ")) + (v ? F("ON") : F("OFF")));
+            }
+            else
+            {
+                sendFeedback(F("Usage: presence_ble hwoverride on|off"));
+            }
+        }
         else if (arg == "list")
         {
             sendStatus();
@@ -2152,7 +2169,8 @@ void handleCommand(String line)
                          F(" motion=") + (radarMotionOnEnabled ? F("1") : F("0")) +
                          F(" thr=") + String(radarMotionSpeedThreshold, 1) + F(" hold=") + String(radarMotionHoldMs) +
                          F(" offdist=") + (radarOffDistanceEnabled ? F("1") : F("0")) +
-                         F(" off_cm=") + String(radarOffDistanceCm, 1) + F(" off_grace=") + String(radarOffGraceMs));
+                         F(" off_cm=") + String(radarOffDistanceCm, 1) + F(" off_grace=") + String(radarOffGraceMs) +
+                         F(" hwoverride=") + (radarHwOverride ? F("1") : F("0")));
         };
         if (arg == "on")
         {
@@ -2280,6 +2298,22 @@ void handleCommand(String line)
             else
             {
                 sendFeedback(F("Usage: radar debug on|off"));
+            }
+        }
+        else if (arg.startsWith("hwoverride"))
+        {
+            String sub = arg.substring(10);
+            sub.trim();
+            bool v;
+            if (parseBool(sub, v))
+            {
+                radarHwOverride = v;
+                saveSettings();
+                sendFeedback(String(F("[Radar] HW-Override ")) + (v ? F("ON") : F("OFF")));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar hwoverride on|off"));
             }
         }
         else

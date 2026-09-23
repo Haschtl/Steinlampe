@@ -74,6 +74,10 @@ extern bool radarOffDistanceEnabled;
 extern float radarOffDistanceCm;
 extern uint32_t radarOffGraceMs;
 
+// Whether motion-on/off-distance may override the current switch/poti hardware state
+// (false = only act while hardware agrees, true = always; see inputs.h hardwareWantsOn()).
+extern bool radarHwOverride;
+
 void radarSetup();
 void updateRadar();
 
