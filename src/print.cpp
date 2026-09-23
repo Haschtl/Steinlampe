@@ -819,7 +819,7 @@ void printHelp(const bool &force)
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",
         "  music sens <f>/smooth <0-1>/auto on|off/thr <f> - Musik-Parameter (Patterns Music Direct/Beat)",
         "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
-        "  profile save <1-3>/load <1-3> - User-Profile ohne Touch/PresenceBLE/Quick",
+        "  profile save <1-3>/load <1-3> - Szene (Pattern/Helligkeit/Ramp/Speed), keine Kalibrierung",
         "  light gain <f>     - Verstärkung Lichtsensor",
         "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms>/calib <min> <max>/invert on|off - Poti-Config",
         "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",

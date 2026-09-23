@@ -172,7 +172,9 @@ bool parseQuickCsv(const String &csv, uint64_t &outMask)
 }
 
 /**
- * @brief Build a profile string (cfg import style) without presence_ble/touch/quick.
+ * @brief Build a profile string (cfg import style): pattern/brightness/ramp/speed/margin scene
+ * settings only - deliberately excludes hardware/calibration state (presence_ble, touch,
+ * quick mask, radar, brightness min/max, pwm gamma, light-sensor and music/clap calibration).
  */
 String buildProfileString()
 {
@@ -209,38 +211,11 @@ String buildProfileString()
     cfg += String(rampEaseOnPower, 2);
     cfg += F(" ramp_off_pow=");
     cfg += String(rampEaseOffPower, 2);
-    cfg += F(" bri_min=");
-    cfg += String(briMinUser, 3);
-    cfg += F(" bri_max=");
-    cfg += String(briMaxUser, 3);
-    cfg += F(" pwm_gamma=");
-    cfg += String(outputGamma, 2);
-#if ENABLE_LIGHT_SENSOR
-    cfg += F(" ramp_amb=");
-    cfg += String(rampAmbientFactor, 2);
-    cfg += F(" light_gain=");
-    cfg += String(lightGain, 2);
-    cfg += F(" light_min=");
-    cfg += String(lightClampMin, 2);
-    cfg += F(" light_max=");
-    cfg += String(lightClampMax, 2);
-    cfg += F(" light_alpha=");
-    cfg += String(lightAlpha, 3);
-    cfg += F(" light=");
-    cfg += lightSensorEnabled ? F("on") : F("off");
-#endif
-#if ENABLE_MUSIC_MODE
-    cfg += F(" music=");
-    cfg += musicEnabled ? F("on") : F("off");
-    cfg += F(" music_gain=");
-    cfg += String(musicGain, 2);
-    cfg += F(" clap=");
-    cfg += clapEnabled ? F("on") : F("off");
-    cfg += F(" clap_thr=");
-    cfg += String(clapThreshold, 2);
-    cfg += F(" clap_cool=");
-    cfg += String(clapCooldownMs);
-#endif
+    // Deliberately NOT included: bri_min/bri_max, pwm_gamma, light-sensor and music/clap
+    // calibration. Those are properties of the physical installation (gamma curve, sensor
+    // gain, mic sensitivity, safety brightness floor/ceiling), not of a scene/mood - switching
+    // profiles must not silently revert them. They stay as regular global settings instead,
+    // same treatment as PresenceBLE/Radar/Touch already get.
     return cfg;
 }
 

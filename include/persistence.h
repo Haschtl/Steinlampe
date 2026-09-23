@@ -11,7 +11,9 @@ extern const char *PREF_KEY_PROFILE_BASE;
 bool parseQuickCsv(const String &csv, uint64_t &outMask);
 
 /**
- * @brief Build a profile string (cfg import style) without presence_ble/touch/quick.
+ * @brief Build a profile string (cfg import style): pattern/brightness/ramp/speed/margin scene
+ * settings only - deliberately excludes hardware/calibration state (presence_ble, touch,
+ * quick mask, radar, brightness min/max, pwm gamma, light-sensor and music/clap calibration).
  */
 String buildProfileString();
 
