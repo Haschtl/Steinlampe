@@ -256,7 +256,8 @@ export function useBle(): BleApi {
       hasMusic: undefined,
       hasPoti: undefined,
       hasPush: undefined,
-      hasPresence: undefined,
+      hasPresenceBle: undefined,
+      hasRadar: undefined,
     }));
   }, []);
 

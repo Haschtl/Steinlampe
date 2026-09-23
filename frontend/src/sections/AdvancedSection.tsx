@@ -1,4 +1,5 @@
-import { PresenceCard } from '@/cards/PresenceCard';
+import { PresenceBleCard } from '@/cards/PresenceBleCard';
+import { RadarCard } from '@/cards/RadarCard';
 import { TouchCard } from '@/cards/TouchCard';
 import { LightCard } from '@/cards/LightCard';
 import { MusicCard } from '@/cards/MusicCard';
@@ -9,7 +10,8 @@ import { useConnection } from '@/context/connection';
 
 export function AdvancedSection() {
   const { status } = useConnection();
-  const showPresence = status.hasPresence !== false;
+  const showPresenceBle = status.hasPresenceBle !== false;
+  const showRadar = status.hasRadar !== false;
   const showLight = status.hasLight !== false;
   const showMusic = status.hasMusic !== false;
   const showPoti = status.hasPoti !== false;
@@ -21,7 +23,8 @@ export function AdvancedSection() {
       <LedConfigCard />
       {showPoti && <PotiCard />}
       {showPush && <PushButtonCard />}
-      {showPresence && <PresenceCard />}
+      {showPresenceBle && <PresenceBleCard />}
+      {showRadar && <RadarCard />}
       {showTouch && <TouchCard />}
       {showLight && <LightCard />}
       {showMusic && <MusicCard />}

@@ -59,14 +59,29 @@ export type DeviceStatus = {
   pwmMax?: number;
   patternMarginLow?: number;
   patternMarginHigh?: number;
-  presence?: string;
-  hasPresence?: boolean;
-  presenceCount?: number;
-  presenceThreshold?: number;
-  presenceAutoOn?: boolean;
-  presenceAutoOff?: boolean;
-  presenceList?: string[];
-  presenceGraceMs?: number;
+  presenceBle?: string;
+  hasPresenceBle?: boolean;
+  presenceBleCount?: number;
+  presenceBleThreshold?: number;
+  presenceBleAutoOn?: boolean;
+  presenceBleAutoOff?: boolean;
+  presenceBleList?: string[];
+  presenceBleGraceMs?: number;
+  hasRadar?: boolean;
+  radarEnabled?: boolean;
+  radarPresent?: boolean;
+  radarDistanceCm?: number;
+  radarSpeedCmS?: number;
+  radarTargetCount?: number;
+  radarDimEnabled?: boolean;
+  radarDimNearCm?: number;
+  radarDimFarCm?: number;
+  radarMotionOnEnabled?: boolean;
+  radarMotionSpeedThr?: number;
+  radarMotionHoldMs?: number;
+  radarOffDistanceEnabled?: boolean;
+  radarOffDistanceCm?: number;
+  radarOffGraceMs?: number;
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
@@ -237,10 +252,11 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const potiMax = Object.prototype.hasOwnProperty.call(kv, 'poti_max') ? asNum('poti_max') : undefined;
       const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
-      const hasPresence = kv.presence ? isAvailable('presence') : s.hasPresence;
-      const presenceList = kv.presence_list
-        ? kv.presence_list.split(',').map((x) => x.trim()).filter(Boolean)
-        : s.presenceList;
+      const hasPresenceBle = kv.presence_ble ? isAvailable('presence_ble') : s.hasPresenceBle;
+      const presenceBleList = kv.presence_ble_list
+        ? kv.presence_ble_list.split(',').map((x) => x.trim()).filter(Boolean)
+        : s.presenceBleList;
+      const hasRadar = kv.radar ? isAvailable('radar') : s.hasRadar;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
       const hasTouch = kv.touch ? isAvailable('touch') : s.hasTouch;
       return {
@@ -285,18 +301,33 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,
-        presence: kv.presence ?? s.presence,
-        hasPresence,
-        presenceCount: asInt('presence_count') ?? s.presenceCount,
-        presenceThreshold: asInt('presence_thr') ?? s.presenceThreshold,
-        presenceAutoOn: kv.presence_on
-          ? ['1', 'on', 'true'].includes(kv.presence_on.toLowerCase())
-          : s.presenceAutoOn,
-        presenceAutoOff: kv.presence_off
-          ? ['1', 'on', 'true'].includes(kv.presence_off.toLowerCase())
-          : s.presenceAutoOff,
-        presenceList,
-        presenceGraceMs: asInt('presence_grace') ?? s.presenceGraceMs,
+        presenceBle: kv.presence_ble ?? s.presenceBle,
+        hasPresenceBle,
+        presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,
+        presenceBleThreshold: asInt('presence_ble_thr') ?? s.presenceBleThreshold,
+        presenceBleAutoOn: kv.presence_ble_on
+          ? ['1', 'on', 'true'].includes(kv.presence_ble_on.toLowerCase())
+          : s.presenceBleAutoOn,
+        presenceBleAutoOff: kv.presence_ble_off
+          ? ['1', 'on', 'true'].includes(kv.presence_ble_off.toLowerCase())
+          : s.presenceBleAutoOff,
+        presenceBleList,
+        presenceBleGraceMs: asInt('presence_ble_grace') ?? s.presenceBleGraceMs,
+        hasRadar,
+        radarEnabled: kv.radar ? kv.radar.toUpperCase() === 'ON' : hasRadar === false ? false : s.radarEnabled,
+        radarPresent: kv.radar_present ? kv.radar_present === '1' : s.radarPresent,
+        radarDistanceCm: asNum('radar_dist') ?? s.radarDistanceCm,
+        radarSpeedCmS: asNum('radar_speed') ?? s.radarSpeedCmS,
+        radarTargetCount: asInt('radar_targets') ?? s.radarTargetCount,
+        radarDimEnabled: kv.radar_dim ? kv.radar_dim === '1' : s.radarDimEnabled,
+        radarDimNearCm: asNum('radar_dim_near') ?? s.radarDimNearCm,
+        radarDimFarCm: asNum('radar_dim_far') ?? s.radarDimFarCm,
+        radarMotionOnEnabled: kv.radar_motion ? kv.radar_motion === '1' : s.radarMotionOnEnabled,
+        radarMotionSpeedThr: asNum('radar_motion_thr') ?? s.radarMotionSpeedThr,
+        radarMotionHoldMs: asInt('radar_motion_hold') ?? s.radarMotionHoldMs,
+        radarOffDistanceEnabled: kv.radar_offdist ? kv.radar_offdist === '1' : s.radarOffDistanceEnabled,
+        radarOffDistanceCm: asNum('radar_off_cm') ?? s.radarOffDistanceCm,
+        radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
         outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,
@@ -436,7 +467,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         hasPoti: kv.poti ? kv.poti.toUpperCase() !== 'N/A' : s.hasPoti,
         hasPush: kv.push ? kv.push.toUpperCase() !== 'N/A' : s.hasPush,
         hasMusic: kv.music ? kv.music.toUpperCase() !== 'N/A' : s.hasMusic,
-        hasPresence: kv.presence ? kv.presence.toUpperCase() !== 'N/A' : s.hasPresence,
+        hasPresenceBle: kv.presence_ble ? kv.presence_ble.toUpperCase() !== 'N/A' : s.hasPresenceBle,
         touchState: kv.touch ? kv.touch.toUpperCase() : s.touchState,
         musicEnv,
         musicLevel,
@@ -509,15 +540,15 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       lastStatusAt: Date.now(),
     }));
   }
-  if (line.startsWith('[Presence]')) {
+  if (line.startsWith('[PresenceBLE]')) {
     handled = true;
     const enabled = line.toLowerCase().includes('enabled');
     // const disabled = line.toLowerCase().includes("disabled");
     const unavailable = line.toUpperCase().includes("N/A");
     setStatus((s) => ({
       ...s,
-      hasPresence: unavailable ? false : true,
-      presence: enabled ? 'ON' : 'OFF',
+      hasPresenceBle: unavailable ? false : true,
+      presenceBle: enabled ? 'ON' : 'OFF',
       lastStatusAt: Date.now(),
     }));
   }
@@ -643,9 +674,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       lastStatusAt: Date.now(),
     }));
   }
-  if (line.startsWith('Presence=')) {
+  if (line.startsWith('PresenceBLE=')) {
     handled = true;
-    setStatus((s) => ({ ...s, presence: line.replace('Presence=', '').trim(), lastStatusAt: Date.now() }));
+    setStatus((s) => ({ ...s, presenceBle: line.replace('PresenceBLE=', '').trim(), lastStatusAt: Date.now() }));
   }
   if (line.startsWith('[Custom]')) {
     handled = true;

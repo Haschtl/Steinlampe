@@ -44,7 +44,7 @@ export function LampPowerCard() {
   const lightActive = status.lightEnabled && status.hasLight !== false;
   const musicActive = status.musicEnabled && status.hasMusic !== false;
   const touchDimActive = status.touchState === 'TOUCHDIM' || status.touchState === 'DIM';
-  const presenceActive = !!(status.presence && status.presence.toUpperCase().startsWith('ON'));
+  const presenceActive = !!(status.presenceBle && status.presenceBle.toUpperCase().startsWith('ON'));
 
   useEffect(() => {
     setLampOn(status.lampState === 'ON');
@@ -146,7 +146,7 @@ export function LampPowerCard() {
           {typeof ambientPct === 'number' && <span className="chip-muted">Ambient: {ambientPct}%</span>}
           {hasMusic && <span className="chip-muted"><Trans k="title.music">Music</Trans></span>}
           {touchDimActive && <span className="chip-muted">Touch-Dim</span>}
-          {presenceActive && <span className="chip-muted"><Trans k="title.presence">Presence</Trans></span>}
+          {presenceActive && <span className="chip-muted"><Trans k="title.presenceBle">Presence (BLE)</Trans></span>}
         </div>
 
         <motion.button
