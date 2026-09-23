@@ -103,6 +103,7 @@ class LampStatusStore:
                     "lamp": kv.get("lamp"),
                     "switch": kv.get("switch"),
                     "touch_dim": kv.get("touch_dim") == "1" if "touch_dim" in kv else None,
+                    "pat_reactive": kv.get("pat_reactive") == "1" if "pat_reactive" in kv else None,
                     "touch_dim_step": float_or_none("touch_dim_step"),
                     "ramp_on_ms": int_or_none("ramp_on_ms"),
                     "ramp_off_ms": int_or_none("ramp_off_ms"),

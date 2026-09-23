@@ -51,6 +51,7 @@ export type DeviceStatus = {
   patternSpeed?: number;
   patternFade?: number;
   patternInvert?: boolean;
+  patternReactive?: boolean;
   outputMode?: "pwm" | "analog";
   idleOffMin?: number;
   idleMinutes?: number;
@@ -301,6 +302,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
               ? false
               : s.patternInvert
           : s.patternInvert,
+        patternReactive: kv.pat_reactive ? kv.pat_reactive === '1' : s.patternReactive,
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,

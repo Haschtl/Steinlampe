@@ -46,3 +46,13 @@ void setPattern(size_t index, bool announce, bool persist);
  * @brief List all available patterns and their indices.
  */
 void listPatterns();
+
+// ---------- Sensor-reactive pattern flag ----------
+// Per-pattern bitmask: whether a pattern is allowed to react to sensors (radar/presence/etc).
+// This step only stores/exposes the flag; which pattern reacts how is implemented separately.
+extern uint64_t patternReactiveMask;
+
+bool isPatternReactive(size_t idx);
+void setPatternReactive(size_t idx, bool on);
+String patternReactiveMaskToCsv();
+void setPatternReactiveMaskFromCsv(const String &csv);

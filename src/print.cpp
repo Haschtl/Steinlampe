@@ -482,6 +482,8 @@ void printStatusStructured(const bool &force)
     line += String(patternMarginHigh, 3);
     line += F("|quick=");
     line += quickMaskToCsv();
+    line += F("|pat_reactive=");
+    line += isPatternReactive(currentPattern) ? F("1") : F("0");
     line += F("|presence_ble=");
     line += presenceBleEnabled ? F("ON") : F("OFF");
     line += F("|presence_ble_count=");
@@ -791,6 +793,7 @@ void printHelp(const bool &force)
         "  pat scale <0.1-5> - Pattern-Geschwindigkeit",
         "  pat fade on|off   - Pattern-Ausgabe glätten",
         "  pat fade amt <0.01-10> - Stärke der Glättung (größer = langsamer)",
+        "  pat reactive on|off|list|clear|<n> on|off - Sensor-Reaktivitäts-Flag pro Pattern (Verhalten folgt separat)",
         "  pwm curve <0.5-4> - PWM-Gamma/Linearität anpassen",
         "  demo [Sek]        - Demo-Modus: Quick-Liste mit fester Verweildauer (Default 6s)",
         "  touch hold <ms>   - Hold-Start 500..5000 ms",

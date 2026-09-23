@@ -1,5 +1,7 @@
 #include "Arduino.h"
 
+#include <ctype.h>
+
 #include "settings.h"
 #include "utils.h"
 #include "patterns.h"
@@ -124,4 +126,65 @@ void listPatterns()
     // Reserve virtual slots for profiles after patterns
     for (uint8_t p = 1; p <= PROFILE_SLOTS; ++p)
         sendFeedback(String(PATTERN_COUNT + p) + F(": Profile ") + String(p));
+}
+
+// ---------- Sensor-reactive pattern flag ----------
+uint64_t patternReactiveMask = 0;
+
+bool isPatternReactive(size_t idx)
+{
+    return idx < PATTERN_COUNT && idx < 64 && (patternReactiveMask & (1ULL << idx));
+}
+
+void setPatternReactive(size_t idx, bool on)
+{
+    if (idx >= PATTERN_COUNT || idx >= 64)
+        return;
+    if (on)
+        patternReactiveMask |= (1ULL << idx);
+    else
+        patternReactiveMask &= ~(1ULL << idx);
+}
+
+String patternReactiveMaskToCsv()
+{
+    String out;
+    for (size_t i = 0; i < PATTERN_COUNT && i < 64; ++i)
+    {
+        if (isPatternReactive(i))
+        {
+            if (!out.isEmpty())
+                out += ',';
+            out += String(i + 1);
+        }
+    }
+    return out.isEmpty() ? String(F("none")) : out;
+}
+
+void setPatternReactiveMaskFromCsv(const String &csv)
+{
+    if (csv.length() == 0 || csv.equalsIgnoreCase(F("none")))
+    {
+        patternReactiveMask = 0;
+        return;
+    }
+    String tmp = csv;
+    tmp.replace(',', ' ');
+    uint64_t mask = 0;
+    int start = 0;
+    while (start < (int)tmp.length())
+    {
+        while (start < (int)tmp.length() && isspace(tmp[start]))
+            start++;
+        if (start >= (int)tmp.length())
+            break;
+        int end = start;
+        while (end < (int)tmp.length() && !isspace(tmp[end]))
+            end++;
+        int idx = tmp.substring(start, end).toInt();
+        if (idx >= 1 && idx <= (int)PATTERN_COUNT && idx <= 64)
+            mask |= (1ULL << (idx - 1));
+        start = end + 1;
+    }
+    patternReactiveMask = mask;
 }

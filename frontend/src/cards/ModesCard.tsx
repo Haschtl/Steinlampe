@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeftCircle, ArrowRightCircle, ArrowUpDown, Palette } from 'lucide-react';
+import { Activity, ArrowLeftCircle, ArrowRightCircle, ArrowUpDown, Palette, Radar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,7 @@ export function ModesCard() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [margin, setMargin] = useState<[number, number]>([0, 1]);
   const [invert, setInvert] = useState(false);
+  const [reactive, setReactive] = useState(false);
 
   useEffect(() => {
     if (status.currentPattern) setPattern(status.currentPattern);
@@ -42,6 +43,10 @@ export function ModesCard() {
   useEffect(() => {
     if (typeof status.patternInvert === 'boolean') setInvert(status.patternInvert);
   }, [status.patternInvert]);
+
+  useEffect(() => {
+    if (typeof status.patternReactive === 'boolean') setReactive(status.patternReactive);
+  }, [status.patternReactive]);
 
   useEffect(() => {
     const lo = typeof status.patternMarginLow === 'number' ? status.patternMarginLow : undefined;
@@ -78,6 +83,11 @@ export function ModesCard() {
   const handleInvert = (val: boolean) => {
     setInvert(val);
     sendCmd(`pat invert ${val ? "on" : "off"}`).catch((e) => console.warn(e));
+  };
+
+  const handleReactive = (val: boolean) => {
+    setReactive(val);
+    sendCmd(`pat reactive ${val ? "on" : "off"}`).catch((e) => console.warn(e));
   };
 
   return (
@@ -189,6 +199,18 @@ export function ModesCard() {
             <span className="inline-flex items-center gap-1">
               <ArrowUpDown className="h-4 w-4" />{" "}
               <Trans k="label.patternInvert">Invert Pattern</Trans>
+            </span>
+          </label>
+          <label className="pill cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-accent"
+              checked={reactive}
+              onChange={(e) => handleReactive(e.target.checked)}
+            />{" "}
+            <span className="inline-flex items-center gap-1">
+              <Radar className="h-4 w-4" />{" "}
+              <Trans k="label.patternReactive">Sensor-reactive</Trans>
             </span>
           </label>
         </div>

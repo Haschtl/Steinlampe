@@ -427,6 +427,62 @@ void handleCommand(String line)
         }
         return;
     }
+    if (lower.startsWith("pat reactive") || lower.startsWith("pattern reactive"))
+    {
+        int pos = lower.indexOf("reactive");
+        String arg = line.substring(pos + 8);
+        arg.trim();
+        if (arg.isEmpty())
+        {
+            sendFeedback(String(F("[Pattern] Reactive[")) + PATTERNS[currentPattern].name + F("]=") +
+                         (isPatternReactive(currentPattern) ? F("1") : F("0")) +
+                         F(" list=") + patternReactiveMaskToCsv());
+        }
+        else if (arg.equalsIgnoreCase("on"))
+        {
+            setPatternReactive(currentPattern, true);
+            saveSettings();
+            sendFeedback(String(F("[Pattern] ")) + PATTERNS[currentPattern].name + F(" reactive ON"));
+        }
+        else if (arg.equalsIgnoreCase("off"))
+        {
+            setPatternReactive(currentPattern, false);
+            saveSettings();
+            sendFeedback(String(F("[Pattern] ")) + PATTERNS[currentPattern].name + F(" reactive OFF"));
+        }
+        else if (arg.equalsIgnoreCase("list"))
+        {
+            sendFeedback(String(F("[Pattern] Reactive list=")) + patternReactiveMaskToCsv());
+        }
+        else if (arg.equalsIgnoreCase("clear"))
+        {
+            patternReactiveMask = 0;
+            saveSettings();
+            sendFeedback(F("[Pattern] Reactive cleared"));
+        }
+        else
+        {
+            int sp = arg.indexOf(' ');
+            bool ok = false;
+            if (sp > 0)
+            {
+                int idx = arg.substring(0, sp).toInt();
+                String sub = arg.substring(sp + 1);
+                sub.trim();
+                bool v;
+                if (idx >= 1 && idx <= (int)PATTERN_COUNT && parseBool(sub, v))
+                {
+                    setPatternReactive((size_t)(idx - 1), v);
+                    saveSettings();
+                    sendFeedback(String(F("[Pattern] ")) + PATTERNS[idx - 1].name + F(" reactive ") + (v ? F("ON") : F("OFF")));
+                    ok = true;
+                }
+            }
+            if (!ok)
+                sendFeedback(F("Usage: pat reactive on|off|list|clear|<n> on|off"));
+        }
+        return;
+    }
     if (lower.startsWith("filter"))
     {
         String arg = line.substring(line.indexOf("filter") + 6);

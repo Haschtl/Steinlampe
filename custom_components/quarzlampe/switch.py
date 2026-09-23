@@ -26,6 +26,12 @@ SWITCH_DEFS: tuple[dict[str, Any], ...] = (
         "cmd_off": "touchdim off",
     },
     {
+        "key": "pat_reactive",
+        "name": "Current Pattern Sensor-Reactive",
+        "cmd_on": "pat reactive on",
+        "cmd_off": "pat reactive off",
+    },
+    {
         "key": "presence_ble",
         "name": "Presence BLE",
         "cmd_on": "presence_ble on",
