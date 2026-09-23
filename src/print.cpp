@@ -820,6 +820,7 @@ void printHelp(const bool &force)
         "  music sens <f>/smooth <0-1>/auto on|off/thr <f> - Musik-Parameter (Patterns Music Direct/Beat)",
         "  morse <text>     - Morse-Blink (dot=200ms, dash=600ms)",
         "  profile save <1-3>/load <1-3> - Szene (Pattern/Helligkeit/Ramp/Speed), keine Kalibrierung",
+        "  profile show <1-3> - Slot-Inhalt anzeigen ohne zu laden",
         "  light gain <f>     - Verstärkung Lichtsensor",
         "  poti on|off/alpha <0..1>/delta <0..0.5>/off <0..0.5>/sample <ms>/calib <min> <max>/invert on|off - Poti-Config",
         "  push on|off/debounce <ms>/double <ms>/hold <ms>/step_ms <ms>/step <0..0.5> - Taster-Config",

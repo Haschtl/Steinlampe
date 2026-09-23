@@ -2540,9 +2540,25 @@ void handleCommand(String line)
                 sendFeedback(F("Usage: profile load <1-3>"));
             }
         }
+        else if (arg.startsWith("show"))
+        {
+            int slot = arg.substring(4).toInt();
+            if (slot >= 1 && slot <= PROFILE_SLOTS)
+            {
+                String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
+                String cfg = prefs.getString(key.c_str(), "");
+                if (cfg.length() == 0)
+                    cfg = defaultProfileString((uint8_t)slot);
+                sendFeedback(String(F("[Profile ")) + String(slot) + F("] ") + (cfg.length() ? cfg : String(F("empty"))));
+            }
+            else
+            {
+                sendFeedback(F("Usage: profile show <1-3>"));
+            }
+        }
         else
         {
-            sendFeedback(F("profile save <1-3> | profile load <1-3>"));
+            sendFeedback(F("profile save <1-3> | profile load <1-3> | profile show <1-3>"));
         }
         return;
     }

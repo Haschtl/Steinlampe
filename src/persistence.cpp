@@ -228,13 +228,13 @@ String defaultProfileString(uint8_t slot)
     switch (slot)
     {
     case 1: // A: full brightness, constant
-        cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=1 bri=1.0 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600");
         break;
     case 2: // B: half brightness, constant
-        cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=1 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600");
         break;
     case 3: // C: half brightness, pulsierend
-        cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600 ramp_amb=0 bri_min=0.05 bri_max=0.95");
+        cfg = F("mode=5 bri=0.5 auto=off pat_scale=1 pat_fade=on pat_fade_amt=0.01 pat_inv=off pat_lo=0 pat_hi=1 ramp_on_ease=ease-out ramp_off_ease=ease-out ramp_on_pow=7 ramp_off_pow=2 ramp_on_ms=320 ramp_off_ms=600");
         break;
     default:
         break;
