@@ -187,6 +187,7 @@ class LampStatusStore:
                     "radar_off_cm": float_or_none("radar_off_cm"),
                     "radar_off_grace": int_or_none("radar_off_grace"),
                     "radar_hwoverride": is_on("radar_hwoverride"),
+                    "radar_velocity": float_or_none("radar_velocity"),
                 }
             )
         elif line.startswith("SENSORS|"):

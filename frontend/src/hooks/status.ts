@@ -84,6 +84,7 @@ export type DeviceStatus = {
   radarOffDistanceCm?: number;
   radarOffGraceMs?: number;
   radarHwOverride?: boolean;
+  radarVelocityFactor?: number;
   quickCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
@@ -332,6 +333,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         radarOffDistanceCm: asNum('radar_off_cm') ?? s.radarOffDistanceCm,
         radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
         radarHwOverride: kv.radar_hwoverride ? kv.radar_hwoverride === '1' : s.radarHwOverride,
+        radarVelocityFactor: asNum('radar_velocity') ?? s.radarVelocityFactor,
         outputMode: outputMode ?? s.outputMode,
         btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
         btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,

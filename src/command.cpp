@@ -2170,7 +2170,8 @@ void handleCommand(String line)
                          F(" thr=") + String(radarMotionSpeedThreshold, 1) + F(" hold=") + String(radarMotionHoldMs) +
                          F(" offdist=") + (radarOffDistanceEnabled ? F("1") : F("0")) +
                          F(" off_cm=") + String(radarOffDistanceCm, 1) + F(" off_grace=") + String(radarOffGraceMs) +
-                         F(" hwoverride=") + (radarHwOverride ? F("1") : F("0")));
+                         F(" hwoverride=") + (radarHwOverride ? F("1") : F("0")) +
+                         F(" velocity=") + String(radarVelocityFactor, 2));
         };
         if (arg == "on")
         {
@@ -2314,6 +2315,27 @@ void handleCommand(String line)
             else
             {
                 sendFeedback(F("Usage: radar hwoverride on|off"));
+            }
+        }
+        else if (arg.startsWith("velocity"))
+        {
+            String sub = arg.substring(8);
+            sub.trim();
+            if (sub.length() > 0)
+            {
+                float v = sub.toFloat();
+                if (v < 0.0f)
+                    v = 0.0f;
+                if (v > 10.0f)
+                    v = 10.0f;
+                radarVelocityFactor = v;
+                saveSettings();
+                sendFeedback(String(F("[Radar] Velocity factor=")) + String(radarVelocityFactor, 2) +
+                             (radarVelocityFactor == 1.0f ? F(" (disabled)") : F("")));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar velocity <factor> (1 = disabled, >1 brighter, <1 dimmer with motion)"));
             }
         }
         else

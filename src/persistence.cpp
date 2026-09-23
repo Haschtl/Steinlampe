@@ -94,6 +94,7 @@ static const char *PREF_KEY_RD_OFF_EN = "rd_off_en";
 static const char *PREF_KEY_RD_OFF_CM = "rd_off_cm";
 static const char *PREF_KEY_RD_OFF_GRACE = "rd_off_grace";
 static const char *PREF_KEY_RD_HWOVR = "rd_hwovr";
+static const char *PREF_KEY_RD_VEL = "rd_vel";
 #endif
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
@@ -441,6 +442,8 @@ void exportConfig()
     cfg += radarOffGraceMs;
     cfg += F(" radar_hwoverride=");
     cfg += radarHwOverride ? F("on") : F("off");
+    cfg += F(" radar_velocity=");
+    cfg += String(radarVelocityFactor, 2);
 #endif
     if (notifyActive)
         cfg += F(" notify=active");
@@ -481,6 +484,7 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_RD_OFF_CM, radarOffDistanceCm);
     prefs.putUInt(PREF_KEY_RD_OFF_GRACE, radarOffGraceMs);
     prefs.putBool(PREF_KEY_RD_HWOVR, radarHwOverride);
+    prefs.putFloat(PREF_KEY_RD_VEL, radarVelocityFactor);
 #endif
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
@@ -630,6 +634,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     radarOffDistanceCm = Settings::RD03_OFF_DISTANCE_CM_DEFAULT;
     radarOffGraceMs = Settings::RD03_OFF_GRACE_MS_DEFAULT;
     radarHwOverride = Settings::RD03_HW_OVERRIDE_DEFAULT;
+    radarVelocityFactor = Settings::RD03_VELOCITY_FACTOR_DEFAULT;
 #endif
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
@@ -836,6 +841,7 @@ void loadSettings()
     radarOffDistanceCm = prefs.getFloat(PREF_KEY_RD_OFF_CM, Settings::RD03_OFF_DISTANCE_CM_DEFAULT);
     radarOffGraceMs = prefs.getUInt(PREF_KEY_RD_OFF_GRACE, Settings::RD03_OFF_GRACE_MS_DEFAULT);
     radarHwOverride = prefs.getBool(PREF_KEY_RD_HWOVR, Settings::RD03_HW_OVERRIDE_DEFAULT);
+    radarVelocityFactor = prefs.getFloat(PREF_KEY_RD_VEL, Settings::RD03_VELOCITY_FACTOR_DEFAULT);
 #endif
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
@@ -1308,6 +1314,15 @@ void importConfig(const String &args)
             bool v;
             if (parseBool(val, v))
                 radarHwOverride = v;
+        }
+        else if (key == "radar_velocity")
+        {
+            float v = val.toFloat();
+            if (v < 0.0f)
+                v = 0.0f;
+            if (v > 10.0f)
+                v = 10.0f;
+            radarVelocityFactor = v;
         }
 #endif
 #if ENABLE_TOUCH_DIM

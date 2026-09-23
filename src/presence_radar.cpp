@@ -31,6 +31,9 @@ float radarOffDistanceCm = Settings::RD03_OFF_DISTANCE_CM_DEFAULT;
 uint32_t radarOffGraceMs = Settings::RD03_OFF_GRACE_MS_DEFAULT;
 bool radarHwOverride = Settings::RD03_HW_OVERRIDE_DEFAULT;
 
+float radarVelocityFactor = Settings::RD03_VELOCITY_FACTOR_DEFAULT;
+float radarVelocityScale = 1.0f;
+
 // ---------- UART framing ----------
 static HardwareSerial RadarSerial(RD03_UART_NUM);
 
@@ -53,6 +56,11 @@ static float radarDimFiltered = -1.0f;
 static float radarDimLastApplied = -1.0f;
 static const float RADAR_DIM_ALPHA = 0.3f;
 static const float RADAR_DIM_DELTA_MIN = 0.02f;
+
+// Reference speed at which the velocity brightness modifier reaches its full radarVelocityFactor;
+// scales linearly (clamped) between 0 and this speed. Not exposed as a setting, keeps the
+// feature to the single "factor" knob the user configures.
+static const float RADAR_VELOCITY_REF_SPEED_CMS = 60.0f;
 
 static uint32_t radarMotionLastQualifyMs = 0;
 static uint32_t radarOffGraceDeadline = 0;
@@ -228,11 +236,25 @@ void updateRadar()
     }
 
     if (!radarEnabled)
+    {
+        radarVelocityScale = 1.0f; // don't leave a stale multiplier applied once radar is disabled
         return;
+    }
 
     uint32_t now = millis();
     const uint32_t STALE_MS = 1000;
     bool present = radarPresent && radarLastFrameMs > 0 && (now - radarLastFrameMs) <= STALE_MS;
+
+    // Optional brightness modifier scaling with target velocity (factor 1.0 = disabled).
+    {
+        float target = 1.0f;
+        if (radarVelocityFactor != 1.0f && present)
+        {
+            float normSpeed = clamp01(fabsf(radarSpeedCmS) / RADAR_VELOCITY_REF_SPEED_CMS);
+            target = 1.0f + (radarVelocityFactor - 1.0f) * normSpeed;
+        }
+        radarVelocityScale += (target - radarVelocityScale) * RADAR_DIM_ALPHA;
+    }
 
     // Feature 1: touchless distance dimming.
     if (radarDimEnabled && present)

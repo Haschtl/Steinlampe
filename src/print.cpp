@@ -529,6 +529,8 @@ void printStatusStructured(const bool &force)
     line += radarOffGraceMs;
     line += F("|radar_hwoverride=");
     line += radarHwOverride ? F("1") : F("0");
+    line += F("|radar_velocity=");
+    line += String(radarVelocityFactor, 2);
 #else
     line += F("|radar=N/A");
 #endif
@@ -808,6 +810,7 @@ void printHelp(const bool &force)
         "  radar offdist on|off/cm <cm>/grace <ms> - Auto-OFF bei Distanz",
         "  radar debug on|off - Raw-Frame-Hexdump (Protokoll-Bringup)",
         "  radar hwoverride on|off - Motion/Offdist auch gegen Schalter/Poti erzwingen (default off)",
+        "  radar velocity <faktor> - Helligkeits-Modifier bei Geschwindigkeit (1=aus, >1 heller, <1 dunkler)",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",

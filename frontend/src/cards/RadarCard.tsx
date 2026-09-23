@@ -13,6 +13,7 @@ export function RadarCard() {
   const [motionHold, setMotionHold] = useState(5000);
   const [offCm, setOffCm] = useState(300);
   const [offGrace, setOffGrace] = useState(5000);
+  const [velocityFactor, setVelocityFactor] = useState(1);
 
   useEffect(() => {
     if (typeof status.radarDimNearCm === 'number') setDimNear(status.radarDimNearCm);
@@ -28,6 +29,10 @@ export function RadarCard() {
     if (typeof status.radarOffDistanceCm === 'number') setOffCm(status.radarOffDistanceCm);
     if (typeof status.radarOffGraceMs === 'number') setOffGrace(status.radarOffGraceMs);
   }, [status.radarOffDistanceCm, status.radarOffGraceMs]);
+
+  useEffect(() => {
+    if (typeof status.radarVelocityFactor === 'number') setVelocityFactor(status.radarVelocityFactor);
+  }, [status.radarVelocityFactor]);
 
   return (
     <Card>
@@ -148,6 +153,19 @@ export function RadarCard() {
             onChange={(e) => sendCmd(`radar hwoverride ${e.target.checked ? 'on' : 'off'}`)}
           />{' '}
           <Trans k="label.hwOverride">Auch gegen Schalter/Poti erzwingen</Trans>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span><Trans k="label.radarVelocityFactor">Velocity brightness factor (1 = off, &gt;1 brighter, &lt;1 dimmer)</Trans></span>
+          <Input
+            type="number"
+            step="0.1"
+            min="0"
+            max="10"
+            value={velocityFactor}
+            onChange={(e) => setVelocityFactor(parseFloat(e.target.value) || 0)}
+            onBlur={(e) => sendCmd(`radar velocity ${e.target.value}`)}
+          />
         </label>
 
         <p className="text-sm text-muted">

@@ -148,6 +148,15 @@ NUMBER_DEFS: tuple[dict[str, Any], ...] = (
         "cmd": lambda v: f"radar offdist grace {int(v)}",
         "available_key": "has_radar",
     },
+    {
+        "key": "radar_velocity",
+        "name": "Radar Velocity Brightness Factor",
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "cmd": lambda v: f"radar velocity {v:.2f}",
+        "available_key": "has_radar",
+    },
 )
 
 

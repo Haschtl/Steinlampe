@@ -78,6 +78,12 @@ extern uint32_t radarOffGraceMs;
 // (false = only act while hardware agrees, true = always; see inputs.h hardwareWantsOn()).
 extern bool radarHwOverride;
 
+// Optional brightness modifier scaling with target velocity. 1.0 = disabled, >1 = brighter
+// while moving, <1 = dimmer while moving. Multiplied into the pattern output in main.cpp,
+// same way ambientScale/musicModScale are.
+extern float radarVelocityFactor;
+extern float radarVelocityScale; // live, smoothed multiplier derived from radarVelocityFactor
+
 void radarSetup();
 void updateRadar();
 

@@ -176,5 +176,6 @@ constexpr float RD03_OFF_DISTANCE_CM_DEFAULT = 300.0f; ///< beyond this, target 
 constexpr uint32_t RD03_OFF_GRACE_MS_DEFAULT = 5000;   ///< debounce before acting on "left"
 constexpr bool RD03_OFF_DISTANCE_DEFAULT_ENABLED = false;
 constexpr bool RD03_HW_OVERRIDE_DEFAULT = false; ///< false = only act while switch/poti agrees, true = always
+constexpr float RD03_VELOCITY_FACTOR_DEFAULT = 1.0f; ///< brightness modifier at max velocity; 1 = disabled
 #endif
 } // namespace Settings
