@@ -161,4 +161,18 @@ constexpr uint32_t BT_SLEEP_AFTER_BLE_MS = 0;  ///< Turn off BT-SERIAL after X m
 constexpr float PWM_GAMMA_DEFAULT = 2.8f; ///< Gamma/curve to linearize perceived brightness
 
 constexpr uint32_t BT_TRUST_GRACE_MS = 60000; // 1 minute open window
+
+#if ENABLE_RD03
+// RD-03/RD-03D mmWave radar presence (independent from PresenceBLE above)
+constexpr bool RD03_DEFAULT_ENABLED = false;
+constexpr float RD03_DIM_NEAR_CM_DEFAULT = 20.0f;  ///< distance mapped to full brightness
+constexpr float RD03_DIM_FAR_CM_DEFAULT = 150.0f;  ///< distance mapped to min brightness
+constexpr bool RD03_DIM_DEFAULT_ENABLED = false;
+constexpr float RD03_MOTION_SPEED_THR_DEFAULT = 5.0f; ///< cm/s minimum to count as motion
+constexpr uint32_t RD03_MOTION_HOLD_MS_DEFAULT = 5000; ///< keep lamp on this long after last motion
+constexpr bool RD03_MOTION_ON_DEFAULT_ENABLED = false;
+constexpr float RD03_OFF_DISTANCE_CM_DEFAULT = 300.0f; ///< beyond this, target counts as "left"
+constexpr uint32_t RD03_OFF_GRACE_MS_DEFAULT = 5000;   ///< debounce before acting on "left"
+constexpr bool RD03_OFF_DISTANCE_DEFAULT_ENABLED = false;
+#endif
 } // namespace Settings

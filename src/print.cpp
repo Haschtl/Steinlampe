@@ -14,6 +14,7 @@
 #include "microphone.h"
 #include "inputs.h"
 #include "presence_ble.h"
+#include "presence_radar.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -253,6 +254,30 @@ void printStatus(const bool &force)
     }
     sendFeedback(line4,force);
 
+#if ENABLE_RD03
+    String line4c = F("Radar=");
+    if (radarEnabled)
+    {
+        line4c += F("ON present=");
+        line4c += radarPresent ? F("1") : F("0");
+        line4c += F(" dist=");
+        line4c += String(radarDistanceCm, 1);
+        line4c += F("cm speed=");
+        line4c += String(radarSpeedCmS, 1);
+        line4c += F("cm/s dim=");
+        line4c += radarDimEnabled ? F("1") : F("0");
+        line4c += F(" motion=");
+        line4c += radarMotionOnEnabled ? F("1") : F("0");
+        line4c += F(" offdist=");
+        line4c += radarOffDistanceEnabled ? F("1") : F("0");
+    }
+    else
+    {
+        line4c += F("OFF");
+    }
+    sendFeedback(line4c,force);
+#endif
+
     if (demoActive)
     {
         String demoLine = String(F("[Demo] dwell=")) + String(demoDwellMs) + F("ms list=") + quickMaskToCsv();
@@ -471,6 +496,38 @@ void printStatusStructured(const bool &force)
     line += presenceBleListCsv();
     line += F("|presence_ble_grace=");
     line += presenceBleGraceMs;
+#if ENABLE_RD03
+    line += F("|radar=");
+    line += radarEnabled ? F("ON") : F("OFF");
+    line += F("|radar_present=");
+    line += radarPresent ? F("1") : F("0");
+    line += F("|radar_dist=");
+    line += String(radarDistanceCm, 1);
+    line += F("|radar_speed=");
+    line += String(radarSpeedCmS, 1);
+    line += F("|radar_targets=");
+    line += String(radarTargetCount);
+    line += F("|radar_dim=");
+    line += radarDimEnabled ? F("1") : F("0");
+    line += F("|radar_dim_near=");
+    line += String(radarDimNearCm, 1);
+    line += F("|radar_dim_far=");
+    line += String(radarDimFarCm, 1);
+    line += F("|radar_motion=");
+    line += radarMotionOnEnabled ? F("1") : F("0");
+    line += F("|radar_motion_thr=");
+    line += String(radarMotionSpeedThreshold, 1);
+    line += F("|radar_motion_hold=");
+    line += radarMotionHoldMs;
+    line += F("|radar_offdist=");
+    line += radarOffDistanceEnabled ? F("1") : F("0");
+    line += F("|radar_off_cm=");
+    line += String(radarOffDistanceCm, 1);
+    line += F("|radar_off_grace=");
+    line += radarOffGraceMs;
+#else
+    line += F("|radar=N/A");
+#endif
 #if ENABLE_BLE
     line += F("|ble=");
     line += bleActive() ? F("UP") : F("DOWN");
@@ -740,6 +797,11 @@ void printHelp(const bool &force)
         "  presence_ble thr <-dBm> - RSSI-Schwelle (z.B. -75)",
         "  presence_ble auto on|off <on|off> - Auto-Licht AN/OFF Aktionen",
         "  presence_ble grace <ms> - Verzögerung vor Auto-Off",
+        "  radar on|off       - RD-03/RD-03D Radar aktivieren/deaktivieren",
+        "  radar dim on|off/near <cm>/far <cm> - Touchless-Dimming per Distanz",
+        "  radar motion on|off/thr <cm/s>/hold <ms> - Auto-ON bei Bewegung",
+        "  radar offdist on|off/cm <cm>/grace <ms> - Auto-OFF bei Distanz",
+        "  radar debug on|off - Raw-Frame-Hexdump (Protokoll-Bringup)",
         "  custom v1,v2,...   - Custom-Pattern setzen (0..1)",
         "  custom step <ms>   - Schrittzeit Custom-Pattern",
         "  notify [on1 off1 on2 off2] - Blinksignal (ms)",

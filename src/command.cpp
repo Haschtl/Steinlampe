@@ -18,6 +18,7 @@
 #include "microphone.h"
 #include "inputs.h"
 #include "presence_ble.h"
+#include "presence_radar.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -2135,6 +2136,159 @@ void handleCommand(String line)
         }
         return;
     }
+#if ENABLE_RD03
+    if (lower.startsWith("radar"))
+    {
+        String arg = line.substring(5);
+        arg.trim();
+        arg.toLowerCase();
+        auto sendStatus = []() {
+            sendFeedback(String(F("[Radar] ")) + (radarEnabled ? F("ON") : F("OFF")) +
+                         F(" present=") + (radarPresent ? F("1") : F("0")) +
+                         F(" dist=") + String(radarDistanceCm, 1) + F("cm speed=") + String(radarSpeedCmS, 1) +
+                         F("cm/s targets=") + String(radarTargetCount) +
+                         F(" dim=") + (radarDimEnabled ? F("1") : F("0")) +
+                         F(" near=") + String(radarDimNearCm, 1) + F(" far=") + String(radarDimFarCm, 1) +
+                         F(" motion=") + (radarMotionOnEnabled ? F("1") : F("0")) +
+                         F(" thr=") + String(radarMotionSpeedThreshold, 1) + F(" hold=") + String(radarMotionHoldMs) +
+                         F(" offdist=") + (radarOffDistanceEnabled ? F("1") : F("0")) +
+                         F(" off_cm=") + String(radarOffDistanceCm, 1) + F(" off_grace=") + String(radarOffGraceMs));
+        };
+        if (arg == "on")
+        {
+            radarEnabled = true;
+            saveSettings();
+            sendFeedback(F("[Radar] Enabled"));
+        }
+        else if (arg == "off")
+        {
+            radarEnabled = false;
+            saveSettings();
+            sendFeedback(F("[Radar] Disabled"));
+        }
+        else if (arg.startsWith("dim"))
+        {
+            String sub = arg.substring(3);
+            sub.trim();
+            if (sub == "on")
+            {
+                radarDimEnabled = true;
+                saveSettings();
+                sendFeedback(F("[Radar] Dim Enabled"));
+            }
+            else if (sub == "off")
+            {
+                radarDimEnabled = false;
+                saveSettings();
+                sendFeedback(F("[Radar] Dim Disabled"));
+            }
+            else if (sub.startsWith("near"))
+            {
+                radarDimNearCm = sub.substring(4).toFloat();
+                saveSettings();
+                sendFeedback(String(F("[Radar] Dim near=")) + String(radarDimNearCm, 1) + F("cm"));
+            }
+            else if (sub.startsWith("far"))
+            {
+                radarDimFarCm = sub.substring(3).toFloat();
+                saveSettings();
+                sendFeedback(String(F("[Radar] Dim far=")) + String(radarDimFarCm, 1) + F("cm"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar dim on|off|near <cm>|far <cm>"));
+            }
+        }
+        else if (arg.startsWith("motion"))
+        {
+            String sub = arg.substring(6);
+            sub.trim();
+            if (sub == "on")
+            {
+                radarMotionOnEnabled = true;
+                saveSettings();
+                sendFeedback(F("[Radar] Motion Enabled"));
+            }
+            else if (sub == "off")
+            {
+                radarMotionOnEnabled = false;
+                saveSettings();
+                sendFeedback(F("[Radar] Motion Disabled"));
+            }
+            else if (sub.startsWith("thr"))
+            {
+                radarMotionSpeedThreshold = sub.substring(3).toFloat();
+                saveSettings();
+                sendFeedback(String(F("[Radar] Motion thr=")) + String(radarMotionSpeedThreshold, 1) + F("cm/s"));
+            }
+            else if (sub.startsWith("hold"))
+            {
+                long v = sub.substring(4).toInt();
+                radarMotionHoldMs = v < 0 ? 0 : (uint32_t)v;
+                saveSettings();
+                sendFeedback(String(F("[Radar] Motion hold=")) + String(radarMotionHoldMs) + F("ms"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar motion on|off|thr <cm/s>|hold <ms>"));
+            }
+        }
+        else if (arg.startsWith("offdist"))
+        {
+            String sub = arg.substring(7);
+            sub.trim();
+            if (sub == "on")
+            {
+                radarOffDistanceEnabled = true;
+                saveSettings();
+                sendFeedback(F("[Radar] Off-distance Enabled"));
+            }
+            else if (sub == "off")
+            {
+                radarOffDistanceEnabled = false;
+                saveSettings();
+                sendFeedback(F("[Radar] Off-distance Disabled"));
+            }
+            else if (sub.startsWith("cm"))
+            {
+                radarOffDistanceCm = sub.substring(2).toFloat();
+                saveSettings();
+                sendFeedback(String(F("[Radar] Off-distance=")) + String(radarOffDistanceCm, 1) + F("cm"));
+            }
+            else if (sub.startsWith("grace"))
+            {
+                long v = sub.substring(5).toInt();
+                radarOffGraceMs = v < 0 ? 0 : (uint32_t)v;
+                saveSettings();
+                sendFeedback(String(F("[Radar] Off-distance grace=")) + String(radarOffGraceMs) + F("ms"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar offdist on|off|cm <cm>|grace <ms>"));
+            }
+        }
+        else if (arg.startsWith("debug"))
+        {
+            String sub = arg.substring(5);
+            sub.trim();
+            bool v;
+            if (parseBool(sub, v))
+            {
+                radarDebugRaw = v;
+                sendFeedback(String(F("[Radar] Debug raw ")) + (v ? F("ON") : F("OFF")));
+            }
+            else
+            {
+                sendFeedback(F("Usage: radar debug on|off"));
+            }
+        }
+        else
+        {
+            sendStatus();
+        }
+        return;
+    }
+#endif
     if (lower.startsWith("cfg"))
     {
         String arg = line.substring(3);

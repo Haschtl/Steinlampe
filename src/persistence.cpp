@@ -13,6 +13,7 @@
 #include "inputs.h"
 #include "filters.h"
 #include "presence_ble.h"
+#include "presence_radar.h"
 #include "print.h"
 
 // ---------- Persistenz ----------
@@ -80,6 +81,18 @@ static const char *PREF_KEY_NOTIFY_MIN = "notif_min";
 static const char *PREF_KEY_PBLE_RSSI = "pble_rssi";
 static const char *PREF_KEY_PBLE_AUTO_ON = "pble_auto_on";
 static const char *PREF_KEY_PBLE_AUTO_OFF = "pble_auto_off";
+#if ENABLE_RD03
+static const char *PREF_KEY_RD_EN = "rd_en";
+static const char *PREF_KEY_RD_DIM_EN = "rd_dim_en";
+static const char *PREF_KEY_RD_DIM_NEAR = "rd_dim_near";
+static const char *PREF_KEY_RD_DIM_FAR = "rd_dim_far";
+static const char *PREF_KEY_RD_MO_EN = "rd_mo_en";
+static const char *PREF_KEY_RD_MO_THR = "rd_mo_thr";
+static const char *PREF_KEY_RD_MO_HOLD = "rd_mo_hold";
+static const char *PREF_KEY_RD_OFF_EN = "rd_off_en";
+static const char *PREF_KEY_RD_OFF_CM = "rd_off_cm";
+static const char *PREF_KEY_RD_OFF_GRACE = "rd_off_grace";
+#endif
 #if ENABLE_POTI
 static const char *PREF_KEY_POTI_EN = "poti_en";
 static const char *PREF_KEY_POTI_ALPHA = "poti_a";
@@ -401,6 +414,28 @@ void exportConfig()
     cfg += F(" music_gain=");
     cfg += String(musicGain, 2);
 #endif
+#if ENABLE_RD03
+    cfg += F(" radar_en=");
+    cfg += radarEnabled ? F("on") : F("off");
+    cfg += F(" radar_dim=");
+    cfg += radarDimEnabled ? F("on") : F("off");
+    cfg += F(" radar_dim_near=");
+    cfg += String(radarDimNearCm, 1);
+    cfg += F(" radar_dim_far=");
+    cfg += String(radarDimFarCm, 1);
+    cfg += F(" radar_motion=");
+    cfg += radarMotionOnEnabled ? F("on") : F("off");
+    cfg += F(" radar_motion_thr=");
+    cfg += String(radarMotionSpeedThreshold, 1);
+    cfg += F(" radar_motion_hold=");
+    cfg += radarMotionHoldMs;
+    cfg += F(" radar_offdist=");
+    cfg += radarOffDistanceEnabled ? F("on") : F("off");
+    cfg += F(" radar_off_cm=");
+    cfg += String(radarOffDistanceCm, 1);
+    cfg += F(" radar_off_grace=");
+    cfg += radarOffGraceMs;
+#endif
     if (notifyActive)
         cfg += F(" notify=active");
     sendFeedback(cfg);
@@ -427,6 +462,18 @@ void saveSettings()
     prefs.putInt(PREF_KEY_PBLE_RSSI, presenceBleRssiThreshold);
     prefs.putBool(PREF_KEY_PBLE_AUTO_ON, presenceBleAutoOn);
     prefs.putBool(PREF_KEY_PBLE_AUTO_OFF, presenceBleAutoOff);
+#if ENABLE_RD03
+    prefs.putBool(PREF_KEY_RD_EN, radarEnabled);
+    prefs.putBool(PREF_KEY_RD_DIM_EN, radarDimEnabled);
+    prefs.putFloat(PREF_KEY_RD_DIM_NEAR, radarDimNearCm);
+    prefs.putFloat(PREF_KEY_RD_DIM_FAR, radarDimFarCm);
+    prefs.putBool(PREF_KEY_RD_MO_EN, radarMotionOnEnabled);
+    prefs.putFloat(PREF_KEY_RD_MO_THR, radarMotionSpeedThreshold);
+    prefs.putUInt(PREF_KEY_RD_MO_HOLD, radarMotionHoldMs);
+    prefs.putBool(PREF_KEY_RD_OFF_EN, radarOffDistanceEnabled);
+    prefs.putFloat(PREF_KEY_RD_OFF_CM, radarOffDistanceCm);
+    prefs.putUInt(PREF_KEY_RD_OFF_GRACE, radarOffGraceMs);
+#endif
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
     prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
@@ -562,6 +609,18 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     presenceBleAutoOn = Settings::PRESENCE_BLE_AUTO_ON_DEFAULT;
     presenceBleAutoOff = Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT;
     presenceBleLastOffByPresence = false;
+#if ENABLE_RD03
+    radarEnabled = Settings::RD03_DEFAULT_ENABLED;
+    radarDimEnabled = Settings::RD03_DIM_DEFAULT_ENABLED;
+    radarDimNearCm = Settings::RD03_DIM_NEAR_CM_DEFAULT;
+    radarDimFarCm = Settings::RD03_DIM_FAR_CM_DEFAULT;
+    radarMotionOnEnabled = Settings::RD03_MOTION_ON_DEFAULT_ENABLED;
+    radarMotionSpeedThreshold = Settings::RD03_MOTION_SPEED_THR_DEFAULT;
+    radarMotionHoldMs = Settings::RD03_MOTION_HOLD_MS_DEFAULT;
+    radarOffDistanceEnabled = Settings::RD03_OFF_DISTANCE_DEFAULT_ENABLED;
+    radarOffDistanceCm = Settings::RD03_OFF_DISTANCE_CM_DEFAULT;
+    radarOffGraceMs = Settings::RD03_OFF_GRACE_MS_DEFAULT;
+#endif
     rampDurationMs = Settings::DEFAULT_RAMP_MS;
     idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
     rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON;
@@ -754,6 +813,18 @@ void loadSettings()
     presenceBleRssiThreshold = prefs.getInt(PREF_KEY_PBLE_RSSI, Settings::PRESENCE_BLE_RSSI_THRESHOLD_DEFAULT);
     presenceBleAutoOn = prefs.getBool(PREF_KEY_PBLE_AUTO_ON, Settings::PRESENCE_BLE_AUTO_ON_DEFAULT);
     presenceBleAutoOff = prefs.getBool(PREF_KEY_PBLE_AUTO_OFF, Settings::PRESENCE_BLE_AUTO_OFF_DEFAULT);
+#if ENABLE_RD03
+    radarEnabled = prefs.getBool(PREF_KEY_RD_EN, Settings::RD03_DEFAULT_ENABLED);
+    radarDimEnabled = prefs.getBool(PREF_KEY_RD_DIM_EN, Settings::RD03_DIM_DEFAULT_ENABLED);
+    radarDimNearCm = prefs.getFloat(PREF_KEY_RD_DIM_NEAR, Settings::RD03_DIM_NEAR_CM_DEFAULT);
+    radarDimFarCm = prefs.getFloat(PREF_KEY_RD_DIM_FAR, Settings::RD03_DIM_FAR_CM_DEFAULT);
+    radarMotionOnEnabled = prefs.getBool(PREF_KEY_RD_MO_EN, Settings::RD03_MOTION_ON_DEFAULT_ENABLED);
+    radarMotionSpeedThreshold = prefs.getFloat(PREF_KEY_RD_MO_THR, Settings::RD03_MOTION_SPEED_THR_DEFAULT);
+    radarMotionHoldMs = prefs.getUInt(PREF_KEY_RD_MO_HOLD, Settings::RD03_MOTION_HOLD_MS_DEFAULT);
+    radarOffDistanceEnabled = prefs.getBool(PREF_KEY_RD_OFF_EN, Settings::RD03_OFF_DISTANCE_DEFAULT_ENABLED);
+    radarOffDistanceCm = prefs.getFloat(PREF_KEY_RD_OFF_CM, Settings::RD03_OFF_DISTANCE_CM_DEFAULT);
+    radarOffGraceMs = prefs.getUInt(PREF_KEY_RD_OFF_GRACE, Settings::RD03_OFF_GRACE_MS_DEFAULT);
+#endif
     rampDurationMs = prefs.getUInt(PREF_KEY_RAMP_MS, Settings::DEFAULT_RAMP_MS);
     if (rampDurationMs < 50)
         rampDurationMs = Settings::DEFAULT_RAMP_MS;
@@ -1163,6 +1234,58 @@ void importConfig(const String &args)
             if (parseBool(val, v))
                 presenceBleAutoOff = v;
         }
+#if ENABLE_RD03
+        else if (key == "radar_en")
+        {
+            bool v;
+            if (parseBool(val, v))
+                radarEnabled = v;
+        }
+        else if (key == "radar_dim")
+        {
+            bool v;
+            if (parseBool(val, v))
+                radarDimEnabled = v;
+        }
+        else if (key == "radar_dim_near")
+        {
+            radarDimNearCm = val.toFloat();
+        }
+        else if (key == "radar_dim_far")
+        {
+            radarDimFarCm = val.toFloat();
+        }
+        else if (key == "radar_motion")
+        {
+            bool v;
+            if (parseBool(val, v))
+                radarMotionOnEnabled = v;
+        }
+        else if (key == "radar_motion_thr")
+        {
+            radarMotionSpeedThreshold = val.toFloat();
+        }
+        else if (key == "radar_motion_hold")
+        {
+            long v = val.toInt();
+            radarMotionHoldMs = v < 0 ? 0 : (uint32_t)v;
+        }
+        else if (key == "radar_offdist")
+        {
+            bool v;
+            if (parseBool(val, v))
+                radarOffDistanceEnabled = v;
+        }
+        else if (key == "radar_off_cm")
+        {
+            radarOffDistanceCm = val.toFloat();
+        }
+        else if (key == "radar_off_grace")
+        {
+            long v = val.toInt();
+            radarOffGraceMs = v < 0 ? 0 : (uint32_t)v;
+        }
+#endif
 #if ENABLE_TOUCH_DIM
         else if (key == "touch_dim")
         {

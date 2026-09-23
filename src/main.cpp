@@ -29,6 +29,7 @@
 #include "microphone.h"
 #include "inputs.h"
 #include "presence_ble.h"
+#include "presence_radar.h"
 #include "quickmode.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -446,6 +447,9 @@ void setup()
 #if ENABLE_PUSH_BUTTON
   pinMode(PIN_PUSHBTN, INPUT_PULLUP);
 #endif
+#if ENABLE_RD03
+  radarSetup();
+#endif
 
   loadSettings();
   trustSetBootMs(millis());
@@ -515,6 +519,9 @@ void loop()
 #endif
 #if ENABLE_EXT_INPUT
   updateExternalInput();
+#endif
+#if ENABLE_RD03
+  updateRadar();
 #endif
   flushLiveState();
   maybeLightSleep();

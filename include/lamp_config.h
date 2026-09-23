@@ -49,6 +49,10 @@
 #define ENABLE_ANALOG_OUTPUT 0
 #endif
 
+#ifndef ENABLE_RD03
+#define ENABLE_RD03 0
+#endif
+
 #ifndef PWM_INVERT_OUTPUT
 #define PWM_INVERT_OUTPUT 0
 #endif
