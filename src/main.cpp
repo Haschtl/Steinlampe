@@ -237,6 +237,13 @@ void updatePatternEngine()
   uint32_t elapsed = now - patternStartMs;
   uint32_t scaledElapsed = (uint32_t)((float)elapsed * patternSpeedScale);
   float relative = clamp01(p.evaluate(scaledElapsed));
+#if ENABLE_RD03
+  if (p.react && radarEnabled && isPatternReactive(currentPattern))
+  {
+    PatternSensorState sensors{radarPresent, radarDistanceCm, radarSpeedCmS, radarTargetCount};
+    relative = clamp01(p.react(relative, scaledElapsed, sensors));
+  }
+#endif
   if (patternInvert)
     relative = 1.0f - relative;
   float span = patternMarginHigh - patternMarginLow;
@@ -251,7 +258,8 @@ void updatePatternEngine()
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
 #if ENABLE_RD03
   combined *= radarVelocityScale;
-  combined *= radarReactiveScale;
+  if (!p.react)
+    combined *= radarReactiveScale; // bespoke patterns handle their own reaction above instead
 #endif
 
   // Notifications: ignore pattern; use brightness+ambient only with a floor.

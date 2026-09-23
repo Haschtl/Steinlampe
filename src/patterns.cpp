@@ -1115,6 +1115,55 @@ float patternTiefseeBiolumineszenz(uint32_t ms)
   return clamp01(base + bloom);
 }
 
+// ---------- Bespoke radar reactions (see PatternSensorState / Pattern::react in patterns.h) ----------
+// Called only while a pattern is flagged sensor-reactive and radar is enabled; overrides the
+// generic presence/distance brightness fallback for that pattern specifically.
+
+/// Flame family (candle/campfire/torch): motion adds extra flicker jitter, like a draft.
+float reactFlickerBoost(float baseLevel, uint32_t elapsedMs, const PatternSensorState &sensors)
+{
+  if (!sensors.radarPresent)
+    return baseLevel;
+  float motion = clamp01(fabsf(sensors.radarSpeedCmS) / 60.0f);
+  if (motion <= 0.01f)
+    return baseLevel;
+  float jitter = (smoothNoise(elapsedMs, 45, 0xF1) - 0.5f) * 0.35f * motion;
+  return clamp01(baseLevel + jitter);
+}
+
+/// Fahnenwind: fast movement nearby kicks off an extra gust on top of the ambient wind.
+float reactWindGust(float baseLevel, uint32_t elapsedMs, const PatternSensorState &sensors)
+{
+  if (!sensors.radarPresent)
+    return baseLevel;
+  float motion = clamp01(fabsf(sensors.radarSpeedCmS) / 50.0f);
+  if (motion <= 0.01f)
+    return baseLevel;
+  float gust = (smoothNoise(elapsedMs, 80, 0xF2) - 0.5f) * 0.5f * motion;
+  return clamp01(baseLevel + gust);
+}
+
+/// Ocean Waves: someone approaching disturbs the water - extra ripple and a slight lift.
+float reactWaveDisturbance(float baseLevel, uint32_t elapsedMs, const PatternSensorState &sensors)
+{
+  if (!sensors.radarPresent)
+    return baseLevel;
+  float proximity = clamp01(1.0f - sensors.radarDistanceCm / 150.0f);
+  if (proximity <= 0.01f)
+    return baseLevel;
+  float ripple = (smoothNoise(elapsedMs, 70, 0xF3) - 0.5f) * 0.25f * proximity;
+  return clamp01(baseLevel + ripple + 0.08f * proximity);
+}
+
+/// Alert/SOS: only actually alert while someone is there to see it, otherwise stay idle/dim.
+float reactPresenceGate(float baseLevel, uint32_t elapsedMs, const PatternSensorState &sensors)
+{
+  (void)elapsedMs;
+  if (sensors.radarPresent)
+    return baseLevel;
+  return baseLevel * 0.04f;
+}
+
 // Custom pattern is provided by main.cpp (patternCustom)
 extern float patternCustom(uint32_t ms);
 #if ENABLE_MUSIC_MODE
@@ -1142,9 +1191,9 @@ const Pattern PATTERNS[] = {
     {"TV Static", patternTVStatic, 8000},
     {"HAL-9000", patternHal9000, 10000},
     {"Funkeln", patternSparkle, 12000},
-    {"Kerze Soft", patternCandleSoft, 16000},
-    {"Kerze", patternCandle, 16000},
-    {"Lagerfeuer", patternCampfire, 18000},
+    {"Kerze Soft", patternCandleSoft, 16000, reactFlickerBoost},
+    {"Kerze", patternCandle, 16000, reactFlickerBoost},
+    {"Lagerfeuer", patternCampfire, 18000, reactFlickerBoost},
     {"Stufen", patternStepFade, 14000},
     {"Zwinkern", patternTwinkle, 16000},
     {"Gluehwuermchen", patternFireflies, 12000},
@@ -1162,7 +1211,7 @@ const Pattern PATTERNS[] = {
     {"Gaslicht", patternGaslight, 0},
     {"Neon", patternNeonSign, 0},
     {"Dimmer Glow", patternDimmerGlow, 0},
-    {"Fackel", patternTorch, 0},
+    {"Fackel", patternTorch, 0, reactFlickerBoost},
     {"Gewitter", patternThunder, 0},
     {"Distant Storm", patternDistantStorm, 0},
     {"Rolling Thunder", patternRollingThunder, 0},
@@ -1172,9 +1221,9 @@ const Pattern PATTERNS[] = {
     {"Mixed Storm", patternMixedStorm, 0},
     {"Sonnenuntergang", patternSunset, 0},
     {"Gamma Probe", patternGammaProbe, 0},
-    {"Alert", patternAlert, 0},
-    {"SOS", patternSOS, 0},
-    {"Fahnenwind", patternFahnenwind, 0},
+    {"Alert", patternAlert, 0, reactPresenceGate},
+    {"SOS", patternSOS, 0, reactPresenceGate},
+    {"Fahnenwind", patternFahnenwind, 0, reactWindGust},
     {"Fahnenwelle", patternFahnenwelle, 0},
     {"Enthuellung", patternEnthuellung, 0},
     {"Scheinwerfer", patternScheinwerfer, 0},
@@ -1183,7 +1232,7 @@ const Pattern PATTERNS[] = {
     {"Box Breathing", patternBoxBreathing, 0},
     {"Dr. Weil 4-7-8", patternDrWeil478, 0},
     {"Langes Ausatmen", patternLangesAusatmen, 0},
-    {"Ocean Waves", patternOceanWaves, 0},
+    {"Ocean Waves", patternOceanWaves, 0, reactWaveDisturbance},
     {"Unterwasser Lichtspiel", patternUnterwasserLichtspiel, 0},
     {"Tiefsee Biolumineszenz", patternTiefseeBiolumineszenz, 0},
     {"Custom", patternCustom, 0},
