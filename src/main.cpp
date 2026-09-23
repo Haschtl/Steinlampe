@@ -251,6 +251,7 @@ void updatePatternEngine()
   float combined = lampEnabled ? relative * masterBrightness * ambientScale * outputScale : 0.0f;
 #if ENABLE_RD03
   combined *= radarVelocityScale;
+  combined *= radarReactiveScale;
 #endif
 
   // Notifications: ignore pattern; use brightness+ambient only with a floor.

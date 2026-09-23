@@ -7,6 +7,7 @@
 #include "comms.h"
 #include "inputs.h"
 #include "lamp_state.h"
+#include "pattern.h"
 #include "utils.h"
 
 // ---------- Runtime state ----------
@@ -33,6 +34,11 @@ bool radarHwOverride = Settings::RD03_HW_OVERRIDE_DEFAULT;
 
 float radarVelocityFactor = Settings::RD03_VELOCITY_FACTOR_DEFAULT;
 float radarVelocityScale = 1.0f;
+
+// Generic fallback for patterns flagged "sensor-reactive" (see pattern.h isPatternReactive())
+// that don't define their own behavior yet: a gentle presence/distance-based intensity boost.
+// Deliberately not user-tunable - it's a sensible default, not a primary feature.
+float radarReactiveScale = 1.0f;
 
 // ---------- UART framing ----------
 static HardwareSerial RadarSerial(RD03_UART_NUM);
@@ -61,6 +67,11 @@ static const float RADAR_DIM_DELTA_MIN = 0.02f;
 // scales linearly (clamped) between 0 and this speed. Not exposed as a setting, keeps the
 // feature to the single "factor" knob the user configures.
 static const float RADAR_VELOCITY_REF_SPEED_CMS = 60.0f;
+
+// Generic reactive-pattern fallback tuning (see radarReactiveScale above). Fixed constants,
+// not settings - this is a default behavior, not a feature with its own knobs.
+static const float RADAR_REACTIVE_BOOST = 0.20f;     // up to +20% brighter when close/present
+static const float RADAR_REACTIVE_RANGE_CM = 120.0f; // fades out to no effect by this distance
 
 static uint32_t radarMotionLastQualifyMs = 0;
 static uint32_t radarOffGraceDeadline = 0;
@@ -238,6 +249,7 @@ void updateRadar()
     if (!radarEnabled)
     {
         radarVelocityScale = 1.0f; // don't leave a stale multiplier applied once radar is disabled
+        radarReactiveScale = 1.0f;
         return;
     }
 
@@ -254,6 +266,18 @@ void updateRadar()
             target = 1.0f + (radarVelocityFactor - 1.0f) * normSpeed;
         }
         radarVelocityScale += (target - radarVelocityScale) * RADAR_DIM_ALPHA;
+    }
+
+    // Generic fallback for patterns flagged sensor-reactive (pat reactive on) that don't define
+    // their own behavior: a gentle brightness boost when radar detects someone close by.
+    {
+        float target = 1.0f;
+        if (isPatternReactive(currentPattern) && present)
+        {
+            float proximity = clamp01(1.0f - radarDistanceCm / RADAR_REACTIVE_RANGE_CM);
+            target = 1.0f + RADAR_REACTIVE_BOOST * proximity;
+        }
+        radarReactiveScale += (target - radarReactiveScale) * RADAR_DIM_ALPHA;
     }
 
     // Feature 1: touchless distance dimming.

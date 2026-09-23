@@ -84,6 +84,10 @@ extern bool radarHwOverride;
 extern float radarVelocityFactor;
 extern float radarVelocityScale; // live, smoothed multiplier derived from radarVelocityFactor
 
+// Generic reactive-pattern fallback: a smoothed presence/distance-based intensity multiplier,
+// applied only while the currently active pattern is flagged sensor-reactive (see pattern.h).
+extern float radarReactiveScale;
+
 void radarSetup();
 void updateRadar();
 
