@@ -33,6 +33,24 @@ jobs:
           name: firmware-quarzlampe
           path: .pio/build/quarzlampe/firmware.bin
 
+      - name: Build (quarzlampe_rd03)
+        run: pio run -e quarzlampe_rd03
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-quarzlampe_rd03
+          path: .pio/build/quarzlampe_rd03/firmware.bin
+
+      - name: Build (quarzlampe_rd03d)
+        run: pio run -e quarzlampe_rd03d
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-quarzlampe_rd03d
+          path: .pio/build/quarzlampe_rd03d/firmware.bin
+
       - name: Build (desk_lamp)
         run: pio run -e desk_lamp
 
