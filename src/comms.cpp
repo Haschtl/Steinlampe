@@ -538,10 +538,20 @@ class LampBleServerCallbacks : public BLEServerCallbacks
 
 // Persists across GATT writes so a command split across two "Write Without Response" PDUs
 // (no trailing '\n' in the first one) is reassembled instead of being dispatched truncated.
+// Only ever touched from the main loop (see pollCommunications) - never from onWrite().
 static String bufferBle;
 
+// Raw bytes handed off from onWrite() to the main loop. onWrite() runs on Bluedroid's
+// BTC_TASK, which has a small internal stack; handleCommand() is a large dispatcher that used
+// to run directly from onWrite() and could overflow it (reproduced on ESP32-S3: "Guru
+// Meditation Error ... Stack canary watchpoint triggered (BTC_TASK)", reliably right after a
+// few quick commands). onWrite() now only ever appends bytes here; pollCommunications() drains
+// this into bufferBle and dispatches on the main loop's much larger stack instead.
+static String bleRxPending;
+static SemaphoreHandle_t bleRxMutex = nullptr;
+
 /**
- * @brief Receives BLE writes, splits into lines, and forwards commands.
+ * @brief Receives BLE writes and hands the raw bytes off to the main loop (see bleRxPending).
  */
 class LampBleCommandCallbacks : public BLECharacteristicCallbacks
 {
@@ -551,10 +561,16 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     if (value.empty())
       return;
     lastBtActivityMs = millis();
-    for (char c : value)
+    if (!bleRxMutex || xSemaphoreTake(bleRxMutex, pdMS_TO_TICKS(20)) != pdTRUE)
+      return;
+    if (bleRxPending.length() < LINE_BUFFER_MAX)
     {
-      processInputChar(bufferBle, c);
+      size_t room = LINE_BUFFER_MAX - bleRxPending.length();
+      size_t n = value.size() < room ? value.size() : room;
+      for (size_t i = 0; i < n; i++)
+        bleRxPending += value[i];
     }
+    xSemaphoreGive(bleRxMutex);
   }
 };
 
@@ -743,6 +759,8 @@ void setupCommunications()
 #if ENABLE_BLE
   if (!bleNotifyMutex)
     bleNotifyMutex = xSemaphoreCreateMutex();
+  if (!bleRxMutex)
+    bleRxMutex = xSemaphoreCreateMutex();
 #endif
 #if ENABLE_BT_SERIAL
   startBtSerial();
@@ -812,6 +830,14 @@ void pollCommunications()
   }
 #endif
 #if ENABLE_BLE
+  if (bleRxMutex && bleRxPending.length() && xSemaphoreTake(bleRxMutex, 0) == pdTRUE)
+  {
+    String chunk = bleRxPending;
+    bleRxPending = "";
+    xSemaphoreGive(bleRxMutex);
+    for (size_t i = 0; i < chunk.length(); i++)
+      processInputChar(bufferBle, chunk[i]);
+  }
   flushBleNotification();
 #endif
 }
