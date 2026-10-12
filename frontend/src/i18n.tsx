@@ -445,7 +445,6 @@ const translations: Record<Lang, Record<string, string>> = {
     "filter.presets": "Presets",
     "label.repeat": "Wiederholen",
     "label.notifyMin": "Min. Notify-Helligkeit (%)",
-    "label.notifyMin": "Notify min (%)",
     "label.lightGain": "Licht-Gain",
     "label.musicGain": "Musik-Gain",
     "label.clapThr": "Klatsch-Schwelle",

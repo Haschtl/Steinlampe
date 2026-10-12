@@ -31,8 +31,9 @@ export function LightCard() {
     if (typeof status.lightRawMin === 'number') setRawMin(status.lightRawMin);
     if (typeof status.lightRawMax === 'number') setRawMax(status.lightRawMax);
     if (typeof status.lightRaw === 'number') {
+      const lightRaw = status.lightRaw;
       setHistory((prev) => {
-        const next = [...prev, status.lightRaw];
+        const next = [...prev, lightRaw];
         if (next.length > 80) next.shift();
         return next;
       });

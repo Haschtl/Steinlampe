@@ -23,8 +23,9 @@ export function TouchCard() {
     if (typeof status.touchDimStep === 'number') setTouchStep(status.touchDimStep);
     if (typeof status.lastTouchLine === 'string') setLastLine(status.lastTouchLine);
     if (typeof status.touchRaw === 'number') {
+      const touchRaw = status.touchRaw;
       setRawHistory((prev) => {
-        const next = [...prev, status.touchRaw];
+        const next = [...prev, touchRaw];
         if (next.length > 80) next.shift();
         return next;
       });

@@ -35,15 +35,17 @@ export function MusicCard() {
     if (typeof status.clapCmd2 === 'string') setClap2(status.clapCmd2);
     if (typeof status.clapCmd3 === 'string') setClap3(status.clapCmd3);
     if (typeof status.musicEnv === 'number') {
+      const musicEnv = status.musicEnv;
       setEnvHistory((prev) => {
-        const next = [...prev, status.musicEnv];
+        const next = [...prev, musicEnv];
         if (next.length > 80) next.shift();
         return next;
       });
     }
     if (typeof status.musicLevel === 'number') {
+      const musicLevel = status.musicLevel;
       setLevelHistory((prev) => {
-        const next = [...prev, status.musicLevel];
+        const next = [...prev, musicLevel];
         if (next.length > 80) next.shift();
         return next;
       });

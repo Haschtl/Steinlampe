@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
@@ -180,7 +180,7 @@ export default function App() {
     clearPendingCfg();
   }, [clearPendingCfg, pendingCfg, sendCmd]);
 
-  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: JSX.Element }[] = [
+  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: ReactElement }[] = [
     { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
     { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
     { key: 'filters', label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },

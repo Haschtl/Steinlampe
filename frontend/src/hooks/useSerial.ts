@@ -55,7 +55,7 @@ export function useSerial(): SerialApi {
     setKnownSerials({ ...knownSerialsRef.current });
   }, []);
   const portRef = useRef<SerialPort | null>(null);
-  const readerCancelRef = useRef<() => void>();
+  const readerCancelRef = useRef<(() => void) | undefined>(undefined);
   const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
 
   const pushLog = useCallback(
@@ -134,8 +134,8 @@ export function useSerial(): SerialApi {
     setStatus((s) => ({ ...s, connecting: true }));
     try {
       const port = await navigator.serial.requestPort();
-      const info = port.getInfo ? port.getInfo() : {};
-      const id = port.getInfo ? JSON.stringify(info) : '';
+      const info = port.getInfo();
+      const id = JSON.stringify(info);
       await port.open({ baudRate: 115200 });
       portRef.current = port;
       if (id) {
