@@ -53,6 +53,17 @@ void handleCommand(String line)
     String lower = line;
     lower.toLowerCase();
 
+#if ENABLE_BLE_TRUST_TOKEN
+    // The app replays a stored token as its first write on every connect, in
+    // case the firmware is holding this connection pending auth (unrecognized
+    // BLE address, see onConnect in comms.cpp). If we're here at all, this
+    // connection was already trusted via the normal path, so the token is
+    // redundant - swallow it silently instead of queuing an "Unbekanntes
+    // Kommando" reply, which would just add extra traffic ahead of the status
+    // snapshot every single connect for no benefit.
+    if (lower.startsWith("auth "))
+        return;
+#endif
     if (lower == "help")
     {
         printHelp();

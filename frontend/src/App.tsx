@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
+import { Bluetooth, Copy, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
 import { X } from 'lucide-react';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useConnection } from './context/connection';
@@ -88,6 +88,11 @@ export function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // This is just a liveness heartbeat for the "stale" indicator above, not
+    // the primary data source - the lamp already pushes a lightweight STATE|
+    // line (plus other sensor/input lines) the moment anything actually
+    // changes (see print.cpp emitLiveState), so this doesn't need to be
+    // frequent. Interval must stay comfortably under isStale's threshold.
     if (!status.connected) return;
     const id = setInterval(() => {
       refreshStatus();
@@ -449,6 +454,24 @@ export function RootLayout() {
                   </label>
                   <Button size="sm" variant="ghost" onClick={() => setLog([])}>
                     {t("btn.clear", "Clear")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const text = log
+                        .map((l) => `${new Date(l.ts).toLocaleTimeString([], { hour12: false })} ${l.line}`)
+                        .join('\n');
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        toast.success(t('log.copied', 'Log copied'));
+                      } catch (e) {
+                        toast.error(t('log.copyFailed', 'Copy failed') + ': ' + (e instanceof Error ? e.message : String(e)));
+                      }
+                    }}
+                  >
+                    <Copy className="mr-1 h-3.5 w-3.5" />
+                    {t('btn.copy', 'Copy')}
                   </Button>
                 </div>
                 <div
