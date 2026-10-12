@@ -24,9 +24,16 @@ const int LEDC_FREQ = 0;
 const int LEDC_RES = 8; // DAC uses 8-bit values
 const int PWM_MAX = 255;
 #else
-// Lower PWM frequency to gain one more bit of resolution (quieter LEDs).
+// Lower PWM frequency to gain extra resolution (quieter LEDs). ESP32-S3's LEDC hardware caps
+// duty resolution at 14 bits (vs. up to 20 on the classic ESP32); ledcSetup() silently fails
+// above that ("No more LEDC channels available! ... or bit width too big (maximum 14)"),
+// which left the channel uninitialized and the output permanently stuck/off on-air.
 const int LEDC_FREQ = 1000;
+#if CONFIG_IDF_TARGET_ESP32S3
+const int LEDC_RES = 14; // max duty resolution on ESP32-S3's LEDC
+#else
 const int LEDC_RES = 16; // 16-bit @1 kHz fits LEDC clock
+#endif
 const int PWM_MAX = (1 << LEDC_RES) - 1;
 #endif
 float outputGamma = Settings::PWM_GAMMA_DEFAULT;
