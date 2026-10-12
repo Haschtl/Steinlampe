@@ -96,3 +96,15 @@ BLE UUIDs (default):
     board_build.partitions = partitions/quarzlampe_no_ota_large_nvs.csv
     ```
     This gives ~3.4 MB app space, 64 KB NVS, ~448 KB SPIFFS, no OTA slot.
+
+## Known Limitations (für später)
+
+- **BLE hat kein Pairing-Confirmation-Gate.** BT-Serial verlangt vor der ersten Befehlsannahme
+  von einem unbekannten Gerät eine physische Bestätigung per Schalter/Poti (`btPairPending` in
+  `src/comms.cpp`). Für BLE existiert dieses Gate nicht – ein unbekannter BLE-Client, der
+  innerhalb des Boot-Grace-Fensters verbindet, kann sofort Befehle senden. Relevant v.a. für
+  reine BLE-Hardware wie `on_air` (ESP32-S3, kein Classic BT).
+- **BLE-Radio schläft nie ein.** BT-Serial hat einen Boot-/Idle-Timeout (`maybeSleepBtSerial`),
+  der den Classic-BT-Funk nach Inaktivität abschaltet. Für BLE gibt es kein Äquivalent – es
+  bleibt dauerhaft advertised/verbindbar. Aktuell gewünschtes Verhalten, aber als Einschränkung
+  dokumentiert.

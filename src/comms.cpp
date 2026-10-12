@@ -160,7 +160,7 @@ bool withinGrace()
 bool allowBleAddr(const String &addr)
 {
   if (addr.isEmpty())
-    return true;
+    return withinGrace(); // no MAC? allow only during grace
   if (withinGrace())
     return true;
   return listContains(trustedBle, addr);
@@ -477,6 +477,13 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
     bleClientConnected = true;
+    if (!param)
+    {
+      lastBtActivityMs = millis();
+      if (feedbackAllowed())
+        Serial.println(F("[BLE] Verbunden"));
+      return;
+    }
     String addr = formatAddr(param->connect.remote_bda);
     bleLastAddr = addr;
     if (!allowBleAddr(addr))
@@ -511,6 +518,13 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   void onDisconnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
     bleClientConnected = false;
+    if (!param)
+    {
+      if (feedbackAllowed())
+        Serial.println(F("[BLE] Getrennt"));
+      BLEDevice::startAdvertising();
+      return;
+    }
     String addr = formatAddr(param->disconnect.remote_bda);
     if (feedbackAllowed())
     {
@@ -522,10 +536,9 @@ class LampBleServerCallbacks : public BLEServerCallbacks
   }
 };
 
-// Sized to comfortably fit an "ota chunk <base64>" command (BLE OTA chunks are up to 180 raw
-// bytes -> ~240 base64 chars, kept conservative since a single GATT write can't exceed the
-// negotiated ATT MTU - see frontend/src/lib/ota.ts) on top of normal short commands.
-static const size_t BLE_LINE_BUFFER_MAX = 320;
+// Persists across GATT writes so a command split across two "Write Without Response" PDUs
+// (no trailing '\n' in the first one) is reassembled instead of being dispatched truncated.
+static String bufferBle;
 
 /**
  * @brief Receives BLE writes, splits into lines, and forwards commands.
@@ -537,30 +550,10 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     std::string value = characteristic->getValue();
     if (value.empty())
       return;
-    String line;
+    lastBtActivityMs = millis();
     for (char c : value)
     {
-      if (c == '\r' || c == '\n')
-      {
-        line.trim();
-        if (!line.isEmpty())
-        {
-          armFeedback();
-          handleCommand(line);
-        }
-        line = "";
-      }
-      else if (line.length() < BLE_LINE_BUFFER_MAX)
-      {
-        line += c;
-      }
-    }
-    line.trim();
-    if (!line.isEmpty())
-    {
-      lastBtActivityMs = millis();
-      armFeedback();
-      handleCommand(line);
+      processInputChar(bufferBle, c);
     }
   }
 };

@@ -16,6 +16,9 @@ constexpr const char *BT_NAME_DEFAULT = "Quarzlampe-SPP";
 #elif SCHREIBTISCHLAMPE
 constexpr const char *BLE_NAME_DEFAULT = "Schreibtischlampe";
 constexpr const char *BT_NAME_DEFAULT = "Schreibtischlampe-SPP";
+#elif ON_AIR
+constexpr const char *BLE_NAME_DEFAULT = "ON-AIR Lampe";
+constexpr const char *BT_NAME_DEFAULT = "ON-AIR Lampe-SPP";
 #else
 constexpr const char *BLE_NAME_DEFAULT = "Superduperlampe";
 constexpr const char *BT_NAME_DEFAULT = "Superduperlampe-SPP";
