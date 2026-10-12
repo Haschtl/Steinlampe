@@ -99,7 +99,9 @@ export default function App() {
           if (n.trim().startsWith('{') || lower.includes('bluetoothserviceclassid') || uuidLike) return 'Quarzlampe';
           return n;
         })()
-      : undefined;
+      : status.connected
+        ? 'Quarzlampe'
+        : t('status.notConnected', 'Not connected');
   const logLines = log.slice(-150);
   const logRef = useRef<HTMLDivElement | null>(null);
   const lastStatusAge = status.lastStatusAt ? Date.now() - status.lastStatusAt : null;
@@ -283,7 +285,7 @@ export default function App() {
               />
               <div className="flex flex-1 flex-col">
                 <h1 className="text-xl font-semibold tracking-wide">
-                  {headerTitle || <Trans k="title.app">Quarzlampe</Trans>}
+                  {headerTitle}
                 </h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
