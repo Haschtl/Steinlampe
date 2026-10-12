@@ -27,7 +27,14 @@ type EaseType =
   | 'bounce'
   | 'stepped'
   | 'flicker'
-  | 'fluorescent';
+  | 'fluorescent'
+  | 'incandescent'
+  | 'capacitor'
+  | 'crt'
+  | 'loosecontact'
+  | 'firefly'
+  | 'brownout'
+  | 'strobe';
 
 const EASE_OPTIONS: EaseType[] = [
   'linear',
@@ -47,6 +54,13 @@ const EASE_OPTIONS: EaseType[] = [
   'stepped',
   'flicker',
   'fluorescent',
+  'incandescent',
+  'capacitor',
+  'crt',
+  'loosecontact',
+  'firefly',
+  'brownout',
+  'strobe',
 ];
 
 const easeSample = (t: number, ease: EaseType, pow: number) => {
@@ -171,6 +185,85 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       const p = segPos / pulseWidth;
       const spike = p < 0.5 ? 2 * p : 2 - 2 * p;
       return pulseHeight * spike;
+    }
+    case 'incandescent': {
+      const k = pow > 0.1 ? pow : 3;
+      const shoulder = 0.18;
+      const knee = 0.35;
+      if (t < knee) {
+        const u = t / knee;
+        return shoulder * (u * u * (3 - 2 * u));
+      }
+      const u = (t - knee) / (1 - knee);
+      const eased = 1 - Math.pow(1 - u, k);
+      return shoulder + (1 - shoulder) * eased;
+    }
+    case 'capacitor': {
+      const k = pow > 0.1 ? pow : 4;
+      const raw = 1 - Math.exp(-k * t);
+      const norm = 1 - Math.exp(-k);
+      return norm > 0.0001 ? raw / norm : t;
+    }
+    case 'crt': {
+      const overshoot = pow > 0.1 ? pow : 1.4;
+      const popWidth = 0.12;
+      if (t < popWidth) {
+        const u = t / popWidth;
+        const s = u * u * (3 - 2 * u);
+        return s * overshoot;
+      }
+      const u = (t - popWidth) / (1 - popWidth);
+      const s = u * u * (3 - 2 * u);
+      return overshoot + (1 - overshoot) * s;
+    }
+    case 'loosecontact': {
+      // Illustrative only - the device seeds cut count/timing randomly per activation.
+      const cuts = pow > 1.5 ? Math.max(2, Math.min(10, Math.floor(pow))) : 6;
+      const catchAt = 0.65;
+      if (t >= catchAt) {
+        const u = Math.max(0, Math.min(1, (t - catchAt) / (1 - catchAt)));
+        return u * u * (3 - 2 * u);
+      }
+      const u = t / catchAt;
+      let idx = Math.floor(u * cuts);
+      if (idx >= cuts) idx = cuts - 1;
+      const segPos = u * cuts - idx;
+      const progress = cuts > 1 ? idx / (cuts - 1) : 1;
+      const onFrac = 0.12 + 0.3 * progress;
+      return segPos < onFrac ? 1 : 0;
+    }
+    case 'firefly': {
+      const cycles = pow > 0.1 ? pow : 3;
+      const mean = t;
+      const amp = 0.35 * Math.sin(Math.PI * t);
+      const phase = Math.sin(2 * Math.PI * cycles * t);
+      return mean + amp * phase;
+    }
+    case 'brownout': {
+      let base = t * t * (3 - 2 * t);
+      const sagAt = 0.72;
+      const sagWidth = 0.14;
+      const sagDepth = pow > 0.1 ? Math.min(1, pow / 10) : 0.22;
+      const u = (t - sagAt) / sagWidth;
+      if (u > -1 && u < 1) {
+        const bump = 1 - u * u;
+        base -= sagDepth * bump * bump;
+      }
+      return base;
+    }
+    case 'strobe': {
+      const strobes = pow > 1.5 ? Math.max(1, Math.min(6, Math.floor(pow))) : 3;
+      const catchAt = 0.6;
+      if (t >= catchAt) {
+        const u = Math.max(0, Math.min(1, (t - catchAt) / (1 - catchAt)));
+        return u * u * (3 - 2 * u);
+      }
+      const u = t / catchAt;
+      const seg = 1 / strobes;
+      const idxF = u / seg;
+      const segPos = idxF - Math.floor(idxF);
+      const onFrac = 0.35;
+      return segPos < onFrac ? 1 : 0;
     }
     default:
       return t;
