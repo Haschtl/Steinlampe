@@ -6,9 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useConnection } from '@/context/connection';
 import { patternLabel } from '@/data/patterns';
 import { Trans, useI18n } from '@/i18n';
+import { PROFILE_SLOTS } from '@/data/profiles';
 
-// Keep in sync with PROFILE_SLOTS in src/persistence.cpp.
-const PROFILE_SLOTS = 6;
 const SLOT_INDICES = Array.from({ length: PROFILE_SLOTS }, (_, i) => i + 1);
 
 type ProfilePreview = {

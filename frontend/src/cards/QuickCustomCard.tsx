@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabel, patternLabels } from '@/data/patterns';
+import { PROFILE_SLOTS } from '@/data/profiles';
 import { Trans, useI18n } from '@/i18n';
 
 function PreviewGraph({ values, stepMs }: { values: number[]; stepMs?: number }) {
@@ -67,7 +68,7 @@ export function QuickCustomCard() {
   const [profileSlot, setProfileSlot] = useState('1');
   const [loadedFromStatus, setLoadedFromStatus] = useState(false);
 
-  const quickMax = useMemo(() => Math.min((status.patternCount || patternLabels.length) + 3, 64), [status.patternCount]);
+  const quickMax = useMemo(() => Math.min((status.patternCount || patternLabels.length) + PROFILE_SLOTS, 64), [status.patternCount]);
 
   useEffect(() => {
     if (status.quickCsv) {
@@ -92,7 +93,7 @@ export function QuickCustomCard() {
       idx: i + 1,
       label: `${i + 1} - ${patternLabel(i + 1)}`,
     }));
-    const profileOpts = Array.from({ length: 3 }, (_, i) => ({
+    const profileOpts = Array.from({ length: PROFILE_SLOTS }, (_, i) => ({
       idx: count + i + 1,
       label: `${t('label.profile', 'Profile')} ${i + 1}`,
     }));
