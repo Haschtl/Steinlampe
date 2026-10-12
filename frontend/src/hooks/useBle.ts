@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { BLE_UUIDS, connectDevice, disconnectDevice, readLines, requestDevice, subscribeToLines, writeLine, writeLineWithResponse } from './bleClient';
+import { BLE_UUIDS, BleDroppedAfterConnectError, connectDevice, disconnectDevice, readLines, requestDevice, subscribeToLines, writeLine, writeLineWithResponse } from './bleClient';
 import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
@@ -344,7 +344,16 @@ export function useBle(): BleApi {
         const lower = msg.toLowerCase();
         const untrusted = lower.includes('rejected unknown device') || lower.includes('unknown device');
         pushLog('Connect error: ' + msg);
-        toast.error((untrusted ? 'Untrusted device: ' : 'Connect error: ') + msg);
+        if (e instanceof BleDroppedAfterConnectError) {
+          // The browser only reports a generic "GATT server is disconnected" DOMException for
+          // this - translate it into what's actually going on (see BleDroppedAfterConnectError).
+          toast.error(
+            'Device rejected the connection (likely outside the ~60s post-boot trust window). ' +
+              'Power-cycle the lamp and connect again right after it turns on.',
+          );
+        } else {
+          toast.error((untrusted ? 'Untrusted device: ' : 'Connect error: ') + msg);
+        }
         setStatus((s) => ({ ...s, connecting: false }));
         cleanup();
         throw e;

@@ -12,6 +12,19 @@ export type BleHandles = {
 
 export type LineHandler = (line: string) => void;
 
+// Thrown when the device accepts the link-layer connection but then immediately drops it
+// before service discovery completes. In this firmware that's what an untrusted-device
+// rejection looks like from the browser's side (the firmware has no BLE pairing-confirmation
+// gate - it just disconnects outside the post-boot trust window), but the browser only ever
+// surfaces a generic "GATT server is disconnected" DOMException for it. Callers can catch this
+// specifically to show a message that actually explains what happened.
+export class BleDroppedAfterConnectError extends Error {
+  constructor(message = 'Device dropped the connection right after connecting, before service discovery completed.') {
+    super(message);
+    this.name = 'BleDroppedAfterConnectError';
+  }
+}
+
 export async function requestDevice(): Promise<BluetoothDevice> {
   try {
     return await navigator.bluetooth.requestDevice({
@@ -66,8 +79,19 @@ export async function connectDevice(device: BluetoothDevice): Promise<BleHandles
     if (!server.connected) {
       try {
         server = await device.gatt!.connect();
+      } catch (reconnectError) {
+        console.error('BLE GATT reconnect failed', reconnectError);
+        throw new Error(`GATT connect failed: ${reconnectError instanceof Error ? reconnectError.message : String(reconnectError)}`);
+      }
+      try {
         svc = await fetchService();
       } catch (e2) {
+        // Reconnected at the link layer but discovery dropped again right away: the
+        // firmware is actively closing the link (most likely an untrusted-device
+        // rejection), not a transient browser/stack hiccup.
+        if (!server.connected) {
+          throw new BleDroppedAfterConnectError();
+        }
         throw e2;
       }
     } else {
