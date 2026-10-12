@@ -44,6 +44,16 @@ bool trustRemoveBle(const String &addr, bool persist = true);
 bool trustRemoveBt(const String &addr, bool persist = true);
 void trustListFeedback();
 
+#if ENABLE_BLE_TRUST_TOKEN
+// Persisted token-based BLE trust (see ENABLE_BLE_TRUST_TOKEN in lamp_config.h).
+String trustGetBleTokCsv();
+void trustSetBleTokCsv(const String &csv);
+bool trustClearBleTokens(bool persist = true);
+// Generates a fresh token, persists it, and sends it to the connected client
+// as "TRUST_TOKEN|<hex>". Called from the "trust token get" command.
+void trustIssueBleToken();
+#endif
+
 /**
  * @brief Confirm a pending BT-Serial pairing via a hardware gesture (switch/poti).
  */

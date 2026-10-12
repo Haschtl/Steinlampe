@@ -5,6 +5,27 @@ import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
 
+// Opt-in firmware feature (ENABLE_BLE_TRUST_TOKEN) that lets a previously-paired
+// device reconnect after the firmware's trust grace window even if its BLE
+// address has since rotated (common on Android/iOS without bonding). The
+// firmware hands out a token while trusted; we replay it as the very first
+// write on a later connect. Harmless no-op against firmware builds without
+// the feature - it's just an unrecognized command there.
+function getStoredBleToken(deviceId: string): string | null {
+  try {
+    return localStorage.getItem('ql-ble-token-' + deviceId);
+  } catch {
+    return null;
+  }
+}
+function setStoredBleToken(deviceId: string, token: string) {
+  try {
+    localStorage.setItem('ql-ble-token-' + deviceId, token);
+  } catch {
+    /* ignore */
+  }
+}
+
 type BleApi = {
   status: DeviceStatus;
   log: LogEntry[];
@@ -86,6 +107,7 @@ export function useBle(): BleApi {
   const pushLog = useCallback(
     (line: string) => {
       if (!line) return;
+      if (line.startsWith('TRUST_TOKEN|')) return; // secret - never show in the UI log
       console.debug('[BLE]', line);
       // Filter out noisy status-only lines when enabled
       if (
@@ -150,6 +172,9 @@ export function useBle(): BleApi {
     else if (line.startsWith('STATUS2|')) statusSnapshotPagesRef.current |= 4;
     if (line.startsWith('STATUS_END|')) {
       statusEndWaiterRef.current?.();
+    }
+    if (line.startsWith('TRUST_TOKEN|') && deviceRef.current?.id) {
+      setStoredBleToken(deviceRef.current.id, line.slice('TRUST_TOKEN|'.length).trim());
     }
   }, [parseStatus, pushLog]);
 
@@ -315,6 +340,22 @@ export function useBle(): BleApi {
         cmdCharRef.current = cmdChar;
         statusCharRef.current = statusChar;
         await attachListeners(dev, cmdChar, statusChar);
+        // Must be the very first write after connecting: a firmware with
+        // ENABLE_BLE_TRUST_TOKEN may be holding this connection open pending
+        // exactly this line, if our address isn't (or no longer) on its MAC
+        // allowlist. Written directly (not via sendCmd) so the secret never
+        // hits the visible log.
+        if (dev.id) {
+          const storedToken = getStoredBleToken(dev.id);
+          if (storedToken) {
+            try {
+              await writeLine(cmdCharRef.current, 'auth ' + storedToken);
+              pushLog('> auth ***');
+            } catch (e) {
+              pushLog('Token auth write failed: ' + (e instanceof Error ? e.message : String(e)));
+            }
+          }
+        }
         const friendlyName = (dev.id && knownDevicesRef.current[dev.id]) || dev.name || 'Quarzlampe';
         if (dev.id && !knownDevicesRef.current[dev.id]) {
           knownDevicesRef.current[dev.id] = friendlyName;
@@ -344,6 +385,10 @@ export function useBle(): BleApi {
         // same disconnect refreshStatus already reported.
         if (!cmdCharRef.current) return;
         await sendCmd('custom export');
+        // Opportunistically (re)mint a token for next time, now that we know
+        // this connection is trusted. No-op/harmless against firmware
+        // without ENABLE_BLE_TRUST_TOKEN.
+        await sendCmd('trust token get').catch(() => undefined);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const lower = msg.toLowerCase();

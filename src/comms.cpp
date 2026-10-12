@@ -27,6 +27,9 @@
 #include <BLE2902.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#if ENABLE_BLE_TRUST_TOKEN
+#include <esp_random.h>
+#endif
 #endif
 
 /**
@@ -42,8 +45,14 @@ void saveSettings();
 static std::vector<String> trustedBle;
 static std::vector<String> trustedBt;
 static uint32_t trustBootMs = 0;
-static const uint32_t TRUST_GRACE_MS = Settings::BT_TRUST_GRACE_MS; 
+static const uint32_t TRUST_GRACE_MS = Settings::BT_TRUST_GRACE_MS;
 static const size_t TRUST_MAX = 12;
+#if ENABLE_BLE_TRUST_TOKEN
+// Tokens issued to BLE clients during the grace window, so they can
+// re-authenticate later even if their BLE address has since rotated (see
+// ENABLE_BLE_TRUST_TOKEN in lamp_config.h).
+static std::vector<String> trustedBleTokens;
+#endif
 
 static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
 static String bleName = Settings::BLE_NAME_DEFAULT;
@@ -460,6 +469,94 @@ static void flushBleNotification()
   }
 }
 
+#if ENABLE_BLE_TRUST_TOKEN
+// Grace period for a client to present a valid token after we've let its
+// connection through pending authentication (see allowBleAddr fallback in
+// onConnect below). Generous because the UI may need a moment after connect
+// to read a remembered token out of browser storage and write it back.
+static const uint32_t BLE_TOKEN_AUTH_TIMEOUT_MS = 8000;
+static bool bleAwaitingToken = false;
+static uint16_t bleAwaitingTokenConnId = 0;
+static uint32_t bleAwaitingTokenSinceMs = 0;
+// Separate from bufferBle: lines received while awaiting token auth are
+// never handed to handleCommand().
+static String bufferBleAuth;
+
+static String generateBleToken()
+{
+  uint8_t raw[16];
+  esp_fill_random(raw, sizeof(raw));
+  char hex[sizeof(raw) * 2 + 1];
+  for (size_t i = 0; i < sizeof(raw); i++)
+    snprintf(hex + i * 2, 3, "%02X", raw[i]);
+  return String(hex);
+}
+
+// Issues a fresh token to the currently-connected client and sends it as a
+// status line (TRUST_TOKEN|<hex>) for the app to remember and replay later,
+// outside the grace window, when its BLE address may have rotated. Only
+// reachable via the "trust token get" command, which - by construction - a
+// connection can only ever send once it's past onConnect's trust gate (while
+// bleAwaitingToken is set for a connection, its bytes are diverted to
+// feedBleAuthChar instead of the normal command dispatcher). So there's no
+// separate check needed here: being able to call this at all already proves
+// the connection is trusted.
+void trustIssueBleToken()
+{
+  String tok = generateBleToken();
+  if (addToList(trustedBleTokens, tok))
+    saveSettings();
+  sendFeedback(String(F("TRUST_TOKEN|")) + tok, true);
+}
+
+static void handleBleTokenAuthLine(const String &rawLine)
+{
+  String tok = rawLine;
+  tok.trim();
+  if (tok.startsWith(F("auth ")))
+    tok = tok.substring(5);
+  tok.trim();
+  bool ok = !tok.isEmpty() && listContains(trustedBleTokens, tok);
+  if (ok)
+  {
+    bleAwaitingToken = false;
+    lastBtActivityMs = millis();
+    if (addToList(trustedBle, bleLastAddr))
+      saveSettings();
+    if (feedbackAllowed())
+      sendFeedback(F("[BLE] Token-Auth OK"), true);
+    // onConnect() skipped its usual re-arm-advertising step for this
+    // connection while it was pending auth; do it now that it's trusted.
+    if (bleServer && bleServer->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
+      bleServer->startAdvertising();
+  }
+  else
+  {
+    if (feedbackAllowed())
+      Serial.println(F("[BLE] Token-Auth fehlgeschlagen"));
+    if (bleServer)
+      bleServer->disconnect(bleAwaitingTokenConnId);
+    bleAwaitingToken = false;
+  }
+}
+
+static void feedBleAuthChar(char c)
+{
+  if (c == '\r')
+    return;
+  if (c == '\n')
+  {
+    if (bufferBleAuth.length())
+      handleBleTokenAuthLine(bufferBleAuth);
+    bufferBleAuth = "";
+  }
+  else if (bufferBleAuth.length() < 80)
+  {
+    bufferBleAuth += c;
+  }
+}
+#endif
+
 /**
  * @brief Handles BLE server connection events.
  */
@@ -492,6 +589,27 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     bleLastAddr = addr;
     if (!allowBleAddr(addr))
     {
+#if ENABLE_BLE_TRUST_TOKEN
+      // Outside grace with an unrecognized address: this may just be a
+      // previously-trusted phone whose BLE address has rotated (see
+      // ENABLE_BLE_TRUST_TOKEN). Instead of rejecting outright, keep the link
+      // up and give it a short window to prove itself with a token issued
+      // during an earlier grace-window connection. pollCommunications()
+      // enforces the timeout and routes input through handleBleTokenAuthLine
+      // instead of handleCommand while bleAwaitingToken is set.
+      bleClientConnected = true;
+      bleAwaitingToken = true;
+      bleAwaitingTokenConnId = param->connect.conn_id;
+      bleAwaitingTokenSinceMs = millis();
+      bufferBleAuth = "";
+      lastBtActivityMs = millis();
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BLE] Unbekannt, erwarte Token: "));
+        Serial.println(addr);
+      }
+      return;
+#else
       if (feedbackAllowed())
       {
         Serial.print(F("[BLE] Rejecting unknown "));
@@ -505,6 +623,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       // recomputes once it does).
       bleClientConnected = server->getConnectedCount() > 0;
       return;
+#endif
     }
     lastBtActivityMs = millis();
     if (addToList(trustedBle, addr))
@@ -547,6 +666,13 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       Serial.println(addr);
     }
     bleLastAddr = addr;
+#if ENABLE_BLE_TRUST_TOKEN
+    // The device that was mid token-auth went away on its own - drop the
+    // pending state instead of leaving it to time out (and don't let the
+    // timeout check later disconnect a since-reused conn_id).
+    if (bleAwaitingToken && param->disconnect.conn_id == bleAwaitingTokenConnId)
+      bleAwaitingToken = false;
+#endif
     BLEDevice::startAdvertising();
   }
 };
@@ -723,6 +849,20 @@ bool trustRemoveBt(const String &addr, bool persist)
   return false;
 }
 
+#if ENABLE_BLE_TRUST_TOKEN
+String trustGetBleTokCsv() { return joinList(trustedBleTokens); }
+void trustSetBleTokCsv(const String &csv) { parseList(csv, trustedBleTokens); }
+bool trustClearBleTokens(bool persist)
+{
+  if (trustedBleTokens.empty())
+    return false;
+  trustedBleTokens.clear();
+  if (persist)
+    saveSettings();
+  return true;
+}
+#endif
+
 void confirmBtPairing(const char *reason)
 {
 #if ENABLE_BT_PAIRING
@@ -845,13 +985,33 @@ void pollCommunications()
   }
 #endif
 #if ENABLE_BLE
+#if ENABLE_BLE_TRUST_TOKEN
+  if (bleAwaitingToken && (millis() - bleAwaitingTokenSinceMs) > BLE_TOKEN_AUTH_TIMEOUT_MS)
+  {
+    if (feedbackAllowed())
+      Serial.println(F("[BLE] Token-Auth Timeout"));
+    if (bleServer)
+      bleServer->disconnect(bleAwaitingTokenConnId);
+    bleAwaitingToken = false;
+  }
+#endif
   if (bleRxMutex && bleRxPending.length() && xSemaphoreTake(bleRxMutex, 0) == pdTRUE)
   {
     String chunk = bleRxPending;
     bleRxPending = "";
     xSemaphoreGive(bleRxMutex);
-    for (size_t i = 0; i < chunk.length(); i++)
-      processInputChar(bufferBle, chunk[i]);
+#if ENABLE_BLE_TRUST_TOKEN
+    if (bleAwaitingToken)
+    {
+      for (size_t i = 0; i < chunk.length(); i++)
+        feedBleAuthChar(chunk[i]);
+    }
+    else
+#endif
+    {
+      for (size_t i = 0; i < chunk.length(); i++)
+        processInputChar(bufferBle, chunk[i]);
+    }
   }
   flushBleNotification();
 #endif
@@ -868,7 +1028,7 @@ void sendFeedback(const String &line, const bool &force)
 
   Serial.println(line);
 #if ENABLE_BT_SERIAL
-  if (allow && serialBt.hasClient())
+  if ((allow || force) && serialBt.hasClient())
   {
     serialBt.println(line);
   }
@@ -877,7 +1037,7 @@ void sendFeedback(const String &line, const bool &force)
   // Queue newline-delimited feedback and split it according to the negotiated
   // ATT MTU. The main loop drains the queue so BLE callbacks never burst large
   // status snapshots into a single oversized notification.
-  if (allow && bleClientConnected && bleStatusCharacteristic)
+  if ((allow || force) && bleClientConnected && bleStatusCharacteristic)
     queueBleNotification(line);
 #endif
 }

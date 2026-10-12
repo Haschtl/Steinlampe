@@ -2525,11 +2525,11 @@ void handleCommand(String line)
             trustListFeedback();
             return;
         }
-        // expect: trust <ble|bt> <add|del> <addr>
+        // expect: trust <ble|bt> <add|del> <addr>, or trust token clear (no addr)
         int sp1 = args.indexOf(' ');
         int sp2 = sp1 >= 0 ? args.indexOf(' ', sp1 + 1) : -1;
         String kind = sp1 > 0 ? args.substring(0, sp1) : args;
-        String action = (sp1 > 0 && sp2 > sp1) ? args.substring(sp1 + 1, sp2) : "";
+        String action = sp1 > 0 ? (sp2 > sp1 ? args.substring(sp1 + 1, sp2) : args.substring(sp1 + 1)) : "";
         String addr = sp2 > 0 ? args.substring(sp2 + 1) : "";
         kind.toLowerCase();
         action.toLowerCase();
@@ -2549,13 +2549,29 @@ void handleCommand(String line)
             else if (action == "del" || action == "rem" || action == "rm")
                 ok = trustRemoveBt(addr);
         }
+#if ENABLE_BLE_TRUST_TOKEN
+        else if (kind == "token")
+        {
+            if (action == "clear")
+                ok = trustClearBleTokens();
+            else if (action == "get")
+            {
+                trustIssueBleToken();
+                ok = true;
+            }
+        }
+#endif
         if (ok)
         {
             trustListFeedback();
         }
         else
         {
-            sendFeedback(F("Usage: trust list | trust ble add <mac> | trust ble del <mac> | trust bt add <mac> | trust bt del <mac>"));
+            sendFeedback(F("Usage: trust list | trust ble add <mac> | trust ble del <mac> | trust bt add <mac> | trust bt del <mac>"
+#if ENABLE_BLE_TRUST_TOKEN
+                           " | trust token get | trust token clear"
+#endif
+                           ));
         }
         return;
     }

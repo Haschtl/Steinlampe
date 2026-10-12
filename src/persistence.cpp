@@ -37,6 +37,9 @@ static const char *PREF_KEY_CUSTOM = "cust";
 static const char *PREF_KEY_CUSTOM_MS = "cust_ms";
 static const char *PREF_KEY_TRUST_BLE = "trust_ble";
 static const char *PREF_KEY_TRUST_BT = "trust_bt";
+#if ENABLE_BLE_TRUST_TOKEN
+static const char *PREF_KEY_TRUST_BLE_TOK = "trust_ble_tok";
+#endif
 static const char *PREF_KEY_BLE_NAME = "ble_name";
 static const char *PREF_KEY_BT_NAME = "bt_name";
 static const char *PREF_KEY_BT_SLEEP_BOOT = "bt_sl_boot";
@@ -467,6 +470,9 @@ void saveSettings()
 #endif
     prefs.putString(PREF_KEY_TRUST_BLE, trustGetBleCsv());
     prefs.putString(PREF_KEY_TRUST_BT, trustGetBtCsv());
+#if ENABLE_BLE_TRUST_TOKEN
+    prefs.putString(PREF_KEY_TRUST_BLE_TOK, trustGetBleTokCsv());
+#endif
     prefs.putUInt(PREF_KEY_RAMP_MS, rampDurationMs);
     prefs.putUInt(PREF_KEY_RAMP_ON_MS, rampOnDurationMs);
     prefs.putUInt(PREF_KEY_RAMP_OFF_MS, rampOffDurationMs);
@@ -681,6 +687,9 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     extInputLastDigital = Settings::EXT_INPUT_ACTIVE_LOW;
 #endif
     trustSetLists("", "");
+#if ENABLE_BLE_TRUST_TOKEN
+    trustSetBleTokCsv("");
+#endif
     setBleName(Settings::BLE_NAME_DEFAULT);
     setBtName(Settings::BT_NAME_DEFAULT);
     filtersInit();
@@ -701,6 +710,9 @@ void loadSettings()
 {
     prefs.begin(PREF_NS, false);
     trustSetLists(prefs.getString(PREF_KEY_TRUST_BLE, ""), prefs.getString(PREF_KEY_TRUST_BT, ""));
+#if ENABLE_BLE_TRUST_TOKEN
+    trustSetBleTokCsv(prefs.getString(PREF_KEY_TRUST_BLE_TOK, ""));
+#endif
     uint16_t b = prefs.getUShort(PREF_KEY_B1000, (uint16_t)(Settings::DEFAULT_BRIGHTNESS * 1000.0f));
     masterBrightness = clamp01(b / 1000.0f);
     uint16_t idx = prefs.getUShort(PREF_KEY_MODE, 0);
