@@ -103,6 +103,24 @@ export async function connectDevice(device: BluetoothDevice): Promise<BleHandles
   return { device, cmdChar, statusChar };
 }
 
+// Android's Web Bluetooth stack allows only one GATT operation in flight per
+// device at a time; a second concurrent write/read throws "GATT operation
+// already in progress" (desktop/BlueZ backends tolerate the overlap, which is
+// why this only showed up on Android). Callers like the status refresh and
+// the profile-preview fetch can legitimately fire several GATT ops close
+// together, so serialize them all here instead of relying on every call site
+// to coordinate.
+let gattQueue: Promise<void> = Promise.resolve();
+
+function enqueueGatt<T>(op: () => Promise<T>): Promise<T> {
+  const run = gattQueue.then(op, op);
+  gattQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export function decodeLines(ev: Event): string[] {
   const target = ev.target as BluetoothRemoteGATTCharacteristic;
   const value = (target.value as DataView) || new DataView(new ArrayBuffer(0));
@@ -111,9 +129,11 @@ export function decodeLines(ev: Event): string[] {
 }
 
 export async function readLines(char: BluetoothRemoteGATTCharacteristic): Promise<string[]> {
-  const value = await char.readValue();
-  const text = new TextDecoder().decode(value);
-  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return enqueueGatt(async () => {
+    const value = await char.readValue();
+    const text = new TextDecoder().decode(value);
+    return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  });
 }
 
 export async function subscribeToLines(
@@ -135,7 +155,7 @@ export async function subscribeToLines(
   };
   char.addEventListener('characteristicvaluechanged', onNotify as EventListener);
   try {
-    await char.startNotifications();
+    await enqueueGatt(() => char.startNotifications());
   } catch (e) {
     // noop; some firmwares may not support notify, caller can fallback
     console.warn('Notifications not available', e);
@@ -155,7 +175,9 @@ export async function writeLine(
   line: string,
 ): Promise<void> {
   if (!char) throw new Error('Not connected');
-  await char.writeValueWithoutResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n'));
+  await enqueueGatt(() =>
+    char.writeValueWithoutResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n')),
+  );
 }
 
 /**
@@ -168,7 +190,9 @@ export async function writeLineWithResponse(
   line: string,
 ): Promise<void> {
   if (!char) throw new Error('Not connected');
-  await char.writeValueWithResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n'));
+  await enqueueGatt(() =>
+    char.writeValueWithResponse(new TextEncoder().encode(line.endsWith('\n') ? line : line + '\n')),
+  );
 }
 
 export function disconnectDevice(device: BluetoothDevice | null) {
