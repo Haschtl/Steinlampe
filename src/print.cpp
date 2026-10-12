@@ -762,10 +762,16 @@ void printStatusStructured(const bool &force)
     sendFeedback(line2,force);
     updateBleStatus(line2);
 
-#if SEND_STATUS_END
     // Marks a complete structured snapshot. Keep the core state in the marker
     // as well so a BLE client can recover it with a characteristic read when
     // notifications were unavailable or a notification chunk was lost.
+    //
+    // This used to be guarded by `#if SEND_STATUS_END`, a macro that was never
+    // defined anywhere in the project - so this line was dead code in every
+    // build, and the frontend's refreshStatus() (which waits specifically for
+    // STATUS_END| to know the snapshot is complete) was guaranteed to time out
+    // on every single connect. Unconditional now; the frontend hard-depends on
+    // this marker, it was never meant to be optional.
     String lineEnd = F("STATUS_END|lamp=");
     lineEnd += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
     lineEnd += F("|bri=");
@@ -774,7 +780,6 @@ void printStatusStructured(const bool &force)
     lineEnd += String(currentPattern + 1);
     sendFeedback(lineEnd, force);
     updateBleStatus(lineEnd);
-#endif
 }
 
 /**
