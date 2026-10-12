@@ -338,6 +338,11 @@ export function useBle(): BleApi {
         }
         if (!silent) pushLog('Connected to ' + (dev.name || 'BLE'));
         await refreshStatus();
+        // refreshStatus() swallows its own failures (logs + calls cleanup() internally instead
+        // of throwing), so a disconnect during that call leaves us here with the link already
+        // torn down. Bail out instead of firing a second, redundant "Connect error" for the
+        // same disconnect refreshStatus already reported.
+        if (!cmdCharRef.current) return;
         await sendCmd('custom export');
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
