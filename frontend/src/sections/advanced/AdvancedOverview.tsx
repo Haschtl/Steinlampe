@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Gauge, Hand, Music, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IdleOffCard } from '@/cards/IdleOffCard';
 import { LedConfigCard } from '@/cards/LedConfigCard';
 import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
@@ -28,6 +29,7 @@ export function AdvancedOverview() {
   return (
     <div className="space-y-4">
       <LedConfigCard />
+      <IdleOffCard />
       {tiles.length > 0 && (
         <Card>
           <CardHeader>

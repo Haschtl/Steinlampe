@@ -84,6 +84,8 @@ static float rampEaseActivePower = Settings::DEFAULT_RAMP_POW_ON;
 
 // Ramping and timers
 uint32_t idleOffMs = Settings::DEFAULT_IDLE_OFF_MS;
+bool idleOffActive = false;
+uint32_t idleOffAtMs = 0;
 
 /**
  * @brief Write a gamma-corrected PWM value to the LED driver.
@@ -446,6 +448,9 @@ void setLampEnabled(bool enable, const char *reason, bool skipRamp)
   if (lampEnabled == enable && !(enable && lampOffPending))
     return;
   lastActivityMs = millis();
+  // Any real on/off transition supersedes a pending idle-off-wake state. The
+  // idle-off timer in main.cpp re-asserts this right after its own call here.
+  idleOffActive = false;
   if (enable)
   {
     outputScale = 0.0f; // ramp output from dark to full

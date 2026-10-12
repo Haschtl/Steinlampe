@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConnection } from '@/context/connection';
-import { Trans } from '@/i18n';
+import { Trans, useI18n } from '@/i18n';
 
-export function SettingsCard() {
+export function IdleOffCard() {
   const { status, sendCmd } = useConnection();
+  const { t } = useI18n();
   const [idleMinutes, setIdleMinutes] = useState(0);
 
   useEffect(() => {
@@ -23,9 +25,13 @@ export function SettingsCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Trans k="title.settings">Settings</Trans></CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Moon className="h-4 w-4" />
+          <Trans k="title.idleOff">Idle off</Trans>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <p className="text-sm text-muted">{t('desc.idleOff', '')}</p>
         <div>
           <Label><Trans k="label.idle">Idle off (min)</Trans></Label>
           <div className="flex items-center gap-2">

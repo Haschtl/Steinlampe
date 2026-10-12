@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { SettingsCard } from '@/cards/SettingsCard';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
@@ -65,7 +64,6 @@ export function SettingsSection() {
   return (
     <div className="space-y-4">
       <DeviceBTCard />
-      <SettingsCard />
       <QuickCustomCard />
       <UISettingsCard />
       <BackupRestoreCard />

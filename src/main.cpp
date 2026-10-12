@@ -205,8 +205,24 @@ void updatePatternEngine()
     if (now - lastActivityMs >= idleOffMs)
     {
       setLampEnabled(false, "idleoff");
+      // setLampEnabled() just cleared this for its own transition; re-assert
+      // it so the check below knows this particular "off" was the idle timer,
+      // not a manual one, and can wake the lamp again on the next activity.
+      idleOffActive = true;
+      idleOffAtMs = lastActivityMs;
       sendFeedback(F("[IdleOff] Timer -> Lamp OFF"));
     }
+  }
+
+  // Wake the lamp back up once genuinely new activity arrives (BLE/BT/USB
+  // command, poti/switch/touch/push interaction, music trigger - anything
+  // that bumps lastActivityMs). idleOffAtMs snapshots the value lastActivityMs
+  // held right when the idle timer fired, so a later, different value means
+  // something real happened since - not just this check re-running.
+  if (idleOffActive && lastActivityMs != idleOffAtMs)
+  {
+    setLampEnabled(true, "idleoff-wake");
+    sendFeedback(F("[IdleOff] Activity -> Lamp ON"));
   }
 
   if (sleepFadeActive)

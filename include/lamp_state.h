@@ -41,6 +41,11 @@ extern float rampAmbientMultiplier;
 
 // Ramping and timers
 extern uint32_t idleOffMs;
+// True while the lamp is off specifically because the idle-off timer turned
+// it off (as opposed to a manual/explicit off) - lets new activity turn it
+// back on again. See setLampEnabled() and the idle-off check in main.cpp.
+extern bool idleOffActive;
+extern uint32_t idleOffAtMs;
 
 // Core lamp helpers
 void applyPwmLevel(float normalized);
