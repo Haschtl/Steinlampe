@@ -68,6 +68,20 @@ uint8_t easeFromString(const String &s)
         return 15;
     if (l == "fluorescent" || l == "tube")
         return 16;
+    if (l == "incandescent" || l == "warmup")
+        return 17;
+    if (l == "capacitor" || l == "softstart")
+        return 18;
+    if (l == "crt" || l == "pop")
+        return 19;
+    if (l == "loosecontact" || l == "badcontact")
+        return 20;
+    if (l == "firefly")
+        return 21;
+    if (l == "brownout" || l == "sag")
+        return 22;
+    if (l == "strobe")
+        return 23;
     return 1;
 }
 
@@ -107,6 +121,20 @@ String easeToString(uint8_t t)
         return F("flicker");
     case 16:
         return F("fluorescent");
+    case 17:
+        return F("incandescent");
+    case 18:
+        return F("capacitor");
+    case 19:
+        return F("crt");
+    case 20:
+        return F("loosecontact");
+    case 21:
+        return F("firefly");
+    case 22:
+        return F("brownout");
+    case 23:
+        return F("strobe");
     case 1:
     default:
         return F("ease");

@@ -74,7 +74,7 @@ uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
 uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
-uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout,5=flash,6=wave,7=blink,8=sine,9=circ,10=expo,11=back,12=elastic,13=bounce,14=stepped,15=flicker,16=fluorescent
+uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout,5=flash,6=wave,7=blink,8=sine,9=circ,10=expo,11=back,12=elastic,13=bounce,14=stepped,15=flicker,16=fluorescent,17=incandescent,18=capacitor,19=crt,20=loosecontact,21=firefly,22=brownout,23=strobe
 uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
 float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
 float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
@@ -408,6 +408,153 @@ static float applyEase(float t, uint8_t type, float power)
     float shape = fminf(rise, fall);
     shape = shape * shape * (3.0f - 2.0f * shape);
     return clamp01(height[idx] * shape);
+  }
+  case 17: // incandescent filament warm-up: no flicker at all - the opposite
+           // character from fluorescent/flicker. A near-flat, dim "cold"
+           // glow while the filament heats (thermal inertia), then a smooth
+           // ease-out climb to target. power sets how sharp the takeoff is.
+  {
+    float k = power > 0.1f ? power : 3.0f;
+    float shoulder = 0.18f; // dim glow level reached by the end of the cold phase
+    float knee = 0.35f;     // fraction of ramp spent mostly in that cold phase
+    if (t < knee)
+    {
+      float u = t / knee;
+      return shoulder * (u * u * (3.0f - 2.0f * u));
+    }
+    float u = (t - knee) / (1.0f - knee);
+    float eased = 1.0f - powf(1.0f - u, k);
+    return clamp01(shoulder + (1.0f - shoulder) * eased);
+  }
+  case 18: // capacitor soft-start: classic inrush-limited power-supply charge
+           // curve (1 - e^-kt), normalized to land exactly on target at t=1.
+           // Perfectly smooth and deterministic - no randomness anywhere.
+           // power sets the time constant (bigger = snappier initial rise).
+  {
+    float k = power > 0.1f ? power : 4.0f;
+    float raw = 1.0f - expf(-k * t);
+    float norm = 1.0f - expf(-k);
+    return norm > 0.0001f ? raw / norm : t;
+  }
+  case 19: // CRT power-on pop: a quick too-bright flash right at the START
+           // (the mirror image of "back", which overshoots near the end),
+           // then settles smoothly down to target - an old tube monitor
+           // popping on too bright before the picture stabilizes. power sets
+           // how far past the target it pops.
+  {
+    float overshoot = power > 0.1f ? power : 1.4f;
+    float popWidth = 0.12f;
+    if (t < popWidth)
+    {
+      float u = t / popWidth;
+      float s = u * u * (3.0f - 2.0f * u);
+      return s * overshoot;
+    }
+    float u = (t - popWidth) / (1.0f - popWidth);
+    float s = u * u * (3.0f - 2.0f * u);
+    return overshoot + (1.0f - overshoot) * s;
+  }
+  case 20: // loose-contact flicker: hard square on/off cuts (not fluorescent's
+           // smooth spikes) with irregular gaps shrinking toward a messy
+           // "finally makes contact" catch - twitchier/more mechanical than
+           // the organic fluorescent/flicker effects. Seeded per activation.
+  {
+    uint32_t seed = (rampStartMs * 2654435761u) ^ 0x5EED5EEDu;
+    int cuts = (power > 1.5f) ? (int)power : (4 + (int)(easeHash11(seed) * 4.0f));
+    if (cuts < 2)
+      cuts = 2;
+    if (cuts > 10)
+      cuts = 10;
+    float catchAt = 0.6f + easeHash11(seed ^ 0x13371337u) * 0.2f;
+
+    float weight[10];
+    float onFrac[10];
+    float weightSum = 0.0f;
+    for (int i = 0; i < cuts; i++)
+    {
+      float progress = (cuts > 1) ? (float)i / (float)(cuts - 1) : 1.0f;
+      float wJitter = easeHash11(seed ^ (uint32_t)(i * 2971 + 11));
+      float oJitter = easeHash11(seed ^ (uint32_t)(i * 68111 + 7));
+      weight[i] = (1.3f - 0.7f * progress) * (0.6f + wJitter * 0.8f);
+      onFrac[i] = clamp01((0.12f + 0.3f * progress) + (oJitter - 0.5f) * 0.2f);
+      weightSum += weight[i];
+    }
+    if (weightSum < 0.0001f)
+      weightSum = 1.0f;
+
+    if (t >= catchAt)
+    {
+      float u = clamp01((t - catchAt) / (1.0f - catchAt));
+      return clamp01(u * u * (3.0f - 2.0f * u));
+    }
+
+    float u = t / catchAt;
+    float acc = 0.0f;
+    int idx = cuts - 1;
+    float segPos = 0.0f;
+    for (int i = 0; i < cuts; i++)
+    {
+      float segFrac = weight[i] / weightSum;
+      if (i == cuts - 1 || u < acc + segFrac)
+      {
+        idx = i;
+        segPos = segFrac > 0.0001f ? clamp01((u - acc) / segFrac) : 0.0f;
+        break;
+      }
+      acc += segFrac;
+    }
+    return (segPos < onFrac[idx]) ? 1.0f : 0.0f;
+  }
+  case 21: // firefly wake-up: slow, organic breathing pulse whose swing grows
+           // then settles back to exactly 0 by t=1 - the calm counterpart to
+           // the "broken fixture" effects above. power sets how many breaths
+           // happen over the ramp.
+  {
+    float cycles = power > 0.1f ? power : 3.0f;
+    float mean = t;
+    float amp = 0.35f * sinf(PI * t); // 0 at both ends, peaks mid-ramp
+    float phase = sinf(TWO_PI * cycles * t);
+    return clamp01(mean + amp * phase);
+  }
+  case 22: // brownout sag: rises normally, then takes one brief dip partway
+           // through (like a big appliance kicking in on the same circuit)
+           // before recovering up to target - a single sag, not a repeating
+           // wobble like "elastic". power sets how deep the dip is.
+  {
+    float base = t * t * (3.0f - 2.0f * t);
+    float sagAt = 0.72f;
+    float sagWidth = 0.14f;
+    float sagDepth = power > 0.1f ? clamp01(power / 10.0f) : 0.22f;
+    float u = (t - sagAt) / sagWidth;
+    if (u > -1.0f && u < 1.0f)
+    {
+      float bump = 1.0f - u * u;
+      base -= sagDepth * bump * bump;
+    }
+    return clamp01(base);
+  }
+  case 23: // strobe-catch: a few full-brightness strobes at a steady, REGULAR
+           // cadence (unlike fluorescent/loosecontact's irregular randomness)
+           // before settling cleanly on target - a police-light-bar/camera-
+           // flash warm-up. power fixes the strobe count (default 3).
+  {
+    int strobes = (power > 1.5f) ? (int)power : 3;
+    if (strobes < 1)
+      strobes = 1;
+    if (strobes > 6)
+      strobes = 6;
+    float catchAt = 0.6f;
+    if (t >= catchAt)
+    {
+      float u = clamp01((t - catchAt) / (1.0f - catchAt));
+      return clamp01(u * u * (3.0f - 2.0f * u));
+    }
+    float u = t / catchAt;
+    float seg = 1.0f / (float)strobes;
+    float idxF = u / seg;
+    float segPos = idxF - floorf(idxF);
+    const float onFrac = 0.35f;
+    return (segPos < onFrac) ? 1.0f : 0.0f;
   }
   case 1: // smooth ease (default)
   default:
