@@ -503,7 +503,10 @@ static float applyEase(float t, uint8_t type, float power)
       }
       acc += segFrac;
     }
-    return (segPos < onFrac[idx]) ? 1.0f : 0.0f;
+    // On-window centered in the cycle (not flush against either edge), so
+    // the very first cycle starts dark at t=0 and the last ends dark right
+    // before the smooth catch-up ramp takes over - no snap at either seam.
+    return (fabsf(segPos - 0.5f) < onFrac[idx] * 0.5f) ? 1.0f : 0.0f;
   }
   case 21: // firefly wake-up: slow, organic breathing pulse whose swing grows
            // then settles back to exactly 0 by t=1 - the calm counterpart to
@@ -554,7 +557,9 @@ static float applyEase(float t, uint8_t type, float power)
     float idxF = u / seg;
     float segPos = idxF - floorf(idxF);
     const float onFrac = 0.35f;
-    return (segPos < onFrac) ? 1.0f : 0.0f;
+    // Centered on-window, same reasoning as loosecontact above: starts and
+    // ends dark so there's no snap at t=0 or at the handoff into catchAt.
+    return (fabsf(segPos - 0.5f) < onFrac * 0.5f) ? 1.0f : 0.0f;
   }
   case 1: // smooth ease (default)
   default:

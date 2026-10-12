@@ -230,7 +230,7 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       const segPos = u * cuts - idx;
       const progress = cuts > 1 ? idx / (cuts - 1) : 1;
       const onFrac = 0.12 + 0.3 * progress;
-      return segPos < onFrac ? 1 : 0;
+      return Math.abs(segPos - 0.5) < onFrac * 0.5 ? 1 : 0;
     }
     case 'firefly': {
       const cycles = pow > 0.1 ? pow : 3;
@@ -263,7 +263,7 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       const idxF = u / seg;
       const segPos = idxF - Math.floor(idxF);
       const onFrac = 0.35;
-      return segPos < onFrac ? 1 : 0;
+      return Math.abs(segPos - 0.5) < onFrac * 0.5 ? 1 : 0;
     }
     default:
       return t;
