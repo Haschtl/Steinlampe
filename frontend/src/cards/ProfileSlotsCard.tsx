@@ -54,9 +54,14 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   };
 
   useEffect(() => {
-    if (status.connected) refreshPreviews();
+    // Gate on statusReady (set once refreshStatus() has completed), not the
+    // raw connected flag - firing this any earlier races the initial status
+    // snapshot for the shared BLE notify queue/characteristic and can starve
+    // STATUS_END past useBle's wait timeout (see memory: Incomplete status
+    // snapshot).
+    if (status.connected && status.statusReady) refreshPreviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.connected]);
+  }, [status.connected, status.statusReady]);
 
   useEffect(() => {
     const next: Record<number, ProfilePreview> = {};

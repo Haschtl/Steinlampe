@@ -51,6 +51,7 @@ type BleApi = {
 export function useBle(): BleApi {
   const [status, setStatus] = useState<DeviceStatus>({
     connected: false,
+    statusReady: false,
     connecting: false,
     deviceName: '',
     lastStatusAt: null,
@@ -232,7 +233,15 @@ export function useBle(): BleApi {
           if (statusCharRef.current) {
             try {
               const lines = await readLines(statusCharRef.current);
-              lines.forEach(handleLine);
+              // The characteristic's readable value is overwritten every ~8ms by
+              // the firmware's chunked notify drain (comms.cpp flushBleNotification),
+              // so a read landing mid-chunk can return a torn fragment of whatever
+              // line happened to be mid-flight (e.g. ".0.0|fw_env=..." missing its
+              // "STATUS|...fw_ver=1" prefix) rather than a complete line. Only trust
+              // fragments that start with a recognized line prefix; anything else is
+              // noise from that race, not real status data worth parsing or logging.
+              const knownPrefix = /^(STATUS\||STATUS1\||STATUS2\||STATUS_END\||SENSORS\|)/;
+              lines.filter((line) => knownPrefix.test(line)).forEach(handleLine);
               if (lines.some((line) => line.startsWith('STATUS_END|'))) return;
             } catch (readError) {
               pushLog('Status read fallback failed: ' + (readError instanceof Error ? readError.message : String(readError)));
@@ -284,6 +293,7 @@ export function useBle(): BleApi {
     setStatus((s) => ({
       ...s,
       connected: false,
+      statusReady: false,
       connecting: false,
       deviceName: '',
       currentPattern: undefined,
@@ -384,6 +394,10 @@ export function useBle(): BleApi {
         // torn down. Bail out instead of firing a second, redundant "Connect error" for the
         // same disconnect refreshStatus already reported.
         if (!cmdCharRef.current) return;
+        // Only now is it safe for connected-triggered effects (e.g. profile preview
+        // fetches) to fire their own BLE traffic - any earlier and it races the
+        // status snapshot above for the shared BLE notify queue/characteristic.
+        setStatus((s) => ({ ...s, statusReady: true }));
         await sendCmd('custom export');
         // Opportunistically (re)mint a token for next time, now that we know
         // this connection is trusted. No-op/harmless against firmware

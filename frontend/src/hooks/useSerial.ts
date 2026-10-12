@@ -25,6 +25,10 @@ type SerialApi = {
 export function useSerial(): SerialApi {
   const [status, setStatus] = useState<DeviceStatus>({
     connected: false,
+    // Serial is a single ordered stream with no concurrent-connection/shared-queue
+    // race (unlike BLE's notify characteristic), so there's no need to defer this
+    // separately from `connected` - it's just set alongside it below.
+    statusReady: false,
     connecting: false,
     deviceName: '',
     lastStatusAt: null,
@@ -101,7 +105,7 @@ export function useSerial(): SerialApi {
       portRef.current.close().catch(() => undefined);
     }
     portRef.current = null;
-    setStatus((s) => ({ ...s, connected: false, connecting: false, deviceName: '' }));
+    setStatus((s) => ({ ...s, connected: false, statusReady: false, connecting: false, deviceName: '' }));
   }, []);
 
   const sendCmd = useCallback(
@@ -205,6 +209,7 @@ export function useSerial(): SerialApi {
       setStatus((s) => ({
         ...s,
         connected: true,
+        statusReady: true,
         connecting: false,
         deviceName: label,
       }));

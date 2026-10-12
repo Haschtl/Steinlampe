@@ -2,6 +2,11 @@ import { Dispatch, SetStateAction } from 'react';
 
 export type DeviceStatus = {
   connected: boolean;
+  // True once the initial post-connect status snapshot (refreshStatus()) has
+  // completed. Effects that fire extra BLE traffic on connect (e.g. profile
+  // previews) should gate on this instead of `connected`, so they don't race
+  // the status snapshot for the shared notify queue/characteristic.
+  statusReady: boolean;
   connecting: boolean;
   deviceName: string;
   lastStatusAt: number | null;
