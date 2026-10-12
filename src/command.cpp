@@ -2607,7 +2607,7 @@ void handleCommand(String line)
             }
             else
             {
-                sendFeedback(F("Usage: profile save <1-3>"));
+                sendFeedback(F("Usage: profile save <1-6>"));
             }
         }
         else if (arg.startsWith("load"))
@@ -2619,7 +2619,7 @@ void handleCommand(String line)
             }
             else
             {
-                sendFeedback(F("Usage: profile load <1-3>"));
+                sendFeedback(F("Usage: profile load <1-6>"));
             }
         }
         else if (arg.startsWith("show"))
@@ -2635,12 +2635,12 @@ void handleCommand(String line)
             }
             else
             {
-                sendFeedback(F("Usage: profile show <1-3>"));
+                sendFeedback(F("Usage: profile show <1-6>"));
             }
         }
         else
         {
-            sendFeedback(F("profile save <1-3> | profile load <1-3> | profile show <1-3>"));
+            sendFeedback(F("profile save <1-6> | profile load <1-6> | profile show <1-6>"));
         }
         return;
     }

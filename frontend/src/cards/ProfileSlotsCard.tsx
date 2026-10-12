@@ -7,6 +7,10 @@ import { useConnection } from '@/context/connection';
 import { patternLabel } from '@/data/patterns';
 import { Trans, useI18n } from '@/i18n';
 
+// Keep in sync with PROFILE_SLOTS in src/persistence.cpp.
+const PROFILE_SLOTS = 6;
+const SLOT_INDICES = Array.from({ length: PROFILE_SLOTS }, (_, i) => i + 1);
+
 type ProfilePreview = {
   patternIdx?: number;
   brightnessPct?: number;
@@ -50,7 +54,7 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
 
   const refreshPreviews = () => {
-    [1, 2, 3].forEach((slot) => sendCmd(`profile show ${slot}`).catch((e) => console.warn(e)));
+    SLOT_INDICES.forEach((slot) => sendCmd(`profile show ${slot}`).catch((e) => console.warn(e)));
   };
 
   useEffect(() => {
@@ -66,7 +70,7 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   useEffect(() => {
     const next: Record<number, ProfilePreview> = {};
     let changed = false;
-    for (const slot of [1, 2, 3]) {
+    for (const slot of SLOT_INDICES) {
       const entry = [...log].reverse().find((l) => l.line.startsWith(`[Profile ${slot}]`));
       if (entry) {
         const cfg = entry.line.replace(`[Profile ${slot}] `, '');
@@ -98,7 +102,7 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
         <CardTitle><Trans k="title.profiles">Profile</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {[1, 2, 3].map((slot) => (
+        {SLOT_INDICES.map((slot) => (
           <div
             key={slot}
             className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${

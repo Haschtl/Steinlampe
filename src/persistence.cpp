@@ -121,7 +121,7 @@ static const char *PREF_KEY_PUSH_STEP = "push_step";
 #endif
 // profile slots profile1..profileN
 const char *PREF_KEY_PROFILE_BASE = "profile";
-const uint8_t PROFILE_SLOTS = 3;
+const uint8_t PROFILE_SLOTS = 6;
 static const char *PREF_KEY_PWM_GAMMA = "pwm_g";
 static const char *PREF_KEY_FILTER_IIR_EN = "fil_iir_en";
 static const char *PREF_KEY_FILTER_IIR_A = "fil_iir_a";
