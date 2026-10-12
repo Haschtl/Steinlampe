@@ -73,6 +73,8 @@ export default function App() {
     connect,
     connectBle,
     connectSerial,
+    autoReconnectState,
+    autoReconnectDeviceName,
     disconnect,
     refreshStatus,
     sendCmd,
@@ -226,9 +228,16 @@ export default function App() {
                 <h2 className="mb-4 text-center text-2xl font-semibold text-text drop-shadow">
                   <Trans k="title.app">Quarzlampe</Trans>
                 </h2>
-                <p className="mb-6 text-center text-muted text-sm">
+                <p className={`text-center text-muted text-sm ${autoReconnectState !== 'idle' ? 'mb-2' : 'mb-6'}`}>
                   Verbinden oder überspringen, um die App anzuschauen.
                 </p>
+                {autoReconnectState !== 'idle' && (
+                  <p className="mb-4 text-center text-[11px] text-muted/60">
+                    {autoReconnectState === 'connecting'
+                      ? t('status.autoReconnecting', 'Verbinde automatisch mit {name}…').replace('{name}', autoReconnectDeviceName)
+                      : t('status.autoReconnectFailed', 'Automatische Verbindung mit {name} fehlgeschlagen').replace('{name}', autoReconnectDeviceName)}
+                  </p>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     size="md"

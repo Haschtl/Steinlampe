@@ -44,7 +44,7 @@ function previewText(p: ProfilePreview | undefined, t: (k: string, fb: string) =
 }
 
 export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmd, log } = useConnection();
+  const { sendCmd, log, status } = useConnection();
   const { t } = useI18n();
   const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
@@ -54,9 +54,9 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   };
 
   useEffect(() => {
-    refreshPreviews();
+    if (status.connected) refreshPreviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status.connected]);
 
   useEffect(() => {
     const next: Record<number, ProfilePreview> = {};

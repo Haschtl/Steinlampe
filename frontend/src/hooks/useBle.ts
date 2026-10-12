@@ -15,6 +15,8 @@ type BleApi = {
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
   setAutoReconnect: (v: boolean) => void;
+  autoReconnectState: 'idle' | 'connecting' | 'failed';
+  autoReconnectDeviceName: string;
   knownDevices: Record<string, string>;
   forgetDevice: (id: string) => void;
   renameDevice: (id: string, name: string) => void;
@@ -45,6 +47,11 @@ export function useBle(): BleApi {
     const stored = localStorage.getItem('ql-auto-reconnect');
     return stored !== 'false';
   });
+  // Tracks the silent reconnect-to-last-device attempt on mount, so the UI can show it
+  // (e.g. in the connect overlay) instead of leaving the user staring at a bare dialog
+  // while a background connect is already in flight.
+  const [autoReconnectState, setAutoReconnectState] = useState<'idle' | 'connecting' | 'failed'>('idle');
+  const [autoReconnectDeviceName, setAutoReconnectDeviceName] = useState('');
 
   const cmdCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const statusCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
@@ -389,13 +396,18 @@ export function useBle(): BleApi {
         (allowAuto ? byId(lastId) : undefined) ||
         (allowAuto && !urlBleId && !lastId ? devices.find((d) => d.name) : undefined);
       if (match) {
+        const friendly = (match.id && knownDevicesRef.current[match.id]) || match.name || 'Quarzlampe';
+        setAutoReconnectDeviceName(friendly);
+        setAutoReconnectState('connecting');
         setStatus((s) => ({ ...s, connecting: true }));
         await connectWithDevice(match, true);
+        setAutoReconnectState('idle');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       pushLog('Auto-reconnect failed: ' + msg);
       toast.error('Auto-reconnect failed: ' + msg);
+      setAutoReconnectState('failed');
     }
   }, [connectWithDevice, pushLog, setStatus]);
 
@@ -427,6 +439,8 @@ export function useBle(): BleApi {
       setFilterParsed,
       autoReconnect,
       setAutoReconnect,
+      autoReconnectState,
+      autoReconnectDeviceName,
       knownDevices,
       renameDevice,
       forgetDevice,
@@ -438,6 +452,8 @@ export function useBle(): BleApi {
     }),
     [
       autoReconnect,
+      autoReconnectState,
+      autoReconnectDeviceName,
       cleanup,
       connect,
       filterParsed,

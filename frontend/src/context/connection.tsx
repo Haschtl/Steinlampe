@@ -16,6 +16,8 @@ type ConnectionContextValue = {
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
   setAutoReconnect: (v: boolean) => void;
+  autoReconnectState: 'idle' | 'connecting' | 'failed';
+  autoReconnectDeviceName: string;
   knownDevices: Record<string, string>;
   forgetDevice: (id: string) => void;
   renameDevice: (id: string, name: string) => void;
@@ -63,6 +65,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setFilterParsed: active.setFilterParsed,
       autoReconnect: ble.autoReconnect,
       setAutoReconnect: ble.setAutoReconnect,
+      autoReconnectState: ble.autoReconnectState,
+      autoReconnectDeviceName: ble.autoReconnectDeviceName,
       knownDevices: ble.knownDevices,
       forgetDevice: ble.forgetDevice,
       renameDevice: ble.renameDevice,
