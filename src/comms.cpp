@@ -368,6 +368,10 @@ static uint32_t bleLastNotifyMs = 0;
 static SemaphoreHandle_t bleNotifyMutex = nullptr;
 static constexpr size_t BLE_NOTIFY_QUEUE_MAX = 64;
 static constexpr uint32_t BLE_NOTIFY_INTERVAL_MS = 8;
+// Matches the Bluedroid controller's default CONFIG_BTDM_CTRL_BLE_MAX_CONN (not
+// overridden in this project's sdkconfig). Keeps us from re-arming advertising
+// once the controller can't accept another BLE link anyway.
+static constexpr uint8_t BLE_MAX_CONCURRENT_CLIENTS = 3;
 
 static void queueBleNotification(const String &line)
 {
@@ -476,9 +480,9 @@ class LampBleServerCallbacks : public BLEServerCallbacks
 
   void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
-    bleClientConnected = true;
     if (!param)
     {
+      bleClientConnected = server->getConnectedCount() > 0;
       lastBtActivityMs = millis();
       if (feedbackAllowed())
         Serial.println(F("[BLE] Verbunden"));
@@ -495,17 +499,28 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       }
       if (server)
         server->disconnect(param->connect.conn_id);
-      bleClientConnected = false;
+      // Don't force this to false: another, already-trusted client may still
+      // be connected (getConnectedCount() still includes this rejected one
+      // until its own disconnect event lands, but that's fine - onDisconnect
+      // recomputes once it does).
+      bleClientConnected = server->getConnectedCount() > 0;
       return;
     }
     lastBtActivityMs = millis();
     if (addToList(trustedBle, addr))
       saveSettings();
+    bleClientConnected = true;
     if (feedbackAllowed())
     {
       Serial.print(F("[BLE] Verbunden: "));
       Serial.println(addr);
     }
+    // The controller stops connectable advertising once a central connects;
+    // re-arm it here (bounded by the controller's max BLE connection count,
+    // CONFIG_BTDM_CTRL_BLE_MAX_CONN, default 3) so additional trusted devices
+    // can still find and connect to the lamp while this one stays connected.
+    if (server->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
+      server->startAdvertising();
   }
 
   // void onDisconnect(BLEServer *server) override
@@ -517,7 +532,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
 
   void onDisconnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
   {
-    bleClientConnected = false;
+    bleClientConnected = server->getConnectedCount() > 0;
     if (!param)
     {
       if (feedbackAllowed())
