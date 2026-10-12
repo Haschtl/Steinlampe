@@ -68,8 +68,6 @@ export function OtaUpdateCard() {
     }
   };
 
-  if (!status.connected) return null;
-
   return (
     <Card>
       <CardHeader>

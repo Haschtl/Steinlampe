@@ -42,6 +42,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.push": "Push Button",
     "title.morse": "Morse",
     "title.import": "Backup / Restore",
+    "title.scanQr": "Scan cfg import QR",
     "title.profiles": "Profiles",
     "title.help": "Command Reference & Links",
     "title.factory": "Factory Defaults",
@@ -56,6 +57,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.currentContent": "Current content",
     "title.overwriteProfile": "Overwrite slot?",
     "desc.overwriteProfile": "The current settings (pattern, brightness, ramps) will be saved into this slot, replacing its previous content.",
+    "desc.scanQr": "Point the camera at the QR code with the cfg import line.",
     "btn.overwrite": "Overwrite",
     "label.brightness": "Brightness",
     "label.speed": "Speed",
@@ -224,6 +226,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "status.connected": "Connected",
     "status.disconnected": "Not connected",
     "status.last": "Last status",
+    "status.ready": "Ready",
+    "status.scanning": "Scanning…",
     "music.autoLamp": "Auto Lamp",
     "music.clapActions": "Clap actions (send command on 1/2/3 claps)",
     "music.modeInfo":
@@ -243,6 +247,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.reload": "Reload",
     "btn.close": "Close",
     "btn.import": "Import",
+    "btn.scanQr": "Scan QR",
+    "btn.startScan": "Start",
     "btn.prev": "Prev",
     "btn.next": "Next",
     "btn.status": "Status",
@@ -365,6 +371,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.push": "Taster",
     "title.morse": "Morse",
     "title.import": "Backup / Restore",
+    "title.scanQr": "cfg-Import-QR scannen",
     "title.profiles": "Profile",
     "title.help": "Befehle & Links",
     "title.factory": "Werkseinstellungen",
@@ -379,6 +386,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.currentContent": "Bisheriger Inhalt",
     "title.overwriteProfile": "Slot überschreiben?",
     "desc.overwriteProfile": "Die aktuellen Einstellungen (Pattern, Helligkeit, Ramps) werden in diesem Slot gespeichert, der bisherige Inhalt geht verloren.",
+    "desc.scanQr": "Richte die Kamera auf den QR-Code mit der cfg import Zeile.",
     "btn.overwrite": "Überschreiben",
     "label.brightness": "Helligkeit",
     "label.speed": "Geschwindigkeit",
@@ -549,6 +557,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "status.connected": "Verbunden",
     "status.disconnected": "Nicht verbunden",
     "status.last": "Letzter Status",
+    "status.ready": "Bereit",
+    "status.scanning": "Scanne…",
     "music.autoLamp": "Auto-Lampe",
     "music.clapActions": "Klatsch-Aktionen (1/2/3 Klatscher senden Befehl)",
     "music.modeInfo":
@@ -568,6 +578,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.reload": "Neu laden",
     "btn.close": "Schließen",
     "btn.import": "Import",
+    "btn.scanQr": "QR scannen",
+    "btn.startScan": "Start",
     "btn.prev": "Zurück",
     "btn.next": "Weiter",
     "btn.status": "Status",
@@ -680,5 +692,9 @@ export function useI18n() {
 
 export function Trans({ k, children }: { k: string; children?: ReactNode }) {
   const { t } = useI18n();
-  return <>{t(k) || children}</>;
+  // t() itself falls back to the key when a translation is missing (so it's never falsy),
+  // which meant a missing key always showed the raw key instead of this fallback text. Pass
+  // the JSX fallback into t() directly so a missing key renders readable text instead.
+  const fallback = typeof children === 'string' ? children : undefined;
+  return <>{t(k, fallback)}</>;
 }

@@ -196,7 +196,7 @@ export function LedConfigCard() {
               live PWM.
             </Trans>
           </p>
-          <div className="rounded-lg border border-border bg-gradient-to-br from-background to-muted p-3 overflow-hidden">
+          <div className="rounded-lg border border-border bg-gradient-to-br from-panel to-bg p-3 overflow-hidden">
             <svg
               viewBox={`0 0 ${curvePath.width} ${curvePath.height}`}
               role="img"
