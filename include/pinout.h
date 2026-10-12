@@ -21,7 +21,9 @@ static const int PIN_OUTPUT = PIN_PWM;
 #endif
 
 #if ENABLE_SWITCH
-static const int PIN_SWITCH = 32; // Kippschalter (digital)
+#ifndef PIN_SWITCH
+#define PIN_SWITCH 32 // Kippschalter (digital)
+#endif
 #endif
 static const int PIN_TOUCH_DIM = T7; // Touch-Elektrode am Metallschalter (GPIO27)
 #if ENABLE_POTI

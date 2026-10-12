@@ -59,3 +59,12 @@ jobs:
         with:
           name: firmware-desk_lamp
           path: .pio/build/desk_lamp/firmware.bin
+
+      - name: Build (on_air)
+        run: pio run -e on_air
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-on_air
+          path: .pio/build/on_air/firmware.bin
