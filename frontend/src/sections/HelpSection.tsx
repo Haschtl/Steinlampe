@@ -4,14 +4,54 @@ import { Link2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Trans, useI18n } from '@/i18n';
 
-type HelpProps = {
-  bleGuids: { label: string; value: string }[];
-  commands: { cmd: string; desc: string }[];
-  midi?: { msg: string; action: string }[];
-};
+const bleGuids = [
+  { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
+  { label: 'Command Char', value: '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7' },
+  { label: 'Status Char', value: 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123' },
+];
 
-export function HelpSection({ bleGuids, commands, midi }: HelpProps) {
+const commands = [
+  { cmd: 'on / off / toggle', desc: 'Switch lamp power' },
+  { cmd: 'mode N / next / prev', desc: 'Select pattern' },
+  { cmd: 'auto on/off', desc: 'Enable auto-cycle' },
+  { cmd: 'quick <csv|default>', desc: 'Set quick-list' },
+  { cmd: 'bri X / bri min/max X', desc: 'Brightness and limits' },
+  { cmd: 'ramp <ms> / ramp on/off <ms>', desc: 'Ramp durations' },
+  { cmd: 'ramp ease on|off <type> [pow]', desc: 'Ramp easing curve' },
+  { cmd: 'pat scale X / pat fade on|off / pat fade amt X', desc: 'Pattern speed & fade' },
+  { cmd: 'idleoff <min>', desc: 'Idle auto-off timer' },
+  { cmd: 'wake [soft] [mode=n bri=x] <s>', desc: 'Wake fade' },
+  { cmd: 'sleep <min> / sleep stop', desc: 'Sleep fade' },
+  { cmd: 'sos [stop]', desc: 'SOS alert' },
+  { cmd: 'notify ... / morse <text>', desc: 'Blink/morse' },
+  { cmd: 'demo [s] / demo off', desc: 'Cycle quick-list with dwell' },
+  { cmd: 'touch tune on off / touchdim on/off / touch hold ms', desc: 'Touch config' },
+  { cmd: 'clap on/off / clap thr / cool / train', desc: 'Clap/audio control' },
+  { cmd: 'presence_ble on/off/set/add/del/clear/thr/grace/auto on/auto off', desc: 'BLE phone-proximity presence auto on/off' },
+  { cmd: 'radar on/off/dim/motion/offdist', desc: 'mmWave radar presence: touchless dimming, motion auto-on, distance auto-off' },
+  { cmd: 'light on/off/calib/gain/clamp', desc: 'Ambient light (if built)' },
+  { cmd: 'music sens / music smooth / music auto on|off|thr', desc: 'Music params (use patterns Music Direct/Beat)' },
+  { cmd: 'poti on/off/alpha/delta/off/sample', desc: 'Brightness knob (if built)' },
+  { cmd: 'push on/off/debounce/double/hold/step_ms/step', desc: 'Push button (if built)' },
+  { cmd: 'custom v1,v2.. / custom step ms', desc: 'Custom pattern' },
+  { cmd: 'profile save/load/show', desc: 'Scene profiles (pattern/brightness/ramp, no calibration)' },
+  { cmd: 'cfg export / cfg import ...', desc: 'Backup/restore settings' },
+  { cmd: 'status / status json', desc: 'Print status snapshot' },
+  { cmd: 'factory / help', desc: 'Reset or list commands' },
+];
+
+const midiMapping = [
+  { msg: 'CC 7', action: 'Set brightness 0–100%' },
+  { msg: 'CC 20', action: 'Set pattern/mode 1–8 (scaled)' },
+  { msg: 'Note 59 (B3)', action: 'Toggle lamp' },
+  { msg: 'Note 60 (C4)', action: 'Previous pattern' },
+  { msg: 'Note 62 (D4)', action: 'Next pattern' },
+  { msg: 'Notes 70–77 (F#4..C5)', action: 'Select pattern/mode 1–8' },
+];
+
+export function HelpSection() {
   const { t } = useI18n();
+  const midi = midiMapping;
 
   const copyConnectLink = async () => {
     const id = localStorage.getItem('ql-last-device-id');

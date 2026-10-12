@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Bluetooth, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
@@ -8,59 +9,14 @@ import 'react-toastify/dist/ReactToastify.css';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useConnection } from './context/connection';
 import { Trans, useI18n } from './i18n';
-import { HomeSection } from './sections/HomeSection';
-import { SettingsSection } from './sections/SettingsSection';
-import { ActionsSection } from './sections/ActionsSection';
-import { HelpSection } from './sections/HelpSection';
-import { AdvancedSection } from './sections/AdvancedSection';
-import { FilterSection } from './sections/FilterSection';
+import { AnimatedOutlet } from './components/PageTransition';
 
-const bleGuids = [
-  { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
-  { label: 'Command Char', value: '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7' },
-  { label: 'Status Char', value: 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123' },
-];
+const NAV_INACTIVE_CLASS =
+  'border-border text-text hover:border-accent hover:text-accent bg-panel/10 hover:bg-panel/60 focus-visible:bg-panel/70';
+const NAV_ACTIVE_CLASS =
+  'border-accent text-accent bg-panel hover:bg-panel/70 focus-visible:bg-panel/80 bg-accent/10 ring-1 ring-accent';
 
-const commands = [
-  { cmd: 'on / off / toggle', desc: 'Switch lamp power' },
-  { cmd: 'mode N / next / prev', desc: 'Select pattern' },
-  { cmd: 'auto on/off', desc: 'Enable auto-cycle' },
-  { cmd: 'quick <csv|default>', desc: 'Set quick-list' },
-  { cmd: 'bri X / bri min/max X', desc: 'Brightness and limits' },
-  { cmd: 'ramp <ms> / ramp on/off <ms>', desc: 'Ramp durations' },
-  { cmd: 'ramp ease on|off <type> [pow]', desc: 'Ramp easing curve' },
-  { cmd: 'pat scale X / pat fade on|off / pat fade amt X', desc: 'Pattern speed & fade' },
-  { cmd: 'idleoff <min>', desc: 'Idle auto-off timer' },
-  { cmd: 'wake [soft] [mode=n bri=x] <s>', desc: 'Wake fade' },
-  { cmd: 'sleep <min> / sleep stop', desc: 'Sleep fade' },
-  { cmd: 'sos [stop]', desc: 'SOS alert' },
-  { cmd: 'notify ... / morse <text>', desc: 'Blink/morse' },
-  { cmd: 'demo [s] / demo off', desc: 'Cycle quick-list with dwell' },
-  { cmd: 'touch tune on off / touchdim on/off / touch hold ms', desc: 'Touch config' },
-  { cmd: 'clap on/off / clap thr / cool / train', desc: 'Clap/audio control' },
-  { cmd: 'presence_ble on/off/set/add/del/clear/thr/grace/auto on/auto off', desc: 'BLE phone-proximity presence auto on/off' },
-  { cmd: 'radar on/off/dim/motion/offdist', desc: 'mmWave radar presence: touchless dimming, motion auto-on, distance auto-off' },
-  { cmd: 'light on/off/calib/gain/clamp', desc: 'Ambient light (if built)' },
-  { cmd: 'music sens / music smooth / music auto on|off|thr', desc: 'Music params (use patterns Music Direct/Beat)' },
-  { cmd: 'poti on/off/alpha/delta/off/sample', desc: 'Brightness knob (if built)' },
-  { cmd: 'push on/off/debounce/double/hold/step_ms/step', desc: 'Push button (if built)' },
-  { cmd: 'custom v1,v2.. / custom step ms', desc: 'Custom pattern' },
-  { cmd: 'profile save/load/show', desc: 'Scene profiles (pattern/brightness/ramp, no calibration)' },
-  { cmd: 'cfg export / cfg import ...', desc: 'Backup/restore settings' },
-  { cmd: 'status / status json', desc: 'Print status snapshot' },
-  { cmd: 'factory / help', desc: 'Reset or list commands' }
-];
-
-const midiMapping = [
-  { msg: 'CC 7', action: 'Set brightness 0–100%' },
-  { msg: 'CC 20', action: 'Set pattern/mode 1–8 (scaled)' },
-  { msg: 'Note 59 (B3)', action: 'Toggle lamp' },
-  { msg: 'Note 60 (C4)', action: 'Previous pattern' },
-  { msg: 'Note 62 (D4)', action: 'Next pattern' },
-  { msg: 'Notes 70–77 (F#4..C5)', action: 'Select pattern/mode 1–8' },
-];
-
-export default function App() {
+export function RootLayout() {
   const { t, lang, setLang } = useI18n();
   const {
     status,
@@ -80,8 +36,7 @@ export default function App() {
     sendCmd,
     setLog,
   } = useConnection();
-  const [activeTab, setActiveTab] = useState<'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'>('home');
-  const [profileSlot, setProfileSlot] = useState('1');
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [logOpen, setLogOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -184,13 +139,13 @@ export default function App() {
     clearPendingCfg();
   }, [clearPendingCfg, pendingCfg, sendCmd]);
 
-  const tabs: { key: 'home' | 'settings' | 'advanced' | 'actions' | 'filters' | 'help'; label: string; icon: ReactElement }[] = [
-    { key: 'home', label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" /> },
-    { key: 'actions', label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
-    { key: 'filters', label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },
-    { key: 'advanced', label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
-    { key: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
-    { key: 'help', label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
+  const tabs = [
+    { to: '/' as const, label: t('nav.home', 'Home'), icon: <Home className="h-4 w-4" />, exact: true },
+    { to: '/actions' as const, label: t('nav.actions', 'Extras'), icon: <Wand2 className="h-4 w-4" /> },
+    { to: '/filters' as const, label: t('nav.filters', 'Filters'), icon: <Sliders className="h-4 w-4" /> },
+    { to: '/advanced' as const, label: t('nav.hardware', 'Hardware'), icon: <Wrench className="h-4 w-4" /> },
+    { to: '/settings' as const, label: t('nav.settings', 'Settings'), icon: <Settings className="h-4 w-4" /> },
+    { to: '/help' as const, label: t('nav.help', 'Help'), icon: <HelpCircle className="h-4 w-4" /> },
   ];
 
   return (
@@ -318,19 +273,17 @@ export default function App() {
 
             <div className="flex flex-wrap items-center gap-2">
               {tabs.map((tab) => (
-                <Button
-                  key={tab.key}
-                  variant={activeTab === tab.key ? "primary" : "ghost"}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 ${
-                    activeTab === tab.key
-                      ? "bg-accent/10 ring-1 ring-accent"
-                      : ""
-                  }`}
+                <Link
+                  key={tab.to}
+                  to={tab.to}
+                  activeOptions={tab.exact ? { exact: true } : undefined}
+                  className="btn flex items-center gap-2"
+                  inactiveProps={{ className: NAV_INACTIVE_CLASS }}
+                  activeProps={{ className: NAV_ACTIVE_CLASS }}
                 >
                   {tab.icon}
                   <span className="hidden sm:inline">{tab.label}</span>
-                </Button>
+                </Link>
               ))}
               {/* <div className="flex items-center gap-2">
                  <Button
@@ -362,42 +315,9 @@ export default function App() {
         </header>
 
         <main className="relative mx-auto max-w-6xl px-4 py-4 pb-32">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 18, scale: 0.96, rotate: -0.4 }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                scale: 1,
-                rotate: 0,
-                transition: { duration: 0.55, ease: [0.19, 1, 0.22, 1] },
-              }}
-              exit={{
-                opacity: 0,
-                y: -14,
-                scale: 0.985,
-                rotate: 0.35,
-                transition: { duration: 0.32, ease: [0.4, 0, 0.7, 0.2] },
-              }}
-              className="space-y-4"
-            >
-              {activeTab === "home" && <HomeSection profileSlot={profileSlot} setProfileSlot={setProfileSlot} />}
-              {activeTab === "settings" && <SettingsSection />}
-              {activeTab === "advanced" && <AdvancedSection />}
-              {activeTab === "filters" && <FilterSection />}
-              {activeTab === "actions" && <ActionsSection />}
-              {activeTab === "help" && (
-                <HelpSection
-                  bleGuids={bleGuids}
-                  commands={commands}
-                  midi={midiMapping}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
+          <AnimatedOutlet />
           <motion.div
-            key={`${activeTab}-glow`}
+            key={`${pathname}-glow`}
             className="pointer-events-none absolute -inset-10 -z-10 hidden md:block"
             initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
             animate={{
@@ -421,7 +341,7 @@ export default function App() {
             }}
           />
           <motion.div
-            key={`${activeTab}-facet`}
+            key={`${pathname}-facet`}
             className="pointer-events-none absolute -inset-12 -z-20 hidden md:block"
             initial={{ opacity: 0, scale: 1 }}
             animate={{
