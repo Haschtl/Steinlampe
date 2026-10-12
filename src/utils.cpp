@@ -66,6 +66,8 @@ uint8_t easeFromString(const String &s)
         return 14;
     if (l == "flicker")
         return 15;
+    if (l == "fluorescent" || l == "tube")
+        return 16;
     return 1;
 }
 
@@ -103,6 +105,8 @@ String easeToString(uint8_t t)
         return F("stepped");
     case 15:
         return F("flicker");
+    case 16:
+        return F("fluorescent");
     case 1:
     default:
         return F("ease");

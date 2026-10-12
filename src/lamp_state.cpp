@@ -74,7 +74,7 @@ uint32_t rampDurationMs = Settings::DEFAULT_RAMP_MS;
 uint32_t rampOnDurationMs = Settings::DEFAULT_RAMP_ON_MS;
 uint32_t rampOffDurationMs = Settings::DEFAULT_RAMP_OFF_MS;
 uint32_t lastActivityMs = 0;
-uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout,5=flash,6=wave,7=blink,8=sine,9=circ,10=expo,11=back,12=elastic,13=bounce,14=stepped,15=flicker
+uint8_t rampEaseOnType = Settings::DEFAULT_RAMP_EASE_ON; // 0=linear,1=ease(smoothstep),2=in,3=out,4=inout,5=flash,6=wave,7=blink,8=sine,9=circ,10=expo,11=back,12=elastic,13=bounce,14=stepped,15=flicker,16=fluorescent
 uint8_t rampEaseOffType = Settings::DEFAULT_RAMP_EASE_OFF;
 float rampEaseOnPower = Settings::DEFAULT_RAMP_POW_ON;
 float rampEaseOffPower = Settings::DEFAULT_RAMP_POW_OFF;
@@ -335,6 +335,37 @@ static float applyEase(float t, uint8_t type, float power)
     float n2 = easeHash11(seed ^ 0x9E3779B9u ^ (uint32_t)(t * 91.0f)) - 0.5f;
     float flicker = (n1 * 0.7f + n2 * 0.3f) * amp * (1.0f - t);
     return clamp01(t + flicker * t);
+  }
+  case 16: // fluorescent tube: a few irregular flicker pulses, then it "catches" and settles -
+           // like a tube stuttering on (ramp on) or sputtering out (ramp off). Seeded per
+           // activation (like case 15) so the pulse count/timing/brightness are never the same
+           // twice. power, if given as an integer > 1, fixes the pulse count; otherwise it's
+           // randomized (3-6 pulses).
+  {
+    uint32_t seed = rampStartMs * 2654435761u;
+    int pulses = (power > 1.5f) ? (int)power : (3 + (int)(easeHash11(seed) * 4.0f));
+    if (pulses < 2)
+      pulses = 2;
+    if (pulses > 8)
+      pulses = 8;
+    float catchAt = 0.55f + easeHash11(seed ^ 0xA5A5A5A5u) * 0.2f; // settles somewhere in 55-75%
+    if (t >= catchAt)
+    {
+      float u = clamp01((t - catchAt) / (1.0f - catchAt));
+      return clamp01(u * u * (3.0f - 2.0f * u));
+    }
+    float u = t / catchAt;
+    int idx = (int)(u * pulses);
+    if (idx >= pulses)
+      idx = pulses - 1;
+    float segPos = u * pulses - idx;
+    float pulseHeight = 0.2f + easeHash11(seed ^ (uint32_t)(idx * 7919 + 1)) * 0.7f;
+    float pulseWidth = 0.2f + easeHash11(seed ^ (uint32_t)(idx * 104729 + 1)) * 0.3f;
+    if (segPos >= pulseWidth)
+      return 0.0f;
+    float p = segPos / pulseWidth;
+    float spike = p < 0.5f ? (2.0f * p) : (2.0f - 2.0f * p);
+    return clamp01(pulseHeight * spike);
   }
   case 1: // smooth ease (default)
   default:

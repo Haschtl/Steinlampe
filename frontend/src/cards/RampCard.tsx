@@ -26,7 +26,8 @@ type EaseType =
   | 'elastic'
   | 'bounce'
   | 'stepped'
-  | 'flicker';
+  | 'flicker'
+  | 'fluorescent';
 
 const EASE_OPTIONS: EaseType[] = [
   'linear',
@@ -45,6 +46,7 @@ const EASE_OPTIONS: EaseType[] = [
   'bounce',
   'stepped',
   'flicker',
+  'fluorescent',
 ];
 
 const easeSample = (t: number, ease: EaseType, pow: number) => {
@@ -149,6 +151,26 @@ const easeSample = (t: number, ease: EaseType, pow: number) => {
       const n2 = Math.sin(t * 133.1 + 4.7) * 0.5;
       const flicker = (n1 * 0.7 + n2 * 0.3) * amp * (1 - t);
       return t + flicker * t;
+    }
+    case 'fluorescent': {
+      // Illustrative only - the device seeds pulse count/timing/brightness randomly per
+      // activation, so this real run never looks exactly like this preview.
+      const pulses = pow > 1.5 ? Math.max(2, Math.min(8, Math.floor(pow))) : 4;
+      const catchAt = 0.65;
+      if (t >= catchAt) {
+        const u = Math.max(0, Math.min(1, (t - catchAt) / (1 - catchAt)));
+        return u * u * (3 - 2 * u);
+      }
+      const u = t / catchAt;
+      let idx = Math.floor(u * pulses);
+      if (idx >= pulses) idx = pulses - 1;
+      const segPos = u * pulses - idx;
+      const pulseHeight = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(idx * 2.7 + 1.1));
+      const pulseWidth = 0.3 + 0.15 * (0.5 + 0.5 * Math.sin(idx * 5.3 + 2.9));
+      if (segPos >= pulseWidth) return 0;
+      const p = segPos / pulseWidth;
+      const spike = p < 0.5 ? 2 * p : 2 - 2 * p;
+      return pulseHeight * spike;
     }
     default:
       return t;
