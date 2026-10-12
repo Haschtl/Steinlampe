@@ -491,7 +491,7 @@ void loop()
   {
     uint32_t now = millis();
     processStartupSwitch();
-    if ((now - bootStartMs) < SECURE_BOOT_WINDOW_MS)
+    if ((now - bootStartMs) < SECURE_BOOT_WINDOW_MS && startupHoldActive)
     {
       if (lampEnabled)
         setLampEnabled(false, "startup-hold");
@@ -505,6 +505,11 @@ void loop()
     }
     startupHoldActive = false;
     secureBootWindowClosed = true;
+    // The hold above force-disables the lamp regardless of the switch/poti position. Once the
+    // window closes (by timeout or by completing the toggle gesture), resync to whatever the
+    // hardware actually indicates now - otherwise a lamp powered on with the switch already ON
+    // stays dark, since switchDebouncedState never changes (no edge) to re-trigger it.
+    setLampEnabled(hardwareWantsOn(), "secure-boot window closed");
   }
   pollCommunications();
 #if ENABLE_SWITCH
