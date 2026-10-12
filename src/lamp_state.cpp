@@ -338,11 +338,12 @@ static float applyEase(float t, uint8_t type, float power)
     float flicker = (n1 * 0.7f + n2 * 0.3f) * amp * (1.0f - t);
     return clamp01(t + flicker * t);
   }
-  case 16: // fluorescent tube: a few irregular flicker pulses, then it "catches" and settles -
-           // like a tube stuttering on (ramp on) or sputtering out (ramp off). Seeded per
-           // activation (like case 15) so the pulse count/timing/brightness are never the same
-           // twice. power, if given as an integer > 1, fixes the pulse count; otherwise it's
-           // randomized (3-6 pulses).
+  case 16: // fluorescent tube starter: the glow-starter keeps retrying to strike an arc across
+           // the gas. Each retry's dark gap and flash are irregular lengths - never the same
+           // cycle twice - and, because the gas keeps a little residual ionization each time,
+           // later retries strike closer together, flash longer and brighter, until it finally
+           // holds. Seeded per activation (like case 15). power, if given as an integer > 1,
+           // fixes the retry count; otherwise it's randomized (3-6 retries).
   {
     uint32_t seed = rampStartMs * 2654435761u;
     int pulses = (power > 1.5f) ? (int)power : (3 + (int)(easeHash11(seed) * 4.0f));
@@ -351,23 +352,62 @@ static float applyEase(float t, uint8_t type, float power)
     if (pulses > 8)
       pulses = 8;
     float catchAt = 0.55f + easeHash11(seed ^ 0xA5A5A5A5u) * 0.2f; // settles somewhere in 55-75%
+
+    // Per-retry-cycle randomization, each biased by how far along the retry
+    // sequence we are (progress 0 at the first attempt, 1 at the last):
+    // cycle length shrinks (retries come quicker), while flash duty-cycle and
+    // peak brightness grow (each strike holds a little better than the last).
+    float weight[8];
+    float duty[8];
+    float height[8];
+    float weightSum = 0.0f;
+    for (int i = 0; i < pulses; i++)
+    {
+      float progress = (pulses > 1) ? (float)i / (float)(pulses - 1) : 1.0f;
+      float wJitter = easeHash11(seed ^ (uint32_t)(i * 7919 + 1));
+      float dJitter = easeHash11(seed ^ (uint32_t)(i * 104729 + 1));
+      float hJitter = easeHash11(seed ^ (uint32_t)(i * 15485863 + 1));
+      weight[i] = (1.4f - 0.8f * progress) * (0.65f + wJitter * 0.7f);
+      duty[i] = clamp01((0.18f + 0.45f * progress) + (dJitter - 0.5f) * 0.25f);
+      height[i] = clamp01((0.3f + 0.6f * progress) + (hJitter - 0.5f) * 0.3f);
+      weightSum += weight[i];
+    }
+    if (weightSum < 0.0001f)
+      weightSum = 1.0f;
+
     if (t >= catchAt)
     {
       float u = clamp01((t - catchAt) / (1.0f - catchAt));
       return clamp01(u * u * (3.0f - 2.0f * u));
     }
+
+    // Walk the variable-length retry cycles to find which one `t` falls into.
     float u = t / catchAt;
-    int idx = (int)(u * pulses);
-    if (idx >= pulses)
-      idx = pulses - 1;
-    float segPos = u * pulses - idx;
-    float pulseHeight = 0.2f + easeHash11(seed ^ (uint32_t)(idx * 7919 + 1)) * 0.7f;
-    float pulseWidth = 0.2f + easeHash11(seed ^ (uint32_t)(idx * 104729 + 1)) * 0.3f;
-    if (segPos >= pulseWidth)
-      return 0.0f;
-    float p = segPos / pulseWidth;
-    float spike = p < 0.5f ? (2.0f * p) : (2.0f - 2.0f * p);
-    return clamp01(pulseHeight * spike);
+    float acc = 0.0f;
+    int idx = pulses - 1;
+    float segPos = 0.0f;
+    for (int i = 0; i < pulses; i++)
+    {
+      float segFrac = weight[i] / weightSum;
+      if (i == pulses - 1 || u < acc + segFrac)
+      {
+        idx = i;
+        segPos = segFrac > 0.0001f ? clamp01((u - acc) / segFrac) : 0.0f;
+        break;
+      }
+      acc += segFrac;
+    }
+
+    float d = fmaxf(duty[idx], 0.08f);
+    if (segPos >= d)
+      return 0.0f; // the dark gap before/after this attempt's flash
+    // Snappier strike than a plain triangle: fast rise, short hold, fade.
+    float p = segPos / d;
+    float rise = clamp01(p / 0.35f);
+    float fall = clamp01((1.0f - p) / 0.45f);
+    float shape = fminf(rise, fall);
+    shape = shape * shape * (3.0f - 2.0f * shape);
+    return clamp01(height[idx] * shape);
   }
   case 1: // smooth ease (default)
   default:
