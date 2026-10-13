@@ -309,8 +309,19 @@ desktop/
    separate tmpfs mount. Console UI is intentionally minimal for this milestone (a lamp list with
    On/Off buttons and a Scan button, polling `ListLamps` every 1.5s) - multi-select and
    brightness/mode/profile actions are M3's job.
-4. **M3 — Console polish.** Live STATE-driven display, multi-lamp selection, brightness/mode/profile
-   quick actions — via the same `action_to_command` the rule engine reuses later.
+4. **M3 — Console polish. ✅ DONE.** Added `core::rules::{model, commands}` now (just `Action` +
+   `action_to_command`, unit-tested - `Trigger`/`Rule` stay deferred to M4, no point adding them
+   unused). Console: checkbox per lamp + Select all/none, an action bar (On/Off, brightness slider,
+   mode number, profile-slot number) that dispatches to every selected lamp through
+   `action_to_command`, and `lamp_on`/`last_error` now shown per row. Verified live: `bri 40` and
+   `mode 2` (the exact strings `action_to_command` produces) both took effect on the real lamp and
+   the resulting `STATE|` push reported them back correctly.
+   - **Gap found, not yet fixed (note for M6 hardening)**: `LampCommand::Disconnect` doesn't
+     actually mean "stay disconnected" - `lamp_actor.rs`'s main loop treats *any* disconnect
+     (deliberate or dropped) identically and always retries with backoff, so a lamp manually
+     disconnected reconnects on its own a few seconds later if it's still in range and trusted.
+     Harmless for now (M3 doesn't expose a disconnect button), but will need a real "stop trying"
+     state before the console gets one.
 5. **M4 — Rule engine + persisted config, manually fired.** Rule editor UI (trigger picker already a
    match over the enum, even with only `MicActive` selectable), `lamps.toml`/`rules.toml`
    persistence, a manual "fire now" per rule to validate the dispatch pipeline independent of real

@@ -5,11 +5,13 @@
 //! detection; this process is a thin IPC client (`core::ipc`) that only
 //! shows lamp state and forwards manual actions.
 
+use std::collections::HashSet;
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use eframe::egui;
 use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp};
+use quarzlampe_core::rules::{action_to_command, Action};
 use tokio::sync::mpsc as tokio_mpsc;
 
 enum UiToCore {
@@ -76,13 +78,34 @@ struct ConsoleApp {
     lamps: Vec<LampSummary>,
     scan_results: Vec<ScannedLamp>,
     status: String,
+    selected: HashSet<String>,
+    brightness_pct: u8,
+    mode_pattern: u32,
+    profile_slot: u8,
+}
+
+impl ConsoleApp {
+    /// Sends one `Action`, translated through the same
+    /// `rules::commands::action_to_command` the rule engine will reuse in
+    /// M4, to every currently-selected lamp.
+    fn dispatch_to_selected(&self, action: &Action) {
+        let line = action_to_command(action);
+        for lamp_key in &self.selected {
+            let _ = self.to_core.send(UiToCore::SendCommand { lamp_key: lamp_key.clone(), line: line.clone() });
+        }
+    }
 }
 
 impl eframe::App for ConsoleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.from_core.try_recv() {
             match msg {
-                CoreToUi::Lamps(lamps) => self.lamps = lamps,
+                CoreToUi::Lamps(lamps) => {
+                    // Drop selections for lamps that disappeared (e.g. shut down).
+                    let known: HashSet<&String> = lamps.iter().map(|l| &l.lamp_key).collect();
+                    self.selected.retain(|k| known.contains(k));
+                    self.lamps = lamps;
+                }
                 CoreToUi::ScanResults(results) => self.scan_results = results,
                 CoreToUi::Status(s) => self.status = s,
             }
@@ -98,27 +121,65 @@ impl eframe::App for ConsoleApp {
             }
 
             ui.separator();
-            ui.label("Connected lamps:");
+            ui.horizontal(|ui| {
+                ui.label("Connected lamps:");
+                if ui.small_button("Select all").clicked() {
+                    self.selected = self.lamps.iter().map(|l| l.lamp_key.clone()).collect();
+                }
+                if ui.small_button("Select none").clicked() {
+                    self.selected.clear();
+                }
+            });
             for lamp in &self.lamps {
+                let mut checked = self.selected.contains(&lamp.lamp_key);
                 ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "{} [{}] on={:?} bri={:?}",
-                        lamp.name, lamp.connection, lamp.lamp_on, lamp.brightness_pct
-                    ));
-                    if ui.button("On").clicked() {
-                        let _ = self.to_core.send(UiToCore::SendCommand {
-                            lamp_key: lamp.lamp_key.clone(),
-                            line: "on".to_string(),
-                        });
+                    if ui.checkbox(&mut checked, "").changed() {
+                        if checked {
+                            self.selected.insert(lamp.lamp_key.clone());
+                        } else {
+                            self.selected.remove(&lamp.lamp_key);
+                        }
                     }
-                    if ui.button("Off").clicked() {
-                        let _ = self.to_core.send(UiToCore::SendCommand {
-                            lamp_key: lamp.lamp_key.clone(),
-                            line: "off".to_string(),
-                        });
+                    ui.label(format!(
+                        "{} [{}] on={:?} bri={:?} pattern={:?}",
+                        lamp.name, lamp.connection, lamp.lamp_on, lamp.brightness_pct, lamp.pattern
+                    ));
+                    if let Some(err) = &lamp.last_error {
+                        ui.colored_label(egui::Color32::from_rgb(220, 120, 60), err);
                     }
                 });
             }
+
+            ui.separator();
+            ui.label(format!("Actions for {} selected lamp(s):", self.selected.len()));
+            ui.add_enabled_ui(!self.selected.is_empty(), |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("On").clicked() {
+                        self.dispatch_to_selected(&Action::On);
+                    }
+                    if ui.button("Off").clicked() {
+                        self.dispatch_to_selected(&Action::Off);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut self.brightness_pct, 0..=100).text("brightness %"));
+                    if ui.button("Apply").clicked() {
+                        self.dispatch_to_selected(&Action::SetBrightness { pct: self.brightness_pct });
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut self.mode_pattern).range(1..=64).prefix("mode "));
+                    if ui.button("Apply").clicked() {
+                        self.dispatch_to_selected(&Action::SetMode { pattern: self.mode_pattern });
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut self.profile_slot).range(1..=6).prefix("profile slot "));
+                    if ui.button("Load").clicked() {
+                        self.dispatch_to_selected(&Action::LoadProfile { slot: self.profile_slot });
+                    }
+                });
+            });
 
             ui.separator();
             ui.label("Scan results (tap Connect - only works within ~60s of the lamp booting unless it already has a cached token):");
@@ -152,7 +213,7 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([480.0, 360.0])
+            .with_inner_size([520.0, 480.0])
             .with_title("Quarzlampe"),
         ..Default::default()
     };
@@ -166,6 +227,10 @@ fn main() -> eframe::Result<()> {
                 lamps: Vec::new(),
                 scan_results: Vec::new(),
                 status: "connecting to daemon...".to_string(),
+                selected: HashSet::new(),
+                brightness_pct: 100,
+                mode_pattern: 1,
+                profile_slot: 1,
             }))
         }),
     )
