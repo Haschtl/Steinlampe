@@ -227,10 +227,26 @@ desktop/
    deferred-viewport close/reopen instead of `Visible(false)`) vs. the known residual blank-taskbar-
    row cosmetic issue. Code lives in `desktop/app/src/main.rs`. Still outstanding: same test on
    Windows/macOS (no hardware available here).
-2. **M1 — BLE core against real hardware.** `core::ble` exercised via a small terminal probe
-   (not the GUI) against a real lamp: pair inside the 60s window, reconnect via stored token, then
-   clear the token and confirm the "untrusted" error path is sane. Independent of M0; both must land
-   before M2.
+2. **M1 — BLE core against real hardware. 🟡 PARTLY DONE.** `core::ble` now has real modules
+   (`line_codec.rs` with unit tests, `uuids.rs`, `trust.rs` - a simple per-lamp file token cache,
+   `handshake.rs` - the connect/auth/status-wait/token-remint dance extracted out of the probe) plus
+   `core/examples/probe.rs`, a terminal-only client with no GUI dependency.
+   - **Verified live, twice** (once before the refactor, once after, identical behavior): connecting
+     to the real "ON-AIR Lampe" with no cached token, outside its boot grace window, correctly hits
+     `HandshakeOutcome::PendingToken` - the firmware holds the connection, we time out waiting for
+     `STATUS_END|`, and a subsequent write then fails cleanly ("Not connected") instead of hanging.
+     This is the "untrusted" path from the original milestone text, confirmed sane.
+   - **Scan quirk found and worked around**: `ScanFilter { services: vec![uuids::SERVICE] }` missed
+     the real lamp entirely in testing (same category of issue the web frontend already has a
+     documented fallback for - see the `acceptAllDevices` comment in `bleClient.ts`). Fixed by
+     scanning unfiltered and matching the service UUID against `properties.services` afterward,
+     falling back to "any named device" if nothing matches by service (with an interactive pick
+     prompt when there's more than one candidate).
+   - **Still outstanding, deferred by the user to a later session**: the happy path (reboot the lamp,
+     connect inside its 60s window, get a real `STATUS_END|`, mint and persist a token, then
+     reconnect later using that stored token outside the window and confirm it succeeds). The code
+     path exists (`HandshakeOutcome::Trusted { fresh_token }`) but hasn't been exercised against a
+     freshly-booted lamp yet - do that before considering M1 fully closed.
 3. **M2 — Fuse M0+M1.** Real `app` binary: persistent hide-on-close window + tray menu, console
    showing lamps with on/off only. Verify BLE survives window hide/show cycles.
 4. **M3 — Console polish.** Live STATE-driven display, multi-lamp selection, brightness/mode/profile
