@@ -422,10 +422,33 @@ desktop/
    `Info.plist` icon respectively) - neither implemented, both unverified, no hardware here.
    **Verified live** (user confirmed): tray icon color matched lamp state, console window showed
    the lamp icon in the taskbar after the app-id + desktop-file fix.
-6. **M5 — Mic trigger end-to-end on Linux.** Real `mic::linux`, plus compiled-but-unverified
-   Windows/macOS stubs (`cfg(target_os)`-gated so they never block Linux work), wired into the
-   evaluation loop with edge detection; validated by actually toggling mic capture against a real
-   lamp.
+6. **M5 — Mic trigger end-to-end on Linux. 🟡 MOSTLY DONE.** Added `core::mic` (`MicActivityProvider`
+   trait + `default_provider()`) and `core::mic::linux::PulseMicProvider`: a source output with
+   `corked == false` means some process is actively recording, matching PLAN's original note. Talks
+   to `libpulse-binding` directly rather than through the obvious wrapper crate (`pulsectl-rs`),
+   which turned out to be GPL-3.0-or-later - the wrong license for something about to be built into
+   a binary offered for public download (see the CI/download section below); `libpulse-binding`
+   itself is MIT/Apache-2.0, and the client library it binds (`libpulse`) is LGPL, so this stays
+   clean. One deliberate deviation from the original sketch: the trait is `Result<MicActivity,
+   String>` (`MicActivity` just `Active`/`Inactive`), not a 3-variant enum with `Unknown(String)` -
+   same meaning, `Err` is the "unsupported/failed, never treat as off" case, just more idiomatic
+   Rust. Also **not** `Send` on the trait, unlike the original sketch - the real Linux backend holds
+   `Rc`s (as every `libpulse-binding` example does), so the provider has to be *constructed inside*
+   its own dedicated polling thread, never built elsewhere and moved in; `app::spawn_mic_evaluation_loop`
+   does exactly that, polls every 300ms, and on each observed `Inactive -> Active` edge (never on
+   a failed poll) locks `DaemonState` just long enough to dispatch every enabled `MicActive` rule's
+   action via the same `action_to_command`/`manager.send` path `FireRule` and the tray menu already
+   use. `core::mic::unsupported` stubs out Windows/macOS (`Err` always) - still unwritten, unverified,
+   no hardware here, exactly as planned.
+   **Verified live in isolation**: a new `core/examples/mic_probe.rs` (same role as `probe.rs` has
+   for BLE) printed `inactive` -> `ACTIVE` -> `inactive` in exact sync with starting/stopping a real
+   `parecord` capture. **Not yet verified end-to-end against a real lamp** - both lamps in range hit
+   unrelated live BLE issues when trying to connect this session (BlueZ had lost track of one
+   device entirely; the other hit what looks like a trust-gate rejection, outside its token/boot
+   window) - the user decided not to chase hardware access tonight, accepting the isolated mic-poll
+   test plus M4's already-proven `Rule -> action_to_command -> manager.send` dispatch path (reused
+   unchanged here) as sufficient evidence. Do the real end-to-end pass (speak near a connected lamp
+   with an enabled `MicActive` rule, confirm it turns on by itself) next time hardware is at hand.
 7. **M6 — Pairing/trust UX + multi-lamp hardening.** Scan/add flow with explicit 60s-window
    messaging, per-lamp reconnect-failure surfacing, config import/export, stress test with as many
    physical lamps as available connected at once.

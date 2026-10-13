@@ -27,6 +27,8 @@ use std::time::{Duration, Instant};
 use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use quarzlampe_core::ble::{FileTokenStore, LampCommand, LampManager};
 use quarzlampe_core::ipc::{DaemonState, IpcServer};
+use quarzlampe_core::mic::{self, MicActivity};
+use quarzlampe_core::rules::{action_to_command, Trigger};
 use quarzlampe_core::state::ConnectionState;
 use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
@@ -304,6 +306,59 @@ fn handle_lamp_menu_event(id: &str, state: &Arc<Mutex<DaemonState>>, index: &Lam
     }
 }
 
+/// Polls the platform's mic-activity provider on its own dedicated thread -
+/// the provider isn't `Send` (see `core::mic`'s doc comment on why), so it
+/// has to be constructed and used entirely on the thread that owns it,
+/// never built elsewhere and moved in. On each observed `Inactive` ->
+/// `Active` edge, fires every enabled `MicActive` rule exactly once (see
+/// PLAN.md's "Evaluation loop" note on why that's a *rising edge*, not a
+/// level check - a still-active mic must not keep re-firing every ~300ms).
+fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        let mut provider = mic::default_provider();
+        let mut last = MicActivity::Inactive;
+        let mut was_erroring = false;
+        loop {
+            match provider.poll() {
+                Ok(activity) => {
+                    if was_erroring {
+                        println!("[mic] detection recovered");
+                        was_erroring = false;
+                    }
+                    if last == MicActivity::Inactive && activity == MicActivity::Active {
+                        fire_mic_rules(&state);
+                    }
+                    last = activity;
+                }
+                Err(e) => {
+                    // Never synthesize a rising edge from a failed poll -
+                    // `Err` must never be treated as "mic is off".
+                    if !was_erroring {
+                        eprintln!("[mic] detection error: {e}");
+                        was_erroring = true;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    });
+}
+
+fn fire_mic_rules(state: &Arc<Mutex<DaemonState>>) {
+    let guard = state.blocking_lock();
+    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && r.trigger == Trigger::MicActive).collect();
+    if matched.is_empty() {
+        return;
+    }
+    println!("[mic] rising edge: firing {} rule(s)", matched.len());
+    for rule in matched {
+        let line = action_to_command(&rule.action);
+        for lamp_key in &rule.targets {
+            guard.manager.send(lamp_key, LampCommand::SendLine(line.clone()));
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let show_item = MenuItem::with_id("show-console", "Show console", true, None);
     let quit_item = MenuItem::with_id("quit", "Quit", true, None);
@@ -333,6 +388,7 @@ fn main() -> anyhow::Result<()> {
     println!("[tray] daemon running. Console binary: {}", console_path.display());
     loop {
         if daemon_state.is_none() && let Ok(s) = state_rx.try_recv() {
+            spawn_mic_evaluation_loop(Arc::clone(&s));
             daemon_state = Some(s);
         }
 
