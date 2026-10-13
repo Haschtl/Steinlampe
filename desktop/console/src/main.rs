@@ -21,7 +21,26 @@ use quarzlampe_core::rules::{Action, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
 
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xA3, 0x3C);
+/// The web frontend's own theme tokens (`frontend/tailwind.config.cjs`'s
+/// dark palette, `frontend/src/index.css` for the derived `--accent-color`),
+/// so the console reads as the same product, not a different app that
+/// happens to control the same lamps. `ACCENT` is the brand color (nav
+/// selection, hyperlinks, the little app-icon tint); `WARNING` is kept
+/// separate from it on purpose, since status dots shouldn't share a color
+/// with "this is the interactive/selected thing" - "connecting..." stays
+/// its own amber rather than inheriting the brand cyan.
+const BG: egui::Color32 = egui::Color32::from_rgb(0x0b, 0x0f, 0x1a);
+const PANEL: egui::Color32 = egui::Color32::from_rgb(0x11, 0x18, 0x2a);
+const BORDER: egui::Color32 = egui::Color32::from_rgb(0x1f, 0x2b, 0x44);
+const TEXT: egui::Color32 = egui::Color32::from_rgb(0xee, 0xf2, 0xff);
+const MUTED: egui::Color32 = egui::Color32::from_rgb(0x9f, 0xb2, 0xcc);
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x5b, 0xe6, 0xff);
+const WARNING: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xA3, 0x3C);
+
+/// Where the web app (all configuration - profiles, patterns, hardware
+/// settings, MIDI, OTA) is actually hosted - confirmed live and serving
+/// the real app (not a 404) before hardcoding it here.
+const WEB_INTERFACE_URL: &str = "https://haschtl.github.io/Steinlampe/";
 
 enum UiToCore {
     Scan,
@@ -199,6 +218,7 @@ fn parse_ms_list(s: &str) -> Option<Vec<u32>> {
 }
 
 struct ConsoleApp {
+    icon_texture: egui::TextureHandle,
     to_core: tokio_mpsc::UnboundedSender<UiToCore>,
     from_core: std_mpsc::Receiver<CoreToUi>,
     lamps: Vec<LampSummary>,
@@ -595,10 +615,10 @@ fn describe_action(action: &Action) -> String {
 fn status_visual(connection: &str) -> (egui::Color32, &'static str) {
     match connection {
         "connected" => (egui::Color32::from_rgb(0x4A, 0xDE, 0x80), "Connected"),
-        "connecting" => (ACCENT, "Connecting\u{2026}"),
-        "reconnecting" => (ACCENT, "Reconnecting\u{2026}"),
-        "awaiting_trust_token" => (ACCENT, "Awaiting trust token\u{2026}"),
-        _ => (egui::Color32::from_rgb(0x8B, 0x92, 0xA0), "Disconnected"),
+        "connecting" => (WARNING, "Connecting\u{2026}"),
+        "reconnecting" => (WARNING, "Reconnecting\u{2026}"),
+        "awaiting_trust_token" => (WARNING, "Awaiting trust token\u{2026}"),
+        _ => (MUTED, "Disconnected"),
     }
 }
 
@@ -731,9 +751,8 @@ impl eframe::App for ConsoleApp {
         egui::Panel::left("nav").default_size(180.0).resizable(false).frame(nav_frame).show(ui, |ui| {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-                ui.painter().rect_filled(rect, 6.0, ACCENT);
-                ui.add_space(2.0);
+                ui.add(egui::Image::new(&self.icon_texture).fit_to_exact_size(egui::vec2(20.0, 20.0)));
+                ui.add_space(4.0);
                 ui.strong("Quarzlampe");
             });
             ui.add_space(18.0);
@@ -747,6 +766,12 @@ impl eframe::App for ConsoleApp {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new(&self.status).small().color(ui.visuals().weak_text_color()));
+                // All configuration (profiles, patterns, hardware settings,
+                // MIDI, OTA...) lives in the web app, not here - the console
+                // is deliberately a thin quick-control/automation surface,
+                // not a reimplementation of it.
+                ui.hyperlink_to("Open web interface \u{2197}", WEB_INTERFACE_URL);
+                ui.add_space(4.0);
             });
         });
 
@@ -767,11 +792,24 @@ impl eframe::App for ConsoleApp {
 /// (`frontend/public/icon-lamp.svg`, rasterized to PNG ahead of time since
 /// nothing in this dependency tree can rasterize SVG) - so the console
 /// window gets a real taskbar/dock icon instead of the toolkit default.
-fn load_window_icon() -> egui::IconData {
+fn decode_icon() -> image::RgbaImage {
     let bytes = include_bytes!("../assets/icon.png");
-    let image = image::load_from_memory(bytes).expect("bundled icon.png is valid").into_rgba8();
+    image::load_from_memory(bytes).expect("bundled icon.png is valid").into_rgba8()
+}
+
+fn load_window_icon() -> egui::IconData {
+    let image = decode_icon();
     let (width, height) = image.dimensions();
     egui::IconData { rgba: image.into_raw(), width, height }
+}
+
+/// Same icon, as an egui texture this time - for showing it *inside* the
+/// UI (the sidebar header), not just as the OS window/taskbar icon.
+fn load_icon_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let image = decode_icon();
+    let (width, height) = image.dimensions();
+    let color_image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &image.into_raw());
+    ctx.load_texture("app-icon", color_image, egui::TextureOptions::default())
 }
 
 /// Dark theme with the brand's warm accent color, plus a bit more breathing
@@ -780,9 +818,18 @@ fn load_window_icon() -> egui::IconData {
 /// that this looks like a native OS widget set; see that note for why.
 fn apply_visuals(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
+    visuals.override_text_color = Some(TEXT);
+    visuals.weak_text_color = Some(MUTED);
+    visuals.panel_fill = BG;
+    visuals.window_fill = BG;
+    visuals.extreme_bg_color = PANEL;
+    visuals.faint_bg_color = PANEL;
     visuals.selection.bg_fill = ACCENT;
-    visuals.selection.stroke.color = egui::Color32::from_rgb(0x23, 0x14, 0x05);
+    // Accent is light (brand cyan) - text sitting on it needs a dark color,
+    // not egui's default light-on-selection text.
+    visuals.selection.stroke.color = BG;
     visuals.hyperlink_color = ACCENT;
+    visuals.widgets.noninteractive.bg_stroke.color = BORDER;
     ctx.set_visuals(visuals);
 
     ctx.all_styles_mut(|style| {
@@ -819,7 +866,9 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(move |cc| {
             apply_visuals(&cc.egui_ctx);
+            let icon_texture = load_icon_texture(&cc.egui_ctx);
             Ok(Box::new(ConsoleApp {
+                icon_texture,
                 to_core,
                 from_core,
                 lamps: Vec::new(),

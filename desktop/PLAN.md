@@ -37,9 +37,8 @@ Decisions already made with the user:
   chips, all greyed out when not connected) plus a lighter "discovered nearby" row with Connect
   buttons below the card grid. Rules: compact rows (enable switch, one-line trigger→action→targets
   summary, fire/delete icon buttons) with an inline "+ New rule" form instead of a separate dialog.
-  Visual direction: dark surface, warm amber accent (chosen to echo "quartz lamp" glow, not the
-  tray icon's placeholder cyan), `system-ui` font stack so each OS still renders its own native
-  typeface. Explicitly **not** a claim that egui renders native OS widgets - it doesn't, and the
+  Visual direction (superseded, see below): dark surface, `system-ui` font stack so each OS still
+  renders its own native typeface. Explicitly **not** a claim that egui renders native OS widgets - it doesn't, and the
   user accepted that tradeoff (see the exploratory discussion this decision came out of) in exchange
   for one Rust codebase; a true per-OS native rewrite of just the console stays a possible, deferred
   option *because* the console is already nothing but a thin IPC client - swapping it later
@@ -56,6 +55,30 @@ Decisions already made with the user:
   "Live state" protocol note) doesn't carry which profile is active; showing one as selected would
   be fabricating data the app doesn't have. The old M3 multi-select-then-apply action bar is gone
   entirely, superseded by these per-card controls.
+- **Native-look follow-up, decided explicitly after the user pushed back twice on the amber-accent
+  egui redesign still not reading as native on any of the three OSes.** Laid out the real options
+  plainly - stay on egui and accept the ceiling (free), rewrite the console per-OS in a real native
+  toolkit (GTK4/libadwaita, SwiftUI, WinUI3 - true native look, but three codebases in three
+  languages, weeks of work each, the daemon stays untouched either way since it's already IPC-
+  decoupled), or move the whole desktop app to Tauri/webview (one codebase, can get visually closer
+  via OS-aware CSS and Tauri's native vibrancy/acrylic window effects, but still not real native
+  widgets - a better illusion, not a different category of thing, and it reopens the earlier "pure
+  Rust" decision). **Decision: stay on egui for now, pro-OS native rewrite is the explicit future
+  direction once there's time budget for it** - not reconsidering Tauri. In the meantime, three
+  concrete asks landed instead of more color/spacing tweaking: the sidebar header now shows the
+  real lamp icon (`egui::TextureHandle` loaded once from the same `assets/icon.png` the window icon
+  already uses, via `ColorImage::from_rgba_unmultiplied` + `ctx.load_texture`), the whole palette
+  was replaced with the web frontend's *actual* theme tokens read straight from
+  `frontend/tailwind.config.cjs`/`index.css` (`bg #0b0f1a`, `panel #11182a`, `border #1f2b44`,
+  `text #eef2ff`, `muted #9fb2cc`, `accent #5be6ff` - cyan, not the amber this file described
+  above) rather than an invented "quartz glow" palette, and the sidebar footer got an
+  `ui.hyperlink_to` to the real deployed web app (confirmed live and serving the actual app, not a
+  404, before hardcoding the URL: `https://haschtl.github.io/Steinlampe/`) - all configuration
+  (profiles, patterns, hardware settings, MIDI, OTA) lives there, not in the console, and the
+  console doesn't try to duplicate it. Status-indicator amber (connecting/reconnecting) was kept as
+  its own `WARNING` constant, deliberately not reusing the new brand-cyan `ACCENT`, so a status dot
+  never shares meaning with "this is the selected/interactive thing." Verified live by hand: icon
+  visible, colors read as the same product as the web app, link opens the real page in a browser.
 
 ## Protocol facts to reuse, not re-derive
 
