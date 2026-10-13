@@ -326,6 +326,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.desktopAppPlatforms": "Linux: built and tested against real hardware. Windows/macOS: builds, but unverified.",
     "help.desktopAppInstall":
       "Run the downloaded tray binary with --install once to copy it to a proper location and add a launcher entry; --uninstall removes it again.",
+    "help.desktopAppSigning":
+      "macOS: the binaries are ad-hoc signed (free, no Apple Developer account) but not notarized, so Gatekeeper still blocks them on first launch - right-click (or Control-click) the binary, choose \"Open\", then confirm \"Open Anyway\". Windows: unsigned unless a free SignPath certificate has since been set up for this project - if SmartScreen warns, click \"More info\" then \"Run anyway\".",
     "help.desktopAppDownload": "Download latest build",
     "help.inputs": "Inputs & Controls",
     "help.input.switch": "Switch",
@@ -675,6 +677,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.desktopAppPlatforms": "Linux: gebaut und an echter Hardware getestet. Windows/macOS: baut, aber unverifiziert.",
     "help.desktopAppInstall":
       "Die heruntergeladene Tray-Binary einmal mit --install ausführen, um sie an einen passenden Ort zu kopieren und einen Starter-Eintrag anzulegen; --uninstall entfernt sie wieder.",
+    "help.desktopAppSigning":
+      "macOS: die Binaries sind ad-hoc signiert (kostenlos, kein Apple-Developer-Account), aber nicht notarisiert - Gatekeeper blockiert sie beim ersten Start trotzdem: Rechtsklick (oder Ctrl-Klick) auf die Datei, \"Öffnen\" wählen, dann \"Trotzdem öffnen\" bestätigen. Windows: unsigniert, außer es wurde inzwischen ein kostenloses SignPath-Zertifikat für dieses Projekt eingerichtet - bei einer SmartScreen-Warnung auf \"Weitere Informationen\" und dann \"Trotzdem ausführen\" klicken.",
     "help.desktopAppDownload": "Neuesten Build herunterladen",
     "help.inputs": "Eingaben & Bedienung",
     "help.input.switch": "Schalter",

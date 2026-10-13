@@ -760,25 +760,45 @@ desktop/
       with a throwaway script, not just assumed. The full daemon/console wiring (`DaemonState`
       field, `GetUpdateStatus` IPC round-trip, the console's poll loop) was verified live against
       the running daemon: `GetUpdateStatus` correctly returns `available: null` on this dev build.
-    - **Code-signing CI scaffolding - inactive until the user supplies real credentials.** Added
-      guarded steps to `.github/workflows/desktop-build.yml`'s `build` job: macOS codesign (temp
-      keychain + `security import` + `codesign --sign`) and, if notarization secrets are also
-      present, `xcrun notarytool submit --wait` (note: stapling doesn't apply here - it only works
-      on `.app` bundles/disk images/installer packages, not loose Mach-O binaries like these, so
-      Gatekeeper instead does an online ticket check the first time a signed-but-unstapled binary
-      runs); Windows `signtool sign` with a timestamp server. Every step is gated on job-level `env:`
-      vars sourced from secrets (`if: env.APPLE_CERTIFICATE_P12 != ''` etc. - a step's own `env:`
-      block isn't visible to that same step's `if:`, so these have to be job-level) and simply don't
-      run at all while those secrets don't exist, which they don't today - **I cannot obtain actual
-      signing credentials**: a macOS certificate needs a paid Apple Developer Program membership,
-      and a Windows one needs a certificate purchased from a CA, both of which only the user can set
-      up and add as repo secrets (`APPLE_CERTIFICATE_P12`/`APPLE_CERTIFICATE_PASSWORD`/
-      `APPLE_SIGNING_IDENTITY`/`APPLE_NOTARIZATION_APPLE_ID`/`APPLE_NOTARIZATION_PASSWORD`/
-      `APPLE_TEAM_ID` for macOS; `WINDOWS_CERTIFICATE_PFX`/`WINDOWS_CERTIFICATE_PASSWORD` for
-      Windows). Until then this changes nothing about the actual released binaries. Unverified in
-      the deeper sense too: this YAML has never actually run (no push access from this environment),
-      so even the "steps stay skipped when secrets are absent" behavior is written-correctly-by-
-      inspection, not CI-run-confirmed.
+    - **Code-signing: free paths chosen over paid ones, per explicit decision.** Asked "wtf, no free
+      way to sign for macOS/Windows?" - answer, and what got built:
+      - **macOS: ad-hoc signing (free), Gatekeeper warning documented instead of paid-away.**
+        There's genuinely no free way to remove Gatekeeper's "unidentified developer" warning
+        itself - only a paid ($99/year) Apple Developer Program membership (Developer ID signing +
+        notarization) does that. `.github/workflows/desktop-build.yml` now runs `codesign --force
+        --deep --sign -` (the `-` means ad-hoc: no certificate, no account, just the Xcode CLI
+        tools already on every `macos-latest` runner) unconditionally on both binaries. This
+        satisfies Apple Silicon's blanket "must carry some signature to execute at all"
+        requirement but does nothing for the download warning - that gets a documented bypass
+        instead (right-click -> Open -> "Open Anyway"), added to the release notes and to the
+        frontend's Help page (`help.desktopAppSigning`, en/de).
+      - **Windows: real free signing via SignPath Foundation - conditional on actually open-sourcing
+        the project first.** SignPath Foundation signs Windows binaries for free for qualifying
+        open source projects, but requires an OSI-approved license with no proprietary
+        components, a fully automated CI build tied to the public repo, and a published code
+        signing policy - none of which this repo had (no LICENSE file at all = all-rights-reserved
+        by default). Decided explicitly with the user to actually meet that bar: **GPL-3.0-or-later**
+        was chosen (over MIT/Apache-2.0, also offered) and the repo got a real
+        [LICENSE](../LICENSE) (the canonical FSF text, fetched from GitHub's own
+        `choosealicense.com` license-template source rather than reconstructed from memory, since
+        getting legal text wrong by paraphrasing would be worse than not adding one), `license =
+        "GPL-3.0-or-later"` in every Cargo.toml and the frontend's `package.json`, and
+        [desktop/CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md) (SignPath's required public
+        policy doc: what gets signed, how - automatically, per commit, via
+        `signpath/github-action-submit-signing-request@v3` - and who approves requests). The CI
+        workflow's Windows path now uploads the two unsigned `.exe`s, submits a signing request,
+        and copies the signed result into `dist/` - gated on job-level `env.SIGNPATH_API_TOKEN !=
+        ''` (same step-env-not-visible-to-its-own-`if`-constraint as before) plus three
+        `vars.SIGNPATH_*` values. **Still not active**: actually applying to SignPath
+        (signpath.io/apply) is an identity-linked step only the repo owner can take, no amount of
+        scaffolding activates it by itself. Until that happens the Windows binaries stay
+        unsigned, same as today, with a documented SmartScreen bypass ("More info" -> "Run
+        anyway") in the same two places as the macOS one.
+      - Both paths are still unverified in the deeper sense: this YAML has never actually run (no
+        push access from this environment), so even "ad-hoc signing succeeds" and "the SignPath
+        action's inputs are exactly right" are written-correctly-by-inspection (the SignPath
+        action's documented example was read directly from `docs.signpath.io`, not guessed), not
+        CI-run-confirmed.
 
 ## Verification
 

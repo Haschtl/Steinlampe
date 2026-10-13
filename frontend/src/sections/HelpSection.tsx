@@ -270,6 +270,14 @@ export function HelpSection() {
               entry; --uninstall removes it again.
             </Trans>
           </p>
+          <p className="text-xs text-muted">
+            <Trans k="help.desktopAppSigning">
+              macOS: the binaries are ad-hoc signed (free, no Apple Developer account) but not notarized, so
+              Gatekeeper still blocks them on first launch - right-click (or Control-click) the binary, choose
+              "Open", then confirm "Open Anyway". Windows: unsigned unless a free SignPath certificate has since
+              been set up for this project - if SmartScreen warns, click "More info" then "Run anyway".
+            </Trans>
+          </p>
           <div className="flex flex-wrap gap-2">
             <a className="pill" href="https://github.com/Haschtl/Steinlampe/releases/tag/desktop-latest" target="_blank" rel="noopener noreferrer">
               <Trans k="help.desktopAppDownload">Download latest build</Trans>

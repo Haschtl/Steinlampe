@@ -25,21 +25,15 @@ jobs:
           - os: macos-latest
             platform: macos
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      actions: read # only strictly needed on windows, for the SignPath action on a private repo - harmless elsewhere
     # Job-level (not step-level) on purpose: a step's `if:` is evaluated
     # before that same step's own `env:` block takes effect, so a secret
     # check has to come from env already set at the job (or an earlier
-    # step), not from a step checking its own declared env. Harmless to
-    # define these on every platform in the matrix even though only one
-    # OS's signing steps ever read them.
+    # step), not from a step checking its own declared env.
     env:
-      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
-      APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,64 +63,23 @@ jobs:
         working-directory: desktop
         run: cargo build --release --workspace
 
-      # Guarded by the job-level secrets above being present - no-ops
-      # (skipped entirely) until the user adds real signing credentials,
-      # which only they can obtain: an Apple Developer Program membership
-      # for the certificate/notarization secrets, and a code-signing
-      # certificate from a CA for the Windows one. Without either, these
-      # steps simply don't run and the build stays exactly as unsigned as
-      # it is today - nothing about the rest of the pipeline depends on
-      # them.
-      - name: Sign macOS binaries
-        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE_P12 != ''
+      # Free, no Apple Developer account needed - just the Xcode command
+      # line tools already on every macos-latest runner. This is *not* the
+      # same as the paid Developer ID + notarization path: it satisfies
+      # Apple Silicon's blanket requirement that executables carry some
+      # signature to run at all, but it does nothing for Gatekeeper's
+      # "unidentified developer" warning on a downloaded file - that still
+      # shows up, and the release notes below tell people how to bypass it
+      # (right-click -> Open -> "Open Anyway"). There is no free way to
+      # remove the warning itself; only a $99/year Apple Developer Program
+      # membership (Developer ID signing + notarization) does that, which
+      # this project isn't pursuing right now.
+      - name: Ad-hoc sign macOS binaries
+        if: matrix.platform == 'macos'
         run: |
           set -eu
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -lut 21600 build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > certificate.p12
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security list-keychains -d user -s build.keychain "$(security list-keychains -d user | sed 's/"//g')"
-          rm certificate.p12
-          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" desktop/target/release/quarzlampe-tray
-          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" desktop/target/release/quarzlampe-console
-          codesign --verify --verbose desktop/target/release/quarzlampe-tray
-          codesign --verify --verbose desktop/target/release/quarzlampe-console
-
-      # Submits the already-signed binaries for Apple's online notarization
-      # check. Note this can't be *stapled* afterward the way a `.app`
-      # bundle/DMG/pkg can be - stapling only attaches to those container
-      # formats, not to loose Mach-O binaries like these. Gatekeeper falls
-      # back to an online ticket lookup for a signed-but-unstapled binary
-      # instead, which needs network access the first time it runs but
-      # otherwise has the same effect.
-      - name: Notarize macOS binaries
-        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE_P12 != '' && env.APPLE_NOTARIZATION_APPLE_ID != ''
-        run: |
-          set -eu
-          cd desktop/target/release
-          zip notarize.zip quarzlampe-tray quarzlampe-console
-          xcrun notarytool submit notarize.zip \
-            --apple-id "$APPLE_NOTARIZATION_APPLE_ID" \
-            --password "$APPLE_NOTARIZATION_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          rm notarize.zip
-
-      - name: Sign Windows binaries
-        if: matrix.platform == 'windows' && env.WINDOWS_CERTIFICATE_PFX != ''
-        shell: pwsh
-        run: |
-          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX)
-          [IO.File]::WriteAllBytes("certificate.pfx", $bytes)
-          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          if (-not $signtool) { $signtool = Get-Command signtool.exe }
-          & $signtool.FullName sign /f certificate.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 desktop\target\release\quarzlampe-tray.exe
-          & $signtool.FullName sign /f certificate.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 desktop\target\release\quarzlampe-console.exe
-          Remove-Item certificate.pfx
+          codesign --force --deep --sign - desktop/target/release/quarzlampe-tray
+          codesign --force --deep --sign - desktop/target/release/quarzlampe-console
 
       - name: Collect binaries (Linux/macOS)
         if: matrix.platform != 'windows'
@@ -142,6 +95,44 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item desktop/target/release/quarzlampe-tray.exe dist/
           Copy-Item desktop/target/release/quarzlampe-console.exe dist/
+
+      # Free code signing for this (now GPL-3.0-or-later, genuinely open
+      # source) project via the SignPath Foundation - see
+      # desktop/CODE_SIGNING_POLICY.md. Inactive (and these two steps
+      # simply don't run) until `SIGNPATH_API_TOKEN` and the three
+      # `vars.SIGNPATH_*` values below exist, which only happens after
+      # applying at https://signpath.io/apply and being approved - an
+      # identity-linked step only the repo owner can do, not something
+      # scaffolding alone can activate. Until then the Windows binaries
+      # collected above stay unsigned, same as today.
+      - name: Upload unsigned Windows binaries for SignPath
+        if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-binaries
+          path: |
+            desktop/target/release/quarzlampe-tray.exe
+            desktop/target/release/quarzlampe-console.exe
+
+      - name: Sign Windows binaries via SignPath
+        if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
+          project-slug: '${{ vars.SIGNPATH_PROJECT_SLUG }}'
+          signing-policy-slug: '${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}'
+          github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Use SignPath-signed Windows binaries
+        if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
+        shell: pwsh
+        run: |
+          Copy-Item signed\quarzlampe-tray.exe dist\ -Force
+          Copy-Item signed\quarzlampe-console.exe dist\ -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -207,8 +198,11 @@ jobs:
             **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic/camera
             activity detection have not been exercised on either - treat as experimental.
 
-            Signed only if Apple/Windows signing secrets are configured for this repo (see
-            `desktop/PLAN.md`) - otherwise unsigned, and Windows SmartScreen/macOS Gatekeeper will
-            warn before running them.
+            **macOS**: ad-hoc signed (free), not notarized. Gatekeeper will still block the binary
+            on first launch - right-click (or Control-click) it, choose "Open", then confirm
+            "Open Anyway".
+            **Windows**: signed via a free [SignPath](https://signpath.io/) certificate if one has
+            been set up for this project (see `desktop/CODE_SIGNING_POLICY.md`) - otherwise
+            unsigned, and SmartScreen will warn ("More info" -> "Run anyway").
           prerelease: true
           files: release/*

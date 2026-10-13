@@ -108,3 +108,9 @@ BLE UUIDs (default):
   der den Classic-BT-Funk nach Inaktivität abschaltet. Für BLE gibt es kein Äquivalent – es
   bleibt dauerhaft advertised/verbindbar. Aktuell gewünschtes Verhalten, aber als Einschränkung
   dokumentiert.
+
+## License
+
+GPL-3.0-or-later - see [LICENSE](LICENSE). The desktop app's build pipeline publishes signed
+binaries where a free [SignPath](https://signpath.io/) code-signing certificate for this project
+has been set up; see [desktop/CODE_SIGNING_POLICY.md](desktop/CODE_SIGNING_POLICY.md).
