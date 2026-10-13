@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
@@ -28,7 +28,7 @@ jobs:
         run: pio run -e quarzlampe
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-quarzlampe
           path: .pio/build/quarzlampe/firmware.bin
@@ -37,7 +37,7 @@ jobs:
         run: pio run -e quarzlampe_rd03
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-quarzlampe_rd03
           path: .pio/build/quarzlampe_rd03/firmware.bin
@@ -46,7 +46,7 @@ jobs:
         run: pio run -e quarzlampe_rd03d
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-quarzlampe_rd03d
           path: .pio/build/quarzlampe_rd03d/firmware.bin
@@ -55,7 +55,7 @@ jobs:
         run: pio run -e desk_lamp
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-desk_lamp
           path: .pio/build/desk_lamp/firmware.bin
@@ -64,7 +64,7 @@ jobs:
         run: pio run -e on_air
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-on_air
           path: .pio/build/on_air/firmware.bin
