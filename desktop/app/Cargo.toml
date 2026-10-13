@@ -6,8 +6,10 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.104"
 directories = "6.0.0"
+global-hotkey = "0.8.0"
 muda = "0.21.2"
 quarzlampe-core = { version = "0.1.0", path = "../core" }
+sysinfo = "0.39.6"
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util"] }
 # ksni instead of the default libappindicator backend: on Linux/BSD it runs its
 # D-Bus service on its own worker thread, so it doesn't need a GTK (or any)
@@ -16,3 +18,10 @@ tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "
 # GNOME-on-Wayland without an extension still won't show any tray icon either
 # way - that's a compositor limitation, not something either backend fixes.
 tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+futures-util = "0.3.34"
+zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.56.0"

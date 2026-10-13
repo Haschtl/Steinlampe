@@ -19,19 +19,24 @@
 //! rebuilt from `DaemonState` on a timer, since muda has no way to patch a
 //! native menu in place item by item.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use global_hotkey::hotkey::HotKey;
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use quarzlampe_core::ble::{FileTokenStore, LampCommand, LampManager};
 use quarzlampe_core::ipc::{DaemonState, IpcServer};
 use quarzlampe_core::mic::{self, MicActivity};
 use quarzlampe_core::rules::{action_to_command, Trigger};
 use quarzlampe_core::state::ConnectionState;
+use sysinfo::{ProcessesToUpdate, System};
 use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
+
+mod autostart;
 
 /// Where lamp pairing tokens are cached between runs. Separate from the
 /// IPC discovery file (`ipc::discovery_file_path`) - this one needs to
@@ -81,6 +86,14 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
             println!("[daemon] loaded {} rule(s)", rules.len());
             let state = Arc::new(Mutex::new(DaemonState { manager, rules }));
             let _ = state_tx.send(Arc::clone(&state));
+
+            #[cfg(target_os = "linux")]
+            {
+                spawn_power_event_watch(Arc::clone(&state)).await;
+                spawn_notification_watch(Arc::clone(&state)).await;
+            }
+            fire_rules_where_async(&state, |t| *t == Trigger::OnBoot).await;
+
             if let Err(e) = IpcServer::bind_and_serve(state).await {
                 eprintln!("[daemon] IPC server error: {e}");
             }
@@ -247,7 +260,14 @@ fn status_text(connection: &ConnectionState, on: Option<bool>, brightness: Optio
 /// state means replacing the entire `Menu` on a timer (see the main loop).
 /// `show_item`/`quit_item` are the two items that never change, kept alive
 /// across rebuilds and simply re-appended each time.
-fn build_menu(lamps: &[LampSnapshot], index: &mut LampIndex, show_item: &MenuItem, quit_item: &MenuItem) -> Menu {
+fn build_menu(
+    lamps: &[LampSnapshot],
+    index: &mut LampIndex,
+    show_item: &MenuItem,
+    autostart_item: &CheckMenuItem,
+    quit_item: &MenuItem,
+) -> Menu {
+    autostart_item.set_checked(autostart::is_enabled());
     let menu = Menu::new();
 
     if lamps.is_empty() {
@@ -277,6 +297,7 @@ fn build_menu(lamps: &[LampSnapshot], index: &mut LampIndex, show_item: &MenuIte
 
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(show_item);
+    let _ = menu.append(autostart_item);
     let _ = menu.append(quit_item);
     menu
 }
@@ -326,7 +347,7 @@ fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
                         was_erroring = false;
                     }
                     if last == MicActivity::Inactive && activity == MicActivity::Active {
-                        fire_mic_rules(&state);
+                        fire_rules_where(&state, |t| *t == Trigger::MicActive);
                     }
                     last = activity;
                 }
@@ -344,14 +365,20 @@ fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
     });
 }
 
-fn fire_mic_rules(state: &Arc<Mutex<DaemonState>>) {
+/// Shared by every trigger source that lives on a plain OS thread (mic
+/// polling, the app-open watcher, the tray loop's key-press handling) -
+/// `blocking_lock()` is safe here specifically because none of those run
+/// inside a tokio task. `spawn_power_event_watch`/`spawn_notification_watch`
+/// (Linux-only, zbus-driven) are genuine async tasks instead and use
+/// `fire_rules_where_async` below rather than this one.
+fn fire_rules_where(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) -> bool) {
     let guard = state.blocking_lock();
-    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && r.trigger == Trigger::MicActive).collect();
+    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && matches(&r.trigger)).collect();
     if matched.is_empty() {
         return;
     }
-    println!("[mic] rising edge: firing {} rule(s)", matched.len());
     for rule in matched {
+        println!("[rules] firing \"{}\"", rule.name);
         let line = action_to_command(&rule.action);
         for lamp_key in &rule.targets {
             guard.manager.send(lamp_key, LampCommand::SendLine(line.clone()));
@@ -359,14 +386,223 @@ fn fire_mic_rules(state: &Arc<Mutex<DaemonState>>) {
     }
 }
 
+async fn fire_rules_where_async(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) -> bool) {
+    let guard = state.lock().await;
+    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && matches(&r.trigger)).collect();
+    if matched.is_empty() {
+        return;
+    }
+    for rule in matched {
+        println!("[rules] firing \"{}\"", rule.name);
+        let line = action_to_command(&rule.action);
+        for lamp_key in &rule.targets {
+            guard.manager.send(lamp_key, LampCommand::SendLine(line.clone()));
+        }
+    }
+}
+
+/// Polls every running process's name once a second (cross-platform via
+/// `sysinfo`, no OS-specific code needed here unlike the other triggers)
+/// and fires `OnAppOpen` rules the moment a name appears that wasn't there
+/// on the previous poll - "the app just started", not "the app is
+/// running" (so it fires once per launch, not continuously).
+fn spawn_app_open_watch_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        let mut sys = System::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        loop {
+            sys.refresh_processes(ProcessesToUpdate::All, true);
+            let current: HashSet<String> =
+                sys.processes().values().map(|p| p.name().to_string_lossy().to_lowercase()).collect();
+            for name in current.difference(&seen) {
+                let name = name.clone();
+                fire_rules_where(&state, |t| {
+                    matches!(t, Trigger::OnAppOpen { app_name } if app_name.to_lowercase() == name)
+                });
+            }
+            seen = current;
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    });
+}
+
+/// Linux-only: `logind`'s `PrepareForSleep`/`PrepareForShutdown` D-Bus
+/// signals on the system bus - the standard, portable (across desktop
+/// environments) way to learn about an imminent suspend or shutdown on a
+/// systemd-based Linux system. Each signal fires twice per event (once
+/// with `start=true` just before, once with `start=false` after resume/on
+/// cancellation) - only `true` is "about to happen".
+#[cfg(target_os = "linux")]
+#[zbus::proxy(
+    default_service = "org.freedesktop.login1",
+    default_path = "/org/freedesktop/login1",
+    interface = "org.freedesktop.login1.Manager"
+)]
+trait Login1Manager {
+    #[zbus(signal)]
+    fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
+    #[zbus(signal)]
+    fn prepare_for_shutdown(&self, start: bool) -> zbus::Result<()>;
+}
+
+#[cfg(target_os = "linux")]
+async fn spawn_power_event_watch(state: Arc<Mutex<DaemonState>>) {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let connection = match zbus::Connection::system().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[power] could not connect to the system bus, sleep/shutdown triggers won't fire: {e}");
+                return;
+            }
+        };
+        let proxy = match Login1ManagerProxy::new(&connection).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[power] logind not available, sleep/shutdown triggers won't fire: {e}");
+                return;
+            }
+        };
+        let (Ok(mut sleep_stream), Ok(mut shutdown_stream)) =
+            (proxy.receive_prepare_for_sleep().await, proxy.receive_prepare_for_shutdown().await)
+        else {
+            eprintln!("[power] could not subscribe to logind signals, sleep/shutdown triggers won't fire");
+            return;
+        };
+        loop {
+            tokio::select! {
+                Some(msg) = sleep_stream.next() => {
+                    if let Ok(args) = msg.args() && args.start {
+                        fire_rules_where_async(&state, |t| *t == Trigger::OnBeforeSleep).await;
+                    }
+                }
+                Some(msg) = shutdown_stream.next() => {
+                    if let Ok(args) = msg.args() && args.start {
+                        fire_rules_where_async(&state, |t| *t == Trigger::BeforeShutdown).await;
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Linux-only, best-effort: there is no portable API for "a notification
+/// just appeared" short of watching the session bus for other processes'
+/// calls to the notification daemon's `Notify` method - which requires
+/// switching this connection into D-Bus "monitor" mode
+/// (`org.freedesktop.DBus.Monitoring.BecomeMonitor`), the modern
+/// replacement for the old `eavesdrop=true` match-rule flag. Bus policy on
+/// some systems may refuse this; if so, this trigger silently never fires
+/// rather than taking the daemon down - see PLAN.md for the "this was
+/// explicitly flagged as fragile" context.
+#[cfg(target_os = "linux")]
+async fn spawn_notification_watch(state: Arc<Mutex<DaemonState>>) {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let connection = match zbus::Connection::session().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[notify-trigger] could not connect to the session bus: {e}");
+                return;
+            }
+        };
+        let match_rule = "interface='org.freedesktop.Notifications',member='Notify',eavesdrop='true'".to_string();
+        let become_monitor = connection
+            .call_method(
+                Some("org.freedesktop.DBus"),
+                "/org/freedesktop/DBus",
+                Some("org.freedesktop.DBus.Monitoring"),
+                "BecomeMonitor",
+                &(vec![match_rule], 0u32),
+            )
+            .await;
+        if let Err(e) = become_monitor {
+            eprintln!(
+                "[notify-trigger] bus policy refused monitor mode, OnNotification rules will never fire: {e}"
+            );
+            return;
+        }
+        println!("[notify-trigger] watching the session bus for notifications");
+        let mut stream = zbus::MessageStream::from(connection);
+        while let Some(Ok(msg)) = stream.next().await {
+            let header = msg.header();
+            let is_notify = header.interface().map(|i| i.as_str()) == Some("org.freedesktop.Notifications")
+                && header.member().map(|m| m.as_str()) == Some("Notify");
+            if is_notify {
+                fire_rules_where_async(&state, |t| *t == Trigger::OnNotification).await;
+            }
+        }
+    });
+}
+
+/// `global-hotkey`'s Linux (X11) backend spins its own event-pumping
+/// thread (confirmed by reading its source), so just constructing it here
+/// and polling `GlobalHotKeyEvent::receiver()` like `MenuEvent`/
+/// `TrayIconEvent` is enough - no event loop of our own needed, consistent
+/// with the rest of this window-less daemon. Windows/macOS are a real
+/// exception: their backends need a native message/run loop pumped on the
+/// registering thread (Win32 `GetMessage`/`DispatchMessage`, Cocoa's
+/// `NSApplication` run loop respectively - see the crate's own README),
+/// which this daemon's plain `loop { ...; sleep(100ms) }` is not. Building
+/// one just for this would mean reworking the whole M0 window-less-daemon
+/// architecture - not done; `OnKeyPress` rules are expected to silently
+/// never fire on Windows/macOS until that happens. `None` if the manager
+/// itself fails to initialize (e.g. no X11 available at all, pure Wayland
+/// with no XWayland) - `OnKeyPress` rules then simply never fire, same
+/// graceful-degradation shape as every other trigger's platform gap.
+fn init_hotkey_manager() -> Option<GlobalHotKeyManager> {
+    match GlobalHotKeyManager::new() {
+        Ok(m) => Some(m),
+        Err(e) => {
+            eprintln!("[hotkey] global hotkeys unavailable on this system, OnKeyPress rules won't fire: {e}");
+            None
+        }
+    }
+}
+
+/// Keeps the OS's registered global hotkeys in sync with the current
+/// `OnKeyPress` rules, re-diffed on the same cadence as the tray menu
+/// refresh. Returns the new key-string -> id map (replacing the caller's
+/// old one) so hotkey *events* (which only carry an id) can be mapped back
+/// to a key string and from there to the rule(s) using it.
+fn sync_registered_hotkeys(
+    manager: &GlobalHotKeyManager,
+    rules: &[quarzlampe_core::rules::Rule],
+    previous: &HashMap<String, HotKey>,
+) -> HashMap<String, HotKey> {
+    let desired: HashMap<String, HotKey> = rules
+        .iter()
+        .filter(|r| r.enabled)
+        .filter_map(|r| match &r.trigger {
+            Trigger::OnKeyPress { key } => key.parse::<HotKey>().ok().map(|hk| (key.clone(), hk)),
+            _ => None,
+        })
+        .collect();
+
+    let stale: Vec<HotKey> =
+        previous.iter().filter(|(k, _)| !desired.contains_key(*k)).map(|(_, hk)| *hk).collect();
+    let new: Vec<HotKey> = desired.iter().filter(|(k, _)| !previous.contains_key(*k)).map(|(_, hk)| *hk).collect();
+    if !stale.is_empty() {
+        let _ = manager.unregister_all(&stale);
+    }
+    if !new.is_empty() && let Err(e) = manager.register_all(&new) {
+        eprintln!("[hotkey] failed to register one or more hotkeys: {e}");
+    }
+    desired
+}
+
 fn main() -> anyhow::Result<()> {
     let show_item = MenuItem::with_id("show-console", "Show console", true, None);
+    let autostart_item = CheckMenuItem::with_id("toggle-autostart", "Start on boot", true, autostart::is_enabled(), None);
     let quit_item = MenuItem::with_id("quit", "Quit", true, None);
 
     let starting_menu = Menu::new();
     let _ = starting_menu.append(&MenuItem::new("Starting\u{2026}", false, None));
     let _ = starting_menu.append(&PredefinedMenuItem::separator());
     let _ = starting_menu.append(&show_item);
+    let _ = starting_menu.append(&autostart_item);
     let _ = starting_menu.append(&quit_item);
 
     // Kept alive for the whole process lifetime - dropping this removes the
@@ -382,6 +618,9 @@ fn main() -> anyhow::Result<()> {
     let mut lamp_index = LampIndex::new();
     let mut last_refresh: Option<Instant> = None;
 
+    let hotkey_manager = init_hotkey_manager();
+    let mut registered_hotkeys: HashMap<String, HotKey> = HashMap::new();
+
     let console_path = console_binary_path()?;
     let mut console_child: Option<Child> = None;
 
@@ -389,6 +628,7 @@ fn main() -> anyhow::Result<()> {
     loop {
         if daemon_state.is_none() && let Ok(s) = state_rx.try_recv() {
             spawn_mic_evaluation_loop(Arc::clone(&s));
+            spawn_app_open_watch_loop(Arc::clone(&s));
             daemon_state = Some(s);
         }
 
@@ -396,10 +636,14 @@ fn main() -> anyhow::Result<()> {
             let needs_refresh = last_refresh.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
             if needs_refresh {
                 let lamps = snapshot_lamps(state);
-                let menu = build_menu(&lamps, &mut lamp_index, &show_item, &quit_item);
+                let menu = build_menu(&lamps, &mut lamp_index, &show_item, &autostart_item, &quit_item);
                 tray_icon.set_menu(Some(Box::new(menu)));
                 let _ = tray_icon.set_icon(Some(render_status_icon(status_color(&lamps))));
                 let _ = tray_icon.set_tooltip(Some(tooltip_text(&lamps)));
+                if let Some(manager) = &hotkey_manager {
+                    let rules = state.blocking_lock().rules.clone();
+                    registered_hotkeys = sync_registered_hotkeys(manager, &rules, &registered_hotkeys);
+                }
                 last_refresh = Some(Instant::now());
             }
         }
@@ -410,6 +654,11 @@ fn main() -> anyhow::Result<()> {
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == "show-console" {
                 spawn_or_note(&mut console_child, &console_path);
+            } else if event.id == "toggle-autostart" {
+                let enabled = autostart::is_enabled();
+                if let Err(e) = autostart::set_enabled(!enabled) {
+                    eprintln!("[tray] failed to change start-on-boot setting: {e}");
+                }
             } else if event.id == "quit" {
                 if let Some(mut child) = console_child.take() {
                     let _ = child.kill();
@@ -418,6 +667,13 @@ fn main() -> anyhow::Result<()> {
             } else if let Some(state) = &daemon_state {
                 handle_lamp_menu_event(&event.id.0, state, &lamp_index);
             }
+        }
+        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv()
+            && event.state() == HotKeyState::Pressed
+            && let Some(state) = &daemon_state
+            && let Some(key) = registered_hotkeys.iter().find(|(_, hk)| hk.id() == event.id()).map(|(k, _)| k.clone())
+        {
+            fire_rules_where(state, |t| matches!(t, Trigger::OnKeyPress { key: k } if *k == key));
         }
         std::thread::sleep(Duration::from_millis(100));
     }

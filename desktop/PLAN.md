@@ -477,6 +477,68 @@ desktop/
    **Not yet done, deliberately**: nobody has clicked "Run workflow" yet, so `desktop-latest`
    doesn't exist as a real Release until that happens (manually, by the user, after reviewing the
    workflow) - the Hilfe page's download link will 404 until then.
+9. **Six more triggers, two more actions, start-on-boot (ad hoc). ✅ DONE, mostly verified live.**
+   The user asked for a much richer trigger/action vocabulary than M4/M5's `MicActive`-only start,
+   plus native autostart. All landed in one pass since they share no new infrastructure beyond
+   what M4/M5 already built (the `Rule`/`Trigger`/`Action` serde shape, the IPC round-trip, the
+   `fire_rules_where`/`fire_rules_where_async` dispatch helper generalized out of M5's
+   `fire_mic_rules`).
+   - **New `Trigger` variants**: `OnBoot` (fires once, right after rules load, from inside
+     `spawn_core_runtime` - no new infra needed). `OnAppOpen { app_name }` - a `sysinfo`-based
+     poller (`spawn_app_open_watch_loop`, its own thread, 1s cadence) diffing the running-process
+     name set each tick; genuinely cross-platform, no OS-specific code, since `sysinfo` already is
+     the portability layer. `OnBeforeSleep`/`BeforeShutdown` - Linux-only, `logind`'s
+     `PrepareForSleep`/`PrepareForShutdown` D-Bus signals on the system bus via a `zbus` `#[proxy]`
+     trait (`Login1Manager`), run as a tokio task (`spawn_power_event_watch`) on the daemon's
+     existing runtime - only the `start=true` edge of each signal counts, not the `false` one that
+     follows resume/cancellation. `OnNotification` - Linux-only, best-effort exactly as flagged
+     before building it (the user explicitly accepted this risk): no portable "a notification
+     appeared" API exists, so this switches a dedicated session-bus connection into D-Bus "monitor"
+     mode (`org.freedesktop.DBus.Monitoring.BecomeMonitor`, the modern replacement for the
+     deprecated `eavesdrop=true` match-rule flag) and watches every message for
+     `interface=org.freedesktop.Notifications,member=Notify`. `OnKeyPress { key }` - a
+     `global-hotkey` combo string (`"control+alt+KeyL"` format, i.e. lowercase modifiers + a
+     `keyboard_types::Code` name); re-diffed against enabled rules on the same 1.5s cadence as the
+     tray menu refresh (`sync_registered_hotkeys`), events polled in the main loop exactly like
+     `MenuEvent`/`TrayIconEvent` already are.
+   - **New `Action` variants**: `StartWake{seconds,soft,mode,brightness_pct}` and
+     `SendMorse{text}`, matching the firmware's `wake`/`morse` syntax exactly (read straight from
+     `src/command.cpp` by a research subagent, not guessed). `Action::Notify` already existed
+     (M3) but had never been exposed as a rule-engine action kind in the console - just wired up
+     the existing picker, no model change needed.
+   - **`OnKeyPress` has a real, unfixable (by us) gap on two platforms**: `global-hotkey`'s own
+     README says Linux is X11-only (confirmed: its Linux backend spins an X11 event-pumping thread
+     internally, nothing Wayland-specific exists) - this dev machine runs GNOME/Wayland, so this
+     trigger could not be exercised here *at all*, on either the Linux or any other path. Windows
+     and macOS have their own, different gap: both need a native OS message/run loop pumped on the
+     registering thread (Win32 `GetMessage`/`DispatchMessage`, Cocoa's `NSApplication` run loop),
+     which this intentionally window-less daemon (see M0) does not have and was not reworked to
+     provide - so `OnKeyPress` rules are expected to compile and save fine everywhere, but to
+     silently never fire on Windows, macOS, or Wayland Linux, full stop, until someone either runs
+     this on real X11 or the daemon architecture changes. The user explicitly chose to build it
+     anyway, accepting zero verification coverage here, after being told this upfront.
+   - **Start-on-boot**: a `autostart` module (`app/src/autostart.rs`), one `cfg`-gated
+     implementation per OS behind the same `is_enabled()`/`set_enabled(bool)` pair - Linux writes/
+     removes an XDG `.desktop` file under `~/.config/autostart/`; Windows writes/removes a
+     `HKCU\...\Run` value via the `winreg` crate (API read directly from its downloaded source,
+     not from memory, but never actually compiled - no Windows target available here at all, the
+     strongest "unverified" label used anywhere in this project so far); macOS writes/removes a
+     `~/Library/LaunchAgents/...plist`. Surfaced as a `CheckMenuItem` in the tray menu, re-synced
+     from `autostart::is_enabled()` on every menu rebuild rather than trusted to hold its own state.
+   - **Verified live** (this session, Linux): an `OnBoot` rule fired exactly once at a fresh daemon
+     start; an `OnAppOpen` rule fired the moment a `yes` process was launched; an `OnNotification`
+     rule fired when `notify-send` was run (saw it fire *twice* for one `notify-send` call once -
+     a real quirk worth knowing about, not just a theoretical one, though not chased further given
+     this trigger's already-accepted best-effort status); the `autostart` toggle was clicked on and
+     off in the live tray menu and the `.desktop` file was confirmed to appear and disappear on
+     disk each time. `OnBeforeSleep`/`BeforeShutdown`'s D-Bus subscription was confirmed to connect
+     and register without error, but actually suspending/shutting down the dev machine to fire it
+     for real was not attempted this session (disruptive, not worth it given the subscription
+     mechanism itself is a well-established, low-risk pattern). `OnKeyPress` has no verification at
+     all, for the reasons above - not even "it compiles and the manager initializes" was skipped,
+     that part *was* confirmed (no `[hotkey]` error logged at startup on this Wayland machine,
+     meaning `GlobalHotKeyManager::new()` itself succeeded, presumably via XWayland - but per the
+     gap above, that is not the same as hotkeys actually working).
 
 ## Verification
 
