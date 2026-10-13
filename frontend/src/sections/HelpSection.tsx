@@ -264,6 +264,12 @@ export function HelpSection() {
           <p className="text-xs text-muted">
             <Trans k="help.desktopAppPlatforms">Linux: built and tested against real hardware. Windows/macOS: builds, but unverified.</Trans>
           </p>
+          <p className="text-xs text-muted">
+            <Trans k="help.desktopAppInstall">
+              Run the downloaded tray binary with --install once to copy it to a proper location and add a launcher
+              entry; --uninstall removes it again.
+            </Trans>
+          </p>
           <div className="flex flex-wrap gap-2">
             <a className="pill" href="https://github.com/Haschtl/Steinlampe/releases/tag/desktop-latest" target="_blank" rel="noopener noreferrer">
               <Trans k="help.desktopAppDownload">Download latest build</Trans>

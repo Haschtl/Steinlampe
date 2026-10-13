@@ -37,6 +37,7 @@ use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
 
 mod autostart;
+mod install;
 
 /// Where lamp pairing tokens are cached between runs. Separate from the
 /// IPC discovery file (`ipc::discovery_file_path`) - this one needs to
@@ -594,6 +595,12 @@ fn sync_registered_hotkeys(
 }
 
 fn main() -> anyhow::Result<()> {
+    if let Some(action) = std::env::args().nth(1)
+        && (action == "--install" || action == "--uninstall")
+    {
+        return install::run(&action);
+    }
+
     let show_item = MenuItem::with_id("show-console", "Show console", true, None);
     let autostart_item = CheckMenuItem::with_id("toggle-autostart", "Start on boot", true, autostart::is_enabled(), None);
     let quit_item = MenuItem::with_id("quit", "Quit", true, None);

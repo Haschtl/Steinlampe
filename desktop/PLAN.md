@@ -562,6 +562,61 @@ desktop/
      that part *was* confirmed (no `[hotkey]` error logged at startup on this Wayland machine,
      meaning `GlobalHotKeyManager::new()` itself succeeded, presumably via XWayland - but per the
      gap above, that is not the same as hotkeys actually working).
+10. **Windows/macOS mic detection, and a real installer (ad hoc). ✅ DONE on Linux, written but
+    unrun elsewhere.** The user explicitly asked for this knowing it can't be verified here -
+    accepting that risk up front, not discovered partway through.
+    - **`core::mic::windows`**: the same registry location Windows' own Settings > Privacy >
+      Microphone dashboard reads (`HKCU\...\CapabilityAccessManager\ConsentStore\microphone`) -
+      each app that's ever used the mic gets a subkey (desktop apps nest one level deeper under a
+      `NonPackaged` subkey) with a `LastUsedTimeStop` REG_QWORD; `== 0` means using it *right now*.
+      Via `winreg`, whose API was read from its real downloaded source (not memory) - same
+      confidence level as the autostart Windows code already had, i.e. "should be right, never
+      compiled, no Windows target available here at all."
+    - **`core::mic::macos`**: CoreAudio's `kAudioDevicePropertyDeviceIsRunningSomewhere` on the
+      system default input device, via raw `coreaudio-sys` FFI (`AudioObjectGetPropertyData` +
+      `AudioObjectPropertyAddress`). This is the single least-verifiable piece of code in the
+      entire project: `coreaudio-sys` generates its bindings via `bindgen` against the real macOS
+      SDK *at build time*, on an actual Mac (or GitHub's `macos-latest` runner) - there's no local
+      way to even confirm the generated symbol names, let alone compile it, from Linux. The C API
+      itself (stable since Mac OS X 10.4) is written from direct knowledge, not guessed, but expect
+      this file specifically to need a real fix-up pass once real CI/Mac feedback exists. Sidesteps
+      one naming ambiguity on purpose: uses the raw `mElement` value `0` instead of betting on
+      whether the installed SDK exposes `kAudioObjectPropertyElementMain` or the older
+      `...ElementMaster` (Apple renamed it between SDK versions; both are numerically `0`).
+    - **Why `OnBeforeSleep`/`BeforeShutdown`/`OnNotification` stay Linux-only, not a gap closed**:
+      genuinely looked at extending each to Windows/macOS and deliberately stopped rather than
+      writing speculative FFI with no real chance of working. Windows sleep detection *does* have a
+      clean, window-less, documented API (`PowerRegisterSuspendResumeNotification`, a plain
+      callback, no message loop needed) and would have been worth adding - not done this pass, left
+      as a concrete follow-up, not a dead end. Windows shutdown and macOS sleep/shutdown all
+      fundamentally need either a real top-level window (`WM_QUERYENDSESSION`, Windows) or an
+      active run loop (`NSWorkspace` notifications, macOS) - the same architectural gap `OnKeyPress`
+      already has on both platforms (see above), and reworking this window-less daemon's event loop
+      just for these triggers wasn't judged worth it. `OnNotification` has no Windows/macOS
+      equivalent at all - no "eavesdrop on other apps' notifications" mechanism exists on either,
+      full stop, not just "harder."
+    - **A real, simple installer**: `quarzlampe-tray --install` / `--uninstall` - running the
+      downloaded binary with a flag, not a separate installer executable or a packaging format per
+      platform (.deb/.msi/.dmg). Linux: copies both binaries to `~/.local/bin/`, installs the icon
+      to the proper XDG icon-theme location (`~/.local/share/icons/hicolor/256x256/apps/`), writes
+      a *visible* `.desktop` launcher to `~/.local/share/applications/` (separate from and
+      complementary to `autostart.rs`'s own, deliberately-hidden `NoDisplay=true` one in
+      `~/.config/autostart/` - different directories, different purposes, no collision). Windows:
+      copies to `%LOCALAPPDATA%\Programs\Quarzlampe\`, creates a Start Menu shortcut by shelling
+      out to a one-line PowerShell `WScript.Shell` script rather than writing `IShellLink` COM
+      interop - every Windows install already has PowerShell, so this needed no new Win32 FFI
+      surface at all. macOS: builds a real (if minimal, no `.icns`) `Quarzlampe.app` bundle under
+      `~/Applications/` - just directory/file writes, no FFI, so meaningfully more trustworthy than
+      the mic/CoreAudio code despite being equally unrun. None of the three touch the
+      `autostart.rs` "Start on boot" toggle - that stays a separate, explicit, already-built opt-in.
+      **Verified live end to end on Linux**: ran `--install`, confirmed all three artifacts
+      (binaries, icon, `.desktop`) landed correctly and `desktop-file-validate` passed it, ran the
+      *installed* binary standalone and confirmed it found its installed sibling console binary
+      correctly, then ran `--uninstall` (from the installed binary itself, which deletes its own
+      file while still running - works fine on Linux, the inode stays alive until the process
+      exits) and confirmed everything was removed. Windows/macOS install paths are unverified, same
+      caveat as the mic backends above. Added a short "run with --install" line to the Hilfe page's
+      desktop-app card (both `en`/`de`) so this isn't buried only in the binary's own behavior.
 
 ## Verification
 

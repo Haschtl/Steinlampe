@@ -10,6 +10,10 @@ pub mod unsupported;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MicActivity {
@@ -27,15 +31,28 @@ pub trait MicActivityProvider {
     fn poll(&mut self) -> Result<MicActivity, String>;
 }
 
-/// The best provider for this platform - `unsupported` everywhere until a
-/// real one is written for it (only Linux so far; see PLAN.md's M5 note on
-/// Windows/macOS being unverified/unwritten).
+/// The best provider for this platform. Linux is the only one verified
+/// live; Windows (registry `ConsentStore` heuristic) and macOS (CoreAudio
+/// `...IsRunningSomewhere`) are written against each platform's documented
+/// mechanism but unrun - see each module's own doc comment for exactly how
+/// unverified, which differs a lot between the two (Windows' `winreg` API
+/// was at least read from its real source; macOS's `coreaudio-sys` bindings
+/// are generated at build time from the real SDK and can't be inspected at
+/// all without a Mac).
 pub fn default_provider() -> Box<dyn MicActivityProvider> {
     #[cfg(target_os = "linux")]
     {
         Box::new(linux::PulseMicProvider::new())
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        Box::new(windows::WindowsMicProvider::new())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Box::new(macos::MacosMicProvider::new())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         Box::new(unsupported::UnsupportedMicProvider)
     }

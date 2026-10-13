@@ -324,6 +324,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.desktopAppDesc":
       "A tray/menu-bar app that controls all your lamps from one place and can automate them (e.g. turn one on while your microphone is active). Still early and unsigned - expect a SmartScreen/Gatekeeper warning.",
     "help.desktopAppPlatforms": "Linux: built and tested against real hardware. Windows/macOS: builds, but unverified.",
+    "help.desktopAppInstall":
+      "Run the downloaded tray binary with --install once to copy it to a proper location and add a launcher entry; --uninstall removes it again.",
     "help.desktopAppDownload": "Download latest build",
     "help.inputs": "Inputs & Controls",
     "help.input.switch": "Switch",
@@ -671,6 +673,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.desktopAppDesc":
       "Eine Tray-/Menüleisten-App, die alle Lampen an einem Ort steuert und automatisieren kann (z. B. eine Lampe einschalten, solange das Mikrofon aktiv ist). Noch früh und unsigniert - SmartScreen/Gatekeeper-Warnung ist zu erwarten.",
     "help.desktopAppPlatforms": "Linux: gebaut und an echter Hardware getestet. Windows/macOS: baut, aber unverifiziert.",
+    "help.desktopAppInstall":
+      "Die heruntergeladene Tray-Binary einmal mit --install ausführen, um sie an einen passenden Ort zu kopieren und einen Starter-Eintrag anzulegen; --uninstall entfernt sie wieder.",
     "help.desktopAppDownload": "Neuesten Build herunterladen",
     "help.inputs": "Eingaben & Bedienung",
     "help.input.switch": "Schalter",
