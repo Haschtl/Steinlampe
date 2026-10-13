@@ -29,7 +29,8 @@ Decisions already made with the user:
   token) - it's revocable by re-pairing, and a keyring dependency would add cross-platform
   complexity (not every Linux session has an unlocked keyring daemon running) for little real
   benefit. Already implemented as `core::ble::trust::FileTokenStore` - no change needed there.
-- **Console UI direction: egui stays, but the layout is getting a real redesign later** - two
+- **Console UI direction: egui stays, redesign landed. ✅ DONE** (implemented in `console/src/main.rs`,
+  verified live by hand) - two
   sections reachable from a left sidebar nav (Connections, Rules), not the current single scrolling
   panel. Connections: a card per lamp (name, colored status dot + text label, inline error banner,
   quick-actions baked into the card itself - power toggle, brightness slider, mode stepper, profile
@@ -43,9 +44,18 @@ Decisions already made with the user:
   for one Rust codebase; a true per-OS native rewrite of just the console stays a possible, deferred
   option *because* the console is already nothing but a thin IPC client - swapping it later
   wouldn't touch `core` or the daemon at all. Sketched and approved as a Claude Artifact
-  (static mockup, not real egui code):
-  <https://claude.ai/artifact/5d6WTK125K6DgQhvNmi3bp> - implementing this redesign in the actual
-  `console` crate is still outstanding, not yet scheduled against a milestone number.
+  (static mockup, not real egui code) before implementation:
+  <https://claude.ai/artifact/5d6WTK125K6DgQhvNmi3bp>. In egui terms: `egui::Panel::left` for the
+  nav (using `ui.selectable_label` for the two entries, not a custom button), one card per lamp via
+  `ui.horizontal_wrapped` + a fixed-width `ui.scope` + `egui::Frame` (egui has no CSS grid, this
+  wraps close enough), a hand-rolled `toggle_ui` pill switch (egui has no built-in one - standard
+  egui-book recipe) for power, and the brightness slider commits on `drag_stopped()`/`lost_focus()`
+  rather than every frame of the drag, so dragging doesn't flood the lamp with BLE writes. One real
+  simplification from the mockup: profile slot buttons don't highlight a "currently active" slot,
+  because the firmware's lightweight `STATE|` push (the only thing polled live, by design - see the
+  "Live state" protocol note) doesn't carry which profile is active; showing one as selected would
+  be fabricating data the app doesn't have. The old M3 multi-select-then-apply action bar is gone
+  entirely, superseded by these per-card controls.
 
 ## Protocol facts to reuse, not re-derive
 

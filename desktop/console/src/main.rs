@@ -4,6 +4,12 @@
 //! anchor viewport. The daemon is what stays running, owning BLE/rules/mic
 //! detection; this process is a thin IPC client (`core::ipc`) that only
 //! shows lamp state and forwards manual actions.
+//!
+//! Layout: a left-side nav (Connections/Rules) over one scrolling content
+//! area, matching the two-section design sketched and approved as a Claude
+//! Artifact (see PLAN.md's "Console UI direction" note) - a card per lamp
+//! with its own inline quick-actions, instead of M3's old single-select-
+//! then-apply action bar.
 
 use std::collections::HashSet;
 use std::sync::mpsc as std_mpsc;
@@ -11,9 +17,11 @@ use std::time::Duration;
 
 use eframe::egui;
 use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp};
-use quarzlampe_core::rules::{action_to_command, Action, Rule, Trigger};
+use quarzlampe_core::rules::{Action, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
+
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xF2, 0xA3, 0x3C);
 
 enum UiToCore {
     Scan,
@@ -91,6 +99,12 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
 }
 
 #[derive(Clone, Copy, PartialEq)]
+enum Section {
+    Connections,
+    Rules,
+}
+
+#[derive(Clone, Copy, PartialEq)]
 enum ActionKind {
     On,
     Off,
@@ -120,39 +134,25 @@ struct ConsoleApp {
     scan_results: Vec<ScannedLamp>,
     rules: Vec<Rule>,
     status: String,
-    selected: HashSet<String>,
-    brightness_pct: u8,
-    mode_pattern: u32,
-    profile_slot: u8,
+    section: Section,
     // New-rule form state.
+    show_new_rule: bool,
     new_rule_name: String,
     new_rule_action_kind: ActionKind,
     new_rule_targets: HashSet<String>,
+    new_rule_brightness: u8,
+    new_rule_mode: u32,
+    new_rule_profile: u8,
 }
 
 impl ConsoleApp {
-    /// Sends one `Action`, translated through the same
-    /// `rules::commands::action_to_command` the rule engine will reuse in
-    /// M4, to every currently-selected lamp.
-    fn dispatch_to_selected(&self, action: &Action) {
-        let line = action_to_command(action);
-        for lamp_key in &self.selected {
-            let _ = self.to_core.send(UiToCore::SendCommand { lamp_key: lamp_key.clone(), line: line.clone() });
-        }
-    }
-
-    /// Builds the `Action` the new-rule form currently describes, reusing
-    /// the same brightness/mode/profile number fields as the manual quick-
-    /// action bar above (so there's only one set of numeric inputs, not a
-    /// separate copy per section - editing them affects both at once,
-    /// which is a minor shared-state tradeoff acceptable at this stage).
     fn new_rule_action(&self) -> Action {
         match self.new_rule_action_kind {
             ActionKind::On => Action::On,
             ActionKind::Off => Action::Off,
-            ActionKind::Brightness => Action::SetBrightness { pct: self.brightness_pct },
-            ActionKind::Mode => Action::SetMode { pattern: self.mode_pattern },
-            ActionKind::Profile => Action::LoadProfile { slot: self.profile_slot },
+            ActionKind::Brightness => Action::SetBrightness { pct: self.new_rule_brightness },
+            ActionKind::Mode => Action::SetMode { pattern: self.new_rule_mode },
+            ActionKind::Profile => Action::LoadProfile { slot: self.new_rule_profile },
         }
     }
 
@@ -162,6 +162,176 @@ impl ConsoleApp {
             .find(|l| l.lamp_key == lamp_key)
             .map(|l| l.name.clone())
             .unwrap_or_else(|| lamp_key.to_string())
+    }
+
+    fn connections_ui(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Lamps");
+            let connected = self.lamps.iter().filter(|l| l.connection == "connected").count();
+            ui.label(format!("{connected} connected"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Scan for lamps").clicked() {
+                    let _ = self.to_core.send(UiToCore::Scan);
+                }
+            });
+        });
+        ui.add_space(8.0);
+
+        ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+        ui.horizontal_wrapped(|ui| {
+            for lamp in &self.lamps {
+                lamp_card(ui, lamp, &self.to_core);
+            }
+        });
+
+        if !self.scan_results.is_empty() {
+            ui.add_space(16.0);
+            ui.label(egui::RichText::new("DISCOVERED NEARBY").small().color(ui.visuals().weak_text_color()));
+            ui.label(
+                egui::RichText::new("Pair within ~60s of boot, or it already has a saved token")
+                    .small()
+                    .color(ui.visuals().weak_text_color()),
+            );
+            for found in &self.scan_results {
+                ui.horizontal(|ui| {
+                    ui.label(&found.name);
+                    if ui.button("Connect").clicked() {
+                        let _ = self.to_core.send(UiToCore::Connect {
+                            lamp_key: found.lamp_key.clone(),
+                            name: found.name.clone(),
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    fn rules_ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Rules");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if !self.show_new_rule && ui.button("+ New rule").clicked() {
+                    self.show_new_rule = true;
+                    self.new_rule_name.clear();
+                    self.new_rule_targets.clear();
+                }
+            });
+        });
+        ui.add_space(8.0);
+
+        if self.show_new_rule {
+            egui::Frame::NONE
+                .fill(ui.visuals().faint_bg_color)
+                .corner_radius(10.0)
+                .inner_margin(14.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Name:");
+                        ui.text_edit_singleline(&mut self.new_rule_name);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("When:");
+                        ui.add_enabled(false, egui::Button::new("Mic becomes active"));
+                        ui.label(
+                            egui::RichText::new("(more triggers later)").small().color(ui.visuals().weak_text_color()),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Then:");
+                        egui::ComboBox::from_id_salt("new_rule_action_kind")
+                            .selected_text(self.new_rule_action_kind.label())
+                            .show_ui(ui, |ui| {
+                                for kind in ActionKind::ALL {
+                                    ui.selectable_value(&mut self.new_rule_action_kind, kind, kind.label());
+                                }
+                            });
+                    });
+                    match self.new_rule_action_kind {
+                        ActionKind::Brightness => {
+                            ui.add(egui::Slider::new(&mut self.new_rule_brightness, 0..=100).text("brightness %"));
+                        }
+                        ActionKind::Mode => {
+                            ui.add(egui::DragValue::new(&mut self.new_rule_mode).range(1..=64).prefix("mode "));
+                        }
+                        ActionKind::Profile => {
+                            ui.add(egui::DragValue::new(&mut self.new_rule_profile).range(1..=6).prefix("profile slot "));
+                        }
+                        ActionKind::On | ActionKind::Off => {}
+                    }
+                    ui.label("Targets:");
+                    ui.horizontal_wrapped(|ui| {
+                        for lamp in &self.lamps {
+                            let mut checked = self.new_rule_targets.contains(&lamp.lamp_key);
+                            if ui.selectable_label(checked, &lamp.name).clicked() {
+                                checked = !checked;
+                                if checked {
+                                    self.new_rule_targets.insert(lamp.lamp_key.clone());
+                                } else {
+                                    self.new_rule_targets.remove(&lamp.lamp_key);
+                                }
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() {
+                            self.show_new_rule = false;
+                        }
+                        let can_save = !self.new_rule_name.is_empty() && !self.new_rule_targets.is_empty();
+                        if ui.add_enabled(can_save, egui::Button::new("Save rule")).clicked() {
+                            let rule = Rule {
+                                id: Uuid::new_v4(),
+                                name: std::mem::take(&mut self.new_rule_name),
+                                enabled: true,
+                                trigger: Trigger::MicActive,
+                                targets: self.new_rule_targets.iter().cloned().collect(),
+                                action: self.new_rule_action(),
+                            };
+                            self.new_rule_targets.clear();
+                            self.show_new_rule = false;
+                            let _ = self.to_core.send(UiToCore::SaveRule(rule));
+                        }
+                    });
+                });
+            ui.add_space(12.0);
+        }
+
+        for rule in &self.rules {
+            egui::Frame::NONE
+                .fill(ui.visuals().extreme_bg_color)
+                .corner_radius(10.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let mut enabled = rule.enabled;
+                        if ui.checkbox(&mut enabled, "").changed() {
+                            let mut updated = rule.clone();
+                            updated.enabled = enabled;
+                            let _ = self.to_core.send(UiToCore::SaveRule(updated));
+                        }
+                        ui.strong(&rule.name);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Delete").clicked() {
+                                let _ = self.to_core.send(UiToCore::DeleteRule(rule.id));
+                            }
+                            if ui.small_button("Fire now").clicked() {
+                                let _ = self.to_core.send(UiToCore::FireRule(rule.id));
+                            }
+                        });
+                    });
+                    let targets: Vec<String> = rule.targets.iter().map(|k| self.lamp_display_name(k)).collect();
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Mic active \u{2192} {} \u{b7} {}",
+                            describe_action(&rule.action),
+                            targets.join(", ")
+                        ))
+                        .small()
+                        .color(ui.visuals().weak_text_color()),
+                    );
+                });
+            ui.add_space(8.0);
+        }
     }
 }
 
@@ -176,178 +346,164 @@ fn describe_action(action: &Action) -> String {
     }
 }
 
+fn status_visual(connection: &str) -> (egui::Color32, &'static str) {
+    match connection {
+        "connected" => (egui::Color32::from_rgb(0x4A, 0xDE, 0x80), "Connected"),
+        "connecting" => (ACCENT, "Connecting\u{2026}"),
+        "reconnecting" => (ACCENT, "Reconnecting\u{2026}"),
+        "awaiting_trust_token" => (ACCENT, "Awaiting trust token\u{2026}"),
+        _ => (egui::Color32::from_rgb(0x8B, 0x92, 0xA0), "Disconnected"),
+    }
+}
+
+/// A toggle switch in the style of the approved console sketch - egui has
+/// no built-in one. Standard egui-book recipe: allocate a pill-shaped rect,
+/// animate a knob across it, flip `*on` on click.
+fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+    let desired_size = ui.spacing().interact_size.y * egui::vec2(1.8, 1.0);
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    if ui.is_rect_visible(rect) {
+        let how_on = ui.ctx().animate_bool_responsive(response.id, *on);
+        let visuals = ui.style().interact_selectable(&response, *on);
+        let rect = rect.expand(visuals.expansion);
+        let radius = 0.5 * rect.height();
+        ui.painter().rect(rect, radius, visuals.bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+        let circle_x = egui::lerp((rect.left() + radius)..=(rect.right() - radius), how_on);
+        let center = egui::pos2(circle_x, rect.center().y);
+        ui.painter().circle(center, 0.75 * radius, visuals.fg_stroke.color, visuals.fg_stroke);
+    }
+    response
+}
+
+/// One lamp's card: name + status, inline power/brightness/mode/profile
+/// quick-actions, all disabled unless the lamp is actually connected.
+/// A free function (not a `ConsoleApp` method) since it only needs the
+/// lamp's own data and a way to send commands, not the rest of the app
+/// state - keeps the borrow simple when called from `connections_ui(&self)`.
+fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::UnboundedSender<UiToCore>) {
+    let connected = lamp.connection == "connected";
+    let send = |line: String| {
+        let _ = to_core.send(UiToCore::SendCommand { lamp_key: lamp.lamp_key.clone(), line });
+    };
+
+    ui.scope(|ui| {
+        ui.set_width(240.0);
+        egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).corner_radius(10.0).inner_margin(14.0).show(ui, |ui| {
+            ui.set_width(212.0);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.strong(&lamp.name);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (color, label) = status_visual(&lamp.connection);
+                        ui.label(label);
+                        ui.colored_label(color, "\u{25cf}");
+                    });
+                });
+
+                if let Some(err) = &lamp.last_error {
+                    ui.colored_label(egui::Color32::from_rgb(0xF2, 0x55, 0x5A), err);
+                }
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    ui.label("Power");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_enabled_ui(connected, |ui| {
+                            let mut on = lamp.lamp_on.unwrap_or(false);
+                            if toggle_ui(ui, &mut on).changed() {
+                                send(if on { "on".to_string() } else { "off".to_string() });
+                            }
+                        });
+                    });
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Brightness");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(format!("{:.0}%", lamp.brightness_pct.unwrap_or(0.0)));
+                    });
+                });
+                ui.add_enabled_ui(connected, |ui| {
+                    let mut value = lamp.brightness_pct.unwrap_or(0.0);
+                    let resp = ui.add(egui::Slider::new(&mut value, 0.0..=100.0).show_value(false));
+                    // Only send on release/blur, not every frame of the drag -
+                    // one BLE write per adjustment, not a flood of them.
+                    if resp.drag_stopped() || resp.lost_focus() {
+                        send(format!("bri {}", value as u8));
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Mode");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_enabled_ui(connected, |ui| {
+                            let pattern = lamp.pattern.unwrap_or(1);
+                            if ui.small_button("+").clicked() {
+                                send(format!("mode {}", (pattern + 1).min(64)));
+                            }
+                            ui.label(pattern.to_string());
+                            if ui.small_button("\u{2212}").clicked() {
+                                send(format!("mode {}", pattern.saturating_sub(1).max(1)));
+                            }
+                        });
+                    });
+                });
+
+                ui.label("Profile");
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(connected, |ui| {
+                        for slot in 1u8..=6 {
+                            if ui.small_button(slot.to_string()).clicked() {
+                                send(format!("profile load {slot}"));
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    });
+}
+
 impl eframe::App for ConsoleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.from_core.try_recv() {
             match msg {
-                CoreToUi::Lamps(lamps) => {
-                    // Drop selections for lamps that disappeared (e.g. shut down).
-                    let known: HashSet<&String> = lamps.iter().map(|l| &l.lamp_key).collect();
-                    self.selected.retain(|k| known.contains(k));
-                    self.lamps = lamps;
-                }
+                CoreToUi::Lamps(lamps) => self.lamps = lamps,
                 CoreToUi::ScanResults(results) => self.scan_results = results,
                 CoreToUi::Rules(rules) => self.rules = rules,
                 CoreToUi::Status(s) => self.status = s,
             }
         }
 
-        egui::Frame::central_panel(&egui::Style::default()).show(ui, |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Quarzlampe console");
-            ui.label(&self.status);
-            ui.separator();
-
-            if ui.button("Scan for lamps").clicked() {
-                let _ = self.to_core.send(UiToCore::Scan);
-            }
-
-            ui.separator();
+        egui::Panel::left("nav").default_size(170.0).resizable(false).show(ui, |ui| {
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.label("Connected lamps:");
-                if ui.small_button("Select all").clicked() {
-                    self.selected = self.lamps.iter().map(|l| l.lamp_key.clone()).collect();
-                }
-                if ui.small_button("Select none").clicked() {
-                    self.selected.clear();
-                }
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 5.0, ACCENT);
+                ui.strong("Quarzlampe");
             });
-            for lamp in &self.lamps {
-                let mut checked = self.selected.contains(&lamp.lamp_key);
-                ui.horizontal(|ui| {
-                    if ui.checkbox(&mut checked, "").changed() {
-                        if checked {
-                            self.selected.insert(lamp.lamp_key.clone());
-                        } else {
-                            self.selected.remove(&lamp.lamp_key);
-                        }
-                    }
-                    ui.label(format!(
-                        "{} [{}] on={:?} bri={:?} pattern={:?}",
-                        lamp.name, lamp.connection, lamp.lamp_on, lamp.brightness_pct, lamp.pattern
-                    ));
-                    if let Some(err) = &lamp.last_error {
-                        ui.colored_label(egui::Color32::from_rgb(220, 120, 60), err);
-                    }
-                });
+            ui.add_space(16.0);
+            if ui.selectable_label(self.section == Section::Connections, "Connections").clicked() {
+                self.section = Section::Connections;
             }
-
-            ui.separator();
-            ui.label(format!("Actions for {} selected lamp(s):", self.selected.len()));
-            ui.add_enabled_ui(!self.selected.is_empty(), |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("On").clicked() {
-                        self.dispatch_to_selected(&Action::On);
-                    }
-                    if ui.button("Off").clicked() {
-                        self.dispatch_to_selected(&Action::Off);
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut self.brightness_pct, 0..=100).text("brightness %"));
-                    if ui.button("Apply").clicked() {
-                        self.dispatch_to_selected(&Action::SetBrightness { pct: self.brightness_pct });
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::DragValue::new(&mut self.mode_pattern).range(1..=64).prefix("mode "));
-                    if ui.button("Apply").clicked() {
-                        self.dispatch_to_selected(&Action::SetMode { pattern: self.mode_pattern });
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::DragValue::new(&mut self.profile_slot).range(1..=6).prefix("profile slot "));
-                    if ui.button("Load").clicked() {
-                        self.dispatch_to_selected(&Action::LoadProfile { slot: self.profile_slot });
-                    }
-                });
+            if ui.selectable_label(self.section == Section::Rules, "Rules").clicked() {
+                self.section = Section::Rules;
+            }
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                ui.label(egui::RichText::new(&self.status).small().color(ui.visuals().weak_text_color()));
             });
-
-            ui.separator();
-            ui.label("Scan results (tap Connect - only works within ~60s of the lamp booting unless it already has a cached token):");
-            for found in &self.scan_results {
-                ui.horizontal(|ui| {
-                    ui.label(&found.name);
-                    if ui.button("Connect").clicked() {
-                        let _ = self.to_core.send(UiToCore::Connect {
-                            lamp_key: found.lamp_key.clone(),
-                            name: found.name.clone(),
-                        });
-                    }
-                });
-            }
-
-            ui.separator();
-            ui.heading("Rules");
-            for rule in &self.rules {
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        let mut enabled = rule.enabled;
-                        if ui.checkbox(&mut enabled, "").changed() {
-                            let mut updated = rule.clone();
-                            updated.enabled = enabled;
-                            let _ = self.to_core.send(UiToCore::SaveRule(updated));
-                        }
-                        ui.strong(&rule.name);
-                    });
-                    let targets: Vec<String> = rule.targets.iter().map(|k| self.lamp_display_name(k)).collect();
-                    ui.label(format!(
-                        "when mic becomes active -> {} on: {}",
-                        describe_action(&rule.action),
-                        targets.join(", ")
-                    ));
-                    ui.horizontal(|ui| {
-                        if ui.button("Fire now").clicked() {
-                            let _ = self.to_core.send(UiToCore::FireRule(rule.id));
-                        }
-                        if ui.button("Delete").clicked() {
-                            let _ = self.to_core.send(UiToCore::DeleteRule(rule.id));
-                        }
-                    });
-                });
-            }
-
-            ui.separator();
-            ui.label("Add rule (trigger is always \"mic becomes active\" for now - that's the only one M5 will wire up):");
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(&mut self.new_rule_name);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Action:");
-                egui::ComboBox::from_id_salt("new_rule_action_kind")
-                    .selected_text(self.new_rule_action_kind.label())
-                    .show_ui(ui, |ui| {
-                        for kind in ActionKind::ALL {
-                            ui.selectable_value(&mut self.new_rule_action_kind, kind, kind.label());
-                        }
-                    });
-            });
-            ui.label("Targets:");
-            for lamp in &self.lamps {
-                let mut checked = self.new_rule_targets.contains(&lamp.lamp_key);
-                if ui.checkbox(&mut checked, &lamp.name).changed() {
-                    if checked {
-                        self.new_rule_targets.insert(lamp.lamp_key.clone());
-                    } else {
-                        self.new_rule_targets.remove(&lamp.lamp_key);
-                    }
-                }
-            }
-            let can_save = !self.new_rule_name.is_empty() && !self.new_rule_targets.is_empty();
-            if ui.add_enabled(can_save, egui::Button::new("Save rule")).clicked() {
-                let rule = Rule {
-                    id: Uuid::new_v4(),
-                    name: std::mem::take(&mut self.new_rule_name),
-                    enabled: true,
-                    trigger: Trigger::MicActive,
-                    targets: self.new_rule_targets.iter().cloned().collect(),
-                    action: self.new_rule_action(),
-                };
-                self.new_rule_targets.clear();
-                let _ = self.to_core.send(UiToCore::SaveRule(rule));
-            }
         });
+
+        egui::CentralPanel::default().show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| match self.section {
+                Section::Connections => self.connections_ui(ui),
+                Section::Rules => self.rules_ui(ui),
+            });
         });
 
         // Keep redrawing even with no input, so updates arriving on
@@ -367,6 +523,17 @@ fn load_window_icon() -> egui::IconData {
     egui::IconData { rgba: image.into_raw(), width, height }
 }
 
+/// Dark theme with the brand's warm accent color, matching the approved
+/// console sketch - see PLAN.md's "Console UI direction" note. Not a claim
+/// that this looks like a native OS widget set; see that note for why.
+fn apply_visuals(ctx: &egui::Context) {
+    let mut visuals = egui::Visuals::dark();
+    visuals.selection.bg_fill = ACCENT;
+    visuals.selection.stroke.color = egui::Color32::from_rgb(0x23, 0x14, 0x05);
+    visuals.hyperlink_color = ACCENT;
+    ctx.set_visuals(visuals);
+}
+
 fn main() -> eframe::Result<()> {
     let (to_core, from_ui) = tokio_mpsc::unbounded_channel::<UiToCore>();
     let (to_ui, from_core) = std_mpsc::channel::<CoreToUi>();
@@ -378,7 +545,7 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([520.0, 480.0])
+            .with_inner_size([760.0, 560.0])
             .with_title("Quarzlampe")
             .with_icon(load_window_icon())
             // On Wayland (GNOME in particular) the taskbar/dash/alt-tab icon
@@ -392,7 +559,8 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Quarzlampe",
         native_options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            apply_visuals(&cc.egui_ctx);
             Ok(Box::new(ConsoleApp {
                 to_core,
                 from_core,
@@ -400,13 +568,14 @@ fn main() -> eframe::Result<()> {
                 scan_results: Vec::new(),
                 rules: Vec::new(),
                 status: "connecting to daemon...".to_string(),
-                selected: HashSet::new(),
-                brightness_pct: 100,
-                mode_pattern: 1,
-                profile_slot: 1,
+                section: Section::Connections,
+                show_new_rule: false,
                 new_rule_name: String::new(),
                 new_rule_action_kind: ActionKind::On,
                 new_rule_targets: HashSet::new(),
+                new_rule_brightness: 50,
+                new_rule_mode: 1,
+                new_rule_profile: 1,
             }))
         }),
     )
