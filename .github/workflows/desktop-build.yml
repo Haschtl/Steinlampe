@@ -111,8 +111,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path wixobj | Out-Null
-          & "$env:WIX\bin\candle.exe" -dCargoTargetBinDir=desktop\target\release -dVersion=0.1.0 `
-            -out wixobj\main.wixobj desktop\packaging\windows\main.wxs
+          & "$env:WIX\bin\candle.exe" -dCargoTargetBinDir=desktop\target\release -dVersion=0.1.0 -out wixobj\main.wixobj desktop\packaging\windows\main.wxs
           & "$env:WIX\bin\light.exe" -ext WixUIExtension wixobj\main.wixobj -out dist\quarzlampe-installer.msi
 
       # Free code signing for this (now GPL-3.0-or-later, genuinely open
