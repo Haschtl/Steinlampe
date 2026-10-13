@@ -136,6 +136,9 @@ dict! {
 
     // New-rule trigger picker (TriggerKind labels).
     "trigger.micActive" => ["Mic becomes active", "Mikrofon wird aktiv"],
+    "trigger.micInactive" => ["Mic becomes inactive", "Mikrofon wird inaktiv"],
+    "trigger.cameraActive" => ["Camera becomes active", "Kamera wird aktiv"],
+    "trigger.cameraInactive" => ["Camera becomes inactive", "Kamera wird inaktiv"],
     "trigger.onBoot" => ["Daemon starts (on boot)", "Daemon startet (beim Hochfahren)"],
     "trigger.onBeforeSleep" =>
         ["System is about to sleep (Linux only)", "System geht gleich in den Ruhezustand (nur Linux)"],
@@ -156,4 +159,15 @@ dict! {
     "actionKind.notifyPattern" => ["Send notify pattern", "Benachrichtigungsmuster senden"],
     "actionKind.startWake" => ["Start wake-up", "Weckvorgang starten"],
     "actionKind.sendMorse" => ["Send morse code", "Morsecode senden"],
+
+    // Console: music-reactive visualizer panel.
+    "visualizer.heading" => ["Music Visualizer", "Musik-Visualizer"],
+    "visualizer.hint" =>
+        ["Loudness of whatever's playing on this PC drives brightness, live.",
+         "Lautst\u{e4}rke dessen, was auf diesem PC l\u{e4}uft, steuert live die Helligkeit."],
+    "visualizer.enable" => ["Enable", "Aktivieren"],
+    "visualizer.gain" => ["Gain", "Verst\u{e4}rkung"],
+    "visualizer.targets" => ["Targets:", "Ziele:"],
+    "visualizer.unsupported" =>
+        ["Not available on this platform/setup", "Auf dieser Plattform/Konfiguration nicht verf\u{fc}gbar"],
 }

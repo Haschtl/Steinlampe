@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use eframe::egui;
 use quarzlampe_core::i18n::{t, Lang};
-use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp};
+use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
 use quarzlampe_core::rules::{Action, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
@@ -53,12 +53,14 @@ enum UiToCore {
     SaveRule(Rule),
     DeleteRule(Uuid),
     FireRule(Uuid),
+    SetVisualizer(Option<VisualizerConfig>),
 }
 
 enum CoreToUi {
     Lamps(Vec<LampSummary>),
     ScanResults(Vec<ScannedLamp>),
     Rules(Vec<Rule>),
+    Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
     Status(String),
 }
 
@@ -89,11 +91,18 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
                     Ok(_) => {}
                     Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
                 }
-                // Rules change rarely - polling it at the same cadence as
-                // lamp state is wasteful, but simple, and this is a handful
-                // of small requests a second at most. Revisit if it matters.
+                // Rules/visualizer change rarely - polling at the same
+                // cadence as lamp state is wasteful, but simple, and this
+                // is a handful of small requests a second at most. Revisit
+                // if it matters.
                 match client.request(RequestKind::ListRules).await {
                     Ok(IpcResponse::Rules { rules }) => { let _ = to_ui.send(CoreToUi::Rules(rules)); }
+                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(_) => {}
+                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                }
+                match client.request(RequestKind::GetVisualizer).await {
+                    Ok(IpcResponse::Visualizer { config, last_error }) => { let _ = to_ui.send(CoreToUi::Visualizer { config, last_error }); }
                     Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
                     Ok(_) => {}
                     Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
@@ -108,10 +117,12 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
                     UiToCore::SaveRule(rule) => RequestKind::SaveRule { rule },
                     UiToCore::DeleteRule(id) => RequestKind::DeleteRule { id },
                     UiToCore::FireRule(id) => RequestKind::FireRule { id },
+                    UiToCore::SetVisualizer(config) => RequestKind::SetVisualizer { config },
                 };
                 match client.request(kind).await {
                     Ok(IpcResponse::ScanResults { lamps }) => { let _ = to_ui.send(CoreToUi::ScanResults(lamps)); }
                     Ok(IpcResponse::Rules { rules }) => { let _ = to_ui.send(CoreToUi::Rules(rules)); }
+                    Ok(IpcResponse::Visualizer { config, last_error }) => { let _ = to_ui.send(CoreToUi::Visualizer { config, last_error }); }
                     Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
                     Ok(_) => {}
                     Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
@@ -130,6 +141,9 @@ enum Section {
 #[derive(Clone, Copy, PartialEq)]
 enum TriggerKind {
     MicActive,
+    MicInactive,
+    CameraActive,
+    CameraInactive,
     OnBoot,
     OnBeforeSleep,
     BeforeShutdown,
@@ -139,8 +153,11 @@ enum TriggerKind {
 }
 
 impl TriggerKind {
-    const ALL: [TriggerKind; 7] = [
+    const ALL: [TriggerKind; 10] = [
         Self::MicActive,
+        Self::MicInactive,
+        Self::CameraActive,
+        Self::CameraInactive,
         Self::OnBoot,
         Self::OnBeforeSleep,
         Self::BeforeShutdown,
@@ -152,6 +169,9 @@ impl TriggerKind {
     fn label(&self, lang: Lang) -> &'static str {
         let key = match self {
             Self::MicActive => "trigger.micActive",
+            Self::MicInactive => "trigger.micInactive",
+            Self::CameraActive => "trigger.cameraActive",
+            Self::CameraInactive => "trigger.cameraInactive",
             Self::OnBoot => "trigger.onBoot",
             Self::OnBeforeSleep => "trigger.onBeforeSleep",
             Self::BeforeShutdown => "trigger.beforeShutdown",
@@ -258,12 +278,20 @@ struct ConsoleApp {
     new_rule_wake_bri_enabled: bool,
     new_rule_wake_bri: u8,
     new_rule_morse_text: String,
+    // Music visualizer panel state.
+    visualizer_enabled: bool,
+    visualizer_targets: HashSet<String>,
+    visualizer_gain: f32,
+    visualizer_unsupported: Option<String>,
 }
 
 impl ConsoleApp {
     fn new_rule_trigger(&self) -> Trigger {
         match self.new_rule_trigger_kind {
             TriggerKind::MicActive => Trigger::MicActive,
+            TriggerKind::MicInactive => Trigger::MicInactive,
+            TriggerKind::CameraActive => Trigger::CameraActive,
+            TriggerKind::CameraInactive => Trigger::CameraInactive,
             TriggerKind::OnBoot => Trigger::OnBoot,
             TriggerKind::OnBeforeSleep => Trigger::OnBeforeSleep,
             TriggerKind::BeforeShutdown => Trigger::BeforeShutdown,
@@ -341,7 +369,28 @@ impl ConsoleApp {
             .unwrap_or_else(|| lamp_key.to_string())
     }
 
-    fn connections_ui(&self, ui: &mut egui::Ui) {
+    /// `None` when disabled or no target lamp is selected - sending
+    /// `SetVisualizer(None)` is exactly how the daemon-side loop is told
+    /// to stop, so "turned off" and "nothing to target" collapse into the
+    /// same state on purpose, rather than a separate enabled-with-no-
+    /// effect state.
+    fn visualizer_config(&self) -> Option<VisualizerConfig> {
+        if !self.visualizer_enabled || self.visualizer_targets.is_empty() {
+            return None;
+        }
+        Some(VisualizerConfig {
+            targets: self.visualizer_targets.iter().cloned().collect(),
+            gain: self.visualizer_gain,
+            min_brightness: 5,
+            max_brightness: 100,
+        })
+    }
+
+    fn send_visualizer_update(&self) {
+        let _ = self.to_core.send(UiToCore::SetVisualizer(self.visualizer_config()));
+    }
+
+    fn connections_ui(&mut self, ui: &mut egui::Ui) {
         let lang = self.lang;
         header_bar(ui, |ui| {
             ui.heading(t(lang, "lamps.heading"));
@@ -358,6 +407,43 @@ impl ConsoleApp {
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
                 lamp_card(ui, lamp, &self.to_core, lang);
+            }
+        });
+
+        ui.add_space(18.0);
+        header_bar(ui, |ui| {
+            ui.heading(t(lang, "visualizer.heading"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut enabled = self.visualizer_enabled;
+                if ui.checkbox(&mut enabled, t(lang, "visualizer.enable")).changed() {
+                    self.visualizer_enabled = enabled;
+                    self.send_visualizer_update();
+                }
+            });
+        });
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new(t(lang, "visualizer.hint")).small().color(ui.visuals().weak_text_color()));
+        if let Some(err) = &self.visualizer_unsupported {
+            ui.colored_label(egui::Color32::from_rgb(0xF2, 0x55, 0x5A), format!("{}: {err}", t(lang, "visualizer.unsupported")));
+        }
+        ui.horizontal(|ui| {
+            ui.label(t(lang, "visualizer.gain"));
+            if ui.add(egui::Slider::new(&mut self.visualizer_gain, 0.5..=20.0)).changed() {
+                self.send_visualizer_update();
+            }
+        });
+        ui.label(t(lang, "visualizer.targets"));
+        ui.horizontal_wrapped(|ui| {
+            for lamp in &self.lamps {
+                let checked = self.visualizer_targets.contains(&lamp.lamp_key);
+                if ui.selectable_label(checked, &lamp.name).clicked() {
+                    if checked {
+                        self.visualizer_targets.remove(&lamp.lamp_key);
+                    } else {
+                        self.visualizer_targets.insert(lamp.lamp_key.clone());
+                    }
+                    self.send_visualizer_update();
+                }
             }
         });
 
@@ -630,6 +716,12 @@ fn describe_trigger(lang: Lang, trigger: &Trigger) -> String {
     match (lang, trigger) {
         (Lang::En, Trigger::MicActive) => "mic becomes active".to_string(),
         (Lang::De, Trigger::MicActive) => "Mikrofon wird aktiv".to_string(),
+        (Lang::En, Trigger::MicInactive) => "mic becomes inactive".to_string(),
+        (Lang::De, Trigger::MicInactive) => "Mikrofon wird inaktiv".to_string(),
+        (Lang::En, Trigger::CameraActive) => "camera becomes active".to_string(),
+        (Lang::De, Trigger::CameraActive) => "Kamera wird aktiv".to_string(),
+        (Lang::En, Trigger::CameraInactive) => "camera becomes inactive".to_string(),
+        (Lang::De, Trigger::CameraInactive) => "Kamera wird inaktiv".to_string(),
         (Lang::En, Trigger::OnBoot) => "daemon starts".to_string(),
         (Lang::De, Trigger::OnBoot) => "Daemon startet".to_string(),
         (Lang::En, Trigger::OnBeforeSleep) => "system is about to sleep".to_string(),
@@ -821,6 +913,14 @@ impl eframe::App for ConsoleApp {
                 CoreToUi::Lamps(lamps) => self.lamps = lamps,
                 CoreToUi::ScanResults(results) => self.scan_results = results,
                 CoreToUi::Rules(rules) => self.rules = rules,
+                CoreToUi::Visualizer { config, last_error } => {
+                    self.visualizer_enabled = config.is_some();
+                    if let Some(cfg) = &config {
+                        self.visualizer_targets = cfg.targets.iter().cloned().collect();
+                        self.visualizer_gain = cfg.gain;
+                    }
+                    self.visualizer_unsupported = last_error;
+                }
                 CoreToUi::Status(s) => self.status = s,
             }
         }
@@ -987,6 +1087,10 @@ fn main() -> eframe::Result<()> {
                 new_rule_wake_bri_enabled: false,
                 new_rule_wake_bri: 80,
                 new_rule_morse_text: String::new(),
+                visualizer_enabled: false,
+                visualizer_targets: HashSet::new(),
+                visualizer_gain: 4.0,
+                visualizer_unsupported: None,
             }))
         }),
     )

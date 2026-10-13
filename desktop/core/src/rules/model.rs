@@ -37,6 +37,16 @@ pub enum Action {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Trigger {
     MicActive,
+    /// The falling edge of the same signal `MicActive` watches for the
+    /// rising edge of - "the mic just stopped being used", fired at most
+    /// once per deactivation, same as `MicActive` fires at most once per
+    /// activation.
+    MicInactive,
+    /// Rising/falling edge of "some process has the camera open" - same
+    /// `core::camera` provider shape as `core::mic`, see its own doc
+    /// comment for the per-OS detection story and gaps.
+    CameraActive,
+    CameraInactive,
     OnBoot,
     OnBeforeSleep,
     BeforeShutdown,

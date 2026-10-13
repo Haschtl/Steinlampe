@@ -45,6 +45,12 @@ pub enum RequestKind {
     /// dispatch pipeline independent of any real trigger (M4's "manually
     /// fired" scope; trigger detection itself is M5).
     FireRule { id: Uuid },
+    /// Starts (or updates, if already running) the music-reactive
+    /// visualizer against `config.targets`; `None` stops it. Not
+    /// persisted anywhere - a live mode, not a rule, reset to off on
+    /// every daemon restart.
+    SetVisualizer { config: Option<VisualizerConfig> },
+    GetVisualizer,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -55,6 +61,21 @@ pub enum IpcResponse {
     Lamps { lamps: Vec<LampSummary> },
     ScanResults { lamps: Vec<ScannedLamp> },
     Rules { rules: Vec<Rule> },
+    Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
+}
+
+/// Loudness (RMS of system audio) drives brightness, linearly, between
+/// `min_brightness` and `max_brightness` - `gain` scales the raw RMS
+/// (typically well under `1.0`) up before that mapping, since "unscaled"
+/// loudness would barely move the lamp at normal listening volumes. See
+/// `core::audio`'s doc comment for why it's loudness-only, not full
+/// FFT/beat-detection.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VisualizerConfig {
+    pub targets: Vec<String>,
+    pub gain: f32,
+    pub min_brightness: u8,
+    pub max_brightness: u8,
 }
 
 /// Wire-friendly view of `core::state::LampState` plus identity - built

@@ -637,6 +637,55 @@ desktop/
     itself is a small, widely-used crate handling exactly this lookup - lower risk than anything
     else cross-platform in this project, since the actual translation table is pure Rust with zero
     platform-specific code.
+12. **Mic-inactive, camera trigger, music visualizer (ad hoc). ✅ DONE, mostly verified live.**
+    Decided explicitly with the user: MQTT stays a *future* firmware-side idea, not built now (see
+    the saved memory on why - the firmware has zero WiFi today, so this is its own project, not a
+    small add); a daemon-side MQTT bridge was considered and declined outright.
+    - **`Trigger::MicInactive`**: the falling edge `MicActive`'s rising edge was always missing.
+      `app::spawn_mic_evaluation_loop` now fires it on `Active -> Inactive` the same way it already
+      fired `MicActive` on the reverse edge - no new infrastructure, just the other half of a
+      comparison that was already there. Verified live via `parecord`.
+    - **`Trigger::CameraActive`/`CameraInactive`**: new `core::camera`, same shape as `core::mic`.
+      Linux: scans every process's `/proc/<pid>/fd/*` for one pointing at a `/dev/video*` node (the
+      same technique `fuser /dev/video0` uses) - no broker daemon exists for cameras the way
+      PulseAudio brokers mics, so this is a plain `/proc` walk, not reused introspection code.
+      Windows: the exact same `ConsentStore` registry mechanism as `core::mic::windows`, just under
+      `\webcam`. **macOS deliberately has no implementation** - unlike CoreAudio's property
+      selectors (`core::mic::macos`), which are ubiquitous in tutorials and recalled with real
+      confidence, CoreMediaIO's equivalent `FourCharCode` constants are not something that could be
+      verified or confidently recalled here; shipping a guessed constant would silently query the
+      *wrong* property and report "inactive" forever with no error - a worse failure mode than the
+      usual "unverified" caveat, so it was left out rather than guessed. **Verified live on Linux**:
+      a new `core/examples/camera_probe.rs` correctly flagged `ACTIVE` while `ffmpeg -f v4l2 -i
+      /dev/video0` held the device open; a saved `CameraActive`+`CameraInactive` rule pair fired
+      exactly once each, in the right order, against a real (if momentary) camera open.
+    - **Music-reactive visualizer**: scoped explicitly, after asking, to the simplest version -
+      system-audio *loudness* (RMS) drives lamp brightness linearly, ~10Hz, no beat-detection or
+      frequency bands (those were offered as pricier alternatives and declined). New
+      `core::audio::{LoudnessProvider, default_provider}`. Linux: a genuine PulseAudio/PipeWire
+      *recording* stream (not the introspection-only calls `core::mic::linux` uses) connected to
+      `"<default_sink_name>.monitor"` - captures whatever the system is currently playing, never a
+      real microphone. Windows: WASAPI loopback via `cpal`, not hand-rolled WASAPI COM FFI - cpal's
+      own backend adds `AUDCLNT_STREAMFLAGS_LOOPBACK` automatically when `build_input_stream` is
+      called on an *output* device (confirmed by reading cpal's WASAPI source, not guessed), so
+      this is built against cpal's ordinary, published cross-platform API. **macOS has no
+      implementation**: CoreAudio has no built-in loopback mode at all, unlike WASAPI - the usual
+      workarounds (a virtual driver like BlackHole, or `ScreenCaptureKit`'s audio capture on macOS
+      13+) are each their own separate project, not a small gap. Daemon side: `DaemonState` gained
+      `visualizer: Option<VisualizerConfig>` (targets/gain/brightness range, *not* persisted -
+      always `None` on a fresh daemon, a live mode rather than a rule) and `visualizer_error:
+      Option<String>`; a new always-running `spawn_visualizer_loop` (same "always on, only acts
+      while config is `Some`" shape as the trigger loops) maps RMS through `gain` into a brightness
+      value and sends `bri <pct>` only when it actually changed, so silence doesn't flood the lamp
+      with redundant BLE writes. Two new IPC calls (`SetVisualizer`/`GetVisualizer`). Console UI: a
+      "Music Visualizer" panel under the lamp grid (enable checkbox, gain slider, per-lamp target
+      chips, an inline error line if `visualizer_error` is set). **Verified live on Linux**: a new
+      `core/examples/audio_probe.rs` tracked a real sine-tone test file's RMS correctly through
+      `paplay`; the full daemon pipeline (`SetVisualizer` -> real RMS capture -> brightness
+      computation -> `manager.send`) ran error-free for the duration of a 6s test tone against a
+      real (but BLE-trust-rejected, so not actually connected) lamp key - the user explicitly
+      accepted this as sufficient rather than rebooting a lamp for the final visual confirmation,
+      same call as the mic-trigger verification earlier.
 
 ## Verification
 

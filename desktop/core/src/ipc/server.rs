@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::ble::{LampCommand, LampManager};
 use crate::config;
 use crate::ipc::discovery_file_path;
-use crate::ipc::protocol::{IpcRequest, IpcResponse, LampSummary, RequestKind, ScannedLamp};
+use crate::ipc::protocol::{IpcRequest, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
 use crate::rules::{action_to_command, Rule};
 use crate::state::ConnectionState;
 
@@ -22,6 +22,15 @@ use crate::state::ConnectionState;
 pub struct DaemonState {
     pub manager: LampManager,
     pub rules: Vec<Rule>,
+    /// The music-reactive visualizer's live config, or `None` when off -
+    /// read by `app`'s visualizer loop every ~100ms, written only here.
+    /// Not persisted; always starts `None` on a fresh daemon.
+    pub visualizer: Option<VisualizerConfig>,
+    /// The visualizer loop's own last detection error (e.g. "unsupported
+    /// platform"), surfaced back to the console so enabling it somewhere
+    /// it can't actually work doesn't just silently do nothing. Written
+    /// by the visualizer loop itself, not by any IPC handler.
+    pub visualizer_error: Option<String>,
 }
 
 pub struct IpcServer;
@@ -170,6 +179,16 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
                 state.manager.send(lamp_key, LampCommand::SendLine(line.clone()));
             }
             IpcResponse::Ok
+        }
+        RequestKind::SetVisualizer { config } => {
+            let mut state = state.lock().await;
+            state.visualizer = config;
+            state.visualizer_error = None;
+            IpcResponse::Ok
+        }
+        RequestKind::GetVisualizer => {
+            let state = state.lock().await;
+            IpcResponse::Visualizer { config: state.visualizer.clone(), last_error: state.visualizer_error.clone() }
         }
     }
 }

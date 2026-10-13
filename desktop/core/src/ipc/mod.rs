@@ -3,7 +3,7 @@ pub mod protocol;
 pub mod server;
 
 pub use client::IpcClient;
-pub use protocol::{IpcRequest, IpcResponse, LampSummary, RequestKind, ScannedLamp};
+pub use protocol::{IpcRequest, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
 pub use server::{DaemonState, IpcServer};
 
 use std::path::PathBuf;

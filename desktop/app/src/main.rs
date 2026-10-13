@@ -86,7 +86,7 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
                 Vec::new()
             });
             println!("[daemon] loaded {} rule(s)", rules.len());
-            let state = Arc::new(Mutex::new(DaemonState { manager, rules }));
+            let state = Arc::new(Mutex::new(DaemonState { manager, rules, visualizer: None, visualizer_error: None }));
             let _ = state_tx.send(Arc::clone(&state));
 
             #[cfg(target_os = "linux")]
@@ -355,12 +355,14 @@ fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
                     }
                     if last == MicActivity::Inactive && activity == MicActivity::Active {
                         fire_rules_where(&state, |t| *t == Trigger::MicActive);
+                    } else if last == MicActivity::Active && activity == MicActivity::Inactive {
+                        fire_rules_where(&state, |t| *t == Trigger::MicInactive);
                     }
                     last = activity;
                 }
                 Err(e) => {
-                    // Never synthesize a rising edge from a failed poll -
-                    // `Err` must never be treated as "mic is off".
+                    // Never synthesize an edge from a failed poll - `Err`
+                    // must never be treated as "mic is off" (or on).
                     if !was_erroring {
                         eprintln!("[mic] detection error: {e}");
                         was_erroring = true;
@@ -368,6 +370,91 @@ fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
                 }
             }
             std::thread::sleep(Duration::from_millis(300));
+        }
+    });
+}
+
+/// Mirrors `spawn_mic_evaluation_loop` exactly - see `core::camera`'s doc
+/// comment for the per-OS detection story (Linux/Windows real, macOS
+/// deliberately unimplemented).
+fn spawn_camera_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        let mut provider = quarzlampe_core::camera::default_provider();
+        let mut last = quarzlampe_core::camera::CameraActivity::Inactive;
+        let mut was_erroring = false;
+        loop {
+            match provider.poll() {
+                Ok(activity) => {
+                    if was_erroring {
+                        println!("[camera] detection recovered");
+                        was_erroring = false;
+                    }
+                    use quarzlampe_core::camera::CameraActivity;
+                    if last == CameraActivity::Inactive && activity == CameraActivity::Active {
+                        fire_rules_where(&state, |t| *t == Trigger::CameraActive);
+                    } else if last == CameraActivity::Active && activity == CameraActivity::Inactive {
+                        fire_rules_where(&state, |t| *t == Trigger::CameraInactive);
+                    }
+                    last = activity;
+                }
+                Err(e) => {
+                    if !was_erroring {
+                        eprintln!("[camera] detection error: {e}");
+                        was_erroring = true;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    });
+}
+
+/// Always running (like the mic/camera loops), but only ever acts while
+/// `DaemonState.visualizer` is `Some` - checked fresh every tick rather
+/// than started/stopped as its own thread, so there's no start/stop
+/// thread-lifecycle to manage, just a config to read. ~10Hz (every
+/// 100ms), matching the "simple: loudness -> brightness" scope agreed on,
+/// see `core::audio`'s doc comment. Skips sending a `bri` command when
+/// the computed value hasn't changed since the last tick, so silence (or
+/// a sustained level) doesn't flood the lamp with redundant BLE writes.
+fn spawn_visualizer_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        let mut provider = quarzlampe_core::audio::default_provider();
+        let mut last_sent: HashMap<String, u8> = HashMap::new();
+        let mut was_erroring = false;
+        loop {
+            let config = state.blocking_lock().visualizer.clone();
+            match config {
+                Some(cfg) => match provider.poll() {
+                    Ok(Some(rms)) => {
+                        if was_erroring {
+                            println!("[visualizer] detection recovered");
+                            was_erroring = false;
+                        }
+                        let scaled = (rms * cfg.gain).clamp(0.0, 1.0);
+                        let span = f32::from(cfg.max_brightness.saturating_sub(cfg.min_brightness));
+                        let bri = (f32::from(cfg.min_brightness) + scaled * span).round() as u8;
+                        let mut guard = state.blocking_lock();
+                        guard.visualizer_error = None;
+                        for lamp_key in &cfg.targets {
+                            if last_sent.get(lamp_key) != Some(&bri) {
+                                guard.manager.send(lamp_key, LampCommand::SendLine(format!("bri {bri}")));
+                                last_sent.insert(lamp_key.clone(), bri);
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        if !was_erroring {
+                            eprintln!("[visualizer] detection error: {e}");
+                            was_erroring = true;
+                        }
+                        state.blocking_lock().visualizer_error = Some(e);
+                    }
+                },
+                None => last_sent.clear(),
+            }
+            std::thread::sleep(Duration::from_millis(100));
         }
     });
 }
@@ -644,7 +731,9 @@ fn main() -> anyhow::Result<()> {
     loop {
         if daemon_state.is_none() && let Ok(s) = state_rx.try_recv() {
             spawn_mic_evaluation_loop(Arc::clone(&s));
+            spawn_camera_evaluation_loop(Arc::clone(&s));
             spawn_app_open_watch_loop(Arc::clone(&s));
+            spawn_visualizer_loop(Arc::clone(&s));
             daemon_state = Some(s);
         }
 
