@@ -21,7 +21,7 @@ use std::time::Duration;
 use eframe::egui;
 use quarzlampe_core::i18n::{t, Lang};
 use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
-use quarzlampe_core::rules::{Action, Rule, Trigger};
+use quarzlampe_core::rules::{Action, QuickRuleKind, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
 
@@ -406,7 +406,7 @@ impl ConsoleApp {
 
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
-                lamp_card(ui, lamp, &self.to_core, lang);
+                lamp_card(ui, lamp, &self.to_core, lang, &self.rules);
             }
         });
 
@@ -639,6 +639,7 @@ impl ConsoleApp {
                                 trigger: self.new_rule_trigger(),
                                 targets: self.new_rule_targets.iter().cloned().collect(),
                                 action: self.new_rule_action(),
+                                quick_rule: None,
                             };
                             self.new_rule_targets.clear();
                             self.show_new_rule = false;
@@ -815,12 +816,64 @@ fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
     response
 }
 
+/// Is `kind`'s quick rule currently on for this lamp - i.e. does a rule
+/// tagged with it, targeting *only* this lamp, already exist? Quick
+/// rules are always single-target by construction (see `build_quick_rule`),
+/// so "targets == [lamp_key]" is enough to identify them, no separate id
+/// bookkeeping needed.
+fn quick_rule_active(rules: &[Rule], kind: QuickRuleKind, lamp_key: &str) -> bool {
+    rules.iter().any(|r| r.quick_rule == Some(kind) && r.targets.len() == 1 && r.targets[0] == lamp_key)
+}
+
+fn quick_rule_ids(rules: &[Rule], kind: QuickRuleKind, lamp_key: &str) -> Vec<Uuid> {
+    rules
+        .iter()
+        .filter(|r| r.quick_rule == Some(kind) && r.targets.len() == 1 && r.targets[0] == lamp_key)
+        .map(|r| r.id)
+        .collect()
+}
+
+/// Builds the actual `Rule`s a quick rule expands into for one lamp - the
+/// console does this (not `core`) specifically so the generated names are
+/// in the user's own language via `i18n`, not a hardcoded English string
+/// baked into the model layer.
+fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule> {
+    kind.rule_specs()
+        .into_iter()
+        .map(|(trigger, action)| {
+            let name_key = match (kind, &trigger) {
+                (QuickRuleKind::OnAir, Trigger::MicActive) => "quickRule.onAirRuleNameOn",
+                (QuickRuleKind::OnAir, Trigger::MicInactive) => "quickRule.onAirRuleNameOff",
+                _ => "quickRule.onAir",
+            };
+            Rule {
+                id: Uuid::new_v4(),
+                name: t(lang, name_key).to_string(),
+                enabled: true,
+                trigger,
+                targets: vec![lamp_key.to_string()],
+                action,
+                quick_rule: Some(kind),
+            }
+        })
+        .collect()
+}
+
 /// One lamp's card: name + status, inline power/brightness/mode/profile
-/// quick-actions, all disabled unless the lamp is actually connected.
+/// quick-actions, all disabled unless the lamp is actually connected, plus
+/// any quick-rule toggles (see `QuickRuleKind`) at the bottom - those stay
+/// available even when disconnected, since toggling one just saves/deletes
+/// ordinary rules through the daemon, the same as the rule editor would.
 /// A free function (not a `ConsoleApp` method) since it only needs the
-/// lamp's own data and a way to send commands, not the rest of the app
-/// state - keeps the borrow simple when called from `connections_ui(&self)`.
-fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::UnboundedSender<UiToCore>, lang: Lang) {
+/// lamp's own data, the current rule list, and a way to send commands -
+/// keeps the borrow simple when called from `connections_ui(&mut self)`.
+fn lamp_card(
+    ui: &mut egui::Ui,
+    lamp: &LampSummary,
+    to_core: &tokio_mpsc::UnboundedSender<UiToCore>,
+    lang: Lang,
+    rules: &[Rule],
+) {
     let connected = lamp.connection == "connected";
     let send = |line: String| {
         let _ = to_core.send(UiToCore::SendCommand { lamp_key: lamp.lamp_key.clone(), line });
@@ -901,6 +954,26 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                         }
                     });
                 });
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(t(lang, "quickRule.onAir"));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let mut on = quick_rule_active(rules, QuickRuleKind::OnAir, &lamp.lamp_key);
+                        if toggle_ui(ui, &mut on).changed() {
+                            if on {
+                                for rule in build_quick_rule(lang, QuickRuleKind::OnAir, &lamp.lamp_key) {
+                                    let _ = to_core.send(UiToCore::SaveRule(rule));
+                                }
+                            } else {
+                                for id in quick_rule_ids(rules, QuickRuleKind::OnAir, &lamp.lamp_key) {
+                                    let _ = to_core.send(UiToCore::DeleteRule(id));
+                                }
+                            }
+                        }
+                    });
+                });
+                ui.label(egui::RichText::new(t(lang, "quickRule.onAirHint")).small().color(ui.visuals().weak_text_color()));
             });
         });
     });

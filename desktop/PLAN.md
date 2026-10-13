@@ -686,6 +686,27 @@ desktop/
       real (but BLE-trust-rejected, so not actually connected) lamp key - the user explicitly
       accepted this as sufficient rather than rebooting a lamp for the final visual confirmation,
       same call as the mic-trigger verification earlier.
+13. **Quick Rules (ad hoc). ✅ DONE, verified live via direct IPC.** Requested explicitly for
+    "Otto-Normal-User": a way to flip one switch on a lamp card instead of hand-building a pair of
+    rules in the editor. **Console-only packaging, no new automation capability and no new IPC
+    calls** - `QuickRuleKind` (`core::rules::model`) is just a named bundle of `(Trigger, Action)`
+    pairs (`rule_specs()`); the console expands it into ordinary `Rule`s via the *existing*
+    `SaveRule`/`DeleteRule` requests, same as the manual rule editor already does. `Rule` gained a
+    `quick_rule: Option<QuickRuleKind>` tag (`#[serde(default, skip_serializing_if =
+    "Option::is_none")]`, so old `rules.toml` files without it still load) so a toggle can later
+    find and remove exactly the rules it created. First (only) kind: `OnAir` - `MicActive -> On` +
+    `MicInactive -> Off`, both scoped to one lamp. Console: a separator + labeled toggle + hint text
+    at the bottom of each lamp card (`lamp_card` now takes `rules: &[Rule]`); `quick_rule_active()`
+    checks whether both tagged rules already exist for that lamp key, toggling on calls
+    `build_quick_rule()` (uses `i18n` for rule names, which is why the console builds the `Rule`s
+    and not `core`) and sends two `SaveRule`s, toggling off sends `DeleteRule` for each matching id.
+    **Verified live against the running daemon via a direct IPC script** (same lamp-less-but-real
+    verification pattern as item 12, since the user has consistently declined rebooting a physical
+    lamp just to confirm UI wiring): toggling on produces exactly two rules, both tagged
+    `quick_rule: on_air`, both targeting only the one lamp key; toggling off removes exactly those
+    two and nothing else, confirmed both in the daemon's in-memory `ListRules` response and in
+    `rules.toml` on disk. No macOS/Windows gap here - this is pure console-side logic over triggers
+    (`MicActive`/`MicInactive`) that already exist on every platform.
 
 ## Verification
 

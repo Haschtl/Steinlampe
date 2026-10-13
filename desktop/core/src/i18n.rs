@@ -170,4 +170,14 @@ dict! {
     "visualizer.targets" => ["Targets:", "Ziele:"],
     "visualizer.unsupported" =>
         ["Not available on this platform/setup", "Auf dieser Plattform/Konfiguration nicht verf\u{fc}gbar"],
+
+    // Console: quick rules (pre-packaged automations toggled on the lamp
+    // card itself, for casual users who'd rather flip one switch than
+    // build a rule pair by hand).
+    "quickRule.onAir" => ["On-Air", "On-Air"],
+    "quickRule.onAirHint" =>
+        ["Turns this lamp on while the mic is active, off again once it isn't",
+         "Schaltet diese Lampe ein, solange das Mikrofon aktiv ist, und wieder aus, sobald nicht mehr"],
+    "quickRule.onAirRuleNameOn" => ["On-Air: turn on", "On-Air: einschalten"],
+    "quickRule.onAirRuleNameOff" => ["On-Air: turn off", "On-Air: ausschalten"],
 }
