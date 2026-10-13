@@ -322,10 +322,32 @@ desktop/
      disconnected reconnects on its own a few seconds later if it's still in range and trusted.
      Harmless for now (M3 doesn't expose a disconnect button), but will need a real "stop trying"
      state before the console gets one.
-5. **M4 — Rule engine + persisted config, manually fired.** Rule editor UI (trigger picker already a
-   match over the enum, even with only `MicActive` selectable), `lamps.toml`/`rules.toml`
-   persistence, a manual "fire now" per rule to validate the dispatch pipeline independent of real
-   trigger detection.
+5. **M4 — Rule engine + persisted config, manually fired. ✅ DONE.** Added `core::rules::model`
+   (`Trigger` - just `MicActive` so far - and `Rule{id,name,enabled,trigger,targets,action}`) and
+   `core::config` (`rules.toml` in the OS config dir via `directories::ProjectDirs`, atomic
+   temp-file-then-rename save, loaded once at daemon startup). `ipc::server` now holds a
+   `DaemonState{manager, rules}` behind one `Mutex` (a `FireRule` request needs both together) and
+   added `ListRules`/`SaveRule`/`DeleteRule`/`FireRule` request handling - `SaveRule` does
+   insert-or-update-by-id and persists the whole list on every change, `FireRule` looks a rule up by
+   id and dispatches `action_to_command(&rule.action)` to every target lamp key, bypassing trigger
+   detection entirely (that's M5's job - this only validates the Rule -> Action -> lamp pipeline).
+   Console gained a "Rules" section: existing rules listed with an enable checkbox, "Fire now", and
+   "Delete", plus a new-rule form (name field, action-kind picker reusing the same
+   brightness/mode/profile number inputs as the M3 quick-action bar, and per-lamp target
+   checkboxes) gated on name-non-empty + at least one target. Trigger is always `MicActive` for now
+   since it's the only variant - no picker needed until M5's `Notification`/etc. variants exist.
+   **Verified live end to end** via a raw Python IPC socket client (no lamp-side change needed, so
+   no reason to involve the console UI itself for this check) against the real "ON-AIR Lampe":
+   saved a rule targeting it, `FireRule` with action `on` turned it on (confirmed via the next
+   `ListLamps` poll showing `lamp_on: true`), updating the same rule's action to
+   `SetBrightness{pct:35}` and firing again changed brightness to exactly 35% in the next `STATE|`
+   push, switching to `Off` and firing turned it back off - each change reflected through the real
+   firmware round-trip, not just an in-memory assertion. Also verified `ListRules` reflects saves
+   immediately, `DeleteRule` removes it from both the live list and `rules.toml` (confirmed by
+   reading the file directly: `rules = []` after delete), and the daemon logs `loaded N rule(s)` on
+   a fresh restart. No gaps found worth a hardening note this time - the only thing M4 deliberately
+   left out (by design, see the milestone's own scope) is wiring a trigger to actually fire a rule
+   on its own; that's M5.
 6. **M5 — Mic trigger end-to-end on Linux.** Real `mic::linux`, plus compiled-but-unverified
    Windows/macOS stubs (`cfg(target_os)`-gated so they never block Linux work), wired into the
    evaluation loop with edge detection; validated by actually toggling mic capture against a real

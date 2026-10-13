@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use muda::{Menu, MenuEvent, MenuItem};
 use quarzlampe_core::ble::{FileTokenStore, LampManager};
-use quarzlampe_core::ipc::IpcServer;
+use quarzlampe_core::ipc::{DaemonState, IpcServer};
 use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
 
@@ -55,13 +55,19 @@ fn spawn_core_runtime() {
                 }
             };
             let manager = match LampManager::new(tokens).await {
-                Ok(m) => Arc::new(Mutex::new(m)),
+                Ok(m) => m,
                 Err(e) => {
                     eprintln!("[daemon] failed to initialize BLE manager: {e}");
                     return;
                 }
             };
-            if let Err(e) = IpcServer::bind_and_serve(manager).await {
+            let rules = quarzlampe_core::config::load_rules().unwrap_or_else(|e| {
+                eprintln!("[daemon] failed to load rules.toml, starting with none: {e}");
+                Vec::new()
+            });
+            println!("[daemon] loaded {} rule(s)", rules.len());
+            let state = Arc::new(Mutex::new(DaemonState { manager, rules }));
+            if let Err(e) = IpcServer::bind_and_serve(state).await {
                 eprintln!("[daemon] IPC server error: {e}");
             }
         });

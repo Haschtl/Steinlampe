@@ -11,6 +11,9 @@
 //! latency ever matters enough to justify it.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::rules::model::Rule;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IpcRequest {
@@ -32,6 +35,16 @@ pub enum RequestKind {
     /// Send a raw command line to an already-connected lamp (e.g. "on").
     SendCommand { lamp_key: String, line: String },
     Disconnect { lamp_key: String },
+    ListRules,
+    /// Create (if `rule.id` is new) or update (if it matches an existing
+    /// rule's id) a rule, and persist the whole list.
+    SaveRule { rule: Rule },
+    DeleteRule { id: Uuid },
+    /// Dispatches a rule's action to its targets right now, bypassing
+    /// trigger detection entirely - validates the Rule -> Action -> lamp
+    /// dispatch pipeline independent of any real trigger (M4's "manually
+    /// fired" scope; trigger detection itself is M5).
+    FireRule { id: Uuid },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,6 +54,7 @@ pub enum IpcResponse {
     Error { message: String },
     Lamps { lamps: Vec<LampSummary> },
     ScanResults { lamps: Vec<ScannedLamp> },
+    Rules { rules: Vec<Rule> },
 }
 
 /// Wire-friendly view of `core::state::LampState` plus identity - built
