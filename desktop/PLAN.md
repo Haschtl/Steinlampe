@@ -856,6 +856,19 @@ desktop/
       `.msi` file itself through the SignPath flow (item 14), not the two loose `.exe`s separately
       as before - signing the thing a user actually downloads and runs is what SmartScreen
       reputation actually cares about.
+      - **First real CI run on Windows found a real failure, twice.** `candle.exe` errored with
+        `CNDL0103 : The system cannot find the file '.1.0'` - the `-dVersion=0.1.0` define arriving
+        mangled, missing its leading `0`. First guess (a PowerShell backtick line-continuation,
+        notoriously whitespace-sensitive) turned out wrong - the *identical* error persisted after
+        collapsing the command onto one line, which ruled that out cleanly. Checked `cargo-wix`'s
+        own source (`create.rs`) directly before guessing again: confirms the single-concatenated
+        `-dKey=Value` form (what was already being used) is exactly right for legacy candle.exe,
+        with `-d Key=Value` as two separate args only for WiX v4+ - so the switch syntax itself
+        wasn't the bug. Fixed by quoting every `-d`/path argument as its own PowerShell string
+        (`"-dVersion=0.1.0"` etc.) so nothing is left as a bare, re-tokenizable token - removes
+        shell-level argument splitting as a cause outright, regardless of the exact mechanism that
+        was splitting it (never fully pinned down). Not yet confirmed fixed - waiting on the next
+        CI run.
     - All three installer scripts are called from `.github/workflows/desktop-build.yml`'s `build`
       job; `publish-release` now uploads the packaged installer per platform as the recommended
       download (named prominently first in the release body) alongside the existing loose binaries
