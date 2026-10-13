@@ -897,6 +897,27 @@ desktop/
       the original complaint for this run. Sending `Reconnect` over IPC correctly resumed a fresh
       5-attempt cycle (backoff and counter both reset), confirming the manual path works too, not
       just the give-up path.
+17. **Console layout: discovered-lamps moved up, Music given its own tab (ad hoc).** User
+    complaint: the "discovered nearby" scan-results block, after a scan, showed up at the very
+    bottom of the Connections page - below the entire Music Visualizer panel, far from the Scan
+    button and lamp grid it's actually about, with no framing of its own (just two small gray
+    labels and a loose list). Two changes:
+    - `discovered_lamps_ui`, a new free function, gives that block the same framed-card treatment
+      `lamp_card` already uses (`extreme_bg_color` fill, rounded corners, inner margin) instead of
+      loose labels, and it's now called directly under the lamp grid in `connections_ui` - right
+      where the Scan button that produces it lives, not after an unrelated section.
+    - The Music Visualizer panel moved out of `connections_ui` entirely into its own
+      `Section::Visualizer` / `visualizer_ui`, with a third sidebar nav button
+      (`nav.visualizer` - "Music"/"Musik") alongside Connections/Rules. No behavior changed, just
+      which page it's on.
+    - Verified via a clean build + clippy pass only - **could not get a live screenshot this
+      session**: no `xdotool`/`ydotool`/similar input-simulation tool is available here to click
+      through to the Music tab or trigger a scan, and ImageMagick's `import` is broken in this
+      sandbox regardless of arguments (`missing an image filename` even when one is given);
+      `ffmpeg -f x11grab` did capture the real display, but the console's window wasn't visible on
+      it (likely a compositor/workspace quirk, not evidence the app itself is broken - the daemon
+      and console both started and logged normally throughout). Straightforward, low-risk egui
+      layout code either way - same patterns already used elsewhere in this file, nothing new.
 
 ## Verification
 

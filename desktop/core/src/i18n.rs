@@ -85,6 +85,7 @@ dict! {
     // Console: sidebar nav + chrome.
     "nav.connections" => ["Connections", "Verbindungen"],
     "nav.rules" => ["Rules", "Regeln"],
+    "nav.visualizer" => ["Music", "Musik"],
     "nav.openWeb" => ["Open web interface \u{2197}", "Weboberfl\u{e4}che \u{f6}ffnen \u{2197}"],
     "nav.updateAvailable" => ["Update available \u{2197}", "Update verf\u{fc}gbar \u{2197}"],
     "console.connectingToDaemon" => ["connecting to daemon...", "verbindet mit Daemon\u{2026}"],

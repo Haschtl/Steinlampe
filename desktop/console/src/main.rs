@@ -148,6 +148,7 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
 enum Section {
     Connections,
     Rules,
+    Visualizer,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -423,7 +424,14 @@ impl ConsoleApp {
             }
         });
 
-        ui.add_space(18.0);
+        if !self.scan_results.is_empty() {
+            ui.add_space(18.0);
+            discovered_lamps_ui(ui, lang, &self.scan_results, &self.to_core);
+        }
+    }
+
+    fn visualizer_ui(&mut self, ui: &mut egui::Ui) {
+        let lang = self.lang;
         header_bar(ui, |ui| {
             ui.heading(t(lang, "visualizer.heading"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -434,11 +442,12 @@ impl ConsoleApp {
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(14.0);
         ui.label(egui::RichText::new(t(lang, "visualizer.hint")).small().color(ui.visuals().weak_text_color()));
         if let Some(err) = &self.visualizer_unsupported {
             ui.colored_label(egui::Color32::from_rgb(0xF2, 0x55, 0x5A), format!("{}: {err}", t(lang, "visualizer.unsupported")));
         }
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             ui.label(t(lang, "visualizer.gain"));
             if ui.add(egui::Slider::new(&mut self.visualizer_gain, 0.5..=20.0)).changed() {
@@ -459,23 +468,6 @@ impl ConsoleApp {
                 }
             }
         });
-
-        if !self.scan_results.is_empty() {
-            ui.add_space(18.0);
-            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHeading")).small().color(ui.visuals().weak_text_color()));
-            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHint")).small().color(ui.visuals().weak_text_color()));
-            for found in &self.scan_results {
-                ui.horizontal(|ui| {
-                    ui.label(&found.name);
-                    if ui.button(t(lang, "lamps.connectButton")).clicked() {
-                        let _ = self.to_core.send(UiToCore::Connect {
-                            lamp_key: found.lamp_key.clone(),
-                            name: found.name.clone(),
-                        });
-                    }
-                });
-            }
-        }
     }
 
     fn rules_ui(&mut self, ui: &mut egui::Ui) {
@@ -873,6 +865,43 @@ fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule
         .collect()
 }
 
+/// The "found nearby, not yet paired" list a scan produces - framed like a
+/// card (same `extreme_bg_color`/rounded-corner treatment as `lamp_card`)
+/// so it reads as its own distinct block directly under the lamp grid the
+/// Scan button belongs to, instead of a couple of loose labels floating at
+/// the bottom of the page below unrelated content.
+fn discovered_lamps_ui(
+    ui: &mut egui::Ui,
+    lang: Lang,
+    scan_results: &[ScannedLamp],
+    to_core: &tokio_mpsc::UnboundedSender<UiToCore>,
+) {
+    egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).corner_radius(12.0).inner_margin(16.0).show(ui, |ui| {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHeading")).small().strong());
+            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHint")).small().color(ui.visuals().weak_text_color()));
+            ui.separator();
+            for (i, found) in scan_results.iter().enumerate() {
+                if i > 0 {
+                    ui.separator();
+                }
+                ui.horizontal(|ui| {
+                    ui.label(&found.name);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(t(lang, "lamps.connectButton")).clicked() {
+                            let _ = to_core.send(UiToCore::Connect {
+                                lamp_key: found.lamp_key.clone(),
+                                name: found.name.clone(),
+                            });
+                        }
+                    });
+                });
+            }
+        });
+    });
+}
+
 /// One lamp's card: name + status, inline power/brightness/mode/profile
 /// quick-actions, all disabled unless the lamp is actually connected, plus
 /// any quick-rule toggles (see `QuickRuleKind`) at the bottom - those stay
@@ -1047,6 +1076,10 @@ impl eframe::App for ConsoleApp {
             if nav_button(ui, self.section == Section::Rules, t(lang, "nav.rules")) {
                 self.section = Section::Rules;
             }
+            ui.add_space(4.0);
+            if nav_button(ui, self.section == Section::Visualizer, t(lang, "nav.visualizer")) {
+                self.section = Section::Visualizer;
+            }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new(&self.status).small().color(ui.visuals().weak_text_color()));
@@ -1067,6 +1100,7 @@ impl eframe::App for ConsoleApp {
             egui::ScrollArea::vertical().show(ui, |ui| match self.section {
                 Section::Connections => self.connections_ui(ui),
                 Section::Rules => self.rules_ui(ui),
+                Section::Visualizer => self.visualizer_ui(ui),
             });
         });
 
