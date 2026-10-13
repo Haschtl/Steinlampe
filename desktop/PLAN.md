@@ -617,6 +617,26 @@ desktop/
       exits) and confirmed everything was removed. Windows/macOS install paths are unverified, same
       caveat as the mic backends above. Added a short "run with --install" line to the Hilfe page's
       desktop-app card (both `en`/`de`) so this isn't buried only in the binary's own behavior.
+11. **i18n: English/German, derived from the OS locale (ad hoc). ✅ DONE, verified live both ways.**
+    `core::i18n`: a `Lang` enum (`En`/`De`) detected once at startup via the `sys-locale` crate
+    (handles the actual per-OS lookup itself - `$LANG` on Linux, `GetUserDefaultLocaleName` on
+    Windows, `NSLocale` on macOS - so no OS-specific code needed here at all), plus a `dict!` macro
+    that generates a `t(lang, key) -> &'static str` lookup over a flat table of every *static*
+    label (buttons, headings, field names) - same spirit as the web frontend's own `i18n.tsx`, not
+    a framework. Shared between the tray daemon and the console since both need some of the same
+    strings (the connection/power status words in particular). No in-app language switcher - purely
+    locale-derived; a reasonable follow-up, not done here. The handful of strings that interpolate
+    live data (the tray's tooltip/status text, the console's rule-description sentences built by
+    `describe_trigger`/`describe_action`) aren't in the static table - each takes `lang` and does
+    its own `match (lang, ...)` with `format!` directly, since a templating engine would be more
+    machinery than four or five sentences are worth.
+    **Verified live, both directions**: German (this machine's actual `$LANG=de_DE.UTF-8`) showed
+    correctly throughout the tray menu and console on an ordinary launch with no overrides; relaunched
+    the console with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` and confirmed it switched fully to
+    English. Not yet exercised on Windows/macOS (no hardware here, as always), but `sys-locale`
+    itself is a small, widely-used crate handling exactly this lookup - lower risk than anything
+    else cross-platform in this project, since the actual translation table is pure Rust with zero
+    platform-specific code.
 
 ## Verification
 

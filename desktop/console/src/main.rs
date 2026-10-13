@@ -10,12 +10,16 @@
 //! Artifact (see PLAN.md's "Console UI direction" note) - a card per lamp
 //! with its own inline quick-actions, instead of M3's old single-select-
 //! then-apply action bar.
+//!
+//! UI text goes through `quarzlampe_core::i18n` (English/German, picked up
+//! from the OS locale once at startup - no in-app language switcher).
 
 use std::collections::HashSet;
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use eframe::egui;
+use quarzlampe_core::i18n::{t, Lang};
 use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp};
 use quarzlampe_core::rules::{Action, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
@@ -63,17 +67,17 @@ enum CoreToUi {
 /// up), then polls `ListLamps` periodically and forwards UI-initiated
 /// requests, relaying everything to the UI thread over a plain
 /// `std::sync::mpsc` channel it can drain non-blockingly each frame.
-async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: std_mpsc::Sender<CoreToUi>) {
+async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: std_mpsc::Sender<CoreToUi>, lang: Lang) {
     let mut client = loop {
         match IpcClient::connect().await {
             Ok(c) => break c,
             Err(e) => {
-                let _ = to_ui.send(CoreToUi::Status(format!("waiting for daemon: {e}")));
+                let _ = to_ui.send(CoreToUi::Status(format!("{}: {e}", t(lang, "console.waitingForDaemon"))));
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     };
-    let _ = to_ui.send(CoreToUi::Status("connected to daemon".to_string()));
+    let _ = to_ui.send(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
 
     let mut poll = tokio::time::interval(Duration::from_millis(1500));
     loop {
@@ -145,16 +149,17 @@ impl TriggerKind {
         Self::OnKeyPress,
     ];
 
-    fn label(&self) -> &'static str {
-        match self {
-            Self::MicActive => "Mic becomes active",
-            Self::OnBoot => "Daemon starts (on boot)",
-            Self::OnBeforeSleep => "System is about to sleep (Linux only)",
-            Self::BeforeShutdown => "System is about to shut down (Linux only)",
-            Self::OnNotification => "A notification appears (Linux, best-effort)",
-            Self::OnAppOpen => "An app starts",
-            Self::OnKeyPress => "A hotkey is pressed (not on Wayland)",
-        }
+    fn label(&self, lang: Lang) -> &'static str {
+        let key = match self {
+            Self::MicActive => "trigger.micActive",
+            Self::OnBoot => "trigger.onBoot",
+            Self::OnBeforeSleep => "trigger.onBeforeSleep",
+            Self::BeforeShutdown => "trigger.beforeShutdown",
+            Self::OnNotification => "trigger.onNotification",
+            Self::OnAppOpen => "trigger.onAppOpen",
+            Self::OnKeyPress => "trigger.onKeyPress",
+        };
+        t(lang, key)
     }
 }
 
@@ -182,17 +187,18 @@ impl ActionKind {
         Self::SendMorse,
     ];
 
-    fn label(&self) -> &'static str {
-        match self {
-            Self::On => "On",
-            Self::Off => "Off",
-            Self::Brightness => "Set brightness",
-            Self::Mode => "Set mode",
-            Self::Profile => "Load profile",
-            Self::NotifyPattern => "Send notify pattern",
-            Self::StartWake => "Start wake-up",
-            Self::SendMorse => "Send morse code",
-        }
+    fn label(&self, lang: Lang) -> &'static str {
+        let key = match self {
+            Self::On => "actionKind.on",
+            Self::Off => "actionKind.off",
+            Self::Brightness => "actionKind.brightness",
+            Self::Mode => "actionKind.mode",
+            Self::Profile => "actionKind.profile",
+            Self::NotifyPattern => "actionKind.notifyPattern",
+            Self::StartWake => "actionKind.startWake",
+            Self::SendMorse => "actionKind.sendMorse",
+        };
+        t(lang, key)
     }
 }
 
@@ -218,6 +224,7 @@ fn parse_ms_list(s: &str) -> Option<Vec<u32>> {
 }
 
 struct ConsoleApp {
+    lang: Lang,
     icon_texture: egui::TextureHandle,
     to_core: tokio_mpsc::UnboundedSender<UiToCore>,
     from_core: std_mpsc::Receiver<CoreToUi>,
@@ -335,12 +342,13 @@ impl ConsoleApp {
     }
 
     fn connections_ui(&self, ui: &mut egui::Ui) {
+        let lang = self.lang;
         header_bar(ui, |ui| {
-            ui.heading("Lamps");
+            ui.heading(t(lang, "lamps.heading"));
             let connected = self.lamps.iter().filter(|l| l.connection == "connected").count();
-            ui.label(format!("{connected} connected"));
+            ui.label(format!("{connected} {}", t(lang, "lamps.connectedSuffix")));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Scan for lamps").clicked() {
+                if ui.button(t(lang, "lamps.scanButton")).clicked() {
                     let _ = self.to_core.send(UiToCore::Scan);
                 }
             });
@@ -349,22 +357,18 @@ impl ConsoleApp {
 
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
-                lamp_card(ui, lamp, &self.to_core);
+                lamp_card(ui, lamp, &self.to_core, lang);
             }
         });
 
         if !self.scan_results.is_empty() {
             ui.add_space(18.0);
-            ui.label(egui::RichText::new("DISCOVERED NEARBY").small().color(ui.visuals().weak_text_color()));
-            ui.label(
-                egui::RichText::new("Pair within ~60s of boot, or it already has a saved token")
-                    .small()
-                    .color(ui.visuals().weak_text_color()),
-            );
+            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHeading")).small().color(ui.visuals().weak_text_color()));
+            ui.label(egui::RichText::new(t(lang, "lamps.discoveredHint")).small().color(ui.visuals().weak_text_color()));
             for found in &self.scan_results {
                 ui.horizontal(|ui| {
                     ui.label(&found.name);
-                    if ui.button("Connect").clicked() {
+                    if ui.button(t(lang, "lamps.connectButton")).clicked() {
                         let _ = self.to_core.send(UiToCore::Connect {
                             lamp_key: found.lamp_key.clone(),
                             name: found.name.clone(),
@@ -376,10 +380,11 @@ impl ConsoleApp {
     }
 
     fn rules_ui(&mut self, ui: &mut egui::Ui) {
+        let lang = self.lang;
         header_bar(ui, |ui| {
-            ui.heading("Rules");
+            ui.heading(t(lang, "rules.heading"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if !self.show_new_rule && ui.button("+ New rule").clicked() {
+                if !self.show_new_rule && ui.button(t(lang, "rules.newRuleButton")).clicked() {
                     self.show_new_rule = true;
                     self.new_rule_name.clear();
                     self.new_rule_targets.clear();
@@ -395,34 +400,34 @@ impl ConsoleApp {
                 .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Name:");
+                        ui.label(t(lang, "rules.name"));
                         ui.text_edit_singleline(&mut self.new_rule_name);
                     });
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("When:");
+                        ui.label(t(lang, "rules.when"));
                         egui::ComboBox::from_id_salt("new_rule_trigger_kind")
-                            .selected_text(self.new_rule_trigger_kind.label())
+                            .selected_text(self.new_rule_trigger_kind.label(lang))
                             .show_ui(ui, |ui| {
                                 for kind in TriggerKind::ALL {
-                                    ui.selectable_value(&mut self.new_rule_trigger_kind, kind, kind.label());
+                                    ui.selectable_value(&mut self.new_rule_trigger_kind, kind, kind.label(lang));
                                 }
                             });
                     });
                     match self.new_rule_trigger_kind {
                         TriggerKind::OnAppOpen => {
                             ui.horizontal(|ui| {
-                                ui.label("App name (as the OS reports it, e.g. \"firefox\"):");
+                                ui.label(t(lang, "rules.appNameLabel"));
                                 ui.text_edit_singleline(&mut self.new_rule_app_name);
                             });
                         }
                         TriggerKind::OnKeyPress => {
                             ui.horizontal(|ui| {
-                                ui.checkbox(&mut self.new_rule_key_ctrl, "Ctrl");
-                                ui.checkbox(&mut self.new_rule_key_alt, "Alt");
-                                ui.checkbox(&mut self.new_rule_key_shift, "Shift");
-                                ui.checkbox(&mut self.new_rule_key_super, "Super/Cmd");
+                                ui.checkbox(&mut self.new_rule_key_ctrl, t(lang, "rules.ctrl"));
+                                ui.checkbox(&mut self.new_rule_key_alt, t(lang, "rules.alt"));
+                                ui.checkbox(&mut self.new_rule_key_shift, t(lang, "rules.shift"));
+                                ui.checkbox(&mut self.new_rule_key_super, t(lang, "rules.superCmd"));
                                 egui::ComboBox::from_id_salt("new_rule_key_code")
                                     .selected_text(&self.new_rule_key_code)
                                     .show_ui(ui, |ui| {
@@ -440,48 +445,71 @@ impl ConsoleApp {
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Then:");
+                        ui.label(t(lang, "rules.then"));
                         egui::ComboBox::from_id_salt("new_rule_action_kind")
-                            .selected_text(self.new_rule_action_kind.label())
+                            .selected_text(self.new_rule_action_kind.label(lang))
                             .show_ui(ui, |ui| {
                                 for kind in ActionKind::ALL {
-                                    ui.selectable_value(&mut self.new_rule_action_kind, kind, kind.label());
+                                    ui.selectable_value(&mut self.new_rule_action_kind, kind, kind.label(lang));
                                 }
                             });
                     });
                     match self.new_rule_action_kind {
                         ActionKind::Brightness => {
-                            ui.add(egui::Slider::new(&mut self.new_rule_brightness, 0..=100).text("brightness %"));
+                            ui.add(
+                                egui::Slider::new(&mut self.new_rule_brightness, 0..=100)
+                                    .text(t(lang, "rules.brightnessPercentLabel")),
+                            );
                         }
                         ActionKind::Mode => {
-                            ui.add(egui::DragValue::new(&mut self.new_rule_mode).range(1..=64).prefix("mode "));
+                            ui.add(
+                                egui::DragValue::new(&mut self.new_rule_mode)
+                                    .range(1..=64)
+                                    .prefix(t(lang, "rules.modePrefix")),
+                            );
                         }
                         ActionKind::Profile => {
-                            ui.add(egui::DragValue::new(&mut self.new_rule_profile).range(1..=6).prefix("profile slot "));
+                            ui.add(
+                                egui::DragValue::new(&mut self.new_rule_profile)
+                                    .range(1..=6)
+                                    .prefix(t(lang, "rules.profileSlotPrefix")),
+                            );
                         }
                         ActionKind::NotifyPattern => {
                             ui.horizontal(|ui| {
-                                ui.label("Pattern (ms, space-separated on/off):");
+                                ui.label(t(lang, "rules.patternLabel"));
                                 ui.text_edit_singleline(&mut self.new_rule_notify_pattern)
-                                    .on_hover_text("Leave empty for the firmware's default (120 60 120 200)");
+                                    .on_hover_text(t(lang, "rules.patternHint"));
                             });
                             ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut self.new_rule_notify_fade).range(0..=2000).suffix(" ms fade"));
-                                ui.add(egui::DragValue::new(&mut self.new_rule_notify_repeat).range(1..=10).prefix("repeat "));
+                                ui.add(
+                                    egui::DragValue::new(&mut self.new_rule_notify_fade)
+                                        .range(0..=2000)
+                                        .suffix(t(lang, "rules.fadeSuffix")),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut self.new_rule_notify_repeat)
+                                        .range(1..=10)
+                                        .prefix(t(lang, "rules.repeatPrefix")),
+                                );
                             });
                         }
                         ActionKind::StartWake => {
                             ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut self.new_rule_wake_seconds).range(1..=3600).suffix(" s"));
-                                ui.checkbox(&mut self.new_rule_wake_soft, "soft");
+                                ui.add(
+                                    egui::DragValue::new(&mut self.new_rule_wake_seconds)
+                                        .range(1..=3600)
+                                        .suffix(t(lang, "rules.secondsSuffix")),
+                                );
+                                ui.checkbox(&mut self.new_rule_wake_soft, t(lang, "rules.soft"));
                             });
                             ui.horizontal(|ui| {
-                                ui.checkbox(&mut self.new_rule_wake_mode_enabled, "mode");
+                                ui.checkbox(&mut self.new_rule_wake_mode_enabled, t(lang, "rules.modeCheckbox"));
                                 ui.add_enabled(
                                     self.new_rule_wake_mode_enabled,
                                     egui::DragValue::new(&mut self.new_rule_wake_mode).range(1..=64),
                                 );
-                                ui.checkbox(&mut self.new_rule_wake_bri_enabled, "brightness %");
+                                ui.checkbox(&mut self.new_rule_wake_bri_enabled, t(lang, "rules.brightnessPercentLabel"));
                                 ui.add_enabled(
                                     self.new_rule_wake_bri_enabled,
                                     egui::DragValue::new(&mut self.new_rule_wake_bri).range(0..=100),
@@ -490,7 +518,7 @@ impl ConsoleApp {
                         }
                         ActionKind::SendMorse => {
                             ui.horizontal(|ui| {
-                                ui.label("Text:");
+                                ui.label(t(lang, "rules.textLabel"));
                                 ui.text_edit_singleline(&mut self.new_rule_morse_text);
                             });
                         }
@@ -498,7 +526,7 @@ impl ConsoleApp {
                     }
 
                     ui.add_space(4.0);
-                    ui.label("Targets:");
+                    ui.label(t(lang, "rules.targets"));
                     ui.horizontal_wrapped(|ui| {
                         for lamp in &self.lamps {
                             let mut checked = self.new_rule_targets.contains(&lamp.lamp_key);
@@ -514,10 +542,10 @@ impl ConsoleApp {
                     });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(t(lang, "rules.cancel")).clicked() {
                             self.show_new_rule = false;
                         }
-                        if ui.add_enabled(self.new_rule_valid(), egui::Button::new("Save rule")).clicked() {
+                        if ui.add_enabled(self.new_rule_valid(), egui::Button::new(t(lang, "rules.saveRule"))).clicked() {
                             let rule = Rule {
                                 id: Uuid::new_v4(),
                                 name: std::mem::take(&mut self.new_rule_name),
@@ -550,10 +578,10 @@ impl ConsoleApp {
                         }
                         ui.strong(&rule.name);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("Delete").clicked() {
+                            if ui.small_button(t(lang, "rules.delete")).clicked() {
                                 let _ = self.to_core.send(UiToCore::DeleteRule(rule.id));
                             }
-                            if ui.small_button("Fire now").clicked() {
+                            if ui.small_button(t(lang, "rules.fireNow")).clicked() {
                                 let _ = self.to_core.send(UiToCore::FireRule(rule.id));
                             }
                         });
@@ -562,8 +590,8 @@ impl ConsoleApp {
                     ui.label(
                         egui::RichText::new(format!(
                             "{} \u{2192} {} \u{b7} {}",
-                            describe_trigger(&rule.trigger),
-                            describe_action(&rule.action),
+                            describe_trigger(lang, &rule.trigger),
+                            describe_action(lang, &rule.action),
                             targets.join(", ")
                         ))
                         .small()
@@ -598,27 +626,40 @@ fn header_bar(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
         });
 }
 
-fn describe_trigger(trigger: &Trigger) -> String {
-    match trigger {
-        Trigger::MicActive => "mic becomes active".to_string(),
-        Trigger::OnBoot => "daemon starts".to_string(),
-        Trigger::OnBeforeSleep => "system is about to sleep".to_string(),
-        Trigger::BeforeShutdown => "system is about to shut down".to_string(),
-        Trigger::OnNotification => "a notification appears".to_string(),
-        Trigger::OnAppOpen { app_name } => format!("\"{app_name}\" starts"),
-        Trigger::OnKeyPress { key } => format!("hotkey {key} is pressed"),
+fn describe_trigger(lang: Lang, trigger: &Trigger) -> String {
+    match (lang, trigger) {
+        (Lang::En, Trigger::MicActive) => "mic becomes active".to_string(),
+        (Lang::De, Trigger::MicActive) => "Mikrofon wird aktiv".to_string(),
+        (Lang::En, Trigger::OnBoot) => "daemon starts".to_string(),
+        (Lang::De, Trigger::OnBoot) => "Daemon startet".to_string(),
+        (Lang::En, Trigger::OnBeforeSleep) => "system is about to sleep".to_string(),
+        (Lang::De, Trigger::OnBeforeSleep) => "System geht gleich in den Ruhezustand".to_string(),
+        (Lang::En, Trigger::BeforeShutdown) => "system is about to shut down".to_string(),
+        (Lang::De, Trigger::BeforeShutdown) => "System f\u{e4}hrt gleich herunter".to_string(),
+        (Lang::En, Trigger::OnNotification) => "a notification appears".to_string(),
+        (Lang::De, Trigger::OnNotification) => "eine Benachrichtigung erscheint".to_string(),
+        (Lang::En, Trigger::OnAppOpen { app_name }) => format!("\"{app_name}\" starts"),
+        (Lang::De, Trigger::OnAppOpen { app_name }) => format!("\"{app_name}\" startet"),
+        (Lang::En, Trigger::OnKeyPress { key }) => format!("hotkey {key} is pressed"),
+        (Lang::De, Trigger::OnKeyPress { key }) => format!("Tastenkombination {key} wird gedr\u{fc}ckt"),
     }
 }
 
-fn describe_action(action: &Action) -> String {
-    match action {
-        Action::On => "turn on".to_string(),
-        Action::Off => "turn off".to_string(),
-        Action::SetBrightness { pct } => format!("set brightness to {pct}%"),
-        Action::SetMode { pattern } => format!("set mode to {pattern}"),
-        Action::LoadProfile { slot } => format!("load profile {slot}"),
-        Action::Notify { .. } => "send notify pattern".to_string(),
-        Action::StartWake { seconds, soft, mode, brightness_pct } => {
+fn describe_action(lang: Lang, action: &Action) -> String {
+    match (lang, action) {
+        (Lang::En, Action::On) => "turn on".to_string(),
+        (Lang::De, Action::On) => "einschalten".to_string(),
+        (Lang::En, Action::Off) => "turn off".to_string(),
+        (Lang::De, Action::Off) => "ausschalten".to_string(),
+        (Lang::En, Action::SetBrightness { pct }) => format!("set brightness to {pct}%"),
+        (Lang::De, Action::SetBrightness { pct }) => format!("Helligkeit auf {pct}% setzen"),
+        (Lang::En, Action::SetMode { pattern }) => format!("set mode to {pattern}"),
+        (Lang::De, Action::SetMode { pattern }) => format!("Modus auf {pattern} setzen"),
+        (Lang::En, Action::LoadProfile { slot }) => format!("load profile {slot}"),
+        (Lang::De, Action::LoadProfile { slot }) => format!("Profil {slot} laden"),
+        (Lang::En, Action::Notify { .. }) => "send notify pattern".to_string(),
+        (Lang::De, Action::Notify { .. }) => "Benachrichtigungsmuster senden".to_string(),
+        (Lang::En, Action::StartWake { seconds, soft, mode, brightness_pct }) => {
             let mut parts = vec![format!("start a {seconds}s wake-up")];
             if *soft {
                 parts.push("(soft)".to_string());
@@ -631,17 +672,31 @@ fn describe_action(action: &Action) -> String {
             }
             parts.join(" ")
         }
-        Action::SendMorse { text } => format!("send morse \"{text}\""),
+        (Lang::De, Action::StartWake { seconds, soft, mode, brightness_pct }) => {
+            let mut parts = vec![format!("{seconds}s-Weckvorgang starten")];
+            if *soft {
+                parts.push("(sanft)".to_string());
+            }
+            if let Some(m) = mode {
+                parts.push(format!("Modus {m}"));
+            }
+            if let Some(b) = brightness_pct {
+                parts.push(format!("auf {b}%"));
+            }
+            parts.join(" ")
+        }
+        (Lang::En, Action::SendMorse { text }) => format!("send morse \"{text}\""),
+        (Lang::De, Action::SendMorse { text }) => format!("Morsecode \"{text}\" senden"),
     }
 }
 
-fn status_visual(connection: &str) -> (egui::Color32, &'static str) {
+fn status_visual(lang: Lang, connection: &str) -> (egui::Color32, &'static str) {
     match connection {
-        "connected" => (egui::Color32::from_rgb(0x4A, 0xDE, 0x80), "Connected"),
-        "connecting" => (WARNING, "Connecting\u{2026}"),
-        "reconnecting" => (WARNING, "Reconnecting\u{2026}"),
-        "awaiting_trust_token" => (WARNING, "Awaiting trust token\u{2026}"),
-        _ => (MUTED, "Disconnected"),
+        "connected" => (egui::Color32::from_rgb(0x4A, 0xDE, 0x80), t(lang, "status.connected")),
+        "connecting" => (WARNING, t(lang, "status.connecting")),
+        "reconnecting" => (WARNING, t(lang, "status.reconnecting")),
+        "awaiting_trust_token" => (WARNING, t(lang, "status.awaitingTrust")),
+        _ => (MUTED, t(lang, "status.disconnected")),
     }
 }
 
@@ -673,7 +728,7 @@ fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
 /// A free function (not a `ConsoleApp` method) since it only needs the
 /// lamp's own data and a way to send commands, not the rest of the app
 /// state - keeps the borrow simple when called from `connections_ui(&self)`.
-fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::UnboundedSender<UiToCore>) {
+fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::UnboundedSender<UiToCore>, lang: Lang) {
     let connected = lamp.connection == "connected";
     let send = |line: String| {
         let _ = to_core.send(UiToCore::SendCommand { lamp_key: lamp.lamp_key.clone(), line });
@@ -688,7 +743,7 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                 ui.horizontal(|ui| {
                     ui.strong(&lamp.name);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (color, label) = status_visual(&lamp.connection);
+                        let (color, label) = status_visual(lang, &lamp.connection);
                         ui.label(label);
                         ui.colored_label(color, "\u{25cf}");
                     });
@@ -701,7 +756,7 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                 ui.separator();
 
                 ui.horizontal(|ui| {
-                    ui.label("Power");
+                    ui.label(t(lang, "lampCard.power"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled_ui(connected, |ui| {
                             let mut on = lamp.lamp_on.unwrap_or(false);
@@ -713,7 +768,7 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                 });
 
                 ui.horizontal(|ui| {
-                    ui.label("Brightness");
+                    ui.label(t(lang, "lampCard.brightness"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(format!("{:.0}%", lamp.brightness_pct.unwrap_or(0.0)));
                     });
@@ -729,7 +784,7 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                 });
 
                 ui.horizontal(|ui| {
-                    ui.label("Mode");
+                    ui.label(t(lang, "lampCard.mode"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled_ui(connected, |ui| {
                             let pattern = lamp.pattern.unwrap_or(1);
@@ -744,7 +799,7 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
                     });
                 });
 
-                ui.label("Profile");
+                ui.label(t(lang, "lampCard.profile"));
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(connected, |ui| {
                         for slot in 1u8..=6 {
@@ -770,6 +825,7 @@ impl eframe::App for ConsoleApp {
             }
         }
 
+        let lang = self.lang;
         let nav_frame = egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(14.0);
         // `exact_size`, not `default_size` + `resizable(false)` - the panel
         // remembers its width across frames keyed by id, and `default_size`
@@ -785,11 +841,11 @@ impl eframe::App for ConsoleApp {
                 ui.strong("Quarzlampe");
             });
             ui.add_space(18.0);
-            if nav_button(ui, self.section == Section::Connections, "Connections") {
+            if nav_button(ui, self.section == Section::Connections, t(lang, "nav.connections")) {
                 self.section = Section::Connections;
             }
             ui.add_space(4.0);
-            if nav_button(ui, self.section == Section::Rules, "Rules") {
+            if nav_button(ui, self.section == Section::Rules, t(lang, "nav.rules")) {
                 self.section = Section::Rules;
             }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -799,7 +855,7 @@ impl eframe::App for ConsoleApp {
                 // MIDI, OTA...) lives in the web app, not here - the console
                 // is deliberately a thin quick-control/automation surface,
                 // not a reimplementation of it.
-                ui.hyperlink_to("Open web interface \u{2197}", WEB_INTERFACE_URL);
+                ui.hyperlink_to(t(lang, "nav.openWeb"), WEB_INTERFACE_URL);
                 ui.add_space(4.0);
             });
         });
@@ -869,12 +925,13 @@ fn apply_visuals(ctx: &egui::Context) {
 }
 
 fn main() -> eframe::Result<()> {
+    let lang = Lang::detect();
     let (to_core, from_ui) = tokio_mpsc::unbounded_channel::<UiToCore>();
     let (to_ui, from_core) = std_mpsc::channel::<CoreToUi>();
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
-        rt.block_on(run_core(from_ui, to_ui));
+        rt.block_on(run_core(from_ui, to_ui, lang));
     });
 
     let native_options = eframe::NativeOptions {
@@ -897,13 +954,14 @@ fn main() -> eframe::Result<()> {
             apply_visuals(&cc.egui_ctx);
             let icon_texture = load_icon_texture(&cc.egui_ctx);
             Ok(Box::new(ConsoleApp {
+                lang,
                 icon_texture,
                 to_core,
                 from_core,
                 lamps: Vec::new(),
                 scan_results: Vec::new(),
                 rules: Vec::new(),
-                status: "connecting to daemon...".to_string(),
+                status: t(lang, "console.connectingToDaemon").to_string(),
                 section: Section::Connections,
                 show_new_rule: false,
                 new_rule_name: String::new(),

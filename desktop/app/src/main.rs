@@ -28,6 +28,7 @@ use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use quarzlampe_core::ble::{FileTokenStore, LampCommand, LampManager};
+use quarzlampe_core::i18n::{t, Lang};
 use quarzlampe_core::ipc::{DaemonState, IpcServer};
 use quarzlampe_core::mic::{self, MicActivity};
 use quarzlampe_core::rules::{action_to_command, Trigger};
@@ -154,13 +155,17 @@ fn status_color(lamps: &[LampSnapshot]) -> [u8; 3] {
     }
 }
 
-fn tooltip_text(lamps: &[LampSnapshot]) -> String {
+fn tooltip_text(lang: Lang, lamps: &[LampSnapshot]) -> String {
     let connected = lamps.iter().filter(|l| l.connection == ConnectionState::Connected).count();
     let on = lamps.iter().filter(|l| l.connection == ConnectionState::Connected && l.lamp_on == Some(true)).count();
     if connected == 0 {
-        "Quarzlampe \u{2014} no lamps connected".to_string()
+        format!("Quarzlampe \u{2014} {}", t(lang, "tray.tooltipNoLamps"))
     } else {
-        format!("Quarzlampe \u{2014} {connected} connected, {on} on")
+        format!(
+            "Quarzlampe \u{2014} {connected} {}, {on} {}",
+            t(lang, "tray.tooltipConnectedWord"),
+            t(lang, "tray.tooltipOnWord")
+        )
     }
 }
 
@@ -236,23 +241,23 @@ fn snapshot_lamps(state: &Arc<Mutex<DaemonState>>) -> Vec<LampSnapshot> {
         .collect()
 }
 
-fn status_text(connection: &ConnectionState, on: Option<bool>, brightness: Option<f32>) -> String {
+fn status_text(lang: Lang, connection: &ConnectionState, on: Option<bool>, brightness: Option<f32>) -> String {
     match connection {
         ConnectionState::Connected => {
             let power = match on {
-                Some(true) => "On",
-                Some(false) => "Off",
-                None => "?",
+                Some(true) => t(lang, "status.on"),
+                Some(false) => t(lang, "status.off"),
+                None => t(lang, "status.unknown"),
             };
             match brightness {
                 Some(b) => format!("{power} \u{b7} {b:.0}%"),
                 None => power.to_string(),
             }
         }
-        ConnectionState::Connecting => "Connecting\u{2026}".to_string(),
-        ConnectionState::AwaitingTrustToken => "Awaiting trust token\u{2026}".to_string(),
-        ConnectionState::Reconnecting => "Reconnecting\u{2026}".to_string(),
-        ConnectionState::Disconnected => "Disconnected".to_string(),
+        ConnectionState::Connecting => t(lang, "status.connecting").to_string(),
+        ConnectionState::AwaitingTrustToken => t(lang, "status.awaitingTrust").to_string(),
+        ConnectionState::Reconnecting => t(lang, "status.reconnecting").to_string(),
+        ConnectionState::Disconnected => t(lang, "status.disconnected").to_string(),
     }
 }
 
@@ -262,6 +267,7 @@ fn status_text(connection: &ConnectionState, on: Option<bool>, brightness: Optio
 /// `show_item`/`quit_item` are the two items that never change, kept alive
 /// across rebuilds and simply re-appended each time.
 fn build_menu(
+    lang: Lang,
     lamps: &[LampSnapshot],
     index: &mut LampIndex,
     show_item: &MenuItem,
@@ -272,21 +278,21 @@ fn build_menu(
     let menu = Menu::new();
 
     if lamps.is_empty() {
-        let _ = menu.append(&MenuItem::new("No lamps connected", false, None));
+        let _ = menu.append(&MenuItem::new(t(lang, "tray.noLamps"), false, None));
     } else {
         for lamp in lamps {
             let idx = index.idx_for(&lamp.key);
             let connected = lamp.connection == ConnectionState::Connected;
-            let status = status_text(&lamp.connection, lamp.lamp_on, lamp.brightness_pct);
+            let status = status_text(lang, &lamp.connection, lamp.lamp_on, lamp.brightness_pct);
             let submenu = Submenu::new(format!("{} \u{2014} {}", lamp.name, status), true);
 
-            let toggle_label = if lamp.lamp_on == Some(true) { "Turn off" } else { "Turn on" };
+            let toggle_label = if lamp.lamp_on == Some(true) { t(lang, "tray.turnOff") } else { t(lang, "tray.turnOn") };
             let _ = submenu.append(&MenuItem::with_id(format!("lamp-{idx}-toggle"), toggle_label, connected, None));
             let _ = submenu.append(&PredefinedMenuItem::separator());
             for pct in [100u8, 75, 50, 25] {
                 let _ = submenu.append(&MenuItem::with_id(
                     format!("lamp-{idx}-bri-{pct}"),
-                    format!("Brightness: {pct}%"),
+                    format!("{}: {pct}%", t(lang, "tray.brightness")),
                     connected,
                     None,
                 ));
@@ -601,12 +607,15 @@ fn main() -> anyhow::Result<()> {
         return install::run(&action);
     }
 
-    let show_item = MenuItem::with_id("show-console", "Show console", true, None);
-    let autostart_item = CheckMenuItem::with_id("toggle-autostart", "Start on boot", true, autostart::is_enabled(), None);
-    let quit_item = MenuItem::with_id("quit", "Quit", true, None);
+    let lang = Lang::detect();
+
+    let show_item = MenuItem::with_id("show-console", t(lang, "tray.showConsole"), true, None);
+    let autostart_item =
+        CheckMenuItem::with_id("toggle-autostart", t(lang, "tray.startOnBoot"), true, autostart::is_enabled(), None);
+    let quit_item = MenuItem::with_id("quit", t(lang, "tray.quit"), true, None);
 
     let starting_menu = Menu::new();
-    let _ = starting_menu.append(&MenuItem::new("Starting\u{2026}", false, None));
+    let _ = starting_menu.append(&MenuItem::new(t(lang, "tray.starting"), false, None));
     let _ = starting_menu.append(&PredefinedMenuItem::separator());
     let _ = starting_menu.append(&show_item);
     let _ = starting_menu.append(&autostart_item);
@@ -616,7 +625,7 @@ fn main() -> anyhow::Result<()> {
     // tray icon.
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(starting_menu))
-        .with_tooltip("Quarzlampe \u{2014} starting\u{2026}")
+        .with_tooltip(format!("Quarzlampe \u{2014} {}", t(lang, "tray.starting")))
         .with_icon(render_status_icon(status_color(&[])))
         .build()?;
 
@@ -643,10 +652,10 @@ fn main() -> anyhow::Result<()> {
             let needs_refresh = last_refresh.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
             if needs_refresh {
                 let lamps = snapshot_lamps(state);
-                let menu = build_menu(&lamps, &mut lamp_index, &show_item, &autostart_item, &quit_item);
+                let menu = build_menu(lang, &lamps, &mut lamp_index, &show_item, &autostart_item, &quit_item);
                 tray_icon.set_menu(Some(Box::new(menu)));
                 let _ = tray_icon.set_icon(Some(render_status_icon(status_color(&lamps))));
-                let _ = tray_icon.set_tooltip(Some(tooltip_text(&lamps)));
+                let _ = tray_icon.set_tooltip(Some(tooltip_text(lang, &lamps)));
                 if let Some(manager) = &hotkey_manager {
                     let rules = state.blocking_lock().rules.clone();
                     registered_hotkeys = sync_registered_hotkeys(manager, &rules, &registered_hotkeys);
