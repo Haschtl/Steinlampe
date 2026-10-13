@@ -285,18 +285,30 @@ desktop/
      reconnect later using that stored token outside the window and confirm it succeeds). The code
      path exists (`HandshakeOutcome::Trusted { fresh_token }`) but hasn't been exercised against a
      freshly-booted lamp yet - do that before considering M1 fully closed.
-3. **M2 — Wire core::ble into the daemon, make the console a thin IPC client.** Resolved (decided
-   with the user): BLE/rules/mic detection all live in `app` (the daemon), not `console` - see
-   "Decisions already made" above. Build order: (a) `core::ble::{lamp_actor, manager}` - the
-   tokio-task-per-lamp actor and `LampManager`, reusing `handshake.rs`/`trust.rs`/`line_codec.rs`
-   from M1 (the probe only proved the handshake logic standalone, not this actor/channel wiring);
-   (b) `core::ipc` - the shared request/event protocol plus server (daemon) and client (console)
-   halves, loopback TCP as decided above; (c) wire the daemon's `main.rs` to start a tokio runtime,
-   `LampManager`, and the IPC server alongside the existing tray-icon loop; (d) the console connects
-   over IPC on startup and renders a lamp list with on/off only, reusing the real probe logic's
-   proven connect/handshake behavior end to end, just via IPC instead of in-process. Because BLE now
-   survives console close/reopen by construction (it lives in the daemon), there's no "reconnect
-   from scratch" concern to design around.
+3. **M2 — Wire core::ble into the daemon, make the console a thin IPC client. ✅ DONE**, verified
+   end to end against the real "ON-AIR Lampe" - scan found it, connect succeeded (and the firmware
+   actually trusted this machine's BlueZ adapter address, no `PendingToken` rejection this time -
+   unlike the M1 probe runs, which saw that path; the lamp's trusted-address list had presumably
+   accumulated this address from earlier testing), `send_command("on")` turned the lamp on for real
+   and `ListLamps` reported `lamp_on: true, brightness_pct: 100.0, pattern: 1` moments later (via a
+   real `STATE|` push through the whole stack), `send_command("off")` turned it back off and the
+   state updated again. Built: `core::ble::{lamp_actor, manager}` (tokio-task-per-lamp actor with
+   capped-backoff reconnect, `LampManager` owning scan + a scanned-peripherals cache so a
+   `Connect{lamp_key}` IPC request - which can only carry a string, not a live `btleplug` handle -
+   can look the real peripheral back up), `core::state` (a `STATE|` line parser, unit-tested,
+   deliberately *not* a dependency of the handshake - matches the "STATE| only, not the full
+   snapshot, for ongoing display" scope decision), and `core::ipc::{protocol, server, client}`
+   (newline-JSON over loopback TCP, exactly as decided above). The daemon starts all of this on a
+   background OS thread with its own `tokio::Runtime`, alongside its existing synchronous tray-icon
+   polling loop on the main thread - confirmed via a dead-end-then-resolved investigation that this
+   split does *not* cause any D-Bus-library conflict between `tray-icon`'s `ksni`/zbus and
+   `btleplug`'s `dbus`/`dbus-tokio` (several targeted repros ruled that out one by one); the
+   apparent "hang" that prompted the investigation turned out to be a red herring - the daemon was
+   publishing its discovery file to `/run/user/<uid>/quarzlampe/daemon.conn` (the XDG runtime dir)
+   the whole time, and an earlier `find / -xdev` search had silently skipped it because `/run` is a
+   separate tmpfs mount. Console UI is intentionally minimal for this milestone (a lamp list with
+   On/Off buttons and a Scan button, polling `ListLamps` every 1.5s) - multi-select and
+   brightness/mode/profile actions are M3's job.
 4. **M3 — Console polish.** Live STATE-driven display, multi-lamp selection, brightness/mode/profile
    quick actions — via the same `action_to_command` the rule engine reuses later.
 5. **M4 — Rule engine + persisted config, manually fired.** Rule editor UI (trigger picker already a

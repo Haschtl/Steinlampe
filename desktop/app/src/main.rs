@@ -15,10 +15,58 @@
 //! problem at the root instead of patching around it.
 
 use std::process::{Child, Command};
+use std::sync::Arc;
 use std::time::Duration;
 
 use muda::{Menu, MenuEvent, MenuItem};
+use quarzlampe_core::ble::{FileTokenStore, LampManager};
+use quarzlampe_core::ipc::IpcServer;
+use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
+
+/// Where lamp pairing tokens are cached between runs. Separate from the
+/// IPC discovery file (`ipc::discovery_file_path`) - this one needs to
+/// survive across daemon restarts, that one is republished fresh every
+/// time the daemon starts.
+fn token_store_dir() -> anyhow::Result<std::path::PathBuf> {
+    let dirs = directories::ProjectDirs::from("dev", "quarzlampe", "quarzlampe")
+        .ok_or_else(|| anyhow::anyhow!("could not determine a config directory on this platform"))?;
+    Ok(dirs.data_dir().join("lamp-tokens"))
+}
+
+/// Starts the async core (BLE manager + IPC server) on its own tokio
+/// runtime, on a background OS thread - the main thread stays free to run
+/// the tray's synchronous event-polling loop below.
+fn spawn_core_runtime() {
+    std::thread::spawn(|| {
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                eprintln!("[daemon] failed to start tokio runtime: {e}");
+                return;
+            }
+        };
+        rt.block_on(async {
+            let tokens = match token_store_dir().and_then(|dir| FileTokenStore::new(dir).map_err(Into::into)) {
+                Ok(t) => Arc::new(t),
+                Err(e) => {
+                    eprintln!("[daemon] failed to open token store: {e}");
+                    return;
+                }
+            };
+            let manager = match LampManager::new(tokens).await {
+                Ok(m) => Arc::new(Mutex::new(m)),
+                Err(e) => {
+                    eprintln!("[daemon] failed to initialize BLE manager: {e}");
+                    return;
+                }
+            };
+            if let Err(e) = IpcServer::bind_and_serve(manager).await {
+                eprintln!("[daemon] IPC server error: {e}");
+            }
+        });
+    });
+}
 
 /// Finds the console binary, assumed to be a sibling of this daemon's own
 /// executable (true for `cargo build`/`cargo run` - all workspace binaries
@@ -65,15 +113,15 @@ fn main() -> anyhow::Result<()> {
         .with_icon(load_icon())
         .build()?;
 
+    spawn_core_runtime();
+
     let console_path = console_binary_path()?;
     let mut console_child: Option<Child> = None;
 
     println!("[tray] daemon running. Console binary: {}", console_path.display());
     loop {
-        if let Ok(event) = TrayIconEvent::receiver().try_recv() {
-            if let TrayIconEvent::Click { .. } = event {
-                spawn_or_note(&mut console_child, &console_path);
-            }
+        if let Ok(TrayIconEvent::Click { .. }) = TrayIconEvent::receiver().try_recv() {
+            spawn_or_note(&mut console_child, &console_path);
         }
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == show_item.id() {
