@@ -25,6 +25,21 @@ jobs:
           - os: macos-latest
             platform: macos
     runs-on: ${{ matrix.os }}
+    # Job-level (not step-level) on purpose: a step's `if:` is evaluated
+    # before that same step's own `env:` block takes effect, so a secret
+    # check has to come from env already set at the job (or an earlier
+    # step), not from a step checking its own declared env. Harmless to
+    # define these on every platform in the matrix even though only one
+    # OS's signing steps ever read them.
+    env:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
+      APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,9 +59,74 @@ jobs:
         with:
           workspaces: desktop
 
+      # `GITHUB_SHA` is one of Actions' own default env vars, always set -
+      # `core/build.rs` reads it to bake the commit a build came from into
+      # `core::update::BUILD_SHA`, which is how the auto-update check (see
+      # that module's doc comment) tells "this build" apart from "the
+      # latest published one". A plain local `cargo build` never has this
+      # var set, so it always gets `"dev"` there instead.
       - name: Build workspace (release)
         working-directory: desktop
         run: cargo build --release --workspace
+
+      # Guarded by the job-level secrets above being present - no-ops
+      # (skipped entirely) until the user adds real signing credentials,
+      # which only they can obtain: an Apple Developer Program membership
+      # for the certificate/notarization secrets, and a code-signing
+      # certificate from a CA for the Windows one. Without either, these
+      # steps simply don't run and the build stays exactly as unsigned as
+      # it is today - nothing about the rest of the pipeline depends on
+      # them.
+      - name: Sign macOS binaries
+        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE_P12 != ''
+        run: |
+          set -eu
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security list-keychains -d user -s build.keychain "$(security list-keychains -d user | sed 's/"//g')"
+          rm certificate.p12
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" desktop/target/release/quarzlampe-tray
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" desktop/target/release/quarzlampe-console
+          codesign --verify --verbose desktop/target/release/quarzlampe-tray
+          codesign --verify --verbose desktop/target/release/quarzlampe-console
+
+      # Submits the already-signed binaries for Apple's online notarization
+      # check. Note this can't be *stapled* afterward the way a `.app`
+      # bundle/DMG/pkg can be - stapling only attaches to those container
+      # formats, not to loose Mach-O binaries like these. Gatekeeper falls
+      # back to an online ticket lookup for a signed-but-unstapled binary
+      # instead, which needs network access the first time it runs but
+      # otherwise has the same effect.
+      - name: Notarize macOS binaries
+        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE_P12 != '' && env.APPLE_NOTARIZATION_APPLE_ID != ''
+        run: |
+          set -eu
+          cd desktop/target/release
+          zip notarize.zip quarzlampe-tray quarzlampe-console
+          xcrun notarytool submit notarize.zip \
+            --apple-id "$APPLE_NOTARIZATION_APPLE_ID" \
+            --password "$APPLE_NOTARIZATION_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          rm notarize.zip
+
+      - name: Sign Windows binaries
+        if: matrix.platform == 'windows' && env.WINDOWS_CERTIFICATE_PFX != ''
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX)
+          [IO.File]::WriteAllBytes("certificate.pfx", $bytes)
+          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { $signtool = Get-Command signtool.exe }
+          & $signtool.FullName sign /f certificate.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 desktop\target\release\quarzlampe-tray.exe
+          & $signtool.FullName sign /f certificate.pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 desktop\target\release\quarzlampe-console.exe
+          Remove-Item certificate.pfx
 
       - name: Collect binaries (Linux/macOS)
         if: matrix.platform != 'windows'
@@ -102,19 +182,33 @@ jobs:
           cp artifacts/quarzlampe-desktop-windows/quarzlampe-console.exe release/quarzlampe-console-windows.exe
           chmod +x release/quarzlampe-tray-linux release/quarzlampe-console-linux release/quarzlampe-tray-macos release/quarzlampe-console-macos
 
+      # `core::update::check_for_update` compares the running binary's own
+      # embedded commit (baked in by `core/build.rs` from `GITHUB_SHA`,
+      # always set in Actions) against this file - not against the
+      # release/tag's own git ref, which this action isn't documented to
+      # reliably move when republishing to an already-existing tag like
+      # `desktop-latest`. Keeping this under direct control here instead
+      # avoids depending on that.
+      - name: Record the build's commit SHA for the auto-updater
+        run: echo "${{ github.sha }}" > release/BUILD_SHA.txt
+
       - name: Publish/replace the desktop-latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: desktop-latest
           name: Desktop app - latest build
           body: |
-            Unsigned development builds of the Quarzlampe desktop tray app, rebuilt from the tip of
-            `main` whenever this workflow is run by hand - not a versioned release.
+            Builds of the Quarzlampe desktop tray app, rebuilt from the tip of `main` whenever this
+            workflow is run by hand - not a versioned release. The app itself checks this release
+            periodically and shows an "Update available" link (tray menu + console) when a newer
+            build has been published; it never downloads or installs anything automatically.
 
             **Linux**: built and functionally verified against real hardware.
-            **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic-activity
-            detection have not been exercised on either - treat as experimental.
+            **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic/camera
+            activity detection have not been exercised on either - treat as experimental.
 
-            Unsigned binaries: Windows SmartScreen and macOS Gatekeeper will warn before running them.
+            Signed only if Apple/Windows signing secrets are configured for this repo (see
+            `desktop/PLAN.md`) - otherwise unsigned, and Windows SmartScreen/macOS Gatekeeper will
+            warn before running them.
           prerelease: true
           files: release/*

@@ -707,6 +707,78 @@ desktop/
     two and nothing else, confirmed both in the daemon's in-memory `ListRules` response and in
     `rules.toml` on disk. No macOS/Windows gap here - this is pure console-side logic over triggers
     (`MicActive`/`MicInactive`) that already exist on every platform.
+14. **macOS camera trigger + a more trustworthy mic backend, auto-update checks, code-signing CI
+    scaffolding (ad hoc). ✅ DONE on Linux (where "done" means "runs and is IPC-verified"; the macOS
+    pieces are genuinely new code, still unrun on real macOS hardware).**
+    - **macOS camera trigger, finally implemented.** The earlier gap (see item 12's old reasoning,
+      still visible in git history) was that CoreMediaIO's `FourCharCode` property-selector
+      constants weren't something that could be verified or confidently recalled from this Linux
+      dev environment, and a wrong guess would have compiled while silently always reporting
+      "inactive" - worse than shipping nothing. That blocker is gone: `objc2-core-media-io` is a
+      real, published, actively-maintained binding crate (confirmed via its docs.rs pages, not
+      memory - exact function signatures for `CMIOObjectGetPropertyData`/
+      `CMIOObjectGetPropertyDataSize`, the `CMIOObjectPropertyAddress` struct's fields, and every
+      constant used, all checked one by one) whose constants come straight from Apple's real
+      headers. New `core::camera::macos` enumerates every CMIO device via
+      `kCMIOHardwarePropertyDevices` (CoreMediaIO has no "default input device" the way CoreAudio
+      does) and reports `Active` if any one of them has `kCMIODevicePropertyDeviceIsRunningSomewhere`
+      set - a real Apple-forum code snippet surfaced during research confirms this is the right
+      selector/scope/element combination other tools actually use for this.
+    - **macOS mic detection rebuilt on the same foundation.** `core::mic::macos` used raw
+      `coreaudio-sys` FFI before - flagged at the time as "the least verifiable code in this
+      project" because that crate generates its bindings fresh via `bindgen` against whatever SDK
+      the build machine has, with no way to even inspect the generated names without a Mac. Swapped
+      for `objc2-core-audio`, the CoreAudio sibling of the crate above, for the same reason: published,
+      versioned bindings instead of regenerated-per-build ones. Logic is unchanged (poll
+      `kAudioDevicePropertyDeviceIsRunningSomewhere` on the default input device), only the FFI
+      layer underneath it is more trustworthy now.
+    - **Auto-update checks - notify-only, deliberately not a self-replacing updater.** New
+      `core::update::check_for_update`, called from a new always-running `app::spawn_update_check_loop`
+      (once ~10s after daemon startup, then every 6 hours). Compares the running build's own
+      embedded git commit (`core::update::BUILD_SHA`, baked in by a new `core/build.rs` from the
+      `GITHUB_SHA` env var - `"dev"` for any plain local `cargo build`, which short-circuits the
+      check entirely so ordinary development never sees a false "update available") against a
+      `BUILD_SHA.txt` asset the release workflow now publishes alongside the binaries (deliberately
+      *not* against the GitHub release/tag's own commit ref, which `action-gh-release` isn't
+      documented to reliably move when republishing to an already-existing tag like
+      `desktop-latest`). `DaemonState` gained `update_available: Option<UpdateInfo>`; new
+      `GetUpdateStatus` IPC call; tray menu shows an extra "Update available..." item (opens the
+      release page via the `open` crate) and the console shows the same as a sidebar hyperlink next
+      to "Open web interface". **Deliberately notify-only, not a binary-swapping updater**, for two
+      reasons: no code signing exists yet, so silently downloading and replacing a running binary
+      with an unsigned one fetched over plain HTTPS would be exactly the kind of supply-chain-
+      sensitive step that should wait until signing exists rather than being built around its
+      absence; and replacing a *running* executable's file is a genuinely different operation per
+      OS (Windows generally won't allow overwriting an open `.exe` without a separate
+      swap-on-restart dance) that can't be exercised from this Linux dev environment anyway.
+      **Verified live**: a new `core/examples/update_probe.rs` confirmed the dev-build short-circuit
+      (`BUILD_SHA = dev`, no network call) and, built once with a fake `GITHUB_SHA` to force a real
+      check, made a genuine call to the GitHub API and got back a real 404 (`desktop-latest` doesn't
+      exist yet, since nobody has run `publish-release` against this workflow yet - confirmed
+      separately by listing this repo's actual releases). The `ReleaseResponse`/`ReleaseAsset`
+      deserialization shape was checked against a real existing release (the firmware's `0.3.0` tag)
+      with a throwaway script, not just assumed. The full daemon/console wiring (`DaemonState`
+      field, `GetUpdateStatus` IPC round-trip, the console's poll loop) was verified live against
+      the running daemon: `GetUpdateStatus` correctly returns `available: null` on this dev build.
+    - **Code-signing CI scaffolding - inactive until the user supplies real credentials.** Added
+      guarded steps to `.github/workflows/desktop-build.yml`'s `build` job: macOS codesign (temp
+      keychain + `security import` + `codesign --sign`) and, if notarization secrets are also
+      present, `xcrun notarytool submit --wait` (note: stapling doesn't apply here - it only works
+      on `.app` bundles/disk images/installer packages, not loose Mach-O binaries like these, so
+      Gatekeeper instead does an online ticket check the first time a signed-but-unstapled binary
+      runs); Windows `signtool sign` with a timestamp server. Every step is gated on job-level `env:`
+      vars sourced from secrets (`if: env.APPLE_CERTIFICATE_P12 != ''` etc. - a step's own `env:`
+      block isn't visible to that same step's `if:`, so these have to be job-level) and simply don't
+      run at all while those secrets don't exist, which they don't today - **I cannot obtain actual
+      signing credentials**: a macOS certificate needs a paid Apple Developer Program membership,
+      and a Windows one needs a certificate purchased from a CA, both of which only the user can set
+      up and add as repo secrets (`APPLE_CERTIFICATE_P12`/`APPLE_CERTIFICATE_PASSWORD`/
+      `APPLE_SIGNING_IDENTITY`/`APPLE_NOTARIZATION_APPLE_ID`/`APPLE_NOTARIZATION_PASSWORD`/
+      `APPLE_TEAM_ID` for macOS; `WINDOWS_CERTIFICATE_PFX`/`WINDOWS_CERTIFICATE_PASSWORD` for
+      Windows). Until then this changes nothing about the actual released binaries. Unverified in
+      the deeper sense too: this YAML has never actually run (no push access from this environment),
+      so even the "steps stay skipped when secrets are absent" behavior is written-correctly-by-
+      inspection, not CI-run-confirmed.
 
 ## Verification
 

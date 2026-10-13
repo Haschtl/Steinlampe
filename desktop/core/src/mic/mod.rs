@@ -33,12 +33,9 @@ pub trait MicActivityProvider {
 
 /// The best provider for this platform. Linux is the only one verified
 /// live; Windows (registry `ConsentStore` heuristic) and macOS (CoreAudio
-/// `...IsRunningSomewhere`) are written against each platform's documented
-/// mechanism but unrun - see each module's own doc comment for exactly how
-/// unverified, which differs a lot between the two (Windows' `winreg` API
-/// was at least read from its real source; macOS's `coreaudio-sys` bindings
-/// are generated at build time from the real SDK and can't be inspected at
-/// all without a Mac).
+/// `...IsRunningSomewhere`, via `objc2-core-audio`'s published bindings)
+/// are written against each platform's documented mechanism but unrun -
+/// see each module's own doc comment for exactly how unverified.
 pub fn default_provider() -> Box<dyn MicActivityProvider> {
     #[cfg(target_os = "linux")]
     {

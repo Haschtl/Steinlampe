@@ -78,11 +78,13 @@ dict! {
     "tray.tooltipConnectedWord" => ["connected", "verbunden"],
     "tray.tooltipOnWord" => ["on", "an"],
     "tray.tooltipNoLamps" => ["no lamps connected", "keine Lampen verbunden"],
+    "tray.updateAvailable" => ["Update available\u{2026}", "Update verf\u{fc}gbar\u{2026}"],
 
     // Console: sidebar nav + chrome.
     "nav.connections" => ["Connections", "Verbindungen"],
     "nav.rules" => ["Rules", "Regeln"],
     "nav.openWeb" => ["Open web interface \u{2197}", "Weboberfl\u{e4}che \u{f6}ffnen \u{2197}"],
+    "nav.updateAvailable" => ["Update available \u{2197}", "Update verf\u{fc}gbar \u{2197}"],
     "console.connectingToDaemon" => ["connecting to daemon...", "verbindet mit Daemon\u{2026}"],
     "console.connectedToDaemon" => ["connected to daemon", "mit Daemon verbunden"],
     "console.waitingForDaemon" => ["waiting for daemon", "warte auf Daemon"],

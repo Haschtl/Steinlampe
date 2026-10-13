@@ -86,7 +86,13 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
                 Vec::new()
             });
             println!("[daemon] loaded {} rule(s)", rules.len());
-            let state = Arc::new(Mutex::new(DaemonState { manager, rules, visualizer: None, visualizer_error: None }));
+            let state = Arc::new(Mutex::new(DaemonState {
+                manager,
+                rules,
+                visualizer: None,
+                visualizer_error: None,
+                update_available: None,
+            }));
             let _ = state_tx.send(Arc::clone(&state));
 
             #[cfg(target_os = "linux")]
@@ -272,6 +278,7 @@ fn build_menu(
     index: &mut LampIndex,
     show_item: &MenuItem,
     autostart_item: &CheckMenuItem,
+    update_available: bool,
     quit_item: &MenuItem,
 ) -> Menu {
     autostart_item.set_checked(autostart::is_enabled());
@@ -305,6 +312,9 @@ fn build_menu(
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(show_item);
     let _ = menu.append(autostart_item);
+    if update_available {
+        let _ = menu.append(&MenuItem::with_id("open-update", t(lang, "tray.updateAvailable"), true, None));
+    }
     let _ = menu.append(quit_item);
     menu
 }
@@ -455,6 +465,31 @@ fn spawn_visualizer_loop(state: Arc<Mutex<DaemonState>>) {
                 None => last_sent.clear(),
             }
             std::thread::sleep(Duration::from_millis(100));
+        }
+    });
+}
+
+/// Checks once ~10s after startup (gives networking a moment to come up)
+/// and then every six hours - see `core::update`'s doc comment for why
+/// this is a notify-only check, never a silent self-replace. Six hours
+/// against GitHub's unauthenticated REST rate limit (60 requests/hour per
+/// IP) isn't close to a concern; a `"dev"`-tagged local build (see
+/// `core/build.rs`) short-circuits inside `check_for_update` itself, so
+/// this loop still runs but never actually calls out during ordinary
+/// development.
+fn spawn_update_check_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(10));
+        loop {
+            match quarzlampe_core::update::check_for_update() {
+                Ok(Some(info)) => {
+                    println!("[update] newer build available: {}", info.html_url);
+                    state.blocking_lock().update_available = Some(info);
+                }
+                Ok(None) => {}
+                Err(e) => eprintln!("[update] check failed: {e}"),
+            }
+            std::thread::sleep(Duration::from_secs(6 * 60 * 60));
         }
     });
 }
@@ -734,6 +769,7 @@ fn main() -> anyhow::Result<()> {
             spawn_camera_evaluation_loop(Arc::clone(&s));
             spawn_app_open_watch_loop(Arc::clone(&s));
             spawn_visualizer_loop(Arc::clone(&s));
+            spawn_update_check_loop(Arc::clone(&s));
             daemon_state = Some(s);
         }
 
@@ -741,7 +777,9 @@ fn main() -> anyhow::Result<()> {
             let needs_refresh = last_refresh.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
             if needs_refresh {
                 let lamps = snapshot_lamps(state);
-                let menu = build_menu(lang, &lamps, &mut lamp_index, &show_item, &autostart_item, &quit_item);
+                let update_available = state.blocking_lock().update_available.is_some();
+                let menu =
+                    build_menu(lang, &lamps, &mut lamp_index, &show_item, &autostart_item, update_available, &quit_item);
                 tray_icon.set_menu(Some(Box::new(menu)));
                 let _ = tray_icon.set_icon(Some(render_status_icon(status_color(&lamps))));
                 let _ = tray_icon.set_tooltip(Some(tooltip_text(lang, &lamps)));
@@ -763,6 +801,13 @@ fn main() -> anyhow::Result<()> {
                 let enabled = autostart::is_enabled();
                 if let Err(e) = autostart::set_enabled(!enabled) {
                     eprintln!("[tray] failed to change start-on-boot setting: {e}");
+                }
+            } else if event.id == "open-update" {
+                if let Some(state) = &daemon_state
+                    && let Some(info) = state.blocking_lock().update_available.clone()
+                    && let Err(e) = open::that(&info.html_url)
+                {
+                    eprintln!("[update] failed to open {}: {e}", info.html_url);
                 }
             } else if event.id == "quit" {
                 if let Some(mut child) = console_child.take() {

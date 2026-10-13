@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use eframe::egui;
 use quarzlampe_core::i18n::{t, Lang};
-use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
+use quarzlampe_core::ipc::{IpcClient, IpcResponse, LampSummary, RequestKind, ScannedLamp, UpdateInfo, VisualizerConfig};
 use quarzlampe_core::rules::{Action, QuickRuleKind, Rule, Trigger};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
@@ -61,6 +61,7 @@ enum CoreToUi {
     ScanResults(Vec<ScannedLamp>),
     Rules(Vec<Rule>),
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
+    UpdateStatus(Option<UpdateInfo>),
     Status(String),
 }
 
@@ -103,6 +104,15 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
                 }
                 match client.request(RequestKind::GetVisualizer).await {
                     Ok(IpcResponse::Visualizer { config, last_error }) => { let _ = to_ui.send(CoreToUi::Visualizer { config, last_error }); }
+                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(_) => {}
+                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                }
+                // Reads whatever the daemon's own background check last
+                // found - never triggers a check itself (see
+                // `core::update`'s doc comment for why this is notify-only).
+                match client.request(RequestKind::GetUpdateStatus).await {
+                    Ok(IpcResponse::UpdateStatus { available }) => { let _ = to_ui.send(CoreToUi::UpdateStatus(available)); }
                     Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
                     Ok(_) => {}
                     Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
@@ -283,6 +293,7 @@ struct ConsoleApp {
     visualizer_targets: HashSet<String>,
     visualizer_gain: f32,
     visualizer_unsupported: Option<String>,
+    update_available: Option<UpdateInfo>,
 }
 
 impl ConsoleApp {
@@ -994,6 +1005,7 @@ impl eframe::App for ConsoleApp {
                     }
                     self.visualizer_unsupported = last_error;
                 }
+                CoreToUi::UpdateStatus(available) => self.update_available = available,
                 CoreToUi::Status(s) => self.status = s,
             }
         }
@@ -1029,6 +1041,10 @@ impl eframe::App for ConsoleApp {
                 // is deliberately a thin quick-control/automation surface,
                 // not a reimplementation of it.
                 ui.hyperlink_to(t(lang, "nav.openWeb"), WEB_INTERFACE_URL);
+                if let Some(info) = &self.update_available {
+                    ui.add_space(4.0);
+                    ui.hyperlink_to(t(lang, "nav.updateAvailable"), &info.html_url);
+                }
                 ui.add_space(4.0);
             });
         });
@@ -1164,6 +1180,7 @@ fn main() -> eframe::Result<()> {
                 visualizer_targets: HashSet::new(),
                 visualizer_gain: 4.0,
                 visualizer_unsupported: None,
+                update_available: None,
             }))
         }),
     )

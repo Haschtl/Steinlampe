@@ -9,6 +9,8 @@ pub mod unsupported;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "macos")]
+pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
@@ -26,22 +28,12 @@ pub trait CameraActivityProvider {
 }
 
 /// Linux (scanning `/proc/*/fd` for open `/dev/video*` handles - verified
-/// live) and Windows (the same registry `ConsentStore` heuristic as
+/// live), Windows (the same registry `ConsentStore` heuristic as
 /// `core::mic::windows`, just under `\webcam` instead of `\microphone` -
-/// unverified, no Windows target here) have real backends.
-///
-/// macOS deliberately has none: the equivalent CoreMediaIO API
-/// (`CMIOObjectGetPropertyData` + `kCMIODevicePropertyDeviceIsRunningSomewhere`,
-/// the camera-side sibling of the CoreAudio call `core::mic::macos` uses)
-/// needs exact `FourCharCode` property-selector constants that - unlike
-/// CoreAudio's, which are ubiquitous in tutorials and sample code - aren't
-/// something that could be verified or even recalled with real confidence
-/// here. Shipping a guessed constant would be worse than not shipping
-/// anything: it would compile, query the *wrong* property, and silently
-/// report "inactive" forever with no error - a different and worse
-/// failure mode than the usual "written but unverified" caveat elsewhere
-/// in this project. Left unimplemented until someone can check the real
-/// constants against Apple's headers.
+/// unverified, no Windows target here), and macOS (CoreMediaIO's
+/// `kCMIODevicePropertyDeviceIsRunningSomewhere`, via `objc2-core-media-io`'s
+/// published bindings - also unrun, no macOS target here) all have real
+/// backends - see each module's own doc comment for exactly how unverified.
 pub fn default_provider() -> Box<dyn CameraActivityProvider> {
     #[cfg(target_os = "linux")]
     {
@@ -51,7 +43,11 @@ pub fn default_provider() -> Box<dyn CameraActivityProvider> {
     {
         Box::new(windows::WindowsCameraProvider::new())
     }
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(target_os = "macos")]
+    {
+        Box::new(macos::MacosCameraProvider::new())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         Box::new(unsupported::UnsupportedCameraProvider)
     }

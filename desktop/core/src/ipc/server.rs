@@ -15,6 +15,7 @@ use crate::ipc::discovery_file_path;
 use crate::ipc::protocol::{IpcRequest, IpcResponse, LampSummary, RequestKind, ScannedLamp, VisualizerConfig};
 use crate::rules::{action_to_command, Rule};
 use crate::state::ConnectionState;
+use crate::update::UpdateInfo;
 
 /// Everything the IPC server needs mutable access to. Bundled into one
 /// struct (behind one `Mutex`) rather than two separate locks since every
@@ -31,6 +32,11 @@ pub struct DaemonState {
     /// it can't actually work doesn't just silently do nothing. Written
     /// by the visualizer loop itself, not by any IPC handler.
     pub visualizer_error: Option<String>,
+    /// The last result of `app::spawn_update_check_loop`'s background
+    /// check - `None` until the first check completes (or forever, on a
+    /// local dev build; see `core::update`). Written only by that loop,
+    /// read here for `GetUpdateStatus`.
+    pub update_available: Option<UpdateInfo>,
 }
 
 pub struct IpcServer;
@@ -189,6 +195,10 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
         RequestKind::GetVisualizer => {
             let state = state.lock().await;
             IpcResponse::Visualizer { config: state.visualizer.clone(), last_error: state.visualizer_error.clone() }
+        }
+        RequestKind::GetUpdateStatus => {
+            let state = state.lock().await;
+            IpcResponse::UpdateStatus { available: state.update_available.clone() }
         }
     }
 }

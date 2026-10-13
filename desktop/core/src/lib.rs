@@ -7,3 +7,4 @@ pub mod ipc;
 pub mod mic;
 pub mod rules;
 pub mod state;
+pub mod update;

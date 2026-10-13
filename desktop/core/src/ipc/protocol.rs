@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::rules::model::Rule;
+pub use crate::update::UpdateInfo;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IpcRequest {
@@ -51,6 +52,10 @@ pub enum RequestKind {
     /// every daemon restart.
     SetVisualizer { config: Option<VisualizerConfig> },
     GetVisualizer,
+    /// Whatever the daemon's own background check (see `core::update` and
+    /// `app::spawn_update_check_loop`) last found - never triggers a check
+    /// itself, just reads the last result.
+    GetUpdateStatus,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -62,6 +67,7 @@ pub enum IpcResponse {
     ScanResults { lamps: Vec<ScannedLamp> },
     Rules { rules: Vec<Rule> },
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
+    UpdateStatus { available: Option<UpdateInfo> },
 }
 
 /// Loudness (RMS of system audio) drives brightness, linearly, between

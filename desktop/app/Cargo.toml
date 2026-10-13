@@ -8,6 +8,7 @@ anyhow = "1.0.104"
 directories = "6.0.0"
 global-hotkey = "0.8.0"
 muda = "0.21.2"
+open = "5.4.4"
 quarzlampe-core = { version = "0.1.0", path = "../core" }
 sysinfo = "0.39.6"
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util"] }
