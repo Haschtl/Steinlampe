@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 eframe = "0.36.2"
 egui = "0.36.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 quarzlampe-core = { version = "0.1.0", path = "../core" }
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util"] }
 uuid = { version = "1.28.0", features = ["v4", "serde"] }

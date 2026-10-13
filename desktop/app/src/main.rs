@@ -98,13 +98,54 @@ fn console_binary_path() -> std::io::Result<std::path::PathBuf> {
     Ok(dir.join(name))
 }
 
-fn load_icon() -> tray_icon::Icon {
-    let size = 16u32;
-    let mut rgba = Vec::with_capacity((size * size * 4) as usize);
-    for _ in 0..(size * size) {
-        rgba.extend_from_slice(&[0x5b, 0xe6, 0xff, 0xff]);
+/// Draws a filled dot (transparent outside the circle) in the given color -
+/// the tray icon doubles as a little status LED, see `status_color` below.
+fn render_status_icon(color: [u8; 3]) -> tray_icon::Icon {
+    let size = 32u32;
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    let center = size as f32 / 2.0 - 0.5;
+    let radius = size as f32 / 2.0 - 1.5;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            if (dx * dx + dy * dy).sqrt() <= radius {
+                let i = ((y * size + x) * 4) as usize;
+                rgba[i] = color[0];
+                rgba[i + 1] = color[1];
+                rgba[i + 2] = color[2];
+                rgba[i + 3] = 0xff;
+            }
+        }
     }
-    tray_icon::Icon::from_rgba(rgba, size, size).expect("failed to build placeholder icon")
+    tray_icon::Icon::from_rgba(rgba, size, size).expect("failed to build tray icon")
+}
+
+/// Grey when nothing is connected, a dimmed version of the brand's lamp-icon
+/// cyan (`frontend/public/icon-lamp.svg`'s `#5be6ff` stroke) when lamps are
+/// connected but all off, full brightness the moment any one of them is lit,
+/// so the tray icon itself says "is anything on right now" at a glance
+/// without opening the menu.
+fn status_color(lamps: &[LampSnapshot]) -> [u8; 3] {
+    let any_on = lamps.iter().any(|l| l.connection == ConnectionState::Connected && l.lamp_on == Some(true));
+    let any_connected = lamps.iter().any(|l| l.connection == ConnectionState::Connected);
+    if any_on {
+        [0x5b, 0xe6, 0xff]
+    } else if any_connected {
+        [0x2a, 0x6b, 0x78]
+    } else {
+        [0x5b, 0x61, 0x70]
+    }
+}
+
+fn tooltip_text(lamps: &[LampSnapshot]) -> String {
+    let connected = lamps.iter().filter(|l| l.connection == ConnectionState::Connected).count();
+    let on = lamps.iter().filter(|l| l.connection == ConnectionState::Connected && l.lamp_on == Some(true)).count();
+    if connected == 0 {
+        "Quarzlampe \u{2014} no lamps connected".to_string()
+    } else {
+        format!("Quarzlampe \u{2014} {connected} connected, {on} on")
+    }
 }
 
 fn spawn_or_note(console_child: &mut Option<Child>, console_path: &std::path::Path) {
@@ -277,8 +318,8 @@ fn main() -> anyhow::Result<()> {
     // tray icon.
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(starting_menu))
-        .with_tooltip("Quarzlampe")
-        .with_icon(load_icon())
+        .with_tooltip("Quarzlampe \u{2014} starting\u{2026}")
+        .with_icon(render_status_icon(status_color(&[])))
         .build()?;
 
     let state_rx = spawn_core_runtime();
@@ -301,6 +342,8 @@ fn main() -> anyhow::Result<()> {
                 let lamps = snapshot_lamps(state);
                 let menu = build_menu(&lamps, &mut lamp_index, &show_item, &quit_item);
                 tray_icon.set_menu(Some(Box::new(menu)));
+                let _ = tray_icon.set_icon(Some(render_status_icon(status_color(&lamps))));
+                let _ = tray_icon.set_tooltip(Some(tooltip_text(&lamps)));
                 last_refresh = Some(Instant::now());
             }
         }

@@ -387,6 +387,31 @@ desktop/
    **Verified live** against the real "ON-AIR Lampe" (user confirmed by hand: submenu showed the
    correct name/status, "Turn off" and a brightness preset both worked, menu text updated on the
    next refresh) - no further open issues.
+5b. **Tray icon reflects state; console gets a real taskbar icon (ad hoc). ✅ DONE.** Two small
+   follow-ups the user asked for right after 5a. The tray icon itself (not just its menu) is now a
+   procedurally-drawn dot, recolored on the same ~1.5s refresh as the menu: grey when nothing's
+   connected, a dimmed version of the brand lamp icon's cyan (`frontend/public/icon-lamp.svg`'s
+   `#5be6ff`) when lamps are connected but all off, full brightness the moment any one is lit - a
+   tiny "is anything on" LED readable without opening the menu. Tooltip text got the same treatment
+   (`"N connected, M on"`). The console window now also carries a real icon - the same
+   `icon-lamp.svg` the web frontend uses as its favicon, rasterized once ahead of time
+   (`rsvg-convert`, since nothing already in the dependency tree can rasterize SVG) to
+   `console/assets/icon.png` and loaded via the `image` crate into an `egui::IconData` at startup.
+   **Found live, not anticipated**: `with_icon`'s pixel buffer alone did nothing in this GNOME/
+   Wayland session - Wayland has no `_NET_WM_ICON`-style push from the app; GNOME Shell resolves a
+   window's taskbar/dash/alt-tab icon from a `.desktop` file matching the window's `app_id`
+   (`xdg_toplevel.set_app_id`, exposed as `ViewportBuilder::with_app_id`), not from anything the app
+   draws itself. Fixed by setting `.with_app_id("dev.quarzlampe.console")` and installing a matching
+   `dev.quarzlampe.console.desktop` (`Icon=` pointing at the rasterized PNG by absolute path,
+   `NoDisplay=true` so it doesn't clutter the app grid/search as a fake "real" app) to
+   `~/.local/share/applications/` on this dev machine. That desktop file currently points `Exec=`
+   at the debug build's absolute path - correct for this dev machine only; a real packaged install
+   will need to generate/ship its own desktop file pointing at wherever it actually installs the
+   binary (out of scope now, no packaging/install step exists yet for any platform). Windows/macOS
+   use their own, different icon mechanisms entirely (.ico resource embedding /.app bundle
+   `Info.plist` icon respectively) - neither implemented, both unverified, no hardware here.
+   **Verified live** (user confirmed): tray icon color matched lamp state, console window showed
+   the lamp icon in the taskbar after the app-id + desktop-file fix.
 6. **M5 — Mic trigger end-to-end on Linux.** Real `mic::linux`, plus compiled-but-unverified
    Windows/macOS stubs (`cfg(target_os)`-gated so they never block Linux work), wired into the
    evaluation loop with edge detection; validated by actually toggling mic capture against a real

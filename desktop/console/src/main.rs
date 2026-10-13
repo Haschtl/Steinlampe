@@ -356,6 +356,17 @@ impl eframe::App for ConsoleApp {
     }
 }
 
+/// The same lamp icon the web frontend uses as its favicon
+/// (`frontend/public/icon-lamp.svg`, rasterized to PNG ahead of time since
+/// nothing in this dependency tree can rasterize SVG) - so the console
+/// window gets a real taskbar/dock icon instead of the toolkit default.
+fn load_window_icon() -> egui::IconData {
+    let bytes = include_bytes!("../assets/icon.png");
+    let image = image::load_from_memory(bytes).expect("bundled icon.png is valid").into_rgba8();
+    let (width, height) = image.dimensions();
+    egui::IconData { rgba: image.into_raw(), width, height }
+}
+
 fn main() -> eframe::Result<()> {
     let (to_core, from_ui) = tokio_mpsc::unbounded_channel::<UiToCore>();
     let (to_ui, from_core) = std_mpsc::channel::<CoreToUi>();
@@ -368,7 +379,14 @@ fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([520.0, 480.0])
-            .with_title("Quarzlampe"),
+            .with_title("Quarzlampe")
+            .with_icon(load_window_icon())
+            // On Wayland (GNOME in particular) the taskbar/dash/alt-tab icon
+            // comes from a matching `.desktop` file's `Icon=`, not from this
+            // pixel buffer - `with_icon` above only covers X11 and other
+            // WMs that read `_NET_WM_ICON` directly. The app id has to match
+            // the desktop file's name; see `dev.quarzlampe.console.desktop`.
+            .with_app_id("dev.quarzlampe.console"),
         ..Default::default()
     };
     eframe::run_native(

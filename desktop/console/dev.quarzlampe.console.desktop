@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Quarzlampe
+Comment=Quarzlampe lamp console
+Exec=/home/haschtl/GIT/quarzlampe/desktop/target/debug/quarzlampe-console
+Icon=/home/haschtl/GIT/quarzlampe/desktop/console/assets/icon.png
+Terminal=false
+Categories=Utility;
+NoDisplay=true
