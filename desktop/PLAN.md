@@ -29,6 +29,23 @@ Decisions already made with the user:
   token) - it's revocable by re-pairing, and a keyring dependency would add cross-platform
   complexity (not every Linux session has an unlocked keyring daemon running) for little real
   benefit. Already implemented as `core::ble::trust::FileTokenStore` - no change needed there.
+- **Console UI direction: egui stays, but the layout is getting a real redesign later** - two
+  sections reachable from a left sidebar nav (Connections, Rules), not the current single scrolling
+  panel. Connections: a card per lamp (name, colored status dot + text label, inline error banner,
+  quick-actions baked into the card itself - power toggle, brightness slider, mode stepper, profile
+  chips, all greyed out when not connected) plus a lighter "discovered nearby" row with Connect
+  buttons below the card grid. Rules: compact rows (enable switch, one-line trigger→action→targets
+  summary, fire/delete icon buttons) with an inline "+ New rule" form instead of a separate dialog.
+  Visual direction: dark surface, warm amber accent (chosen to echo "quartz lamp" glow, not the
+  tray icon's placeholder cyan), `system-ui` font stack so each OS still renders its own native
+  typeface. Explicitly **not** a claim that egui renders native OS widgets - it doesn't, and the
+  user accepted that tradeoff (see the exploratory discussion this decision came out of) in exchange
+  for one Rust codebase; a true per-OS native rewrite of just the console stays a possible, deferred
+  option *because* the console is already nothing but a thin IPC client - swapping it later
+  wouldn't touch `core` or the daemon at all. Sketched and approved as a Claude Artifact
+  (static mockup, not real egui code):
+  <https://claude.ai/artifact/5d6WTK125K6DgQhvNmi3bp> - implementing this redesign in the actual
+  `console` crate is still outstanding, not yet scheduled against a milestone number.
 
 ## Protocol facts to reuse, not re-derive
 
@@ -348,6 +365,28 @@ desktop/
    a fresh restart. No gaps found worth a hardening note this time - the only thing M4 deliberately
    left out (by design, see the milestone's own scope) is wiring a trigger to actually fire a rule
    on its own; that's M5.
+5a. **Tray menu lamp controls (ad hoc, not a numbered milestone). ✅ DONE.** The user asked for the
+   OS tray/menu-bar dropdown itself (not just the console window) to list every connected lamp with
+   its live on/off/brightness state and quick controls. `app/src/main.rs` now rebuilds the whole
+   `muda::Menu` from `DaemonState` every ~1.5s (native menu APIs have no in-place item patching, so
+   a full rebuild is the only option) - one `Submenu` per lamp titled `"<name> — <status>"`
+   (e.g. "ON-AIR Lampe — On · 72%"), containing a "Turn on"/"Turn off" toggle and four brightness
+   presets (100/75/50/25%), everything disabled unless the lamp is `Connected` - same rule the
+   console's quick-action controls already follow, kept consistent across both surfaces. The main
+   thread (where the tray's synchronous event loop runs) gets the daemon's `Arc<Mutex<DaemonState>>`
+   handed to it over a `std::sync::mpsc` channel sent once from the async core thread right after
+   construction, then reads it with `tokio::sync::Mutex::blocking_lock()` - safe here specifically
+   because the tray loop is plain synchronous code with no tokio runtime of its own, so there's no
+   risk of the "blocking inside an async context" panic that method guards against. Menu item ids
+   can't embed the raw lamp key directly (btleplug's Linux/BlueZ lamp keys are an opaque `Debug`
+   string full of colons, braces and even an embedded null byte) - a small `LampIndex` assigns each
+   lamp key a stable small integer the first time it's seen and keeps it for the daemon's lifetime,
+   so `lamp-<idx>-toggle`/`lamp-<idx>-bri-<pct>` ids stay valid even if a click races a menu rebuild.
+   A toggle click reads the lamp's *current* on/off state at the moment it's handled (not whatever
+   was true when that menu was last built, up to ~1.5s earlier) so it's never sent backwards.
+   **Verified live** against the real "ON-AIR Lampe" (user confirmed by hand: submenu showed the
+   correct name/status, "Turn off" and a brightness preset both worked, menu text updated on the
+   next refresh) - no further open issues.
 6. **M5 — Mic trigger end-to-end on Linux.** Real `mic::linux`, plus compiled-but-unverified
    Windows/macOS stubs (`cfg(target_os)`-gated so they never block Linux work), wired into the
    evaluation loop with edge detection; validated by actually toggling mic capture against a real
