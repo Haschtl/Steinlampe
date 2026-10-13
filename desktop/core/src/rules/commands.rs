@@ -22,6 +22,21 @@ pub fn action_to_command(action: &Action) -> String {
             }
             parts.join(" ")
         }
+        Action::StartWake { seconds, soft, mode, brightness_pct } => {
+            let mut parts = vec!["wake".to_string()];
+            if *soft {
+                parts.push("soft".to_string());
+            }
+            if let Some(m) = mode {
+                parts.push(format!("mode={m}"));
+            }
+            if let Some(b) = brightness_pct {
+                parts.push(format!("bri={b}"));
+            }
+            parts.push(seconds.to_string());
+            parts.join(" ")
+        }
+        Action::SendMorse { text } => format!("morse {text}"),
     }
 }
 
@@ -47,5 +62,22 @@ mod tests {
     fn notify_with_pattern_and_fade() {
         let action = Action::Notify { pattern_ms: Some(vec![120, 60, 120]), fade_ms: Some(200) };
         assert_eq!(action_to_command(&action), "notify 120 60 120 fade=200");
+    }
+
+    #[test]
+    fn wake_minimal() {
+        let action = Action::StartWake { seconds: 180, soft: false, mode: None, brightness_pct: None };
+        assert_eq!(action_to_command(&action), "wake 180");
+    }
+
+    #[test]
+    fn wake_with_all_options() {
+        let action = Action::StartWake { seconds: 120, soft: true, mode: Some(3), brightness_pct: Some(40) };
+        assert_eq!(action_to_command(&action), "wake soft mode=3 bri=40 120");
+    }
+
+    #[test]
+    fn morse() {
+        assert_eq!(action_to_command(&Action::SendMorse { text: "SOS".to_string() }), "morse SOS");
     }
 }

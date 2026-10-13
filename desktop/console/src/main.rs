@@ -105,16 +105,63 @@ enum Section {
 }
 
 #[derive(Clone, Copy, PartialEq)]
+enum TriggerKind {
+    MicActive,
+    OnBoot,
+    OnBeforeSleep,
+    BeforeShutdown,
+    OnNotification,
+    OnAppOpen,
+    OnKeyPress,
+}
+
+impl TriggerKind {
+    const ALL: [TriggerKind; 7] = [
+        Self::MicActive,
+        Self::OnBoot,
+        Self::OnBeforeSleep,
+        Self::BeforeShutdown,
+        Self::OnNotification,
+        Self::OnAppOpen,
+        Self::OnKeyPress,
+    ];
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::MicActive => "Mic becomes active",
+            Self::OnBoot => "Daemon starts (on boot)",
+            Self::OnBeforeSleep => "System is about to sleep (Linux only)",
+            Self::BeforeShutdown => "System is about to shut down (Linux only)",
+            Self::OnNotification => "A notification appears (Linux, best-effort)",
+            Self::OnAppOpen => "An app starts",
+            Self::OnKeyPress => "A hotkey is pressed (not on Wayland)",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
 enum ActionKind {
     On,
     Off,
     Brightness,
     Mode,
     Profile,
+    NotifyPattern,
+    StartWake,
+    SendMorse,
 }
 
 impl ActionKind {
-    const ALL: [ActionKind; 5] = [Self::On, Self::Off, Self::Brightness, Self::Mode, Self::Profile];
+    const ALL: [ActionKind; 8] = [
+        Self::On,
+        Self::Off,
+        Self::Brightness,
+        Self::Mode,
+        Self::Profile,
+        Self::NotifyPattern,
+        Self::StartWake,
+        Self::SendMorse,
+    ];
 
     fn label(&self) -> &'static str {
         match self {
@@ -123,8 +170,32 @@ impl ActionKind {
             Self::Brightness => "Set brightness",
             Self::Mode => "Set mode",
             Self::Profile => "Load profile",
+            Self::NotifyPattern => "Send notify pattern",
+            Self::StartWake => "Start wake-up",
+            Self::SendMorse => "Send morse code",
         }
     }
+}
+
+/// `global-hotkey`'s combo-string format is `<lowercase modifiers>+<Code>`,
+/// e.g. `"control+alt+KeyL"` - this is every `Code` worth offering in a
+/// dropdown (letters, digits, function keys); media/punctuation keys aren't
+/// worth the extra list length for a lamp shortcut.
+fn key_code_choices() -> Vec<String> {
+    let mut v: Vec<String> = ('A'..='Z').map(|c| format!("Key{c}")).collect();
+    v.extend((0..=9).map(|n| format!("Digit{n}")));
+    v.extend((1..=12).map(|n| format!("F{n}")));
+    v
+}
+
+/// Mirrors the firmware's own validation for `notify`'s positional
+/// duration tokens (`> 0`, otherwise skipped) - see `src/command.cpp`.
+/// `None` (not an empty `Some(vec![])`) when nothing valid was typed, so
+/// `action_to_command` falls back to the firmware's own default pattern
+/// instead of sending a bare `notify` with an explicit-but-empty list.
+fn parse_ms_list(s: &str) -> Option<Vec<u32>> {
+    let values: Vec<u32> = s.split_whitespace().filter_map(|t| t.parse::<u32>().ok()).filter(|&n| n > 0).collect();
+    if values.is_empty() { None } else { Some(values) }
 }
 
 struct ConsoleApp {
@@ -138,14 +209,61 @@ struct ConsoleApp {
     // New-rule form state.
     show_new_rule: bool,
     new_rule_name: String,
-    new_rule_action_kind: ActionKind,
     new_rule_targets: HashSet<String>,
+    new_rule_trigger_kind: TriggerKind,
+    new_rule_app_name: String,
+    new_rule_key_ctrl: bool,
+    new_rule_key_alt: bool,
+    new_rule_key_shift: bool,
+    new_rule_key_super: bool,
+    new_rule_key_code: String,
+    new_rule_action_kind: ActionKind,
     new_rule_brightness: u8,
     new_rule_mode: u32,
     new_rule_profile: u8,
+    new_rule_notify_pattern: String,
+    new_rule_notify_fade: u32,
+    new_rule_notify_repeat: u8,
+    new_rule_wake_seconds: u32,
+    new_rule_wake_soft: bool,
+    new_rule_wake_mode_enabled: bool,
+    new_rule_wake_mode: u32,
+    new_rule_wake_bri_enabled: bool,
+    new_rule_wake_bri: u8,
+    new_rule_morse_text: String,
 }
 
 impl ConsoleApp {
+    fn new_rule_trigger(&self) -> Trigger {
+        match self.new_rule_trigger_kind {
+            TriggerKind::MicActive => Trigger::MicActive,
+            TriggerKind::OnBoot => Trigger::OnBoot,
+            TriggerKind::OnBeforeSleep => Trigger::OnBeforeSleep,
+            TriggerKind::BeforeShutdown => Trigger::BeforeShutdown,
+            TriggerKind::OnNotification => Trigger::OnNotification,
+            TriggerKind::OnAppOpen => Trigger::OnAppOpen { app_name: self.new_rule_app_name.trim().to_string() },
+            TriggerKind::OnKeyPress => Trigger::OnKeyPress { key: self.new_rule_hotkey_string() },
+        }
+    }
+
+    fn new_rule_hotkey_string(&self) -> String {
+        let mut parts = Vec::new();
+        if self.new_rule_key_ctrl {
+            parts.push("control");
+        }
+        if self.new_rule_key_alt {
+            parts.push("alt");
+        }
+        if self.new_rule_key_shift {
+            parts.push("shift");
+        }
+        if self.new_rule_key_super {
+            parts.push("super");
+        }
+        parts.push(self.new_rule_key_code.as_str());
+        parts.join("+")
+    }
+
     fn new_rule_action(&self) -> Action {
         match self.new_rule_action_kind {
             ActionKind::On => Action::On,
@@ -153,7 +271,39 @@ impl ConsoleApp {
             ActionKind::Brightness => Action::SetBrightness { pct: self.new_rule_brightness },
             ActionKind::Mode => Action::SetMode { pattern: self.new_rule_mode },
             ActionKind::Profile => Action::LoadProfile { slot: self.new_rule_profile },
+            ActionKind::NotifyPattern => {
+                let base = parse_ms_list(&self.new_rule_notify_pattern);
+                let repeat = self.new_rule_notify_repeat.max(1) as usize;
+                let pattern_ms = base.map(|v| {
+                    let len = v.len().max(1);
+                    v.into_iter().cycle().take(len * repeat).collect()
+                });
+                Action::Notify {
+                    pattern_ms,
+                    fade_ms: if self.new_rule_notify_fade > 0 { Some(self.new_rule_notify_fade) } else { None },
+                }
+            }
+            ActionKind::StartWake => Action::StartWake {
+                seconds: self.new_rule_wake_seconds.max(1),
+                soft: self.new_rule_wake_soft,
+                mode: if self.new_rule_wake_mode_enabled { Some(self.new_rule_wake_mode) } else { None },
+                brightness_pct: if self.new_rule_wake_bri_enabled { Some(self.new_rule_wake_bri) } else { None },
+            },
+            ActionKind::SendMorse => Action::SendMorse { text: self.new_rule_morse_text.trim().to_string() },
         }
+    }
+
+    fn new_rule_valid(&self) -> bool {
+        let base_ok = !self.new_rule_name.trim().is_empty() && !self.new_rule_targets.is_empty();
+        let trigger_ok = match self.new_rule_trigger_kind {
+            TriggerKind::OnAppOpen => !self.new_rule_app_name.trim().is_empty(),
+            _ => true,
+        };
+        let action_ok = match self.new_rule_action_kind {
+            ActionKind::SendMorse => !self.new_rule_morse_text.trim().is_empty(),
+            _ => true,
+        };
+        base_ok && trigger_ok && action_ok
     }
 
     fn lamp_display_name(&self, lamp_key: &str) -> String {
@@ -175,9 +325,8 @@ impl ConsoleApp {
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(10.0);
 
-        ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
                 lamp_card(ui, lamp, &self.to_core);
@@ -185,7 +334,7 @@ impl ConsoleApp {
         });
 
         if !self.scan_results.is_empty() {
-            ui.add_space(16.0);
+            ui.add_space(18.0);
             ui.label(egui::RichText::new("DISCOVERED NEARBY").small().color(ui.visuals().weak_text_color()));
             ui.label(
                 egui::RichText::new("Pair within ~60s of boot, or it already has a saved token")
@@ -217,25 +366,59 @@ impl ConsoleApp {
                 }
             });
         });
-        ui.add_space(8.0);
+        ui.add_space(10.0);
 
         if self.show_new_rule {
             egui::Frame::NONE
                 .fill(ui.visuals().faint_bg_color)
                 .corner_radius(10.0)
-                .inner_margin(14.0)
+                .inner_margin(16.0)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Name:");
                         ui.text_edit_singleline(&mut self.new_rule_name);
                     });
+
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label("When:");
-                        ui.add_enabled(false, egui::Button::new("Mic becomes active"));
-                        ui.label(
-                            egui::RichText::new("(more triggers later)").small().color(ui.visuals().weak_text_color()),
-                        );
+                        egui::ComboBox::from_id_salt("new_rule_trigger_kind")
+                            .selected_text(self.new_rule_trigger_kind.label())
+                            .show_ui(ui, |ui| {
+                                for kind in TriggerKind::ALL {
+                                    ui.selectable_value(&mut self.new_rule_trigger_kind, kind, kind.label());
+                                }
+                            });
                     });
+                    match self.new_rule_trigger_kind {
+                        TriggerKind::OnAppOpen => {
+                            ui.horizontal(|ui| {
+                                ui.label("App name (as the OS reports it, e.g. \"firefox\"):");
+                                ui.text_edit_singleline(&mut self.new_rule_app_name);
+                            });
+                        }
+                        TriggerKind::OnKeyPress => {
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.new_rule_key_ctrl, "Ctrl");
+                                ui.checkbox(&mut self.new_rule_key_alt, "Alt");
+                                ui.checkbox(&mut self.new_rule_key_shift, "Shift");
+                                ui.checkbox(&mut self.new_rule_key_super, "Super/Cmd");
+                                egui::ComboBox::from_id_salt("new_rule_key_code")
+                                    .selected_text(&self.new_rule_key_code)
+                                    .show_ui(ui, |ui| {
+                                        for code in key_code_choices() {
+                                            let selected = code == self.new_rule_key_code;
+                                            if ui.selectable_label(selected, &code).clicked() {
+                                                self.new_rule_key_code = code;
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+                        _ => {}
+                    }
+
+                    ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label("Then:");
                         egui::ComboBox::from_id_salt("new_rule_action_kind")
@@ -256,8 +439,45 @@ impl ConsoleApp {
                         ActionKind::Profile => {
                             ui.add(egui::DragValue::new(&mut self.new_rule_profile).range(1..=6).prefix("profile slot "));
                         }
+                        ActionKind::NotifyPattern => {
+                            ui.horizontal(|ui| {
+                                ui.label("Pattern (ms, space-separated on/off):");
+                                ui.text_edit_singleline(&mut self.new_rule_notify_pattern)
+                                    .on_hover_text("Leave empty for the firmware's default (120 60 120 200)");
+                            });
+                            ui.horizontal(|ui| {
+                                ui.add(egui::DragValue::new(&mut self.new_rule_notify_fade).range(0..=2000).suffix(" ms fade"));
+                                ui.add(egui::DragValue::new(&mut self.new_rule_notify_repeat).range(1..=10).prefix("repeat "));
+                            });
+                        }
+                        ActionKind::StartWake => {
+                            ui.horizontal(|ui| {
+                                ui.add(egui::DragValue::new(&mut self.new_rule_wake_seconds).range(1..=3600).suffix(" s"));
+                                ui.checkbox(&mut self.new_rule_wake_soft, "soft");
+                            });
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.new_rule_wake_mode_enabled, "mode");
+                                ui.add_enabled(
+                                    self.new_rule_wake_mode_enabled,
+                                    egui::DragValue::new(&mut self.new_rule_wake_mode).range(1..=64),
+                                );
+                                ui.checkbox(&mut self.new_rule_wake_bri_enabled, "brightness %");
+                                ui.add_enabled(
+                                    self.new_rule_wake_bri_enabled,
+                                    egui::DragValue::new(&mut self.new_rule_wake_bri).range(0..=100),
+                                );
+                            });
+                        }
+                        ActionKind::SendMorse => {
+                            ui.horizontal(|ui| {
+                                ui.label("Text:");
+                                ui.text_edit_singleline(&mut self.new_rule_morse_text);
+                            });
+                        }
                         ActionKind::On | ActionKind::Off => {}
                     }
+
+                    ui.add_space(4.0);
                     ui.label("Targets:");
                     ui.horizontal_wrapped(|ui| {
                         for lamp in &self.lamps {
@@ -272,18 +492,17 @@ impl ConsoleApp {
                             }
                         }
                     });
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Cancel").clicked() {
                             self.show_new_rule = false;
                         }
-                        let can_save = !self.new_rule_name.is_empty() && !self.new_rule_targets.is_empty();
-                        if ui.add_enabled(can_save, egui::Button::new("Save rule")).clicked() {
+                        if ui.add_enabled(self.new_rule_valid(), egui::Button::new("Save rule")).clicked() {
                             let rule = Rule {
                                 id: Uuid::new_v4(),
                                 name: std::mem::take(&mut self.new_rule_name),
                                 enabled: true,
-                                trigger: Trigger::MicActive,
+                                trigger: self.new_rule_trigger(),
                                 targets: self.new_rule_targets.iter().cloned().collect(),
                                 action: self.new_rule_action(),
                             };
@@ -293,7 +512,7 @@ impl ConsoleApp {
                         }
                     });
                 });
-            ui.add_space(12.0);
+            ui.add_space(14.0);
         }
 
         for rule in &self.rules {
@@ -322,7 +541,8 @@ impl ConsoleApp {
                     let targets: Vec<String> = rule.targets.iter().map(|k| self.lamp_display_name(k)).collect();
                     ui.label(
                         egui::RichText::new(format!(
-                            "Mic active \u{2192} {} \u{b7} {}",
+                            "{} \u{2192} {} \u{b7} {}",
+                            describe_trigger(&rule.trigger),
                             describe_action(&rule.action),
                             targets.join(", ")
                         ))
@@ -335,6 +555,18 @@ impl ConsoleApp {
     }
 }
 
+fn describe_trigger(trigger: &Trigger) -> String {
+    match trigger {
+        Trigger::MicActive => "mic becomes active".to_string(),
+        Trigger::OnBoot => "daemon starts".to_string(),
+        Trigger::OnBeforeSleep => "system is about to sleep".to_string(),
+        Trigger::BeforeShutdown => "system is about to shut down".to_string(),
+        Trigger::OnNotification => "a notification appears".to_string(),
+        Trigger::OnAppOpen { app_name } => format!("\"{app_name}\" starts"),
+        Trigger::OnKeyPress { key } => format!("hotkey {key} is pressed"),
+    }
+}
+
 fn describe_action(action: &Action) -> String {
     match action {
         Action::On => "turn on".to_string(),
@@ -342,7 +574,21 @@ fn describe_action(action: &Action) -> String {
         Action::SetBrightness { pct } => format!("set brightness to {pct}%"),
         Action::SetMode { pattern } => format!("set mode to {pattern}"),
         Action::LoadProfile { slot } => format!("load profile {slot}"),
-        Action::Notify { .. } => "notify".to_string(),
+        Action::Notify { .. } => "send notify pattern".to_string(),
+        Action::StartWake { seconds, soft, mode, brightness_pct } => {
+            let mut parts = vec![format!("start a {seconds}s wake-up")];
+            if *soft {
+                parts.push("(soft)".to_string());
+            }
+            if let Some(m) = mode {
+                parts.push(format!("mode {m}"));
+            }
+            if let Some(b) = brightness_pct {
+                parts.push(format!("to {b}%"));
+            }
+            parts.join(" ")
+        }
+        Action::SendMorse { text } => format!("send morse \"{text}\""),
     }
 }
 
@@ -391,9 +637,10 @@ fn lamp_card(ui: &mut egui::Ui, lamp: &LampSummary, to_core: &tokio_mpsc::Unboun
     };
 
     ui.scope(|ui| {
-        ui.set_width(240.0);
-        egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).corner_radius(10.0).inner_margin(14.0).show(ui, |ui| {
-            ui.set_width(212.0);
+        ui.set_width(248.0);
+        egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).corner_radius(12.0).inner_margin(16.0).show(ui, |ui| {
+            ui.set_width(216.0);
+            ui.spacing_mut().item_spacing.y = 8.0;
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.strong(&lamp.name);
@@ -480,21 +727,24 @@ impl eframe::App for ConsoleApp {
             }
         }
 
-        egui::Panel::left("nav").default_size(170.0).resizable(false).show(ui, |ui| {
-            ui.add_space(8.0);
+        egui::Panel::left("nav").default_size(180.0).resizable(false).show(ui, |ui| {
+            ui.add_space(10.0);
             ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                ui.painter().rect_filled(rect, 5.0, ACCENT);
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 6.0, ACCENT);
+                ui.add_space(2.0);
                 ui.strong("Quarzlampe");
             });
-            ui.add_space(16.0);
-            if ui.selectable_label(self.section == Section::Connections, "Connections").clicked() {
+            ui.add_space(18.0);
+            if ui.selectable_label(self.section == Section::Connections, "  Connections").clicked() {
                 self.section = Section::Connections;
             }
-            if ui.selectable_label(self.section == Section::Rules, "Rules").clicked() {
+            ui.add_space(2.0);
+            if ui.selectable_label(self.section == Section::Rules, "  Rules").clicked() {
                 self.section = Section::Rules;
             }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                ui.add_space(10.0);
                 ui.label(egui::RichText::new(&self.status).small().color(ui.visuals().weak_text_color()));
             });
         });
@@ -523,7 +773,8 @@ fn load_window_icon() -> egui::IconData {
     egui::IconData { rgba: image.into_raw(), width, height }
 }
 
-/// Dark theme with the brand's warm accent color, matching the approved
+/// Dark theme with the brand's warm accent color, plus a bit more breathing
+/// room than egui's defaults (spacing/padding), matching the approved
 /// console sketch - see PLAN.md's "Console UI direction" note. Not a claim
 /// that this looks like a native OS widget set; see that note for why.
 fn apply_visuals(ctx: &egui::Context) {
@@ -532,6 +783,12 @@ fn apply_visuals(ctx: &egui::Context) {
     visuals.selection.stroke.color = egui::Color32::from_rgb(0x23, 0x14, 0x05);
     visuals.hyperlink_color = ACCENT;
     ctx.set_visuals(visuals);
+
+    ctx.all_styles_mut(|style| {
+        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+        style.spacing.button_padding = egui::vec2(10.0, 6.0);
+        style.spacing.interact_size.y = 24.0;
+    });
 }
 
 fn main() -> eframe::Result<()> {
@@ -545,7 +802,7 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([760.0, 560.0])
+            .with_inner_size([860.0, 620.0])
             .with_title("Quarzlampe")
             .with_icon(load_window_icon())
             // On Wayland (GNOME in particular) the taskbar/dash/alt-tab icon
@@ -571,11 +828,28 @@ fn main() -> eframe::Result<()> {
                 section: Section::Connections,
                 show_new_rule: false,
                 new_rule_name: String::new(),
-                new_rule_action_kind: ActionKind::On,
                 new_rule_targets: HashSet::new(),
+                new_rule_trigger_kind: TriggerKind::MicActive,
+                new_rule_app_name: String::new(),
+                new_rule_key_ctrl: true,
+                new_rule_key_alt: true,
+                new_rule_key_shift: false,
+                new_rule_key_super: false,
+                new_rule_key_code: "KeyL".to_string(),
+                new_rule_action_kind: ActionKind::On,
                 new_rule_brightness: 50,
                 new_rule_mode: 1,
                 new_rule_profile: 1,
+                new_rule_notify_pattern: String::new(),
+                new_rule_notify_fade: 0,
+                new_rule_notify_repeat: 1,
+                new_rule_wake_seconds: 180,
+                new_rule_wake_soft: false,
+                new_rule_wake_mode_enabled: false,
+                new_rule_wake_mode: 1,
+                new_rule_wake_bri_enabled: false,
+                new_rule_wake_bri: 80,
+                new_rule_morse_text: String::new(),
             }))
         }),
     )
