@@ -1,0 +1,15 @@
+[package]
+name = "quarzlampe-tray"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.36.2"
+egui = "0.36.2"
+muda = "0.21.2"
+# ksni instead of the default libappindicator backend: on Linux/BSD it runs its
+# D-Bus service on its own worker thread, so it doesn't need a GTK event loop
+# pumped manually from the egui frame loop (the default backend would).
+# GNOME-on-Wayland without an extension still won't show any tray icon either
+# way - that's a compositor limitation, not something either backend fixes.
+tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
