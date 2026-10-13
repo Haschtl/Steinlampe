@@ -939,6 +939,34 @@ desktop/
     would hide. All five matched the intended shape and division exactly. The actual shipped
     Rust code was still separately confirmed to build, pass clippy, and start the daemon without
     panicking - the Python script only verified the geometry, not that the real code compiles.
+19. **Auto-reconnect for rule/visualizer-relevant lamps (ad hoc). ✅ DONE, verified live against
+    the real lamp.** Asked explicitly, with a design question to settle first: lamps a rule or the
+    music visualizer targets should auto-connect after boot and keep getting periodically
+    re-checked for being back in range - "nicht zu verwechseln mit den max5 versuchen" (item 16's
+    give-up-after-5-failures mechanism). Decision, reasoned through before writing any code: a
+    periodic re-scan, not just raising item 16's backoff ceiling - extending the backoff alone only
+    helps a lamp *already* spawned as an actor this session, it can't discover a lamp that was
+    never in range (and thus never scanned) since daemon boot at all, since `connect_by_key`
+    requires the key to already be in the scan cache. A periodic scan solves both: finding a
+    never-seen lamp, and re-nudging one that's sitting in `ReconnectFailed`.
+    - `spawn_auto_reconnect_loop`: every 2 minutes (first check 15s after boot), computes the set
+      of lamp keys targeted by an *enabled* rule or the live visualizer config
+      (`automation_relevant_lamp_keys`), narrows that to the ones actually worth looking for right
+      now - never seen this session, or sitting in `ReconnectFailed`
+      (`lamps_needing_auto_reconnect`) - and only then does a 4s scan, auto-connecting any match.
+      Deliberately leaves alone any lamp that's `Connected`/`Connecting`/mid-backoff-`Reconnecting`,
+      so this coarse sweep never tears down and restarts an actor's already-in-progress retry cycle
+      - the two mechanisms are designed to not step on each other. No rules and no active
+      visualizer means zero background scanning from this loop at all.
+    - **Verified live against the real "Quarzlampe" BT device**: saved a rule targeting its real
+      (never-connected-this-daemon-run) lamp key, confirmed `ListLamps` stayed empty immediately
+      after (saving a rule alone doesn't connect anything), then watched the loop's first tick
+      actually find and connect it - confirmed via a temporary debug log showing the computed
+      `relevant`/`needing_attention` sets matching expectations exactly, then the real `"Quarzlampe"
+      is back in range, connecting` line, then `ListLamps` showing the lamp present (ending in
+      `reconnect_failed` after lamp_actor's own 5-try cycle, the same real BlueZ "No more profiles
+      to connect to" error seen in item 16 - a pre-existing BLE quirk with this device/session,
+      unrelated to this feature). Debug logging removed before committing.
 
 ## Verification
 

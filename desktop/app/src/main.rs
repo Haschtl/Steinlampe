@@ -101,6 +101,7 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
                 spawn_notification_watch(Arc::clone(&state)).await;
             }
             fire_rules_where_async(&state, |t| *t == Trigger::OnBoot).await;
+            spawn_auto_reconnect_loop(Arc::clone(&state));
 
             if let Err(e) = IpcServer::bind_and_serve(state).await {
                 eprintln!("[daemon] IPC server error: {e}");
@@ -568,6 +569,84 @@ fn spawn_update_check_loop(state: Arc<Mutex<DaemonState>>) {
                 Err(e) => eprintln!("[update] check failed: {e}"),
             }
             std::thread::sleep(Duration::from_secs(6 * 60 * 60));
+        }
+    });
+}
+
+const AUTO_RECONNECT_INTERVAL: Duration = Duration::from_secs(120);
+const AUTO_RECONNECT_SCAN_SECONDS: u64 = 4;
+
+/// Lamp keys referenced by an *enabled* rule's targets, or by the live
+/// (not persisted - see `DaemonState::visualizer`'s doc comment) music
+/// visualizer config's targets - the lamps something would actually act
+/// on if they were connected, as opposed to one the user merely paired
+/// once and never automated.
+async fn automation_relevant_lamp_keys(state: &Arc<Mutex<DaemonState>>) -> HashSet<String> {
+    let guard = state.lock().await;
+    let mut keys: HashSet<String> =
+        guard.rules.iter().filter(|r| r.enabled).flat_map(|r| r.targets.iter().cloned()).collect();
+    if let Some(cfg) = &guard.visualizer {
+        keys.extend(cfg.targets.iter().cloned());
+    }
+    keys
+}
+
+/// Of the given keys, the ones worth scanning for right now: never seen
+/// this session at all, or seen but given up on (see item 16's
+/// `ConnectionState::ReconnectFailed`). A lamp that's `Connected`,
+/// `Connecting`, or still within its own backoff cycle (`Reconnecting`)
+/// is deliberately left alone here - re-triggering `connect_by_key` for
+/// it would tear down and restart its actor, resetting a retry cycle
+/// that's already in progress for no benefit.
+async fn lamps_needing_auto_reconnect(state: &Arc<Mutex<DaemonState>>, relevant: &HashSet<String>) -> HashSet<String> {
+    let guard = state.lock().await;
+    relevant
+        .iter()
+        .filter(|key| match guard.manager.lamps().find(|(k, _)| k.as_str() == key.as_str()) {
+            None => true,
+            Some((_, handle)) => handle.state_rx.borrow().connection == ConnectionState::ReconnectFailed,
+        })
+        .cloned()
+        .collect()
+}
+
+/// Periodically re-scans for, and auto-connects, any lamp that something
+/// (an enabled rule, or the live visualizer) actually depends on being
+/// connected - so an automation keeps working across the lamp going out
+/// of range and coming back, or being powered on well after the daemon
+/// already booted, without anyone having to open the console and click
+/// Connect/Reconnect by hand. Deliberately separate from `lamp_actor`'s
+/// own give-up-after-5-failures mechanism (item 16): that's a tight,
+/// per-lamp retry loop meant to stop hammering one unreachable device;
+/// this is a coarse, infrequent "has anything important come back into
+/// range" sweep, and the two are designed to not interfere with each
+/// other (see `lamps_needing_auto_reconnect`'s doc comment). Only
+/// scans at all when there's at least one lamp actually worth finding -
+/// no rules/visualizer in use means no background radio activity from
+/// this loop whatsoever.
+fn spawn_auto_reconnect_loop(state: Arc<Mutex<DaemonState>>) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(15)).await;
+        loop {
+            let relevant = automation_relevant_lamp_keys(&state).await;
+            if !relevant.is_empty() {
+                let needing_attention = lamps_needing_auto_reconnect(&state, &relevant).await;
+                if !needing_attention.is_empty() {
+                    let mut guard = state.lock().await;
+                    match guard.manager.scan(Duration::from_secs(AUTO_RECONNECT_SCAN_SECONDS)).await {
+                        Ok(found) => {
+                            for lamp in found {
+                                if needing_attention.contains(&lamp.lamp_key) {
+                                    println!("[auto-reconnect] \"{}\" is back in range, connecting", lamp.name);
+                                    let _ = guard.manager.connect_by_key(&lamp.lamp_key, lamp.name);
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("[auto-reconnect] scan failed: {e}"),
+                    }
+                }
+            }
+            tokio::time::sleep(AUTO_RECONNECT_INTERVAL).await;
         }
     });
 }
