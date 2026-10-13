@@ -17,6 +17,18 @@ Decisions already made with the user:
 - **All three OSes architected from day one**, with an explicit caveat: this environment only has
   Linux (Manjaro) hardware to build and verify against. Windows/macOS code will be written against
   documented/community-known approaches but is **unverified** until run on those OSes.
+- **BLE connections, the rule engine, and mic-active detection all live in the daemon
+  (`desktop/app`), not the console.** Decided explicitly once the two-process split (see M0 below)
+  raised the question: the whole point of the mic-trigger use case is background automation that
+  works whether or not anyone has the console window open, so that logic can't live in a process
+  that only exists while the console is open. The console becomes a thin client that talks to the
+  daemon over local IPC (plain loopback TCP - see "Daemon/console IPC" below) to show live lamp
+  state and send manual commands/rule edits; it has no BLE/tokio logic of its own.
+- **Token storage: plain file, not the OS keyring.** The token only buys reconnect convenience, not
+  a real security boundary (same reasoning the web frontend already applies to its `localStorage`
+  token) - it's revocable by re-pairing, and a keyring dependency would add cross-platform
+  complexity (not every Linux session has an unlocked keyring daemon running) for little real
+  benefit. Already implemented as `core::ble::trust::FileTokenStore` - no change needed there.
 
 ## Protocol facts to reuse, not re-derive
 
@@ -101,10 +113,28 @@ after fixing that, the root noticing the console's close (two independently-tick
 handing off state through a shared `Arc<AtomicBool>`) stayed noticeably delayed. The two-process
 split sidesteps both issues entirely rather than chasing them further.
 
+## Daemon/console IPC
+
+Since BLE/rules/mic detection all live in the daemon now, the console needs a way to see lamp state
+and send commands/rule edits without any of that logic itself. Plain **loopback TCP**
+(`127.0.0.1`, OS-assigned port), not a platform-specific transport (Unix sockets/named pipes via
+`interprocess`, or D-Bus) - loopback TCP works identically via `std`/`tokio` on all three OSes with
+no extra crate, which matters given none of this can be tested on Windows/macOS here. The daemon
+writes `{port}\n{local_auth_token}` to a small file in the OS runtime/config dir on startup (via
+`directories::ProjectDirs`) so the console can find and authenticate to it - the auth token is just
+local hygiene (stop some other process on the same machine from connecting), not a real security
+boundary. Message framing: newline-delimited JSON (`serde_json`), one `IpcRequest`/`IpcEvent` enum
+pair defined once in `core` and shared by both sides - mirrors the "one enum, no restructuring
+later" approach already used for `Trigger`/`Action`. This is an implementation detail, not a
+product decision, so it wasn't put to the user as a choice - flagged here for visibility rather than
+silently decided.
+
 ## BLE client design
 
-Per-lamp tokio task ("actor"), one `btleplug::platform::Peripheral` each, talking to the rest of the
-app only via channels — never `.await` on the egui thread. Core shapes:
+Per-lamp tokio task ("actor"), one `btleplug::platform::Peripheral` each, living in the **daemon**
+process and talking to the rest of the daemon only via channels — never `.await` on the egui thread
+(moot for the daemon itself, which has no egui thread, but the same discipline applies to whatever
+thread drives the IPC server). Core shapes:
 
 ```rust
 pub struct LampId(pub Uuid); // == registry LampKey
@@ -214,12 +244,16 @@ desktop/
       mic/{mod,linux,windows,macos,unsupported}.rs
       rules/{model,engine,commands}.rs
       config/mod.rs
+      ipc/{protocol,server,client}.rs             # M2: shared request/event enums + both ends
     examples/probe.rs           # done (M1): terminal-only exerciser, no GUI
-  app/src/
-    main.rs                     # done (M0): window-less tray daemon, spawns console on demand
-  console/src/
-    main.rs                     # done (M0, placeholder content): ordinary eframe app, no hide tricks
-                                 # M2+ fills this in: lamp list, rule editor, pairing flow
+  app/src/                      # the daemon - owns BLE/rules/mic, runs the IPC server
+    main.rs                      # done (M0): window-less tray daemon, spawns console on demand
+                                  # M2+: also starts the tokio runtime, LampManager, rule engine,
+                                  # mic provider, and ipc::server
+  console/src/                  # the UI - an ipc::client, no BLE/tokio logic of its own
+    main.rs                      # done (M0, placeholder content): ordinary eframe app, no hide tricks
+                                  # M2+: connects to the daemon's IPC port, renders lamp list /
+                                  # rule editor / pairing flow from what the daemon reports
 ```
 
 ## Milestones (highest-risk unknowns first)
@@ -251,15 +285,18 @@ desktop/
      reconnect later using that stored token outside the window and confirm it succeeds). The code
      path exists (`HandshakeOutcome::Trusted { fresh_token }`) but hasn't been exercised against a
      freshly-booted lamp yet - do that before considering M1 fully closed.
-3. **M2 — Wire core::ble into the real console.** The `console` binary grows a lamp list using
-   `core::ble` (the actor/channel pieces from the original plan - `lamp_actor.rs`/`manager.rs` -
-   still need building; the probe only proved the handshake logic works standalone, not the
-   actor/channel wiring a GUI needs) showing on/off only, driven from the daemon-spawned console
-   process. Since BLE connections now live in whichever process currently has the console open
-   (not the always-running daemon), closing the console necessarily drops any live BLE
-   connections - reopening it must reconnect from scratch. Worth deciding deliberately whether
-   that's acceptable for v1 or whether BLE ownership should move to the daemon with the console
-   as a thin remote display (bigger change, not needed yet - note it here so it isn't forgotten).
+3. **M2 — Wire core::ble into the daemon, make the console a thin IPC client.** Resolved (decided
+   with the user): BLE/rules/mic detection all live in `app` (the daemon), not `console` - see
+   "Decisions already made" above. Build order: (a) `core::ble::{lamp_actor, manager}` - the
+   tokio-task-per-lamp actor and `LampManager`, reusing `handshake.rs`/`trust.rs`/`line_codec.rs`
+   from M1 (the probe only proved the handshake logic standalone, not this actor/channel wiring);
+   (b) `core::ipc` - the shared request/event protocol plus server (daemon) and client (console)
+   halves, loopback TCP as decided above; (c) wire the daemon's `main.rs` to start a tokio runtime,
+   `LampManager`, and the IPC server alongside the existing tray-icon loop; (d) the console connects
+   over IPC on startup and renders a lamp list with on/off only, reusing the real probe logic's
+   proven connect/handshake behavior end to end, just via IPC instead of in-process. Because BLE now
+   survives console close/reopen by construction (it lives in the daemon), there's no "reconnect
+   from scratch" concern to design around.
 4. **M3 — Console polish.** Live STATE-driven display, multi-lamp selection, brightness/mode/profile
    quick actions — via the same `action_to_command` the rule engine reuses later.
 5. **M4 — Rule engine + persisted config, manually fired.** Rule editor UI (trigger picker already a
