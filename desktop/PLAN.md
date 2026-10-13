@@ -57,50 +57,49 @@ IDs: `uuid`. Mic backends: `pulsectl`/`libpulse-binding` (Linux), `winreg` (Wind
 
 ## Highest-risk unknown: tray + egui integration
 
-**M0 spike completed and verified on the real dev machine (Manjaro, GNOME, Wayland) — findings below
-supersede the original speculative plan.**
+**M0 done, verified on the real dev machine (Manjaro, GNOME, Wayland). The architecture below is the
+final, working one — it replaced an earlier single-process attempt that worked but left a cosmetic
+blemish; see "Rejected alternative" at the end for why.**
 
-Verified approach (`desktop/app/src/main.rs`):
-- Use `tray-icon` with `default-features = false, features = ["ksni"]` instead of the default
-  `libappindicator`/GTK backend — KSNI runs its D-Bus service on its own worker thread, so no manual
-  GTK event-loop pumping is needed on Linux. Confirmed: a real tray icon appears in the GNOME top bar
-  on this machine with zero extra setup — Manjaro's GNOME spin ships the AppIndicator/
-  KStatusNotifierItem Shell extension by default. **Stock/vanilla GNOME (plain Fedora/Ubuntu GNOME
-  without that extension) would still show no tray icon at all** — that part of the original risk is
-  real and unchanged, just not applicable to this dev machine.
-- `ViewportCommand::Visible(false)` on the **root** viewport does **not** reliably hide the window
-  under GNOME/Mutter on Wayland — confirmed by testing: `close_requested` kept re-firing every frame
-  and the window never actually disappeared. Wayland's xdg-shell has no generic client-side "hide"
-  request, so this isn't a bug to fix, it's a protocol gap.
-- **Working pattern instead**: make the root viewport a permanent, invisible 1×1, no-decorations
-  anchor (`ViewportBuilder::default().with_inner_size([1.0,1.0]).with_visible(false)
-  .with_decorations(false)`) that is *never* shown and *never* closed — it just keeps the process
-  (and tray icon) alive. Put the actual console UI in a **deferred child viewport**
-  (`Context::show_viewport_deferred`, id via `ViewportId::from_hash_of(...)`, since `from_hash_of`
-  isn't `const`) that's simply re-registered every frame while a `console_open: bool` flag is true,
-  and left un-registered (egui's viewport GC then tears down the OS window) when false. Closing *that*
-  viewport's X button only needs `CancelClose` + flipping the flag — never touches the root, so the
-  process survives regardless of what Wayland does with "hide." Confirmed working: close → process
-  alive (checked via `ps`) → tray-icon click → window reopens, full cycle verified by hand.
-  - Caveat: the deferred viewport's `viewport_ui_cb` is a plain `Fn` (not `FnMut`), so it can't hold
-    `&mut self` directly — signal "close was requested" back to the app via a shared
-    `Arc<AtomicBool>` cloned into the closure, read-and-reset once per frame in `logic()`.
-  - Tray/menu event draining and the close-interception logic belong in `eframe::App::logic()`
-    (new 0.36.2 API split: `logic()` runs every frame even while hidden/no painting allowed; `ui()`
-    only runs when something is actually visible) — not in a single `update()` like older eframe.
-- **Known unresolved cosmetic issue**: the always-present invisible root viewport still shows as a
-  second, blank taskbar entry on this GNOME/Wayland session. `ViewportBuilder::with_taskbar(false)`
-  (and `with_window_type` X11 hints) had no effect — Wayland has no standard "skip taskbar" hint
-  either, this is the same category of gap as the hide issue. Living with it for now; the real fix
-  would be the Plan B process-split below, which never creates an OS window for the tray-only part at
-  all. Not worth that complexity just to remove one blank taskbar row.
-- Windows/macOS are expected to piggyback on the same thread's message/run loop "for free," per
-  `tray-icon`'s own docs, but this is still unverified — no hardware to test on.
-- **Fallback (Plan B), not currently needed**: split into a tray-only process (bare winit loop, no
-  windows at all) that spawns/attaches a second process for the egui console via local IPC
-  (`interprocess` crate). The verified deferred-viewport pattern above made this unnecessary for M0;
-  revisit only if the blank-taskbar-row cosmetic issue turns out to matter more than expected, or if
-  Windows/macOS testing surfaces a blocker the single-process pattern can't work around.
+**Two-process architecture** (`desktop/app` = daemon, `desktop/console` = UI):
+- `desktop/app` (`quarzlampe-tray`) is a tiny, **window-less** daemon: `tray-icon` (with
+  `default-features = false, features = ["ksni"]` — the KSNI backend runs its own D-Bus worker
+  thread and needs no event loop at all, so this binary has **no eframe/egui/winit dependency**) +
+  `muda` for the menu, polling `TrayIconEvent::receiver()`/`MenuEvent::receiver()` in a plain
+  `loop { ...; thread::sleep(100ms) }`. On "Show console" (tray click or menu item), it spawns
+  `quarzlampe-console` as a child process if one isn't already running (tracked via
+  `Option<std::process::Child>` + `try_wait()`); on "Quit" it kills that child (if any) and exits.
+  The console binary is located as a sibling of the daemon's own exe
+  (`std::env::current_exe()?.parent()`) — true for `cargo build`/`cargo run` since workspace
+  binaries land in the same `target/<profile>/` dir, and a packaged release should ship them the
+  same way.
+- `desktop/console` (`quarzlampe-console`) is a perfectly ordinary `eframe` app — one real, visible,
+  normal window, **no hide tricks at all**. Closing it just ends that process normally. The daemon
+  doesn't care; it only tracks whether the child is alive to avoid spawning duplicates.
+- Confirmed live: tray icon appears (Manjaro's GNOME ships the AppIndicator/KStatusNotifierItem
+  extension by default — **stock/vanilla GNOME without it still won't show one**, that part of the
+  original risk is real, just not applicable to this dev machine), clicking it spawns the console,
+  closing the console window exits only that process (`ps` showed the console as a reaped/defunct
+  child while the daemon PID kept running untouched), and critically: **no second/blank taskbar
+  entry at all**, since the daemon never creates a window to begin with.
+- Windows/macOS: `tray-icon`'s own docs say its backends piggyback on the native message/run loop
+  "for free," but since this daemon has no event loop of its own on any platform (just a sleep-poll
+  loop), that claim is moot here anyway — still, actually running this on Windows/macOS is
+  unverified, no hardware available.
+
+**Rejected alternative (for the record, don't re-attempt without new information)**: a single
+eframe process with a permanent, invisible 1×1 "anchor" root viewport keeping the process alive,
+and the real console as a `show_viewport_deferred` child viewport that could be closed/reopened
+independently of the root. This **worked** (close → process survives → tray click → reopens, cycle
+verified by hand) but had two problems that motivated the switch: (1) the invisible root still
+showed as a permanent blank taskbar entry — `ViewportBuilder::with_taskbar(false)` and X11
+`with_window_type` hints had no effect, Wayland has no standard "skip taskbar" hint, full stop; (2)
+`request_repaint_after` is scoped to the *calling* viewport, not global, so the root's and the
+deferred console's repaint schedules ran independently — missing a `request_repaint_after` call
+inside the deferred viewport's own callback caused multi-second delays noticing clicks, and even
+after fixing that, the root noticing the console's close (two independently-ticking contexts
+handing off state through a shared `Arc<AtomicBool>`) stayed noticeably delayed. The two-process
+split sidesteps both issues entirely rather than chasing them further.
 
 ## BLE client design
 
@@ -200,33 +199,38 @@ matching rule, dispatch `action_to_command` to each target lamp's command channe
 
 ## Module layout
 
-Two-crate workspace under `desktop/` — pure logic separated from the GUI binary, so the BLE/rules
-core is unit-testable without a display (important on Linux-only dev hardware):
+**Three-crate workspace** under `desktop/` (revised from the original two-crate plan once M0 settled
+on the two-*process* architecture above — `app` and `console` are separate binaries/processes, both
+depending on `core` for shared logic):
 
 ```
 desktop/
-  Cargo.toml                 # workspace
-  core/src/
-    ble/{uuids,line_codec,lamp_actor,manager,trust}.rs
-    state.rs                 # LampState + STATE| parser
-    mic/{mod,linux,windows,macos,unsupported}.rs
-    rules/{model,engine,commands}.rs
-    config/mod.rs
-    app_handle.rs             # wires manager+engine+config, exposes channels to the GUI
+  Cargo.toml                  # workspace (members: core, app, console)
+  core/
+    src/
+      ble/{uuids,line_codec,handshake,trust}.rs   # done (M1)
+      ble/{lamp_actor,manager}.rs                 # M2: tokio-task-per-lamp, channel-based
+      state.rs                  # LampState + STATE| parser
+      mic/{mod,linux,windows,macos,unsupported}.rs
+      rules/{model,engine,commands}.rs
+      config/mod.rs
+    examples/probe.rs           # done (M1): terminal-only exerciser, no GUI
   app/src/
-    main.rs                   # spawns tokio thread, calls eframe::run_native
-    tray.rs                    # TrayIcon setup/menu/event drain, GTK pump (Linux)
-    ui/{console,rule_editor,pairing}.rs
-    bridge.rs                   # sync-friendly snapshot accessors over core's channels
+    main.rs                     # done (M0): window-less tray daemon, spawns console on demand
+  console/src/
+    main.rs                     # done (M0, placeholder content): ordinary eframe app, no hide tricks
+                                 # M2+ fills this in: lamp list, rule editor, pairing flow
 ```
 
 ## Milestones (highest-risk unknowns first)
 
-1. **M0 — Tray+egui spike. ✅ DONE**, verified by hand on the real Manjaro/GNOME/Wayland session —
-   see the updated "Highest-risk unknown" section above for what actually worked (KSNI tray backend,
-   deferred-viewport close/reopen instead of `Visible(false)`) vs. the known residual blank-taskbar-
-   row cosmetic issue. Code lives in `desktop/app/src/main.rs`. Still outstanding: same test on
-   Windows/macOS (no hardware available here).
+1. **M0 — Tray+egui integration. ✅ DONE**, verified by hand on the real Manjaro/GNOME/Wayland
+   session. Landed on the two-process architecture (window-less `app` daemon + ordinary `console`
+   binary spawned on demand) after an initial single-process attempt worked but left a cosmetic
+   blank taskbar entry - see the "Highest-risk unknown" section above for the full story including
+   the rejected alternative. No remaining known issues on this platform. Still outstanding: same
+   test on Windows/macOS (no hardware available here) - the daemon's `console_binary_path()`
+   sibling-exe lookup and the `.exe` suffix handling are written to be portable but unverified.
 2. **M1 — BLE core against real hardware. 🟡 PARTLY DONE.** `core::ble` now has real modules
    (`line_codec.rs` with unit tests, `uuids.rs`, `trust.rs` - a simple per-lamp file token cache,
    `handshake.rs` - the connect/auth/status-wait/token-remint dance extracted out of the probe) plus
@@ -247,8 +251,15 @@ desktop/
      reconnect later using that stored token outside the window and confirm it succeeds). The code
      path exists (`HandshakeOutcome::Trusted { fresh_token }`) but hasn't been exercised against a
      freshly-booted lamp yet - do that before considering M1 fully closed.
-3. **M2 — Fuse M0+M1.** Real `app` binary: persistent hide-on-close window + tray menu, console
-   showing lamps with on/off only. Verify BLE survives window hide/show cycles.
+3. **M2 — Wire core::ble into the real console.** The `console` binary grows a lamp list using
+   `core::ble` (the actor/channel pieces from the original plan - `lamp_actor.rs`/`manager.rs` -
+   still need building; the probe only proved the handshake logic works standalone, not the
+   actor/channel wiring a GUI needs) showing on/off only, driven from the daemon-spawned console
+   process. Since BLE connections now live in whichever process currently has the console open
+   (not the always-running daemon), closing the console necessarily drops any live BLE
+   connections - reopening it must reconnect from scratch. Worth deciding deliberately whether
+   that's acceptable for v1 or whether BLE ownership should move to the daemon with the console
+   as a thin remote display (bigger change, not needed yet - note it here so it isn't forgotten).
 4. **M3 — Console polish.** Live STATE-driven display, multi-lamp selection, brightness/mode/profile
    quick actions — via the same `action_to_command` the rule engine reuses later.
 5. **M4 — Rule engine + persisted config, manually fired.** Rule editor UI (trigger picker already a
