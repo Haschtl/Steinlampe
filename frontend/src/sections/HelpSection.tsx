@@ -247,6 +247,33 @@ export function HelpSection() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <Trans k="help.desktopApp">Desktop App (Beta)</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted">
+            <Trans k="help.desktopAppDesc">
+              A tray/menu-bar app that controls all your lamps from one place and can automate them (e.g. turn one on
+              while your microphone is active). Still early and unsigned - expect a SmartScreen/Gatekeeper warning.
+            </Trans>
+          </p>
+          <p className="text-xs text-muted">
+            <Trans k="help.desktopAppPlatforms">Linux: built and tested against real hardware. Windows/macOS: builds, but unverified.</Trans>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a className="pill" href="https://github.com/Haschtl/Steinlampe/releases/tag/desktop-latest" target="_blank" rel="noopener noreferrer">
+              <Trans k="help.desktopAppDownload">Download latest build</Trans>
+            </a>
+            <a className="pill" href="https://github.com/Haschtl/Steinlampe/actions/workflows/desktop-build.yml" target="_blank" rel="noopener noreferrer">
+              Desktop App Build (Actions)
+            </a>
+          </div>
+        </CardContent>
+      </Card>
       <Card className="md:col-span-2 xl:col-span-1">
         <CardHeader>
           <CardTitle>

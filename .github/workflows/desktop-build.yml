@@ -1,0 +1,120 @@
+name: CI - Build Desktop App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'desktop/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # muda's default GTK3 backend, bluez-async/btleplug's dbus backend, and
+      # core::mic::linux's direct libpulse-binding usage all need their
+      # system dev headers - see desktop/PLAN.md for why each is there.
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libdbus-1-dev libpulse-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Build workspace (release)
+        working-directory: desktop
+        run: cargo build --release --workspace
+
+      - name: Collect binaries (Linux/macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          mkdir -p dist
+          cp desktop/target/release/quarzlampe-tray dist/
+          cp desktop/target/release/quarzlampe-console dist/
+
+      - name: Collect binaries (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item desktop/target/release/quarzlampe-tray.exe dist/
+          Copy-Item desktop/target/release/quarzlampe-console.exe dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quarzlampe-desktop-${{ matrix.platform }}
+          path: dist/
+
+  # Separate from the matrix build above and never runs automatically - a
+  # deliberate, manually-triggered step (someone has to click "Run
+  # workflow") rather than something that republishes on every commit,
+  # since this is still an early, Linux-only-verified feature (see
+  # PLAN.md): Windows/macOS here means "it compiles on that OS's own GitHub
+  # runner", not "BLE/mic detection were ever exercised on that OS".
+  publish-release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Rename binaries per platform
+        run: |
+          set -eu
+          mkdir -p release
+          cp artifacts/quarzlampe-desktop-linux/quarzlampe-tray release/quarzlampe-tray-linux
+          cp artifacts/quarzlampe-desktop-linux/quarzlampe-console release/quarzlampe-console-linux
+          cp artifacts/quarzlampe-desktop-macos/quarzlampe-tray release/quarzlampe-tray-macos
+          cp artifacts/quarzlampe-desktop-macos/quarzlampe-console release/quarzlampe-console-macos
+          cp artifacts/quarzlampe-desktop-windows/quarzlampe-tray.exe release/quarzlampe-tray-windows.exe
+          cp artifacts/quarzlampe-desktop-windows/quarzlampe-console.exe release/quarzlampe-console-windows.exe
+          chmod +x release/quarzlampe-tray-linux release/quarzlampe-console-linux release/quarzlampe-tray-macos release/quarzlampe-console-macos
+
+      - name: Publish/replace the desktop-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: Desktop app - latest build
+          body: |
+            Unsigned development builds of the Quarzlampe desktop tray app, rebuilt from the tip of
+            `main` whenever this workflow is run by hand - not a versioned release.
+
+            **Linux**: built and functionally verified against real hardware.
+            **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic-activity
+            detection have not been exercised on either - treat as experimental.
+
+            Unsigned binaries: Windows SmartScreen and macOS Gatekeeper will warn before running them.
+          prerelease: true
+          files: release/*

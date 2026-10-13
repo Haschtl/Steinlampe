@@ -320,6 +320,11 @@ const translations: Record<Lang, Record<string, string>> = {
       "Creates a link with this lamp's id (?bleId=…). Opening it auto-connects to this lamp. Works only in this browser, where the lamp was paired before.",
     "help.connectLinkCopied": "Connect link copied to clipboard.",
     "help.connectLinkNoDevice": "Connect to a lamp once to create a link.",
+    "help.desktopApp": "Desktop App (Beta)",
+    "help.desktopAppDesc":
+      "A tray/menu-bar app that controls all your lamps from one place and can automate them (e.g. turn one on while your microphone is active). Still early and unsigned - expect a SmartScreen/Gatekeeper warning.",
+    "help.desktopAppPlatforms": "Linux: built and tested against real hardware. Windows/macOS: builds, but unverified.",
+    "help.desktopAppDownload": "Download latest build",
     "help.inputs": "Inputs & Controls",
     "help.input.switch": "Switch",
     "help.input.switchDesc":
@@ -662,6 +667,11 @@ const translations: Record<Lang, Record<string, string>> = {
       "Erstellt einen Link mit der ID dieser Lampe (?bleId=…). Beim Öffnen verbindet er automatisch mit dieser Lampe. Funktioniert nur in diesem Browser, in dem die Lampe zuvor gekoppelt wurde.",
     "help.connectLinkCopied": "Verbindungs-Link in die Zwischenablage kopiert.",
     "help.connectLinkNoDevice": "Erst einmal mit einer Lampe verbinden, um einen Link zu erstellen.",
+    "help.desktopApp": "Desktop-App (Beta)",
+    "help.desktopAppDesc":
+      "Eine Tray-/Menüleisten-App, die alle Lampen an einem Ort steuert und automatisieren kann (z. B. eine Lampe einschalten, solange das Mikrofon aktiv ist). Noch früh und unsigniert - SmartScreen/Gatekeeper-Warnung ist zu erwarten.",
+    "help.desktopAppPlatforms": "Linux: gebaut und an echter Hardware getestet. Windows/macOS: baut, aber unverifiziert.",
+    "help.desktopAppDownload": "Neuesten Build herunterladen",
     "help.inputs": "Eingaben & Bedienung",
     "help.input.switch": "Schalter",
     "help.input.switchDesc":

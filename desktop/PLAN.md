@@ -452,6 +452,31 @@ desktop/
 7. **M6 — Pairing/trust UX + multi-lamp hardening.** Scan/add flow with explicit 60s-window
    messaging, per-lamp reconnect-failure surfacing, config import/export, stress test with as many
    physical lamps as available connected at once.
+8. **CI + download offer (ad hoc, not a numbered milestone). ✅ DONE.** `.github/workflows/
+   desktop-build.yml`: a matrix build job (`ubuntu-latest`/`windows-latest`/`macos-latest`) that
+   just builds the workspace with `cargo build --release --workspace` on each OS's own
+   GitHub-hosted runner and uploads the two binaries as a plain workflow artifact - triggers on
+   every push/PR touching `desktop/**`, same as the firmware's own `ci.yml`. Linux needs
+   `libgtk-3-dev` (muda's default menu backend), `libdbus-1-dev` (btleplug/bluez-async) and
+   `libpulse-dev` (M5's new `core::mic::linux`) installed via `apt-get` first; Windows/macOS need
+   nothing extra - `muda`/`tray-icon` use `windows-sys`/`objc2` on those, not GTK, gated by target
+   in their own `Cargo.toml`, confirmed by reading it rather than guessing. **This only proves the
+   code builds on Windows/macOS** - BLE and mic detection have never run on either, no hardware
+   there; the workflow's own release notes say so explicitly, and so does the Hilfe-page card (next
+   paragraph) - don't let "CI is green" get mistaken for "verified" anywhere these builds are
+   mentioned.
+   A second job, `publish-release`, only runs on a manual `workflow_dispatch` (never on an ordinary
+   push) and republishes a `desktop-latest` GitHub Release with the three platforms' binaries
+   attached - kept manual on purpose: this is still an early, Linux-only-verified feature, so
+   putting a public "download our app" link in front of end users (frontend's Hilfe page, see
+   below) happening automatically on every commit felt like the wrong default; publishing is now a
+   deliberate, one-click action instead. Added a "Desktop App (Beta)" card to
+   `frontend/src/sections/HelpSection.tsx` (new `i18n.tsx` keys in both `en`/`de`) linking to that
+   Release and to the Actions workflow page, with the Linux-tested/Windows-macOS-unverified caveat
+   stated directly in the card text - verified by hand in a local dev-server preview of `/help`.
+   **Not yet done, deliberately**: nobody has clicked "Run workflow" yet, so `desktop-latest`
+   doesn't exist as a real Release until that happens (manually, by the user, after reviewing the
+   workflow) - the Hilfe page's download link will 404 until then.
 
 ## Verification
 
