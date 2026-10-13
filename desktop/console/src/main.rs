@@ -727,7 +727,8 @@ impl eframe::App for ConsoleApp {
             }
         }
 
-        egui::Panel::left("nav").default_size(180.0).resizable(false).show(ui, |ui| {
+        let nav_frame = egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(14.0);
+        egui::Panel::left("nav").default_size(180.0).resizable(false).frame(nav_frame).show(ui, |ui| {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
