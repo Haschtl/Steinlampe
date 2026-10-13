@@ -121,44 +121,115 @@ fn console_binary_path() -> std::io::Result<std::path::PathBuf> {
     Ok(dir.join(name))
 }
 
-/// Draws a filled dot (transparent outside the circle) in the given color -
-/// the tray icon doubles as a little status LED, see `status_color` below.
-fn render_status_icon(color: [u8; 3]) -> tray_icon::Icon {
-    let size = 32u32;
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
-    let center = size as f32 / 2.0 - 0.5;
-    let radius = size as f32 / 2.0 - 1.5;
-    for y in 0..size {
-        for x in 0..size {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            if (dx * dx + dy * dy).sqrt() <= radius {
-                let i = ((y * size + x) * 4) as usize;
-                rgba[i] = color[0];
-                rgba[i + 1] = color[1];
-                rgba[i + 2] = color[2];
-                rgba[i + 3] = 0xff;
+/// A flat-top-and-bottom hexagon ("a diamond with the top and bottom
+/// points cut off") instead of the plain dot the icon used to be - more
+/// distinctive at a glance among a row of round/square tray icons, and
+/// its shape naturally divides into horizontal bands. `segment_colors`
+/// has one entry per lamp (already capped to 4 and stably ordered by
+/// `ordered_lamp_colors` below) - 0 or 1 entries render as a single solid
+/// fill, 2-4 split the hexagon into that many equal-height horizontal
+/// bands, matching the "status LED" idea the old dot already had, just
+/// per lamp instead of aggregated into one color.
+fn render_status_icon(segment_colors: &[[u8; 3]]) -> tray_icon::Icon {
+    const SIZE: u32 = 48;
+    const EMPTY: [u8; 3] = [0x5b, 0x61, 0x70]; // same muted grey the old "nothing connected" dot used
+
+    let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
+    let s = SIZE as f32;
+    let cx = s / 2.0;
+    let cy = s / 2.0;
+    let r = s * 0.46;
+
+    // Clockwise from top-left, in screen coordinates (y grows downward):
+    // top edge, right point, bottom edge, left point - the ASCII sketch
+    // this was drawn from (" __ " / "/  \" / "\__/") read literally.
+    let verts: [(f32, f32); 6] = [
+        (cx - r * 0.5, cy - r),
+        (cx + r * 0.5, cy - r),
+        (cx + r, cy),
+        (cx + r * 0.5, cy + r),
+        (cx - r * 0.5, cy + r),
+        (cx - r, cy),
+    ];
+
+    let segments = segment_colors.len().clamp(1, 4);
+    let top = cy - r;
+    let band_height = (2.0 * r) / segments as f32;
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let px = x as f32 + 0.5;
+            let py = y as f32 + 0.5;
+            if !point_in_convex_hexagon(px, py, &verts) {
+                continue;
+            }
+            let color = if segment_colors.is_empty() {
+                EMPTY
+            } else {
+                let band = (((py - top) / band_height) as usize).min(segments - 1);
+                segment_colors[band]
+            };
+            let i = ((y * SIZE + x) * 4) as usize;
+            rgba[i] = color[0];
+            rgba[i + 1] = color[1];
+            rgba[i + 2] = color[2];
+            rgba[i + 3] = 0xff;
+        }
+    }
+    tray_icon::Icon::from_rgba(rgba, SIZE, SIZE).expect("failed to build tray icon")
+}
+
+/// Cross-product sign test against every edge in turn - works for any
+/// convex polygon regardless of winding direction, since it only checks
+/// that the point is on the *same* side of every edge, not which side.
+fn point_in_convex_hexagon(px: f32, py: f32, verts: &[(f32, f32); 6]) -> bool {
+    let mut sign = 0i32;
+    for i in 0..verts.len() {
+        let (x1, y1) = verts[i];
+        let (x2, y2) = verts[(i + 1) % verts.len()];
+        let cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+        let this_sign = if cross > 0.0 {
+            1
+        } else if cross < 0.0 {
+            -1
+        } else {
+            0
+        };
+        if this_sign != 0 {
+            if sign == 0 {
+                sign = this_sign;
+            } else if this_sign != sign {
+                return false;
             }
         }
     }
-    tray_icon::Icon::from_rgba(rgba, size, size).expect("failed to build tray icon")
+    true
 }
 
-/// Grey when nothing is connected, a dimmed version of the brand's lamp-icon
-/// cyan (`frontend/public/icon-lamp.svg`'s `#5be6ff` stroke) when lamps are
-/// connected but all off, full brightness the moment any one of them is lit,
-/// so the tray icon itself says "is anything on right now" at a glance
-/// without opening the menu.
-fn status_color(lamps: &[LampSnapshot]) -> [u8; 3] {
-    let any_on = lamps.iter().any(|l| l.connection == ConnectionState::Connected && l.lamp_on == Some(true));
-    let any_connected = lamps.iter().any(|l| l.connection == ConnectionState::Connected);
-    if any_on {
+/// Grey when disconnected, a dimmed version of the brand's lamp-icon cyan
+/// (`frontend/public/icon-lamp.svg`'s `#5be6ff` stroke) when connected but
+/// off, full brightness when on - the same three-tier palette the icon
+/// always used, just per lamp now instead of aggregated into one color
+/// for the whole tray icon.
+fn lamp_status_color(lamp: &LampSnapshot) -> [u8; 3] {
+    if lamp.connection == ConnectionState::Connected && lamp.lamp_on == Some(true) {
         [0x5b, 0xe6, 0xff]
-    } else if any_connected {
+    } else if lamp.connection == ConnectionState::Connected {
         [0x2a, 0x6b, 0x78]
     } else {
         [0x5b, 0x61, 0x70]
     }
+}
+
+/// Up to 4 lamps' colors for the tray icon, in the same stable order the
+/// tray submenu already uses (`LampIndex`) rather than whatever order the
+/// underlying `HashMap` happens to iterate in - otherwise the hexagon's
+/// segments could swap positions between menu rebuilds even when nothing
+/// about the lamps themselves changed.
+fn ordered_lamp_colors(lamps: &[LampSnapshot], index: &mut LampIndex) -> Vec<[u8; 3]> {
+    let mut sorted: Vec<&LampSnapshot> = lamps.iter().collect();
+    sorted.sort_by_key(|l| index.idx_for(&l.key));
+    sorted.into_iter().take(4).map(lamp_status_color).collect()
 }
 
 fn tooltip_text(lang: Lang, lamps: &[LampSnapshot]) -> String {
@@ -755,7 +826,7 @@ fn main() -> anyhow::Result<()> {
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(starting_menu))
         .with_tooltip(format!("Quarzlampe \u{2014} {}", t(lang, "tray.starting")))
-        .with_icon(render_status_icon(status_color(&[])))
+        .with_icon(render_status_icon(&[]))
         .build()?;
 
     let state_rx = spawn_core_runtime();
@@ -788,7 +859,8 @@ fn main() -> anyhow::Result<()> {
                 let menu =
                     build_menu(lang, &lamps, &mut lamp_index, &show_item, &autostart_item, update_available, &quit_item);
                 tray_icon.set_menu(Some(Box::new(menu)));
-                let _ = tray_icon.set_icon(Some(render_status_icon(status_color(&lamps))));
+                let icon_colors = ordered_lamp_colors(&lamps, &mut lamp_index);
+                let _ = tray_icon.set_icon(Some(render_status_icon(&icon_colors)));
                 let _ = tray_icon.set_tooltip(Some(tooltip_text(lang, &lamps)));
                 if let Some(manager) = &hotkey_manager {
                     let rules = state.blocking_lock().rules.clone();

@@ -918,6 +918,27 @@ desktop/
       it (likely a compositor/workspace quirk, not evidence the app itself is broken - the daemon
       and console both started and logged normally throughout). Straightforward, low-risk egui
       layout code either way - same patterns already used elsewhere in this file, nothing new.
+18. **Tray icon: a hexagon with up to 4 per-lamp status segments, not a plain dot (ad hoc). ✅
+    DONE, verified via a standalone pixel-level preview, not the live tray.** User wanted the icon
+    more distinctive and able to show up to 4 lamps' status at once - sketched a flat-top-and-
+    bottom hexagon ("a diamond with the top/bottom points cut off"), halved/thirded/quartered into
+    horizontal bands for 2/3/4 lamps (1 lamp = solid fill, same as before). `render_status_icon`
+    rewritten around a point-in-convex-polygon test (cross-product sign check against all 6 edges,
+    winding-direction-agnostic) instead of the old circle's distance check; `lamp_status_color`
+    extracts the existing three-tier palette (bright cyan on / dim cyan connected-but-off / grey
+    disconnected) per lamp instead of aggregating to one color; `ordered_lamp_colors` sorts by the
+    same stable `LampIndex` the tray submenu already uses, so segments can't swap position between
+    menu rebuilds just because the underlying `HashMap` iterated in a different order. Bumped the
+    source canvas from 32px to 48px for more pixels per band. **Verified by exact reimplementation,
+    not inspection**: since this binary has no way to screenshot the live tray from this
+    environment (same conclusion as item 17 - no input-simulation tool, and the one working
+    screen-capture path didn't show the tray), a standalone Python script replicated the Rust
+    function's math byte-for-byte (same vertex formula, same cross-product test, same band-height
+    division) and rendered real PNGs at 8x scale for 0/1/2/3/4-segment cases, including one case
+    with 4 *visually distinct* colors specifically to catch a band-count bug a repeated-color test
+    would hide. All five matched the intended shape and division exactly. The actual shipped
+    Rust code was still separately confirmed to build, pass clippy, and start the daemon without
+    panicking - the Python script only verified the geometry, not that the real code compiles.
 
 ## Verification
 
