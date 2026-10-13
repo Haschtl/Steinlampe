@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Quarzlampe
+Comment=Tray app to control and automate Quarzlampe lamps
+Exec=quarzlampe-tray
+Icon=quarzlampe
+Categories=Utility;
+Terminal=false

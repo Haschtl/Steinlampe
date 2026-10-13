@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Quarzlampe</string>
+	<key>CFBundleDisplayName</key>
+	<string>Quarzlampe</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.quarzlampe.tray</string>
+	<key>CFBundleExecutable</key>
+	<string>quarzlampe-tray</string>
+	<key>CFBundleIconFile</key>
+	<string>quarzlampe.icns</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<!-- No Dock icon/menu bar app switcher entry for the daemon itself -
+	     it's a tray-only process; the console window (spawned on demand)
+	     still shows normally since LSUIElement only affects the bundle's
+	     own primary executable's app-switcher presence. -->
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

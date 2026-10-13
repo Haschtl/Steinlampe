@@ -1,0 +1,132 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+  Quarzlampe MSI installer - WiX Toolset v3 (candle.exe/light.exe), the
+  version already preinstalled on GitHub's windows-latest runners (the
+  $env:WIX variable points at it - no extra setup step needed). Based on
+  the real template cargo-wix (https://github.com/volks73/cargo-wix)
+  generates for a single-binary Rust crate - fetched from that project's
+  own repository and adapted here for a two-binary workspace (the tray
+  daemon + the console UI it spawns on demand) plus a Start Menu
+  shortcut, which that template doesn't include on its own.
+
+  Unverified beyond "written from a real, confirmed-correct source" - no
+  Windows machine or WiX toolchain is available in this dev environment
+  to actually compile this. See desktop/PLAN.md.
+
+  Built with (from the `desktop` directory, after a release build):
+    candle.exe -dCargoTargetBinDir=target\release -dVersion=0.1.0 packaging\windows\main.wxs -o main.wixobj
+    light.exe -ext WixUIExtension main.wixobj -o quarzlampe-installer.msi
+
+  `Version` is passed in rather than read from the exe's own file-version
+  resource (`!(bind.FileVersion...)`, what the real cargo-wix template
+  uses) because plain `cargo build` doesn't embed Windows version-info
+  resources into the binary without an extra build.rs step this project
+  doesn't have - matching this to the workspace's Cargo.toml version via
+  `-dVersion=` on the CI command line avoids needing that.
+-->
+
+<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <!--
+      UpgradeCode must never change across versions - it is what lets a
+      later installer recognize and replace an earlier one instead of
+      installing side by side. Generated once, fixed forever.
+    -->
+    <Product
+        Id='*'
+        Name='Quarzlampe'
+        UpgradeCode='E8C00E09-F893-4F41-8E86-E5AA1F8C1082'
+        Manufacturer='Haschtl'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package Id='*'
+            Keywords='Installer'
+            Description='Quarzlampe desktop tray app'
+            Manufacturer='Haschtl'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perMachine'
+            SummaryCodepage='1252'/>
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
+        <Property Id='DiskPrompt' Value='Quarzlampe Installation'/>
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
+                <Directory Id='APPLICATIONFOLDER' Name='Quarzlampe'>
+                    <Component Id='TrayExe' Guid='*'>
+                        <File Id='exeTray'
+                            Name='quarzlampe-tray.exe'
+                            DiskId='1'
+                            Source='$(var.CargoTargetBinDir)\quarzlampe-tray.exe'
+                            KeyPath='yes'/>
+                    </Component>
+                    <Component Id='ConsoleExe' Guid='*'>
+                        <File Id='exeConsole'
+                            Name='quarzlampe-console.exe'
+                            DiskId='1'
+                            Source='$(var.CargoTargetBinDir)\quarzlampe-console.exe'
+                            KeyPath='yes'/>
+                    </Component>
+                </Directory>
+            </Directory>
+
+            <Directory Id='ProgramMenuFolder'>
+                <!--
+                  The standard WiX v3 "Start Menu shortcut" recipe: a
+                  Component with no File of its own needs its own stable
+                  Guid (not '*') and a KeyPath, conventionally a small
+                  per-user registry value, since MSI can't use the
+                  Shortcut itself as a KeyPath.
+                -->
+                <Component Id='ApplicationShortcut' Guid='5D426205-E35A-4846-91FA-FC223733939F'>
+                    <Shortcut Id='ApplicationStartMenuShortcut'
+                        Name='Quarzlampe'
+                        Description='Control and automate your Quarzlampe lamps'
+                        Target='[APPLICATIONFOLDER]quarzlampe-tray.exe'
+                        WorkingDirectory='APPLICATIONFOLDER'/>
+                    <RemoveFolder Id='CleanUpShortcutDir' On='uninstall'/>
+                    <RegistryValue
+                        Root='HKCU'
+                        Key='Software\Quarzlampe'
+                        Name='installed'
+                        Type='integer'
+                        Value='1'
+                        KeyPath='yes'/>
+                </Component>
+            </Directory>
+        </Directory>
+
+        <Feature
+            Id='Binaries'
+            Title='Quarzlampe'
+            Description='Installs the Quarzlampe tray app and its Start Menu shortcut.'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Display='expand'
+            Absent='disallow'>
+            <ComponentRef Id='TrayExe'/>
+            <ComponentRef Id='ConsoleExe'/>
+            <ComponentRef Id='ApplicationShortcut'/>
+        </Feature>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
+
+        <UIRef Id='WixUI_Minimal'/>
+
+    </Product>
+</Wix>

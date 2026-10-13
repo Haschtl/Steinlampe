@@ -765,13 +765,14 @@ desktop/
       - **macOS: ad-hoc signing (free), Gatekeeper warning documented instead of paid-away.**
         There's genuinely no free way to remove Gatekeeper's "unidentified developer" warning
         itself - only a paid ($99/year) Apple Developer Program membership (Developer ID signing +
-        notarization) does that. `.github/workflows/desktop-build.yml` now runs `codesign --force
-        --deep --sign -` (the `-` means ad-hoc: no certificate, no account, just the Xcode CLI
-        tools already on every `macos-latest` runner) unconditionally on both binaries. This
-        satisfies Apple Silicon's blanket "must carry some signature to execute at all"
-        requirement but does nothing for the download warning - that gets a documented bypass
-        instead (right-click -> Open -> "Open Anyway"), added to the release notes and to the
-        frontend's Help page (`help.desktopAppSigning`, en/de).
+        notarization) does that. `codesign --force --deep --sign -` (the `-` means ad-hoc: no
+        certificate, no account, just the Xcode CLI tools already on every `macos-latest` runner)
+        runs unconditionally - originally on the two loose binaries directly in the workflow, now
+        folded into `packaging/macos/build-dmg.sh` where it signs the whole `.app` bundle instead
+        (see item 15). This satisfies Apple Silicon's blanket "must carry some signature to execute
+        at all" requirement but does nothing for the download warning - that gets a documented
+        bypass instead (right-click -> Open -> "Open Anyway"), added to the release notes and to
+        the frontend's Help page (`help.desktopAppSigning`, en/de).
       - **Windows: real free signing via SignPath Foundation - conditional on actually open-sourcing
         the project first.** SignPath Foundation signs Windows binaries for free for qualifying
         open source projects, but requires an OSI-approved license with no proprietary
@@ -799,6 +800,66 @@ desktop/
         action's inputs are exactly right" are written-correctly-by-inspection (the SignPath
         action's documented example was read directly from `docs.signpath.io`, not guessed), not
         CI-run-confirmed.
+15. **Real native installers, not loose executable pairs (ad hoc).** Prompted by the user
+    pointing out that `publish-release` only ever uploaded six loose files (tray + console per
+    platform) - not "fertige Installer", just two executables each time, which the user has to
+    find, pair up in one directory, and run `--install` on themselves. Replaced with a real
+    packaged installer per platform, built by a small shell script per OS under
+    `desktop/packaging/<platform>/`:
+    - **Linux: an AppImage (`packaging/linux/build-appimage.sh`), verified live on this dev
+      machine - the one platform-specific installer format actually run and confirmed working,
+      not just written-by-inspection.** Built an `AppDir` (the two release binaries under
+      `usr/bin/`, the real app icon, a `.desktop` file, a plain `AppRun` shell script execing
+      `quarzlampe-tray`) and ran the official `appimagetool` (`AppImage/appimagetool`'s
+      `continuous` release) against it. **Verified twice**, once with debug binaries while first
+      getting the AppDir layout right and once again against the final committed script and real
+      release binaries: running the resulting `.AppImage` directly printed the daemon's normal
+      three startup log lines, and critically the `[tray] daemon running. Console binary: ...`
+      line showed the *mounted* path (`/tmp/.mount_XXXXXX/usr/bin/quarzlampe-console`) resolved
+      correctly - confirming `console_binary_path()`'s sibling-exe lookup still works from inside
+      an AppImage's runtime-mounted squashfs, which wasn't obvious beforehand.
+      - **Real bug found this way, not hypothetical**: `app::autostart`'s Linux `set_enabled` used
+        `std::env::current_exe()` to build the "Start on boot" `.desktop` file's `Exec=` line. From
+        inside a mounted AppImage that resolves to the temporary mount path, which stops existing
+        the moment the process exits - enabling autostart while running from an AppImage would
+        have silently written a `.desktop` file pointing nowhere, broken on the very next boot.
+        Confirmed the actual mechanism live (dumped env vars from inside a running AppImage) before
+        fixing it: AppImage's runtime sets `$APPIMAGE` to the real, permanent path of the
+        `.AppImage` file itself specifically for this case - `exe_path()` now prefers that env var
+        over `current_exe()` when it's set, with `current_exe()` as the fallback for every
+        non-AppImage case (including the AppImage's own `install.rs` `--install` flow, which copies
+        real bytes to a new file rather than referencing a path, so it was never actually affected
+        by this - confirmed by re-reading that code, not assumed).
+    - **macOS: a `.dmg` containing a real `Quarzlampe.app` bundle
+      (`packaging/macos/build-dmg.sh`), unverified - no macOS machine here to run it.** Builds the
+      bundle (`Contents/MacOS/` with both binaries, `Contents/Info.plist`, a `.icns` built from the
+      one source PNG via `sips`+`iconutil` - both built into macOS, no third-party tool), ad-hoc
+      signs the whole bundle (moved here from the plain `codesign` step the workflow had before -
+      see item 14), then `hdiutil create`s a disk image with the `.app` plus a symlink to
+      `/Applications` for the standard drag-to-install convention. No third-party packaging tool
+      (no `create-dmg`) - everything used ships with macOS itself.
+    - **Windows: a real `.msi` via WiX Toolset v3 (`packaging/windows/main.wxs`), unverified - no
+      Windows machine or WiX toolchain here to compile it.** WiX v4/v5/v6's schema is still
+      actively changing release to release (confirmed by reading multiple current doc pages that
+      each showed a different `Product`/`Package` shape) - too much guessing risk for something
+      that can't be compile-checked here at all. Used WiX v3 instead specifically because (a) it's
+      already preinstalled on `windows-latest` at `$env:WIX`, no setup step needed, and (b) its
+      schema has been stable and unchanging for over a decade, unlike v4+. The `.wxs` itself is
+      adapted from `cargo-wix`'s own real v3 template (fetched directly from
+      `volks73/cargo-wix`'s repository, not reconstructed from memory) for a two-binary workspace
+      instead of that template's single-binary case, plus a Start Menu shortcut using the standard,
+      long-stable WiX v3 "Component with a Shortcut + RemoveFolder + a dummy per-user
+      `RegistryValue` KeyPath" recipe (a shortcut-only component needs its own `KeyPath` since MSI
+      can't use the `Shortcut` element itself as one). Built via `candle.exe`/`light.exe` directly
+      (not `cargo wix`'s own CLI, which assumes a single-package context and wasn't confirmed to
+      handle a cross-package workspace's two separately-built binaries). Signing now targets this
+      `.msi` file itself through the SignPath flow (item 14), not the two loose `.exe`s separately
+      as before - signing the thing a user actually downloads and runs is what SmartScreen
+      reputation actually cares about.
+    - All three installer scripts are called from `.github/workflows/desktop-build.yml`'s `build`
+      job; `publish-release` now uploads the packaged installer per platform as the recommended
+      download (named prominently first in the release body) alongside the existing loose binaries
+      (kept for anyone who prefers `quarzlampe-tray --install` over a packaged installer).
 
 ## Verification
 

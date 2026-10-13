@@ -63,38 +63,57 @@ jobs:
         working-directory: desktop
         run: cargo build --release --workspace
 
-      # Free, no Apple Developer account needed - just the Xcode command
-      # line tools already on every macos-latest runner. This is *not* the
-      # same as the paid Developer ID + notarization path: it satisfies
-      # Apple Silicon's blanket requirement that executables carry some
-      # signature to run at all, but it does nothing for Gatekeeper's
-      # "unidentified developer" warning on a downloaded file - that still
-      # shows up, and the release notes below tell people how to bypass it
-      # (right-click -> Open -> "Open Anyway"). There is no free way to
-      # remove the warning itself; only a $99/year Apple Developer Program
-      # membership (Developer ID signing + notarization) does that, which
-      # this project isn't pursuing right now.
-      - name: Ad-hoc sign macOS binaries
-        if: matrix.platform == 'macos'
-        run: |
-          set -eu
-          codesign --force --deep --sign - desktop/target/release/quarzlampe-tray
-          codesign --force --deep --sign - desktop/target/release/quarzlampe-console
-
-      - name: Collect binaries (Linux/macOS)
+      - name: Collect loose binaries (Linux/macOS)
         if: matrix.platform != 'windows'
         run: |
           mkdir -p dist
           cp desktop/target/release/quarzlampe-tray dist/
           cp desktop/target/release/quarzlampe-console dist/
 
-      - name: Collect binaries (Windows)
+      - name: Collect loose binaries (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item desktop/target/release/quarzlampe-tray.exe dist/
           Copy-Item desktop/target/release/quarzlampe-console.exe dist/
+
+      # Builds Quarzlampe-x86_64.AppImage - verified live on a real
+      # Manjaro machine (not just written-by-inspection like the other two
+      # platforms' packaging): the daemon starts correctly from inside the
+      # mounted AppImage and finds the console binary as a sibling at its
+      # mounted path. See desktop/PLAN.md and the script's own comments.
+      - name: Build AppImage
+        if: matrix.platform == 'linux'
+        run: |
+          bash desktop/packaging/linux/build-appimage.sh desktop/target/release dist
+
+      # Builds Quarzlampe.dmg (a real .app bundle, ad-hoc signed - free,
+      # see the script's own comments for why that's not the same as
+      # Gatekeeper-clearing notarization - inside a disk image with a
+      # symlink to /Applications for the standard drag-to-install flow).
+      # Unverified: no macOS machine here to run this.
+      - name: Build DMG
+        if: matrix.platform == 'macos'
+        run: |
+          bash desktop/packaging/macos/build-dmg.sh desktop/target/release dist
+
+      # WiX Toolset v3 (candle.exe/light.exe) ships preinstalled on
+      # windows-latest at $env:WIX - no setup step needed. Produces an
+      # unsigned quarzlampe-installer.msi; the SignPath step further down
+      # signs this exact file when its secrets are configured, replacing
+      # it in dist/ - signing the installer itself, not the loose exes
+      # inside it, is what actually matters for SmartScreen. See
+      # desktop/packaging/windows/main.wxs for exactly what it installs.
+      # Unverified: no Windows machine here to run this.
+      - name: Build MSI installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path wixobj | Out-Null
+          & "$env:WIX\bin\candle.exe" -dCargoTargetBinDir=desktop\target\release -dVersion=0.1.0 `
+            -out wixobj\main.wixobj desktop\packaging\windows\main.wxs
+          & "$env:WIX\bin\light.exe" -ext WixUIExtension wixobj\main.wixobj -out dist\quarzlampe-installer.msi
 
       # Free code signing for this (now GPL-3.0-or-later, genuinely open
       # source) project via the SignPath Foundation - see
@@ -103,19 +122,17 @@ jobs:
       # `vars.SIGNPATH_*` values below exist, which only happens after
       # applying at https://signpath.io/apply and being approved - an
       # identity-linked step only the repo owner can do, not something
-      # scaffolding alone can activate. Until then the Windows binaries
-      # collected above stay unsigned, same as today.
-      - name: Upload unsigned Windows binaries for SignPath
+      # scaffolding alone can activate. Until then the installer built
+      # above stays unsigned, same as today.
+      - name: Upload unsigned MSI for SignPath
         if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
         id: upload-unsigned-artifact
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-windows-binaries
-          path: |
-            desktop/target/release/quarzlampe-tray.exe
-            desktop/target/release/quarzlampe-console.exe
+          name: unsigned-windows-installer
+          path: dist/quarzlampe-installer.msi
 
-      - name: Sign Windows binaries via SignPath
+      - name: Sign MSI via SignPath
         if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
         uses: signpath/github-action-submit-signing-request@v3
         with:
@@ -127,12 +144,10 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: signed
 
-      - name: Use SignPath-signed Windows binaries
+      - name: Use SignPath-signed MSI
         if: matrix.platform == 'windows' && env.SIGNPATH_API_TOKEN != ''
         shell: pwsh
-        run: |
-          Copy-Item signed\quarzlampe-tray.exe dist\ -Force
-          Copy-Item signed\quarzlampe-console.exe dist\ -Force
+        run: Copy-Item signed\quarzlampe-installer.msi dist\ -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -167,11 +182,15 @@ jobs:
           mkdir -p release
           cp artifacts/quarzlampe-desktop-linux/quarzlampe-tray release/quarzlampe-tray-linux
           cp artifacts/quarzlampe-desktop-linux/quarzlampe-console release/quarzlampe-console-linux
+          cp artifacts/quarzlampe-desktop-linux/Quarzlampe-x86_64.AppImage release/Quarzlampe-x86_64.AppImage
           cp artifacts/quarzlampe-desktop-macos/quarzlampe-tray release/quarzlampe-tray-macos
           cp artifacts/quarzlampe-desktop-macos/quarzlampe-console release/quarzlampe-console-macos
+          cp artifacts/quarzlampe-desktop-macos/Quarzlampe.dmg release/Quarzlampe.dmg
           cp artifacts/quarzlampe-desktop-windows/quarzlampe-tray.exe release/quarzlampe-tray-windows.exe
           cp artifacts/quarzlampe-desktop-windows/quarzlampe-console.exe release/quarzlampe-console-windows.exe
-          chmod +x release/quarzlampe-tray-linux release/quarzlampe-console-linux release/quarzlampe-tray-macos release/quarzlampe-console-macos
+          cp artifacts/quarzlampe-desktop-windows/quarzlampe-installer.msi release/Quarzlampe-installer.msi
+          chmod +x release/quarzlampe-tray-linux release/quarzlampe-console-linux release/quarzlampe-tray-macos \
+            release/quarzlampe-console-macos release/Quarzlampe-x86_64.AppImage
 
       # `core::update::check_for_update` compares the running binary's own
       # embedded commit (baked in by `core/build.rs` from `GITHUB_SHA`,
@@ -194,15 +213,22 @@ jobs:
             periodically and shows an "Update available" link (tray menu + console) when a newer
             build has been published; it never downloads or installs anything automatically.
 
-            **Linux**: built and functionally verified against real hardware.
-            **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic/camera
-            activity detection have not been exercised on either - treat as experimental.
+            **Recommended download**: `Quarzlampe-x86_64.AppImage` (Linux), `Quarzlampe.dmg` (macOS),
+            `Quarzlampe-installer.msi` (Windows). The other files are the two loose binaries
+            (tray + console) per platform, for anyone who'd rather run `quarzlampe-tray --install`
+            themselves than use the packaged installer.
 
-            **macOS**: ad-hoc signed (free), not notarized. Gatekeeper will still block the binary
-            on first launch - right-click (or Control-click) it, choose "Open", then confirm
-            "Open Anyway".
-            **Windows**: signed via a free [SignPath](https://signpath.io/) certificate if one has
-            been set up for this project (see `desktop/CODE_SIGNING_POLICY.md`) - otherwise
-            unsigned, and SmartScreen will warn ("More info" -> "Run anyway").
+            **Linux**: built and functionally verified against real hardware; the AppImage itself
+            was verified live too (daemon starts correctly from the mounted image).
+            **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic/camera
+            activity detection - and the installer packaging itself - have not been exercised on
+            either. Treat as experimental.
+
+            **macOS**: the `.app` inside the DMG is ad-hoc signed (free), not notarized. Gatekeeper
+            will still block it on first launch - right-click (or Control-click) it, choose "Open",
+            then confirm "Open Anyway".
+            **Windows**: the MSI is signed via a free [SignPath](https://signpath.io/) certificate
+            if one has been set up for this project (see `desktop/CODE_SIGNING_POLICY.md`) -
+            otherwise unsigned, and SmartScreen will warn ("More info" -> "Run anyway").
           prerelease: true
           files: release/*

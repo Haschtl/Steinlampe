@@ -22,6 +22,22 @@ mod imp {
         desktop_file_path().is_some_and(|p| p.exists())
     }
 
+    /// `current_exe()` alone would be wrong when running from inside a
+    /// mounted AppImage: it resolves to a path under `/tmp/.mount_XXXXXX/`
+    /// that stops existing the moment this process exits, so a
+    /// `.desktop` file written with that path would point nowhere on the
+    /// next boot. AppImage's runtime sets `$APPIMAGE` to the real,
+    /// permanent path of the `.AppImage` file itself for exactly this
+    /// case (confirmed live: ran a build with this env dumped, got the
+    /// real on-disk `.AppImage` path, not the mount) - prefer that when
+    /// it's set.
+    fn exe_path() -> std::io::Result<PathBuf> {
+        if let Some(appimage) = std::env::var_os("APPIMAGE") {
+            return Ok(PathBuf::from(appimage));
+        }
+        std::env::current_exe()
+    }
+
     pub fn set_enabled(enabled: bool) -> anyhow::Result<()> {
         let path = desktop_file_path().ok_or_else(|| anyhow::anyhow!("no config directory on this platform"))?;
         if !enabled {
@@ -30,7 +46,7 @@ mod imp {
             }
             return Ok(());
         }
-        let exe = std::env::current_exe()?;
+        let exe = exe_path()?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
