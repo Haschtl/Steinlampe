@@ -335,7 +335,7 @@ impl ConsoleApp {
     }
 
     fn connections_ui(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        header_bar(ui, |ui| {
             ui.heading("Lamps");
             let connected = self.lamps.iter().filter(|l| l.connection == "connected").count();
             ui.label(format!("{connected} connected"));
@@ -345,7 +345,7 @@ impl ConsoleApp {
                 }
             });
         });
-        ui.add_space(10.0);
+        ui.add_space(14.0);
 
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
@@ -376,7 +376,7 @@ impl ConsoleApp {
     }
 
     fn rules_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        header_bar(ui, |ui| {
             ui.heading("Rules");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if !self.show_new_rule && ui.button("+ New rule").clicked() {
@@ -386,7 +386,7 @@ impl ConsoleApp {
                 }
             });
         });
-        ui.add_space(10.0);
+        ui.add_space(14.0);
 
         if self.show_new_rule {
             egui::Frame::NONE
@@ -575,6 +575,29 @@ impl ConsoleApp {
     }
 }
 
+/// One sidebar nav entry, stretched to (nearly) the full sidebar width -
+/// `ui.selectable_label` alone sizes to its text, so "Connections" and
+/// "Rules" ended up visibly different widths.
+fn nav_button(ui: &mut egui::Ui, selected: bool, text: &str) -> bool {
+    let width = ui.available_width();
+    ui.add_sized(egui::vec2(width, 30.0), egui::Button::selectable(selected, text)).clicked()
+}
+
+/// A section's title + primary action, raised on its own panel-colored bar
+/// (full width, rounded, a thin bottom accent line) so it reads as a
+/// toolbar distinct from the scrolling content below it, rather than just
+/// another line of plain text.
+fn header_bar(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::NONE
+        .fill(PANEL)
+        .stroke(egui::Stroke::new(1.0, BORDER))
+        .corner_radius(10.0)
+        .inner_margin(egui::Margin::symmetric(16, 12))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| add_contents(ui));
+        });
+}
+
 fn describe_trigger(trigger: &Trigger) -> String {
     match trigger {
         Trigger::MicActive => "mic becomes active".to_string(),
@@ -748,7 +771,13 @@ impl eframe::App for ConsoleApp {
         }
 
         let nav_frame = egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(14.0);
-        egui::Panel::left("nav").default_size(180.0).resizable(false).frame(nav_frame).show(ui, |ui| {
+        // `exact_size`, not `default_size` + `resizable(false)` - the panel
+        // remembers its width across frames keyed by id, and `default_size`
+        // only applies the very first time it's shown. Once the window got
+        // narrow enough to clamp it smaller, nothing pulled it back to
+        // 180px on widening again. `exact_size` pins the allowed range to a
+        // single point, so it can't drift in either direction.
+        egui::Panel::left("nav").exact_size(180.0).frame(nav_frame).show(ui, |ui| {
             ui.add_space(10.0);
             ui.horizontal(|ui| {
                 ui.add(egui::Image::new(&self.icon_texture).fit_to_exact_size(egui::vec2(20.0, 20.0)));
@@ -756,11 +785,11 @@ impl eframe::App for ConsoleApp {
                 ui.strong("Quarzlampe");
             });
             ui.add_space(18.0);
-            if ui.selectable_label(self.section == Section::Connections, "  Connections").clicked() {
+            if nav_button(ui, self.section == Section::Connections, "Connections") {
                 self.section = Section::Connections;
             }
-            ui.add_space(2.0);
-            if ui.selectable_label(self.section == Section::Rules, "  Rules").clicked() {
+            ui.add_space(4.0);
+            if nav_button(ui, self.section == Section::Rules, "Rules") {
                 self.section = Section::Rules;
             }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
