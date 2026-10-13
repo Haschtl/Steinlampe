@@ -93,6 +93,7 @@ fn connection_state_label(state: &ConnectionState) -> String {
         ConnectionState::AwaitingTrustToken => "awaiting_trust_token",
         ConnectionState::Connected => "connected",
         ConnectionState::Reconnecting => "reconnecting",
+        ConnectionState::ReconnectFailed => "reconnect_failed",
     }
     .to_string()
 }
@@ -146,6 +147,14 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
         RequestKind::Disconnect { lamp_key } => {
             let state = state.lock().await;
             if state.manager.send(&lamp_key, LampCommand::Disconnect) {
+                IpcResponse::Ok
+            } else {
+                IpcResponse::Error { message: format!("unknown lamp_key {lamp_key}") }
+            }
+        }
+        RequestKind::Reconnect { lamp_key } => {
+            let state = state.lock().await;
+            if state.manager.send(&lamp_key, LampCommand::Reconnect) {
                 IpcResponse::Ok
             } else {
                 IpcResponse::Error { message: format!("unknown lamp_key {lamp_key}") }

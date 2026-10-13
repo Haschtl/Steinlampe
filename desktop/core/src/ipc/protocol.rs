@@ -36,6 +36,9 @@ pub enum RequestKind {
     /// Send a raw command line to an already-connected lamp (e.g. "on").
     SendCommand { lamp_key: String, line: String },
     Disconnect { lamp_key: String },
+    /// Manually resume a lamp that gave up retrying on its own - see
+    /// `ConnectionState::ReconnectFailed` and `LampCommand::Reconnect`.
+    Reconnect { lamp_key: String },
     ListRules,
     /// Create (if `rule.id` is new) or update (if it matches an existing
     /// rule's id) a rule, and persist the whole list.

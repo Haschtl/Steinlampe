@@ -50,6 +50,7 @@ enum UiToCore {
     Scan,
     Connect { lamp_key: String, name: String },
     SendCommand { lamp_key: String, line: String },
+    Reconnect(String),
     SaveRule(Rule),
     DeleteRule(Uuid),
     FireRule(Uuid),
@@ -124,6 +125,7 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
                     UiToCore::Scan => RequestKind::Scan { seconds: 4 },
                     UiToCore::Connect { lamp_key, name } => RequestKind::Connect { lamp_key, name },
                     UiToCore::SendCommand { lamp_key, line } => RequestKind::SendCommand { lamp_key, line },
+                    UiToCore::Reconnect(lamp_key) => RequestKind::Reconnect { lamp_key },
                     UiToCore::SaveRule(rule) => RequestKind::SaveRule { rule },
                     UiToCore::DeleteRule(id) => RequestKind::DeleteRule { id },
                     UiToCore::FireRule(id) => RequestKind::FireRule { id },
@@ -799,6 +801,7 @@ fn status_visual(lang: Lang, connection: &str) -> (egui::Color32, &'static str) 
         "connected" => (egui::Color32::from_rgb(0x4A, 0xDE, 0x80), t(lang, "status.connected")),
         "connecting" => (WARNING, t(lang, "status.connecting")),
         "reconnecting" => (WARNING, t(lang, "status.reconnecting")),
+        "reconnect_failed" => (egui::Color32::from_rgb(0xF2, 0x55, 0x5A), t(lang, "status.reconnectFailed")),
         "awaiting_trust_token" => (WARNING, t(lang, "status.awaitingTrust")),
         _ => (MUTED, t(lang, "status.disconnected")),
     }
@@ -899,9 +902,20 @@ fn lamp_card(
                 ui.horizontal(|ui| {
                     ui.strong(&lamp.name);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (color, label) = status_visual(lang, &lamp.connection);
-                        ui.label(label);
-                        ui.colored_label(color, "\u{25cf}");
+                        // The daemon gave up retrying on its own (see
+                        // `ConnectionState::ReconnectFailed`) - a button
+                        // here instead of the usual status label/dot is
+                        // the only way to get it trying again, since
+                        // there's no more timer doing it automatically.
+                        if lamp.connection == "reconnect_failed" {
+                            if ui.button(t(lang, "lampCard.reconnectButton")).clicked() {
+                                let _ = to_core.send(UiToCore::Reconnect(lamp.lamp_key.clone()));
+                            }
+                        } else {
+                            let (color, label) = status_visual(lang, &lamp.connection);
+                            ui.label(label);
+                            ui.colored_label(color, "\u{25cf}");
+                        }
                     });
                 });
 

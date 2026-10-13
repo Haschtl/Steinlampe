@@ -23,11 +23,24 @@ use crate::state::{parse_state_line, ConnectionState, LampState};
 pub enum LampCommand {
     SendLine(String),
     Disconnect,
+    /// Manually requested retry - the only thing that resumes attempts
+    /// once `MAX_CONSECUTIVE_FAILURES` has been hit and the actor is
+    /// sitting idle in `ConnectionState::ReconnectFailed`. Harmless if
+    /// sent while already connected or mid-backoff; in the latter case it
+    /// just skips the rest of the current wait.
+    Reconnect,
     Shutdown,
 }
 
 const INITIAL_BACKOFF: Duration = Duration::from_millis(500);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+/// After this many connection attempts in a row fail (for any reason,
+/// including a trust rejection or a drop right after connecting), the
+/// actor stops retrying on its own and waits for a manual
+/// `LampCommand::Reconnect` instead - see `ConnectionState::ReconnectFailed`.
+/// Resets to 0 on every successful connect, same as `backoff` does.
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 
 fn set_connection(state_tx: &watch::Sender<LampState>, conn: ConnectionState) {
     state_tx.send_modify(|s| s.connection = conn);
@@ -52,13 +65,20 @@ pub async fn run_lamp_actor(
     tokens: Arc<FileTokenStore>,
 ) {
     let mut backoff = INITIAL_BACKOFF;
+    let mut consecutive_failures: u32 = 0;
 
     loop {
         set_connection(&state_tx, ConnectionState::Connecting);
 
+        // Every branch below is a failure case by construction - the only
+        // success path (`run_connected` staying up) exits this function
+        // instead of falling through here. Kept as a `match` purely for
+        // the per-cause state/error reporting, not because any arm skips
+        // the `consecutive_failures` bump that follows.
         match connect_once(&peripheral, &lamp_key, &tokens).await {
             Ok((cmd_char, mut line_rx)) => {
                 backoff = INITIAL_BACKOFF; // reset after a successful connect
+                consecutive_failures = 0;
                 set_connection(&state_tx, ConnectionState::Connected);
                 match run_connected(&peripheral, &cmd_char, &mut cmd_rx, &mut line_rx, &state_tx).await {
                     RunOutcome::Shutdown => {
@@ -73,7 +93,9 @@ pub async fn run_lamp_actor(
             Err(ConnectError::PendingToken) => {
                 // Not a bug - the lamp just didn't trust this connection
                 // (outside its boot grace window, no valid stored token).
-                // Keep retrying with backoff in case the user reboots it.
+                // Still counts toward the give-up threshold below - a
+                // lamp that's never going to trust us without a reboot
+                // shouldn't retry forever either.
                 state_tx.send_modify(|s| {
                     s.connection = ConnectionState::Reconnecting;
                     s.last_error = Some(
@@ -88,17 +110,52 @@ pub async fn run_lamp_actor(
                 set_connection(&state_tx, ConnectionState::Reconnecting);
             }
         }
+        consecutive_failures += 1;
 
-        // Wait out the backoff, but return early on an explicit Shutdown.
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+            // Stop retrying on a timer - sit idle until the user asks for
+            // a reconnect (or shuts the lamp down) instead of hammering a
+            // lamp that clearly isn't coming back on its own right now.
+            set_connection(&state_tx, ConnectionState::ReconnectFailed);
+            loop {
+                match cmd_rx.recv().await {
+                    Some(LampCommand::Reconnect) => {
+                        consecutive_failures = 0;
+                        backoff = INITIAL_BACKOFF;
+                        break;
+                    }
+                    Some(LampCommand::Shutdown) | None => {
+                        let _ = peripheral.disconnect().await;
+                        set_connection(&state_tx, ConnectionState::Disconnected);
+                        return;
+                    }
+                    // SendLine/Disconnect while idle: nothing to do, keep waiting.
+                    Some(LampCommand::SendLine(_)) | Some(LampCommand::Disconnect) => {}
+                }
+            }
+            continue;
+        }
+
+        // Still under the give-up threshold - wait out the backoff as
+        // before, but return early on Shutdown or skip the rest of the
+        // wait on an explicit Reconnect.
         tokio::select! {
             _ = tokio::time::sleep(backoff) => {}
             cmd = cmd_rx.recv() => {
-                if matches!(cmd, Some(LampCommand::Shutdown) | None) {
-                    let _ = peripheral.disconnect().await;
-                    set_connection(&state_tx, ConnectionState::Disconnected);
-                    return;
+                match cmd {
+                    Some(LampCommand::Shutdown) | None => {
+                        let _ = peripheral.disconnect().await;
+                        set_connection(&state_tx, ConnectionState::Disconnected);
+                        return;
+                    }
+                    Some(LampCommand::Reconnect) => {
+                        consecutive_failures = 0;
+                        backoff = INITIAL_BACKOFF;
+                        continue;
+                    }
+                    // SendLine/Disconnect while not connected: nothing to do.
+                    Some(LampCommand::SendLine(_)) | Some(LampCommand::Disconnect) => {}
                 }
-                // SendLine/Disconnect while not connected: nothing to do.
             }
         }
         backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -224,6 +281,9 @@ async fn run_connected(
                         let _ = peripheral.disconnect().await;
                         return RunOutcome::Shutdown;
                     }
+                    // Already connected - nothing to do, only meaningful
+                    // while idle/backing off.
+                    Some(LampCommand::Reconnect) => {}
                 }
             }
         }

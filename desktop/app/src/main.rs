@@ -263,6 +263,7 @@ fn status_text(lang: Lang, connection: &ConnectionState, on: Option<bool>, brigh
         ConnectionState::Connecting => t(lang, "status.connecting").to_string(),
         ConnectionState::AwaitingTrustToken => t(lang, "status.awaitingTrust").to_string(),
         ConnectionState::Reconnecting => t(lang, "status.reconnecting").to_string(),
+        ConnectionState::ReconnectFailed => t(lang, "status.reconnectFailed").to_string(),
         ConnectionState::Disconnected => t(lang, "status.disconnected").to_string(),
     }
 }
@@ -304,6 +305,10 @@ fn build_menu(
                     None,
                 ));
             }
+            if lamp.connection == ConnectionState::ReconnectFailed {
+                let _ = submenu.append(&PredefinedMenuItem::separator());
+                let _ = submenu.append(&MenuItem::with_id(format!("lamp-{idx}-reconnect"), t(lang, "tray.reconnect"), true, None));
+            }
 
             let _ = menu.append(&submenu);
         }
@@ -341,6 +346,8 @@ fn handle_lamp_menu_event(id: &str, state: &Arc<Mutex<DaemonState>>, index: &Lam
         guard.manager.send(lamp_key, LampCommand::SendLine(line.to_string()));
     } else if let Some(pct) = action.strip_prefix("bri-") {
         guard.manager.send(lamp_key, LampCommand::SendLine(format!("bri {pct}")));
+    } else if action == "reconnect" {
+        guard.manager.send(lamp_key, LampCommand::Reconnect);
     }
 }
 

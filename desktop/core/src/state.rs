@@ -22,6 +22,13 @@ pub enum ConnectionState {
     AwaitingTrustToken,
     Connected,
     Reconnecting,
+    /// Gave up after `lamp_actor::MAX_CONSECUTIVE_FAILURES` connection
+    /// attempts in a row failed - the actor is idle, waiting for an
+    /// explicit `LampCommand::Reconnect` instead of retrying itself on a
+    /// timer. Distinct from `Disconnected` so the UI can show a manual
+    /// "Reconnect" action specifically here, not on every disconnected
+    /// lamp (e.g. one the user disconnected on purpose).
+    ReconnectFailed,
 }
 
 #[derive(Clone, Debug, Default)]

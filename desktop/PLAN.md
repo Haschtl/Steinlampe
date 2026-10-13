@@ -873,6 +873,30 @@ desktop/
       job; `publish-release` now uploads the packaged installer per platform as the recommended
       download (named prominently first in the release body) alongside the existing loose binaries
       (kept for anyone who prefers `quarzlampe-tray --install` over a packaged installer).
+16. **Stop retrying forever, give up after 5 failures in a row (ad hoc). ✅ DONE, verified live
+    against a real lamp.** User complaint: the app kept trying to reconnect constantly, with no
+    way to make it stop short of restarting the daemon - `lamp_actor.rs`'s backoff loop
+    (`core::ble::lamp_actor::run_lamp_actor`) had no ceiling on *attempts*, only on the *delay*
+    between them (capped at 30s, but still forever). Added `ConnectionState::ReconnectFailed` and
+    a `consecutive_failures` counter (`MAX_CONSECUTIVE_FAILURES = 5`, resetting to 0 on every
+    successful connect, same as `backoff` already did) - once it hits 5, the actor stops sleeping-
+    then-retrying and instead blocks indefinitely on `cmd_rx.recv()`, waiting for a new
+    `LampCommand::Reconnect` (new IPC call `RequestKind::Reconnect { lamp_key }`) instead of a
+    timer. Every failure cause counts toward the five, including a trust rejection
+    (`ConnectError::PendingToken`) - a lamp that's never going to trust us without a reboot
+    shouldn't retry forever either.
+    - Console: where the "Verbinde erneut..." status label + dot normally sits (top-right of each
+      lamp card), a "Reconnect" button appears instead once the daemon reports
+      `reconnect_failed` - exactly where the user asked for it. Tray: the per-lamp submenu gets an
+      extra "Reconnect" item in the same state.
+    - **Verified live against the real, actually-present "Quarzlampe" BT device** (not a
+      scanned-but-unreachable key, an IPC script driving the real daemon): connected, failed 5
+      times in a row in ~8s (matching the 500ms/1s/2s/4s/8s backoff progression) with a genuine
+      BlueZ error ("No more profiles to connect to"), correctly reached `reconnect_failed`, then
+      **sat there with zero further attempts for a continuous 20s watch** - directly disproving
+      the original complaint for this run. Sending `Reconnect` over IPC correctly resumed a fresh
+      5-attempt cycle (backoff and counter both reset), confirming the manual path works too, not
+      just the give-up path.
 
 ## Verification
 
