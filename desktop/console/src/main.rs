@@ -272,6 +272,7 @@ struct ConsoleApp {
     new_rule_targets: HashSet<String>,
     new_rule_trigger_kind: TriggerKind,
     new_rule_app_name: String,
+    new_rule_notification_app_filter: String,
     new_rule_key_ctrl: bool,
     new_rule_key_alt: bool,
     new_rule_key_shift: bool,
@@ -309,7 +310,12 @@ impl ConsoleApp {
             TriggerKind::OnBoot => Trigger::OnBoot,
             TriggerKind::OnBeforeSleep => Trigger::OnBeforeSleep,
             TriggerKind::BeforeShutdown => Trigger::BeforeShutdown,
-            TriggerKind::OnNotification => Trigger::OnNotification,
+            TriggerKind::OnNotification => {
+                let filter = self.new_rule_notification_app_filter.trim();
+                Trigger::OnNotification {
+                    app_name_filter: if filter.is_empty() { None } else { Some(filter.to_string()) },
+                }
+            }
             TriggerKind::OnAppOpen => Trigger::OnAppOpen { app_name: self.new_rule_app_name.trim().to_string() },
             TriggerKind::OnKeyPress => Trigger::OnKeyPress { key: self.new_rule_hotkey_string() },
         }
@@ -511,6 +517,12 @@ impl ConsoleApp {
                             ui.horizontal(|ui| {
                                 ui.label(t(lang, "rules.appNameLabel"));
                                 ui.text_edit_singleline(&mut self.new_rule_app_name);
+                            });
+                        }
+                        TriggerKind::OnNotification => {
+                            ui.horizontal(|ui| {
+                                ui.label(t(lang, "rules.notificationAppFilterLabel"));
+                                ui.text_edit_singleline(&mut self.new_rule_notification_app_filter);
                             });
                         }
                         TriggerKind::OnKeyPress => {
@@ -734,8 +746,10 @@ fn describe_trigger(lang: Lang, trigger: &Trigger) -> String {
         (Lang::De, Trigger::OnBeforeSleep) => "System geht gleich in den Ruhezustand".to_string(),
         (Lang::En, Trigger::BeforeShutdown) => "system is about to shut down".to_string(),
         (Lang::De, Trigger::BeforeShutdown) => "System f\u{e4}hrt gleich herunter".to_string(),
-        (Lang::En, Trigger::OnNotification) => "a notification appears".to_string(),
-        (Lang::De, Trigger::OnNotification) => "eine Benachrichtigung erscheint".to_string(),
+        (Lang::En, Trigger::OnNotification { app_name_filter: None }) => "a notification appears".to_string(),
+        (Lang::De, Trigger::OnNotification { app_name_filter: None }) => "eine Benachrichtigung erscheint".to_string(),
+        (Lang::En, Trigger::OnNotification { app_name_filter: Some(f) }) => format!("a notification from \"{f}\" appears"),
+        (Lang::De, Trigger::OnNotification { app_name_filter: Some(f) }) => format!("eine Benachrichtigung von \"{f}\" erscheint"),
         (Lang::En, Trigger::OnAppOpen { app_name }) => format!("\"{app_name}\" starts"),
         (Lang::De, Trigger::OnAppOpen { app_name }) => format!("\"{app_name}\" startet"),
         (Lang::En, Trigger::OnKeyPress { key }) => format!("hotkey {key} is pressed"),
@@ -850,6 +864,7 @@ fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule
             let name_key = match (kind, &trigger) {
                 (QuickRuleKind::OnAir, Trigger::MicActive) => "quickRule.onAirRuleNameOn",
                 (QuickRuleKind::OnAir, Trigger::MicInactive) => "quickRule.onAirRuleNameOff",
+                (QuickRuleKind::TeamsNotification, _) => "quickRule.teamsNotificationRuleName",
                 _ => "quickRule.onAir",
             };
             Rule {
@@ -863,6 +878,43 @@ fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule
             }
         })
         .collect()
+}
+
+/// One quick-rule toggle row on a lamp card: a label, a switch reflecting
+/// whether this kind's tagged rules already exist for this lamp, and a
+/// hint line underneath - the same three-piece layout every quick rule
+/// uses, factored out once a second one (`TeamsNotification`) joined the
+/// original `OnAir` toggle so the two wouldn't just be copy-pasted blocks
+/// drifting apart over time.
+#[allow(clippy::too_many_arguments)]
+fn quick_rule_toggle_row(
+    ui: &mut egui::Ui,
+    lang: Lang,
+    rules: &[Rule],
+    lamp_key: &str,
+    to_core: &tokio_mpsc::UnboundedSender<UiToCore>,
+    kind: QuickRuleKind,
+    label_key: &'static str,
+    hint_key: &'static str,
+) {
+    ui.horizontal(|ui| {
+        ui.label(t(lang, label_key));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let mut on = quick_rule_active(rules, kind, lamp_key);
+            if toggle_ui(ui, &mut on).changed() {
+                if on {
+                    for rule in build_quick_rule(lang, kind, lamp_key) {
+                        let _ = to_core.send(UiToCore::SaveRule(rule));
+                    }
+                } else {
+                    for id in quick_rule_ids(rules, kind, lamp_key) {
+                        let _ = to_core.send(UiToCore::DeleteRule(id));
+                    }
+                }
+            }
+        });
+    });
+    ui.label(egui::RichText::new(t(lang, hint_key)).small().color(ui.visuals().weak_text_color()));
 }
 
 /// The "found nearby, not yet paired" list a scan produces - framed like a
@@ -1010,24 +1062,26 @@ fn lamp_card(
                 });
 
                 ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label(t(lang, "quickRule.onAir"));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let mut on = quick_rule_active(rules, QuickRuleKind::OnAir, &lamp.lamp_key);
-                        if toggle_ui(ui, &mut on).changed() {
-                            if on {
-                                for rule in build_quick_rule(lang, QuickRuleKind::OnAir, &lamp.lamp_key) {
-                                    let _ = to_core.send(UiToCore::SaveRule(rule));
-                                }
-                            } else {
-                                for id in quick_rule_ids(rules, QuickRuleKind::OnAir, &lamp.lamp_key) {
-                                    let _ = to_core.send(UiToCore::DeleteRule(id));
-                                }
-                            }
-                        }
-                    });
-                });
-                ui.label(egui::RichText::new(t(lang, "quickRule.onAirHint")).small().color(ui.visuals().weak_text_color()));
+                quick_rule_toggle_row(
+                    ui,
+                    lang,
+                    rules,
+                    &lamp.lamp_key,
+                    to_core,
+                    QuickRuleKind::OnAir,
+                    "quickRule.onAir",
+                    "quickRule.onAirHint",
+                );
+                quick_rule_toggle_row(
+                    ui,
+                    lang,
+                    rules,
+                    &lamp.lamp_key,
+                    to_core,
+                    QuickRuleKind::TeamsNotification,
+                    "quickRule.teamsNotification",
+                    "quickRule.teamsNotificationHint",
+                );
             });
         });
     });
@@ -1205,6 +1259,7 @@ fn main() -> eframe::Result<()> {
                 new_rule_targets: HashSet::new(),
                 new_rule_trigger_kind: TriggerKind::MicActive,
                 new_rule_app_name: String::new(),
+                new_rule_notification_app_filter: String::new(),
                 new_rule_key_ctrl: true,
                 new_rule_key_alt: true,
                 new_rule_key_shift: false,

@@ -50,7 +50,17 @@ pub enum Trigger {
     OnBoot,
     OnBeforeSleep,
     BeforeShutdown,
-    OnNotification,
+    /// Fires on every desktop notification the Linux D-Bus eavesdrop sees
+    /// when `app_name_filter` is `None`, or only ones whose sender app
+    /// name contains it (case-insensitive) when `Some` - e.g. `"teams"`
+    /// matches both "Microsoft Teams" and "teams-for-linux".
+    /// `#[serde(default)]` so a `rules.toml` saved before this field
+    /// existed still loads, with the old "any notification" behavior
+    /// preserved exactly.
+    OnNotification {
+        #[serde(default)]
+        app_name_filter: Option<String>,
+    },
     /// `app_name` matches a running process's name, case-insensitively
     /// (see `app`'s `sysinfo`-based poller) - not a full path, just the
     /// executable name as the OS reports it (e.g. "firefox", "steam.exe").
@@ -97,10 +107,17 @@ pub enum QuickRuleKind {
     /// project started from, now one toggle instead of two hand-built
     /// rules.
     OnAir,
+    /// Flash the lamp's default notify pattern whenever a notification
+    /// from Microsoft Teams arrives (Linux only - see
+    /// `Trigger::OnNotification`'s doc comment and `app`'s
+    /// `spawn_notification_watch`; this is the D-Bus-eavesdrop path, not
+    /// any Teams-specific integration - it matches on the sender app name
+    /// the desktop notification itself reports, nothing more).
+    TeamsNotification,
 }
 
 impl QuickRuleKind {
-    pub const ALL: [QuickRuleKind; 1] = [Self::OnAir];
+    pub const ALL: [QuickRuleKind; 2] = [Self::OnAir, Self::TeamsNotification];
 
     /// `(Trigger, Action)` pairs this quick rule expands into for one
     /// lamp - each becomes its own persisted `Rule` targeting just that
@@ -108,6 +125,10 @@ impl QuickRuleKind {
     pub fn rule_specs(&self) -> Vec<(Trigger, Action)> {
         match self {
             Self::OnAir => vec![(Trigger::MicActive, Action::On), (Trigger::MicInactive, Action::Off)],
+            Self::TeamsNotification => vec![(
+                Trigger::OnNotification { app_name_filter: Some("teams".to_string()) },
+                Action::Notify { pattern_ms: None, fade_ms: None },
+            )],
         }
     }
 }

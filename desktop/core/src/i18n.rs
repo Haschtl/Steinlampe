@@ -121,6 +121,9 @@ dict! {
     "rules.appNameLabel" =>
         ["App name (as the OS reports it, e.g. \"firefox\"):",
          "App-Name (wie vom Betriebssystem gemeldet, z. B. \"firefox\"):"],
+    "rules.notificationAppFilterLabel" =>
+        ["Sender app contains (leave empty for any notification, e.g. \"teams\"):",
+         "Absender-App enth\u{e4}lt (leer lassen f\u{fc}r jede Benachrichtigung, z. B. \"teams\"):"],
     "rules.ctrl" => ["Ctrl", "Strg"],
     "rules.alt" => ["Alt", "Alt"],
     "rules.shift" => ["Shift", "Umschalt"],
@@ -186,4 +189,9 @@ dict! {
          "Schaltet diese Lampe ein, solange das Mikrofon aktiv ist, und wieder aus, sobald nicht mehr"],
     "quickRule.onAirRuleNameOn" => ["On-Air: turn on", "On-Air: einschalten"],
     "quickRule.onAirRuleNameOff" => ["On-Air: turn off", "On-Air: ausschalten"],
+    "quickRule.teamsNotification" => ["Teams notifications", "Teams-Benachrichtigungen"],
+    "quickRule.teamsNotificationHint" =>
+        ["Flashes this lamp whenever a Microsoft Teams notification arrives (Linux only)",
+         "L\u{e4}sst diese Lampe aufblitzen, sobald eine Microsoft-Teams-Benachrichtigung eintrifft (nur Linux)"],
+    "quickRule.teamsNotificationRuleName" => ["Teams notification", "Teams-Benachrichtigung"],
 }

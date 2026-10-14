@@ -967,6 +967,46 @@ desktop/
       `reconnect_failed` after lamp_actor's own 5-try cycle, the same real BlueZ "No more profiles
       to connect to" error seen in item 16 - a pre-existing BLE quirk with this device/session,
       unrelated to this feature). Debug logging removed before committing.
+20. **Filterable notification trigger + a Teams-notification quick rule (ad hoc).** Requested as
+    "Teams integration": blink on incoming call, notification to the light, set a profile while a
+    call is active, "mit unserer Logik, aber auch so Quick-Buttons" (via the rule engine, but also
+    as individually-toggleable quick buttons). **Researched before writing any code, since "Teams
+    API" could mean several very different things with very different real cost** - found that
+    there is no documented real-time "incoming call" event anywhere (not even commercial busylight
+    vendors have one - a Microsoft Q&A thread confirms call records only exist *after* a call ends),
+    and that "call active" only works through the Microsoft Graph presence API, which needs an
+    Azure AD app registration, OAuth sign-in, and a Microsoft 365 *work/school* account - not a
+    personal Teams account - plus polling (no public HTTPS endpoint for webhooks from a desktop
+    app), so a few seconds of latency at best. **Asked the user to choose given that real cost; they
+    chose to drop call-ringing and call-active entirely and ship only the notification-filter
+    piece.** That part reuses infrastructure that already existed (Linux's D-Bus-eavesdrop
+    `OnNotification` trigger) rather than needing any new Teams-specific integration at all:
+    - `Trigger::OnNotification` gained an `app_name_filter: Option<String>` field
+      (`#[serde(default)]`, so old saved rules without it still load as "any notification", exactly
+      their old behavior). `spawn_notification_watch` now decodes the real D-Bus `Notify` call's
+      `app_name` argument (full 8-field tuple type, since zbus's typed `deserialize` checks the
+      whole signature even though only the first field is kept) and matches it
+      case-insensitively/by-substring against the filter.
+    - New `QuickRuleKind::TeamsNotification`: one rule, `OnNotification{app_name_filter:
+      Some("teams")} -> Notify{pattern_ms: None, fade_ms: None}` (the firmware's default blink).
+      Toggled per lamp on the lamp card, same mechanism as `OnAir` - factored the shared
+      label/switch/hint layout into `quick_rule_toggle_row` once there were two of these instead of
+      copy-pasting the block again.
+    - **Verified live with real D-Bus notifications** (`notify-send`), both before and after the
+      final debug-print-free build: a rule filtered to `"teams"` correctly ignored a `Discord`-
+      sourced notification and correctly fired for a `Microsoft Teams`-sourced one (case-
+      insensitive substring match confirmed working, not just "any notification" slipping through).
+    - **Real, documented caveat found along the way, not swept under the rug**: on this dev
+      machine's desktop environment, every notification triggers the rule *twice* - confirmed via
+      temporary diagnostic logging that these are two genuinely distinct D-Bus `Notify` calls
+      (different serials, different senders), not one message delivered twice, so something in this
+      particular notification stack (likely a forwarder/mirror) issues a second call on its own.
+      Deliberately not deduplicated in `quarzlampe` - doing that by serial/sender risks silently
+      dropping a real second notification from an unrelated app arriving in the same instant.
+      Documented directly in `spawn_notification_watch`'s doc comment: a rule using `Action::Notify`
+      may blink twice in quick succession on some systems. This affects *every* `OnNotification`
+      rule, not just the new Teams one - a pre-existing characteristic surfaced by finally testing
+      this trigger live for the first time, not a regression from this change.
 
 ## Verification
 

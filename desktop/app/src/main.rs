@@ -782,6 +782,19 @@ async fn spawn_power_event_watch(state: Arc<Mutex<DaemonState>>) {
 /// some systems may refuse this; if so, this trigger silently never fires
 /// rather than taking the daemon down - see PLAN.md for the "this was
 /// explicitly flagged as fragile" context.
+///
+/// Observed live (with `notify-send` + a counting rule) firing *twice*
+/// per logical notification on this dev machine's desktop environment -
+/// two genuinely distinct `Notify` method calls, different senders and
+/// serials both times, not the same message delivered twice. Something
+/// in this session's notification stack (likely a forwarder/mirror of
+/// some kind) is itself issuing a second call, not a bug in this
+/// watcher or in `BecomeMonitor`. Deliberately not deduplicated here -
+/// doing that by serial/sender would risk silently dropping a real
+/// second notification from a different app that happens to arrive in
+/// the same instant. Document this as a known caveat (a rule using
+/// `Action::Notify` may blink twice in quick succession on some
+/// systems) rather than papering over it.
 #[cfg(target_os = "linux")]
 async fn spawn_notification_watch(state: Arc<Mutex<DaemonState>>) {
     tokio::spawn(async move {
@@ -816,9 +829,33 @@ async fn spawn_notification_watch(state: Arc<Mutex<DaemonState>>) {
             let header = msg.header();
             let is_notify = header.interface().map(|i| i.as_str()) == Some("org.freedesktop.Notifications")
                 && header.member().map(|m| m.as_str()) == Some("Notify");
-            if is_notify {
-                fire_rules_where_async(&state, |t| *t == Trigger::OnNotification).await;
+            if !is_notify {
+                continue;
             }
+            // The Notify call's full signature is `susssasa{sv}i` (app_name,
+            // replaces_id, app_icon, summary, body, actions, hints,
+            // expire_timeout) - only `app_name` matters here, but zbus's
+            // typed `deserialize` checks the target type's signature
+            // against the message's actual one, so every field has to be
+            // declared even though the rest are discarded.
+            type NotifyArgs =
+                (String, u32, String, String, String, Vec<String>, HashMap<String, zbus::zvariant::OwnedValue>, i32);
+            let app_name = match msg.body().deserialize::<NotifyArgs>() {
+                Ok((app_name, ..)) => app_name,
+                Err(e) => {
+                    eprintln!("[notify-trigger] could not read a Notify call's app name, skipping: {e}");
+                    continue;
+                }
+            };
+            let app_name_lower = app_name.to_lowercase();
+            fire_rules_where_async(&state, |t| match t {
+                Trigger::OnNotification { app_name_filter: None } => true,
+                Trigger::OnNotification { app_name_filter: Some(filter) } => {
+                    app_name_lower.contains(&filter.to_lowercase())
+                }
+                _ => false,
+            })
+            .await;
         }
     });
 }
