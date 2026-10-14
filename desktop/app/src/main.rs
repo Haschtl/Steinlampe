@@ -1288,10 +1288,18 @@ impl MainLoopCtx {
             }
         }
 
-        if let Ok(TrayIconEvent::Click { .. }) = TrayIconEvent::receiver().try_recv() {
+        // Drains everything currently queued on each channel, not just one
+        // event - a plain `if let` here left events to trickle out one per
+        // ~100ms tick whenever they queued up faster than that (observed on
+        // macOS: its native menu tracking runs its own nested event loop
+        // while a menu is open, backing up clicks/menu selections that our
+        // timer-driven tick can otherwise only drain one at a time), which
+        // read as random extra latency and things firing well after the
+        // interaction that caused them.
+        while let Ok(TrayIconEvent::Click { .. }) = TrayIconEvent::receiver().try_recv() {
             spawn_or_note(&mut self.console_child, &self.console_path);
         }
-        if let Ok(event) = MenuEvent::receiver().try_recv() {
+        while let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == "show-console" {
                 spawn_or_note(&mut self.console_child, &self.console_path);
             } else if event.id == "toggle-autostart" {
@@ -1324,13 +1332,14 @@ impl MainLoopCtx {
                 handle_lamp_menu_event(&event.id.0, state, &self.lamp_index);
             }
         }
-        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv()
-            && event.state() == HotKeyState::Pressed
-            && let Some(state) = &self.daemon_state
-            && let Some(key) =
-                self.registered_hotkeys.iter().find(|(_, hk)| hk.id() == event.id()).map(|(k, _)| k.clone())
-        {
-            fire_rules_where(state, |t| matches!(t, Trigger::OnKeyPress { key: k } if *k == key));
+        while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            if event.state() == HotKeyState::Pressed
+                && let Some(state) = &self.daemon_state
+                && let Some(key) =
+                    self.registered_hotkeys.iter().find(|(_, hk)| hk.id() == event.id()).map(|(k, _)| k.clone())
+            {
+                fire_rules_where(state, |t| matches!(t, Trigger::OnKeyPress { key: k } if *k == key));
+            }
         }
 
         true
@@ -1367,6 +1376,14 @@ fn main() -> anyhow::Result<()> {
         notify_already_running(lang);
         return Ok(());
     };
+
+    // Must happen before anything below touches AppKit (the tray icon) or
+    // CoreBluetooth (`MainLoopCtx::new()` starts both) - see
+    // `platform::macos::init_app`'s doc comment for why getting this
+    // ordering wrong meant the Bluetooth permission prompt silently never
+    // appeared at all.
+    #[cfg(target_os = "macos")]
+    platform::macos::init_app();
 
     let ctx = MainLoopCtx::new(lang)?;
 

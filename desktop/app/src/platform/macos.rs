@@ -67,13 +67,39 @@ fn observe(
     }
 }
 
+/// Must run before *anything* in the process touches AppKit or
+/// CoreBluetooth - in particular, before `MainLoopCtx::new()` (which builds
+/// the tray icon) and before `spawn_core_runtime()` (which initializes
+/// `btleplug`'s CoreBluetooth central manager on a background thread).
+/// Found live: with that ordering reversed (as it was before this
+/// function existed - BLE init running on its own thread while the main
+/// thread hadn't yet set up `NSApplication` at all), the Bluetooth
+/// permission prompt never appeared - not denied, not granted, simply
+/// never asked, and the app never even showed up in System Settings'
+/// Bluetooth list. CoreBluetooth's authorization dialog needs a properly
+/// registered, running application to attach to; asking before that
+/// exists apparently just drops the request instead of queuing it.
+/// Idempotent (`sharedApplication` always returns the same singleton), so
+/// `run` below calling it again afterward is harmless.
+pub fn init_app() {
+    let Some(mtm) = MainThreadMarker::new() else {
+        eprintln!("[platform/macos] init_app() must be called from the main thread");
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    // Accessory: a menu-bar-only process - no Dock icon, no application
+    // menu bar of its own. The standard policy for a tray-only utility.
+    let _ = app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+}
+
 /// Takes over the main thread until `ctx.tick()` reports "quit" (returns
 /// `false`), calling it roughly every 100ms via an `NSTimer` - the same
 /// cadence `main()`'s plain `loop { ...; sleep(100ms); }` uses on
 /// Linux/Windows. Never returns at all if this isn't actually the main
 /// thread (logs and bails instead, same graceful-degradation shape as every
-/// other platform-detection gap in this codebase) - `main()` must call this
-/// directly from its own entry, not from a spawned thread.
+/// other platform-detection gap in this codebase) - `main()` must call
+/// `init_app()` above, then build `ctx`, then call this, all from its own
+/// entry point, not from a spawned thread.
 pub fn run(ctx: MainLoopCtx) {
     let Some(mtm) = MainThreadMarker::new() else {
         eprintln!(
@@ -83,9 +109,6 @@ pub fn run(ctx: MainLoopCtx) {
     };
 
     let app = NSApplication::sharedApplication(mtm);
-    // Accessory: a menu-bar-only process - no Dock icon, no application
-    // menu bar of its own. The standard policy for a tray-only utility.
-    let _ = app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
     let ctx = Rc::new(RefCell::new(ctx));
 
