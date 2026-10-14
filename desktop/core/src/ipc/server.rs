@@ -122,7 +122,7 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
     match kind {
         RequestKind::ListLamps => {
             let state = state.lock().await;
-            let lamps = state
+            let mut lamps: Vec<LampSummary> = state
                 .manager
                 .lamps()
                 .map(|(key, handle)| {
@@ -138,6 +138,20 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
                     }
                 })
                 .collect();
+            // Known from a previous run (or earlier this session) but not
+            // currently live - still listed, "not_in_range", with no live
+            // state, so the console shows it as a known device rather than
+            // making it look like nothing was ever paired at all. See
+            // `LampManager::known_but_not_live`'s doc comment.
+            lamps.extend(state.manager.known_but_not_live().map(|(key, name)| LampSummary {
+                lamp_key: key.clone(),
+                name: name.clone(),
+                connection: "not_in_range".to_string(),
+                lamp_on: None,
+                brightness_pct: None,
+                pattern: None,
+                last_error: None,
+            }));
             IpcResponse::Lamps { lamps }
         }
         RequestKind::Scan { seconds } => {

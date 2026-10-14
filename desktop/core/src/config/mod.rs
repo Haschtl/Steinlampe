@@ -44,6 +44,47 @@ pub fn save_rules(rules: &[Rule]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// One lamp `LampManager` has ever successfully connected to - just enough
+/// to show it in the console as a known device while it's out of range,
+/// the same way a phone's Bluetooth settings list a paired device whether
+/// or not it's currently nearby. Deliberately separate from
+/// `FileTokenStore` (which only keeps the pairing token, under an opaque
+/// per-lamp filename, with no name attached) - see its own doc comment for
+/// why that one stayed minimal.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct KnownLamp {
+    pub lamp_key: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct KnownLampsFile {
+    #[serde(default)]
+    lamps: Vec<KnownLamp>,
+}
+
+/// Returns an empty list if `known_lamps.toml` doesn't exist yet (first
+/// run) - not an error.
+pub fn load_known_lamps() -> anyhow::Result<Vec<KnownLamp>> {
+    let path = config_dir()?.join("known_lamps.toml");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = std::fs::read_to_string(&path)?;
+    let file: KnownLampsFile = toml::from_str(&text)?;
+    Ok(file.lamps)
+}
+
+pub fn save_known_lamps(lamps: &[KnownLamp]) -> anyhow::Result<()> {
+    let dir = config_dir()?;
+    let path = dir.join("known_lamps.toml");
+    let tmp_path = dir.join("known_lamps.toml.tmp");
+    let text = toml::to_string_pretty(&KnownLampsFile { lamps: lamps.to_vec() })?;
+    std::fs::write(&tmp_path, text)?;
+    std::fs::rename(&tmp_path, &path)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +125,14 @@ mod tests {
         let file: RulesFile = toml::from_str(text).unwrap();
         assert_eq!(file.rules.len(), 1);
         assert_eq!(file.rules[0].triggers, vec![Trigger::MicActive]);
+    }
+
+    #[test]
+    fn known_lamps_round_trip_through_toml() {
+        let lamps = vec![KnownLamp { lamp_key: "abcd-1234".to_string(), name: "Quarzlampe".to_string() }];
+        let text = toml::to_string_pretty(&KnownLampsFile { lamps: lamps.clone() }).unwrap();
+        let parsed: KnownLampsFile = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.lamps, lamps);
     }
 
     #[test]

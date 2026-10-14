@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use crate::ble::lamp_actor::{run_lamp_actor, LampCommand};
 use crate::ble::trust::FileTokenStore;
 use crate::ble::uuids;
+use crate::config::{self, KnownLamp};
 use crate::state::LampState;
 
 /// A lamp seen during a scan, not yet connected. The underlying
@@ -44,6 +45,16 @@ pub struct LampManager {
     /// `connect_by_key` (driven by an IPC request that only carries the
     /// key) can look the real handle back up.
     scanned: HashMap<String, Peripheral>,
+    /// Every lamp ever successfully connected to, by key -> name, loaded
+    /// from `config::load_known_lamps()` at startup and persisted again on
+    /// every new one - so the console can still list a lamp as "known" the
+    /// moment the daemon restarts, before any scan has run and even if the
+    /// lamp never comes back into range this session. Deliberately *not*
+    /// used to widen `app::spawn_auto_reconnect_loop`'s background-scan set
+    /// (which stays scoped to rule/visualizer-relevant lamps on purpose,
+    /// see its own doc comment) - this is purely about what the console
+    /// *shows*, not what the daemon actively goes looking for.
+    known: HashMap<String, String>,
 }
 
 impl LampManager {
@@ -55,7 +66,41 @@ impl LampManager {
             .into_iter()
             .next()
             .context("no Bluetooth adapter found")?;
-        Ok(Self { adapter, tokens, lamps: HashMap::new(), scanned: HashMap::new() })
+        let known = config::load_known_lamps()
+            .unwrap_or_else(|e| {
+                eprintln!("[ble] failed to load known_lamps.toml, starting with none: {e}");
+                Vec::new()
+            })
+            .into_iter()
+            .map(|k| (k.lamp_key, k.name))
+            .collect();
+        Ok(Self { adapter, tokens, lamps: HashMap::new(), scanned: HashMap::new(), known })
+    }
+
+    /// Records a lamp as known (if it isn't already, under this exact
+    /// name) and persists the updated list. Called every time a connect
+    /// succeeds, not just the first time - a renamed lamp (via `name
+    /// <text>`, reported back the next time it's connected to) should
+    /// update the stored name too, not get stuck with whatever it was
+    /// first seen as.
+    fn remember(&mut self, lamp_key: &str, name: &str) {
+        if self.known.get(lamp_key).map(String::as_str) == Some(name) {
+            return;
+        }
+        self.known.insert(lamp_key.to_string(), name.to_string());
+        let list: Vec<KnownLamp> =
+            self.known.iter().map(|(k, n)| KnownLamp { lamp_key: k.clone(), name: n.clone() }).collect();
+        if let Err(e) = config::save_known_lamps(&list) {
+            eprintln!("[ble] failed to persist known_lamps.toml: {e}");
+        }
+    }
+
+    /// Known lamps with no live handle right now - i.e. the ones the
+    /// console should still list, just with no live state, since
+    /// `lamps()` alone would otherwise make it look like nothing was ever
+    /// paired at all until the next successful scan+connect.
+    pub fn known_but_not_live(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.known.iter().filter(|(k, _)| !self.lamps.contains_key(k.as_str()))
     }
 
     /// Scans for `scan_time` and returns any lamps seen, matched the same
@@ -96,6 +141,8 @@ impl LampManager {
         if let Some(old) = self.lamps.remove(lamp_key) {
             let _ = old.cmd_tx.send(LampCommand::Shutdown);
         }
+
+        self.remember(lamp_key, &name);
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (state_tx, state_rx) = watch::channel(LampState::default());

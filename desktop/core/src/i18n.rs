@@ -63,6 +63,7 @@ dict! {
     "status.reconnectFailed" => ["Couldn't reconnect", "Verbindung fehlgeschlagen"],
     "status.awaitingTrust" => ["Awaiting trust token\u{2026}", "Warte auf Trust-Token\u{2026}"],
     "status.disconnected" => ["Disconnected", "Getrennt"],
+    "status.notInRange" => ["Not in range", "Nicht in Reichweite"],
     "status.on" => ["On", "An"],
     "status.off" => ["Off", "Aus"],
     "status.unknown" => ["?", "?"],
