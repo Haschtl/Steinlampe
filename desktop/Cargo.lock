@@ -3547,17 +3547,22 @@ name = "quarzlampe-tray"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block2 0.6.2",
  "chrono",
  "directories",
  "futures-util",
  "global-hotkey",
  "muda",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "open",
  "quarzlampe-core",
  "sysinfo",
  "tokio",
  "tray-icon",
  "uuid",
+ "windows-sys 0.59.0",
  "winreg",
  "zbus",
 ]

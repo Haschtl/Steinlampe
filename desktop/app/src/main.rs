@@ -20,6 +20,7 @@
 //! native menu in place item by item.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -38,8 +39,13 @@ use sysinfo::{ProcessesToUpdate, System};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tray_icon::{TrayIconBuilder, TrayIconEvent};
+use tray_icon::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use uuid::Uuid;
+
+mod platform;
+
+#[cfg(any(windows, target_os = "macos"))]
+use platform::SystemEvent;
 
 mod autostart;
 mod install;
@@ -1161,6 +1167,192 @@ fn notify_already_running(lang: Lang) {
 #[cfg(not(target_os = "linux"))]
 fn notify_already_running(_lang: Lang) {}
 
+/// Everything one `tick()` touches, bundled so the same loop body can run
+/// from either a plain `loop { ctx.tick(); sleep(...); }` (Linux/Windows) or
+/// an `NSTimer` callback (macOS - see `platform::macos`'s doc comment for
+/// why that platform can't use the plain-loop shape at all).
+struct MainLoopCtx {
+    lang: Lang,
+    show_item: MenuItem,
+    autostart_item: CheckMenuItem,
+    pause_item: CheckMenuItem,
+    quit_item: MenuItem,
+    tray_icon: TrayIcon,
+    state_rx: std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>>,
+    daemon_state: Option<Arc<Mutex<DaemonState>>>,
+    lamp_index: LampIndex,
+    last_refresh: Option<Instant>,
+    hotkey_manager: Option<GlobalHotKeyManager>,
+    registered_hotkeys: HashMap<String, HotKey>,
+    console_path: PathBuf,
+    console_child: Option<Child>,
+}
+
+impl MainLoopCtx {
+    fn new(lang: Lang) -> anyhow::Result<Self> {
+        let show_item = MenuItem::with_id("show-console", t(lang, "tray.showConsole"), true, None);
+        let autostart_item = CheckMenuItem::with_id(
+            "toggle-autostart",
+            t(lang, "tray.startOnBoot"),
+            true,
+            autostart::is_enabled(),
+            None,
+        );
+        let pause_item =
+            CheckMenuItem::with_id("toggle-automations-paused", t(lang, "tray.pauseAutomations"), true, false, None);
+        let quit_item = MenuItem::with_id("quit", t(lang, "tray.quit"), true, None);
+
+        let starting_menu = Menu::new();
+        let _ = starting_menu.append(&MenuItem::new(t(lang, "tray.starting"), false, None));
+        let _ = starting_menu.append(&PredefinedMenuItem::separator());
+        let _ = starting_menu.append(&show_item);
+        let _ = starting_menu.append(&autostart_item);
+        let _ = starting_menu.append(&pause_item);
+        let _ = starting_menu.append(&quit_item);
+
+        // Kept alive for the whole process lifetime - dropping this removes
+        // the tray icon.
+        let tray_icon = TrayIconBuilder::new()
+            .with_menu(Box::new(starting_menu))
+            .with_tooltip(format!("Quarzlampe \u{2014} {}", t(lang, "tray.starting")))
+            .with_icon(render_status_icon(&[]))
+            .build()?;
+
+        let state_rx = spawn_core_runtime();
+        let hotkey_manager = init_hotkey_manager();
+        let console_path = console_binary_path()?;
+
+        println!("[tray] daemon running. Console binary: {}", console_path.display());
+
+        Ok(Self {
+            lang,
+            show_item,
+            autostart_item,
+            pause_item,
+            quit_item,
+            tray_icon,
+            state_rx,
+            daemon_state: None,
+            lamp_index: LampIndex::new(),
+            last_refresh: None,
+            hotkey_manager,
+            registered_hotkeys: HashMap::new(),
+            console_path,
+            console_child: None,
+        })
+    }
+
+    /// One iteration of the main loop. Returns `false` once "quit" was
+    /// selected - the caller (the plain loop on Linux/Windows, the
+    /// `NSTimer` callback on macOS) is responsible for actually stopping at
+    /// that point, this just reports it.
+    fn tick(&mut self) -> bool {
+        if self.daemon_state.is_none()
+            && let Ok(s) = self.state_rx.try_recv()
+        {
+            spawn_mic_evaluation_loop(Arc::clone(&s));
+            spawn_camera_evaluation_loop(Arc::clone(&s));
+            spawn_app_open_watch_loop(Arc::clone(&s));
+            spawn_visualizer_loop(Arc::clone(&s));
+            spawn_update_check_loop(Arc::clone(&s));
+            spawn_time_trigger_loop(Arc::clone(&s));
+            self.daemon_state = Some(s);
+        }
+
+        if let Some(state) = &self.daemon_state {
+            let needs_refresh =
+                self.last_refresh.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
+            if needs_refresh {
+                let lamps = snapshot_lamps(state);
+                let update_available = state.blocking_lock().update_available.is_some();
+                self.pause_item.set_checked(state.blocking_lock().automations_paused);
+                let menu = build_menu(
+                    self.lang,
+                    &lamps,
+                    &mut self.lamp_index,
+                    &self.show_item,
+                    &self.autostart_item,
+                    &self.pause_item,
+                    update_available,
+                    &self.quit_item,
+                );
+                self.tray_icon.set_menu(Some(Box::new(menu)));
+                let icon_colors = ordered_lamp_colors(&lamps, &mut self.lamp_index);
+                let _ = self.tray_icon.set_icon(Some(render_status_icon(&icon_colors)));
+                let _ = self.tray_icon.set_tooltip(Some(tooltip_text(self.lang, &lamps)));
+                if let Some(manager) = &self.hotkey_manager {
+                    let rules = state.blocking_lock().rules.clone();
+                    self.registered_hotkeys = sync_registered_hotkeys(manager, &rules, &self.registered_hotkeys);
+                }
+                self.last_refresh = Some(Instant::now());
+            }
+        }
+
+        if let Ok(TrayIconEvent::Click { .. }) = TrayIconEvent::receiver().try_recv() {
+            spawn_or_note(&mut self.console_child, &self.console_path);
+        }
+        if let Ok(event) = MenuEvent::receiver().try_recv() {
+            if event.id == "show-console" {
+                spawn_or_note(&mut self.console_child, &self.console_path);
+            } else if event.id == "toggle-autostart" {
+                let enabled = autostart::is_enabled();
+                if let Err(e) = autostart::set_enabled(!enabled) {
+                    eprintln!("[tray] failed to change start-on-boot setting: {e}");
+                }
+            } else if event.id == "toggle-automations-paused" {
+                if let Some(state) = &self.daemon_state {
+                    let mut guard = state.blocking_lock();
+                    guard.automations_paused = !guard.automations_paused;
+                    println!(
+                        "[tray] automations {}",
+                        if guard.automations_paused { "paused" } else { "resumed" }
+                    );
+                }
+            } else if event.id == "open-update" {
+                if let Some(state) = &self.daemon_state
+                    && let Some(info) = state.blocking_lock().update_available.clone()
+                    && let Err(e) = open::that(&info.html_url)
+                {
+                    eprintln!("[update] failed to open {}: {e}", info.html_url);
+                }
+            } else if event.id == "quit" {
+                if let Some(mut child) = self.console_child.take() {
+                    let _ = child.kill();
+                }
+                return false;
+            } else if let Some(state) = &self.daemon_state {
+                handle_lamp_menu_event(&event.id.0, state, &self.lamp_index);
+            }
+        }
+        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv()
+            && event.state() == HotKeyState::Pressed
+            && let Some(state) = &self.daemon_state
+            && let Some(key) =
+                self.registered_hotkeys.iter().find(|(_, hk)| hk.id() == event.id()).map(|(k, _)| k.clone())
+        {
+            fire_rules_where(state, |t| matches!(t, Trigger::OnKeyPress { key: k } if *k == key));
+        }
+
+        true
+    }
+
+    /// The Windows/macOS equivalents of the `Trigger` variants `main.rs`
+    /// already fires natively on Linux via zbus (`spawn_power_event_watch`,
+    /// `spawn_screen_lock_watch`) - see `platform`'s doc comment for why
+    /// those two platforms need their own native plumbing to deliver these
+    /// at all.
+    #[cfg(any(windows, target_os = "macos"))]
+    fn handle_system_event(&mut self, event: SystemEvent) {
+        let Some(state) = &self.daemon_state else { return };
+        match event {
+            SystemEvent::BeforeSleep => fire_rules_where(state, |t| *t == Trigger::OnBeforeSleep),
+            SystemEvent::BeforeShutdown => fire_rules_where(state, |t| *t == Trigger::BeforeShutdown),
+            SystemEvent::ScreenLocked => fire_rules_where(state, |t| *t == Trigger::ScreenLocked),
+            SystemEvent::ScreenUnlocked => fire_rules_where(state, |t| *t == Trigger::ScreenUnlocked),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     if let Some(action) = std::env::args().nth(1)
         && (action == "--install" || action == "--uninstall")
@@ -1176,125 +1368,39 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     };
 
-    let show_item = MenuItem::with_id("show-console", t(lang, "tray.showConsole"), true, None);
-    let autostart_item =
-        CheckMenuItem::with_id("toggle-autostart", t(lang, "tray.startOnBoot"), true, autostart::is_enabled(), None);
-    let pause_item =
-        CheckMenuItem::with_id("toggle-automations-paused", t(lang, "tray.pauseAutomations"), true, false, None);
-    let quit_item = MenuItem::with_id("quit", t(lang, "tray.quit"), true, None);
+    let ctx = MainLoopCtx::new(lang)?;
 
-    let starting_menu = Menu::new();
-    let _ = starting_menu.append(&MenuItem::new(t(lang, "tray.starting"), false, None));
-    let _ = starting_menu.append(&PredefinedMenuItem::separator());
-    let _ = starting_menu.append(&show_item);
-    let _ = starting_menu.append(&autostart_item);
-    let _ = starting_menu.append(&pause_item);
-    let _ = starting_menu.append(&quit_item);
-
-    // Kept alive for the whole process lifetime - dropping this removes the
-    // tray icon.
-    let tray_icon = TrayIconBuilder::new()
-        .with_menu(Box::new(starting_menu))
-        .with_tooltip(format!("Quarzlampe \u{2014} {}", t(lang, "tray.starting")))
-        .with_icon(render_status_icon(&[]))
-        .build()?;
-
-    let state_rx = spawn_core_runtime();
-    let mut daemon_state: Option<Arc<Mutex<DaemonState>>> = None;
-    let mut lamp_index = LampIndex::new();
-    let mut last_refresh: Option<Instant> = None;
-
-    let hotkey_manager = init_hotkey_manager();
-    let mut registered_hotkeys: HashMap<String, HotKey> = HashMap::new();
-
-    let console_path = console_binary_path()?;
-    let mut console_child: Option<Child> = None;
-
-    println!("[tray] daemon running. Console binary: {}", console_path.display());
-    loop {
-        if daemon_state.is_none() && let Ok(s) = state_rx.try_recv() {
-            spawn_mic_evaluation_loop(Arc::clone(&s));
-            spawn_camera_evaluation_loop(Arc::clone(&s));
-            spawn_app_open_watch_loop(Arc::clone(&s));
-            spawn_visualizer_loop(Arc::clone(&s));
-            spawn_update_check_loop(Arc::clone(&s));
-            spawn_time_trigger_loop(Arc::clone(&s));
-            daemon_state = Some(s);
-        }
-
-        if let Some(state) = &daemon_state {
-            let needs_refresh = last_refresh.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
-            if needs_refresh {
-                let lamps = snapshot_lamps(state);
-                let update_available = state.blocking_lock().update_available.is_some();
-                pause_item.set_checked(state.blocking_lock().automations_paused);
-                let menu = build_menu(
-                    lang,
-                    &lamps,
-                    &mut lamp_index,
-                    &show_item,
-                    &autostart_item,
-                    &pause_item,
-                    update_available,
-                    &quit_item,
-                );
-                tray_icon.set_menu(Some(Box::new(menu)));
-                let icon_colors = ordered_lamp_colors(&lamps, &mut lamp_index);
-                let _ = tray_icon.set_icon(Some(render_status_icon(&icon_colors)));
-                let _ = tray_icon.set_tooltip(Some(tooltip_text(lang, &lamps)));
-                if let Some(manager) = &hotkey_manager {
-                    let rules = state.blocking_lock().rules.clone();
-                    registered_hotkeys = sync_registered_hotkeys(manager, &rules, &registered_hotkeys);
-                }
-                last_refresh = Some(Instant::now());
-            }
-        }
-
-        if let Ok(TrayIconEvent::Click { .. }) = TrayIconEvent::receiver().try_recv() {
-            spawn_or_note(&mut console_child, &console_path);
-        }
-        if let Ok(event) = MenuEvent::receiver().try_recv() {
-            if event.id == "show-console" {
-                spawn_or_note(&mut console_child, &console_path);
-            } else if event.id == "toggle-autostart" {
-                let enabled = autostart::is_enabled();
-                if let Err(e) = autostart::set_enabled(!enabled) {
-                    eprintln!("[tray] failed to change start-on-boot setting: {e}");
-                }
-            } else if event.id == "toggle-automations-paused" {
-                if let Some(state) = &daemon_state {
-                    let mut guard = state.blocking_lock();
-                    guard.automations_paused = !guard.automations_paused;
-                    println!(
-                        "[tray] automations {}",
-                        if guard.automations_paused { "paused" } else { "resumed" }
-                    );
-                }
-            } else if event.id == "open-update" {
-                if let Some(state) = &daemon_state
-                    && let Some(info) = state.blocking_lock().update_available.clone()
-                    && let Err(e) = open::that(&info.html_url)
-                {
-                    eprintln!("[update] failed to open {}: {e}", info.html_url);
-                }
-            } else if event.id == "quit" {
-                if let Some(mut child) = console_child.take() {
-                    let _ = child.kill();
-                }
-                break;
-            } else if let Some(state) = &daemon_state {
-                handle_lamp_menu_event(&event.id.0, state, &lamp_index);
-            }
-        }
-        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv()
-            && event.state() == HotKeyState::Pressed
-            && let Some(state) = &daemon_state
-            && let Some(key) = registered_hotkeys.iter().find(|(_, hk)| hk.id() == event.id()).map(|(k, _)| k.clone())
-        {
-            fire_rules_where(state, |t| matches!(t, Trigger::OnKeyPress { key: k } if *k == key));
-        }
-        std::thread::sleep(Duration::from_millis(100));
+    // macOS needs `NSApplication` actually `-run`ning for the tray icon and
+    // hotkeys to receive anything at all (see `platform::macos`'s doc
+    // comment) - that call owns the thread until quit, so it replaces the
+    // loop below entirely rather than being driven by it.
+    #[cfg(target_os = "macos")]
+    {
+        platform::macos::run(ctx);
+        return Ok(());
     }
 
-    Ok(())
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut ctx = ctx;
+        // Same reasoning as macOS, but Windows' message pump is non-blocking
+        // (`PeekMessageW`), so it slots into the existing sleep-based loop
+        // instead of needing to own it.
+        #[cfg(windows)]
+        let event_rx = platform::windows::init();
+        loop {
+            #[cfg(windows)]
+            {
+                platform::windows::pump();
+                while let Ok(event) = event_rx.try_recv() {
+                    ctx.handle_system_event(event);
+                }
+            }
+            if !ctx.tick() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        Ok(())
+    }
 }

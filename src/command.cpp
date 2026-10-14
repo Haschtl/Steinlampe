@@ -686,12 +686,16 @@ void handleCommand(String line)
                     thr = rest.substring(0, p2).toFloat();
                     if (p3 > 0)
                     {
+                        // `att` is the 3rd of 4 values - bound its end at `p4` only when a
+                        // 4th value (`rel`) actually follows; otherwise take it to the end
+                        // of the string, same as `rel` always does below. Previously this
+                        // required `p4 > 0` just to read `att` at all, so typing exactly 3
+                        // numbers ("thr ratio att", no `rel`) silently dropped `att` too and
+                        // left it at its default.
                         ratio = rest.substring(p2 + 1, p3).toFloat();
+                        att = rest.substring(p3 + 1, p4 > 0 ? (size_t)p4 : rest.length()).toInt();
                         if (p4 > 0)
-                        {
-                            att = rest.substring(p3 + 1, p4).toInt();
                             rel = rest.substring(p4 + 1).toInt();
-                        }
                     }
                 }
             }
@@ -1056,18 +1060,24 @@ void handleCommand(String line)
 #if ENABLE_LIGHT_SENSOR
         else if (lower.startsWith("ramp ambient") || lower.startsWith("ramp amb"))
         {
-            arg = arg.substring(arg.indexOf(' ') + 1);
-            arg.trim();
-            float v = arg.toFloat();
-            if (isnan(v))
-                v = rampAmbientFactor;
-            if (v < 0.0f)
-                v = 0.0f;
-            if (v > 5.0f)
-                v = 5.0f;
-            rampAmbientFactor = v;
+            // `arg.toFloat()` returns 0.0 (not NaN) for a non-numeric/empty string, so an
+            // `isnan()` check here never actually catches "no value given" - this used to
+            // silently zero and persist rampAmbientFactor on a bare "ramp ambient" query.
+            // Checking the raw substring for emptiness first is what actually works.
+            int sp = arg.indexOf(' ');
+            String valueStr = (sp >= 0) ? arg.substring(sp + 1) : String();
+            valueStr.trim();
+            if (!valueStr.isEmpty())
+            {
+                float v = valueStr.toFloat();
+                if (v < 0.0f)
+                    v = 0.0f;
+                if (v > 5.0f)
+                    v = 5.0f;
+                rampAmbientFactor = v;
+                saveSettings();
+            }
             sendFeedback(String(F("[Ramp] ambient factor=")) + String(rampAmbientFactor, 2));
-            saveSettings();
         }
 #endif
         else
@@ -1415,23 +1425,36 @@ void handleCommand(String line)
             int pos = arg.indexOf(' ');
             String restClamp = pos >= 0 ? arg.substring(pos + 1) : "";
             restClamp.trim();
-            float mn = restClamp.toFloat();
-            int pos2 = restClamp.indexOf(' ');
-            float mx = (pos2 >= 0) ? restClamp.substring(pos2 + 1).toFloat() : lightClampMax;
-            if (mn < 0.0f)
-                mn = 0.0f;
-            if (mx > 1.5f)
-                mx = 1.5f;
-            if (mn >= mx)
+            // A bare "light clamp" (no numbers) used to fall through to
+            // mn=0.0 (toFloat() on an empty string, not an error value) and
+            // mx=lightClampMax, which almost always satisfies mn<mx - so it
+            // silently reset lightClampMin to 0 instead of just reporting
+            // the current clamp. Require both numbers before touching
+            // anything.
+            if (restClamp.isEmpty())
             {
-                sendFeedback(F("[Light] clamp invalid (min>=max)"));
+                sendFeedback(String(F("[Light] clamp ")) + String(lightClampMin, 2) + F("..") + String(lightClampMax, 2));
             }
             else
             {
-                lightClampMin = mn;
-                lightClampMax = mx;
-                saveSettings();
-                sendFeedback(String(F("[Light] clamp ")) + String(mn, 2) + F("..") + String(mx, 2));
+                float mn = restClamp.toFloat();
+                int pos2 = restClamp.indexOf(' ');
+                float mx = (pos2 >= 0) ? restClamp.substring(pos2 + 1).toFloat() : lightClampMax;
+                if (mn < 0.0f)
+                    mn = 0.0f;
+                if (mx > 1.5f)
+                    mx = 1.5f;
+                if (mn >= mx)
+                {
+                    sendFeedback(F("[Light] clamp invalid (min>=max)"));
+                }
+                else
+                {
+                    lightClampMin = mn;
+                    lightClampMax = mx;
+                    saveSettings();
+                    sendFeedback(String(F("[Light] clamp ")) + String(mn, 2) + F("..") + String(mx, 2));
+                }
             }
         }
         else
@@ -2136,10 +2159,28 @@ void handleCommand(String line)
         }
         else if (arg.startsWith("grace"))
         {
-            uint32_t v = line.substring(line.indexOf("grace") + 5).toInt();
-            presenceBleGraceMs = v;
-            saveSettings();
-            sendFeedback(String(F("[PresenceBLE] Grace ")) + String(v) + F(" ms"));
+            // Unlike every sibling setting in this command group, this had no
+            // emptiness/bounds check at all - a bare "presence_ble grace" (no
+            // number), e.g. from the web UI's field being cleared on blur,
+            // silently persisted 0ms (toInt() on an empty string), killing the
+            // "still recently seen" bridge between scans this value backs.
+            String valueStr = line.substring(line.indexOf("grace") + 5);
+            valueStr.trim();
+            if (valueStr.isEmpty())
+            {
+                sendFeedback(String(F("[PresenceBLE] Grace ")) + String(presenceBleGraceMs) + F(" ms"));
+            }
+            else
+            {
+                long v = valueStr.toInt();
+                if (v < 500)
+                    v = 500;
+                if (v > 600000)
+                    v = 600000;
+                presenceBleGraceMs = (uint32_t)v;
+                saveSettings();
+                sendFeedback(String(F("[PresenceBLE] Grace ")) + String(v) + F(" ms"));
+            }
         }
         else if (arg.startsWith("thr"))
         {

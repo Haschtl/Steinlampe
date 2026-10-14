@@ -29,3 +29,31 @@ zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.56.0"
+# Same version `global-hotkey` itself already resolves to for its own Windows
+# backend (see Cargo.lock) - raw windows-sys, not the higher-level `windows`
+# crate, to match that existing dependency rather than add a second,
+# differently-shaped Win32 binding on top of it.
+windows-sys = { version = "0.59.0", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Same objc2 family/versions `tray-icon`/`muda`/`global-hotkey` already pull
+# in for their own macOS backends (see Cargo.lock) - reusing those exact
+# versions rather than introducing a second, possibly-conflicting generation
+# of the same bindings.
+block2 = "0.6.2"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSRunningApplication", "NSWorkspace"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "NSDate",
+    "NSDistributedNotificationCenter",
+    "NSNotification",
+    "NSOperation",
+    "NSString",
+    "NSTimer",
+    "block2",
+] }
