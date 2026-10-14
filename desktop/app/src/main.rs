@@ -130,7 +130,10 @@ fn console_binary_path() -> std::io::Result<std::path::PathBuf> {
 /// `ordered_lamp_colors` below) - 0 or 1 entries render as a single solid
 /// fill, 2-4 split the hexagon into that many equal-height horizontal
 /// bands, matching the "status LED" idea the old dot already had, just
-/// per lamp instead of aggregated into one color.
+/// per lamp instead of aggregated into one color. A thin transparent
+/// vertical slit always runs down the middle, independent of the band
+/// count/colors, so the icon reads as visibly "split" even with just
+/// one lamp (a solid fill).
 fn render_status_icon(segment_colors: &[[u8; 3]]) -> tray_icon::Icon {
     const SIZE: u32 = 48;
     const EMPTY: [u8; 3] = [0x5b, 0x61, 0x70]; // same muted grey the old "nothing connected" dot used
@@ -156,6 +159,11 @@ fn render_status_icon(segment_colors: &[[u8; 3]]) -> tray_icon::Icon {
     let segments = segment_colors.len().clamp(1, 4);
     let top = cy - r;
     let band_height = (2.0 * r) / segments as f32;
+    // A thin fully-transparent vertical slit straight down the middle -
+    // purely cosmetic (the band coloring/count logic above is completely
+    // unaffected by it), making the icon read as visibly "split" even
+    // when there's only one color filling it.
+    let slit_half_width = s * 0.025;
 
     for y in 0..SIZE {
         for x in 0..SIZE {
@@ -163,6 +171,9 @@ fn render_status_icon(segment_colors: &[[u8; 3]]) -> tray_icon::Icon {
             let py = y as f32 + 0.5;
             if !point_in_convex_hexagon(px, py, &verts) {
                 continue;
+            }
+            if (px - cx).abs() <= slit_half_width {
+                continue; // leave this pixel transparent
             }
             let color = if segment_colors.is_empty() {
                 EMPTY

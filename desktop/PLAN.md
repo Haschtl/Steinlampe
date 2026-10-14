@@ -1007,6 +1007,22 @@ desktop/
       may blink twice in quick succession on some systems. This affects *every* `OnNotification`
       rule, not just the new Teams one - a pre-existing characteristic surfaced by finally testing
       this trigger live for the first time, not a regression from this change.
+21. **Tray icon: transparent vertical slit down the middle (ad hoc).** Follow-up to item 18 - asked
+    for the hexagon to be "split once in the middle". Genuinely ambiguous as first stated, so
+    rendered real candidate images rather than guessing: a left/right color split (clean at 2
+    segments, but the outer segments degenerate into thin triangular slivers at 3-4 because of the
+    hexagon's pointy left/right vertices) versus keeping the existing horizontal bands from item 18
+    untouched. Asked the user to pick with both shown; their answer clarified the actual intent
+    further - not a color division at all, but a literal transparent cut straight through the
+    middle, with the horizontal band filling from item 18 completely unchanged underneath it.
+    `render_status_icon` now skips writing color (leaves alpha 0) for any pixel within a thin band
+    around the hexagon's horizontal center (`s * 0.025` half-width) after the existing hexagon and
+    band logic - purely cosmetic, doesn't touch segment count/color logic at all, so the slit shows
+    even on a single-color (1-lamp) fill. Verified the same way as item 18: a standalone Python
+    reimplementation rendered real PNGs (composited onto a dark background so the transparency is
+    actually visible, not just white-on-white) for 1-4 segments, confirmed the slit reads clearly
+    even at the real 48px render size, not just the 8x-upscaled preview - then the real Rust code
+    was separately confirmed to build, pass clippy, and start the daemon without panicking.
 
 ## Verification
 
