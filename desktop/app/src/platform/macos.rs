@@ -59,7 +59,7 @@ fn observe(
     ctx: Rc<RefCell<MainLoopCtx>>,
     event: SystemEvent,
 ) {
-    let block = RcBlock::new(move |_note: NonNull<NSNotification>| {
+    let block: RcBlock<dyn Fn(NonNull<NSNotification>)> = RcBlock::new(move |_note: NonNull<NSNotification>| {
         ctx.borrow_mut().handle_system_event(event);
     });
     unsafe {
@@ -90,8 +90,15 @@ pub fn run(ctx: MainLoopCtx) {
     let ctx = Rc::new(RefCell::new(ctx));
 
     let workspace_center = NSWorkspace::sharedWorkspace().notificationCenter();
-    observe(&workspace_center, NSWorkspaceWillSleepNotification, Rc::clone(&ctx), SystemEvent::BeforeSleep);
-    observe(&workspace_center, NSWorkspaceWillPowerOffNotification, Rc::clone(&ctx), SystemEvent::BeforeShutdown);
+    // Reading an `extern "C" static` (what these two notification-name
+    // constants are under the hood) needs its own `unsafe` block as of the
+    // 2024 edition, even though the value itself - a `&'static
+    // NSNotificationName` pointing at an immutable, Apple-owned constant -
+    // is about as safe a thing to read as an extern static gets.
+    let will_sleep = unsafe { NSWorkspaceWillSleepNotification };
+    let will_power_off = unsafe { NSWorkspaceWillPowerOffNotification };
+    observe(&workspace_center, will_sleep, Rc::clone(&ctx), SystemEvent::BeforeSleep);
+    observe(&workspace_center, will_power_off, Rc::clone(&ctx), SystemEvent::BeforeShutdown);
 
     // `com.apple.screenIsLocked`/`com.apple.screenIsUnlocked` on the
     // *distributed* notification center aren't formally public API, but
@@ -107,7 +114,7 @@ pub fn run(ctx: MainLoopCtx) {
     observe(&distributed_center, ns_string!("com.apple.screenIsUnlocked"), Rc::clone(&ctx), SystemEvent::ScreenUnlocked);
 
     let app_for_timer = app.clone();
-    let timer_block = RcBlock::new(move |_timer: NonNull<NSTimer>| {
+    let timer_block: RcBlock<dyn Fn(NonNull<NSTimer>)> = RcBlock::new(move |_timer: NonNull<NSTimer>| {
         if !ctx.borrow_mut().tick() {
             app_for_timer.stop(None);
         }
