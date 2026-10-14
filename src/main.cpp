@@ -75,6 +75,13 @@ void updatePatternEngine()
   if (wakeFadeActive)
   {
     lastActivityMs = now;
+    // Presence tracking is suspended for the duration of a wake fade (the
+    // detection/grace logic below is skipped entirely via the `return`s in
+    // this branch) - reset it here so it starts clean once the fade ends,
+    // rather than resuming with a stale pre-fade snapshot.
+    presenceBleDetected = false;
+    presenceBlePrevConnected = false;
+    presenceBleGraceDeadline = 0;
     if (!lampEnabled)
     {
       wakeFadeActive = false;
@@ -94,12 +101,6 @@ void updatePatternEngine()
       sendFeedback(F("[Wake] Fade abgeschlossen."));
     }
     return;
-  }
-  else
-  {
-    presenceBleDetected = false;
-    presenceBlePrevConnected = false;
-    presenceBleGraceDeadline = 0;
   }
 
   // PresenceBLE polling with occasional scan

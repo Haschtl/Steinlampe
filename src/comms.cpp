@@ -309,16 +309,18 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         btPendingAddr = lastSppAddr;
         if (feedbackAllowed())
           sendFeedback(String(F("[BT] Pair request ")) + lastSppAddr + F(" – confirm via switch or poti"));
+#else
+        known = true;
+#endif
       }
       else
       {
+#if ENABLE_BT_PAIRING
         btPairPending = false;
         btPendingAddr = "";
+#endif
       }
       // Always allow the connection attempt; commands are gated until confirmed.
-#else
-      known=true;
-#endif
       lastBtActivityMs = millis();
       if (addToList(trustedBt, lastSppAddr) && feedbackAllowed())
         saveSettings();
