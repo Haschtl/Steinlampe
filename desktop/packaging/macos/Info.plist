@@ -20,6 +20,17 @@
 	<string>0.1.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
+	<!-- Required by macOS's privacy-gate for any CoreBluetooth access (the
+	     daemon owns the lamp's BLE connection) - without this key, the
+	     process hard-crashes the instant it touches Bluetooth, with
+	     "attempted to access privacy-sensitive data without a usage
+	     description" in the system log. Found live: it crashed silently
+	     every time when launched normally through Finder/LaunchServices,
+	     while launching the same binary directly from a Terminal somehow
+	     didn't trip the same check - but the missing key was the real bug
+	     either way, not the launch method. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Quarzlampe connects to your lamp over Bluetooth to control it and run your automation rules.</string>
 	<!-- No Dock icon/menu bar app switcher entry for the daemon itself -
 	     it's a tray-only process; the console window (spawned on demand)
 	     still shows normally since LSUIElement only affects the bundle's
