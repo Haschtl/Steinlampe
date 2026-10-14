@@ -292,6 +292,17 @@ struct ConsoleApp {
     new_rule_wake_bri_enabled: bool,
     new_rule_wake_bri: u8,
     new_rule_morse_text: String,
+    /// `Some(id)` while the open form is editing an existing rule instead
+    /// of building a new one - Save then updates that id (and preserves
+    /// `editing_rule_enabled`, its enabled flag at the time editing
+    /// started) rather than creating a fresh rule with a new id.
+    editing_rule_id: Option<Uuid>,
+    editing_rule_enabled: bool,
+    /// Preserved from the rule being edited so Save doesn't silently
+    /// detach it from a quick-rule toggle (`lamp_card`'s On-Air/Teams
+    /// switches) just because the user happened to use the pencil-edit
+    /// form instead of the switch itself.
+    editing_rule_quick_rule: Option<QuickRuleKind>,
     // Music visualizer panel state.
     visualizer_enabled: bool,
     visualizer_targets: HashSet<String>,
@@ -379,6 +390,115 @@ impl ConsoleApp {
             _ => true,
         };
         base_ok && trigger_ok && action_ok
+    }
+
+    /// Populates every form field from an existing rule and opens the
+    /// form in "editing" mode - the reverse of `new_rule_trigger`/
+    /// `new_rule_action`. One exception, called out rather than faked:
+    /// `Action::Notify`'s `pattern_ms` is the firmware's already-expanded
+    /// list (any `repeat` count was flattened into it when the rule was
+    /// first saved - see `new_rule_action`), and there's no way to
+    /// recover the original base pattern/repeat count from that alone
+    /// (e.g. `[120, 60, 120, 60]` could be base `[120, 60]` repeated
+    /// twice, or itself with repeat 1 - genuinely ambiguous). So editing
+    /// loads it as the literal stored pattern with repeat reset to 1,
+    /// which is exactly what's stored, not a guessed decomposition.
+    fn start_editing_rule(&mut self, rule: &Rule) {
+        self.editing_rule_id = Some(rule.id);
+        self.editing_rule_enabled = rule.enabled;
+        self.editing_rule_quick_rule = rule.quick_rule;
+        self.new_rule_name = rule.name.clone();
+        self.new_rule_targets = rule.targets.iter().cloned().collect();
+
+        match &rule.trigger {
+            Trigger::MicActive => self.new_rule_trigger_kind = TriggerKind::MicActive,
+            Trigger::MicInactive => self.new_rule_trigger_kind = TriggerKind::MicInactive,
+            Trigger::CameraActive => self.new_rule_trigger_kind = TriggerKind::CameraActive,
+            Trigger::CameraInactive => self.new_rule_trigger_kind = TriggerKind::CameraInactive,
+            Trigger::OnBoot => self.new_rule_trigger_kind = TriggerKind::OnBoot,
+            Trigger::OnBeforeSleep => self.new_rule_trigger_kind = TriggerKind::OnBeforeSleep,
+            Trigger::BeforeShutdown => self.new_rule_trigger_kind = TriggerKind::BeforeShutdown,
+            Trigger::OnNotification { app_name_filter } => {
+                self.new_rule_trigger_kind = TriggerKind::OnNotification;
+                self.new_rule_notification_app_filter = app_name_filter.clone().unwrap_or_default();
+            }
+            Trigger::OnAppOpen { app_name } => {
+                self.new_rule_trigger_kind = TriggerKind::OnAppOpen;
+                self.new_rule_app_name = app_name.clone();
+            }
+            Trigger::OnKeyPress { key } => {
+                self.new_rule_trigger_kind = TriggerKind::OnKeyPress;
+                self.set_hotkey_fields_from(key);
+            }
+        }
+
+        match &rule.action {
+            Action::On => self.new_rule_action_kind = ActionKind::On,
+            Action::Off => self.new_rule_action_kind = ActionKind::Off,
+            Action::SetBrightness { pct } => {
+                self.new_rule_action_kind = ActionKind::Brightness;
+                self.new_rule_brightness = *pct;
+            }
+            Action::SetMode { pattern } => {
+                self.new_rule_action_kind = ActionKind::Mode;
+                self.new_rule_mode = *pattern;
+            }
+            Action::LoadProfile { slot } => {
+                self.new_rule_action_kind = ActionKind::Profile;
+                self.new_rule_profile = *slot;
+            }
+            Action::Notify { pattern_ms, fade_ms } => {
+                self.new_rule_action_kind = ActionKind::NotifyPattern;
+                self.new_rule_notify_pattern = pattern_ms
+                    .as_ref()
+                    .map(|v| v.iter().map(u32::to_string).collect::<Vec<_>>().join(" "))
+                    .unwrap_or_default();
+                self.new_rule_notify_repeat = 1;
+                self.new_rule_notify_fade = fade_ms.unwrap_or(0);
+            }
+            Action::StartWake { seconds, soft, mode, brightness_pct } => {
+                self.new_rule_action_kind = ActionKind::StartWake;
+                self.new_rule_wake_seconds = *seconds;
+                self.new_rule_wake_soft = *soft;
+                self.new_rule_wake_mode_enabled = mode.is_some();
+                if let Some(m) = mode {
+                    self.new_rule_wake_mode = *m;
+                }
+                self.new_rule_wake_bri_enabled = brightness_pct.is_some();
+                if let Some(b) = brightness_pct {
+                    self.new_rule_wake_bri = *b;
+                }
+            }
+            Action::SendMorse { text } => {
+                self.new_rule_action_kind = ActionKind::SendMorse;
+                self.new_rule_morse_text = text.clone();
+            }
+        }
+
+        self.show_new_rule = true;
+    }
+
+    /// Parses `global-hotkey`'s `<lowercase modifiers>+<Code>` combo
+    /// string (e.g. `"control+alt+KeyL"`) back into the checkbox/dropdown
+    /// fields the form edits - the reverse of `new_rule_hotkey_string`.
+    fn set_hotkey_fields_from(&mut self, key: &str) {
+        self.new_rule_key_ctrl = false;
+        self.new_rule_key_alt = false;
+        self.new_rule_key_shift = false;
+        self.new_rule_key_super = false;
+        let mut parts: Vec<&str> = key.split('+').collect();
+        if let Some(code) = parts.pop() {
+            self.new_rule_key_code = code.to_string();
+        }
+        for modifier in parts {
+            match modifier {
+                "control" => self.new_rule_key_ctrl = true,
+                "alt" => self.new_rule_key_alt = true,
+                "shift" => self.new_rule_key_shift = true,
+                "super" => self.new_rule_key_super = true,
+                _ => {}
+            }
+        }
     }
 
     fn lamp_display_name(&self, lamp_key: &str) -> String {
@@ -483,6 +603,9 @@ impl ConsoleApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if !self.show_new_rule && ui.button(t(lang, "rules.newRuleButton")).clicked() {
                     self.show_new_rule = true;
+                    self.editing_rule_id = None;
+                    self.editing_rule_enabled = true;
+                    self.editing_rule_quick_rule = None;
                     self.new_rule_name.clear();
                     self.new_rule_targets.clear();
                 }
@@ -647,25 +770,36 @@ impl ConsoleApp {
                     ui.horizontal(|ui| {
                         if ui.button(t(lang, "rules.cancel")).clicked() {
                             self.show_new_rule = false;
+                            self.editing_rule_id = None;
+                            self.editing_rule_quick_rule = None;
                         }
                         if ui.add_enabled(self.new_rule_valid(), egui::Button::new(t(lang, "rules.saveRule"))).clicked() {
                             let rule = Rule {
-                                id: Uuid::new_v4(),
+                                id: self.editing_rule_id.unwrap_or_else(Uuid::new_v4),
                                 name: std::mem::take(&mut self.new_rule_name),
-                                enabled: true,
+                                enabled: self.editing_rule_enabled,
                                 trigger: self.new_rule_trigger(),
                                 targets: self.new_rule_targets.iter().cloned().collect(),
                                 action: self.new_rule_action(),
-                                quick_rule: None,
+                                quick_rule: self.editing_rule_quick_rule,
                             };
                             self.new_rule_targets.clear();
                             self.show_new_rule = false;
+                            self.editing_rule_id = None;
+                            self.editing_rule_quick_rule = None;
                             let _ = self.to_core.send(UiToCore::SaveRule(rule));
                         }
                     });
                 });
             ui.add_space(14.0);
         }
+
+        // `start_editing_rule` needs `&mut self`, which can't coexist with
+        // `rule: &Rule` borrowed from `&self.rules` below - deferred past
+        // the loop, same reason the `.clone()` a few lines down exists for
+        // the enabled-checkbox's `SaveRule` (that one only needs `&self`,
+        // so it doesn't have to be deferred, just cloned).
+        let mut rule_to_edit: Option<Rule> = None;
 
         for rule in &self.rules {
             egui::Frame::NONE
@@ -688,6 +822,9 @@ impl ConsoleApp {
                             if ui.small_button(t(lang, "rules.fireNow")).clicked() {
                                 let _ = self.to_core.send(UiToCore::FireRule(rule.id));
                             }
+                            if ui.small_button(t(lang, "rules.edit")).clicked() {
+                                rule_to_edit = Some(rule.clone());
+                            }
                         });
                     });
                     let targets: Vec<String> = rule.targets.iter().map(|k| self.lamp_display_name(k)).collect();
@@ -703,6 +840,10 @@ impl ConsoleApp {
                     );
                 });
             ui.add_space(8.0);
+        }
+
+        if let Some(rule) = rule_to_edit {
+            self.start_editing_rule(&rule);
         }
     }
 }
@@ -1279,6 +1420,9 @@ fn main() -> eframe::Result<()> {
                 new_rule_wake_bri_enabled: false,
                 new_rule_wake_bri: 80,
                 new_rule_morse_text: String::new(),
+                editing_rule_id: None,
+                editing_rule_enabled: true,
+                editing_rule_quick_rule: None,
                 visualizer_enabled: false,
                 visualizer_targets: HashSet::new(),
                 visualizer_gain: 4.0,

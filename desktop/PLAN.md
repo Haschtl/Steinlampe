@@ -1023,6 +1023,36 @@ desktop/
     actually visible, not just white-on-white) for 1-4 segments, confirmed the slit reads clearly
     even at the real 48px render size, not just the 8x-upscaled preview - then the real Rust code
     was separately confirmed to build, pass clippy, and start the daemon without panicking.
+22. **Edit existing rules in the console (ad hoc).** User asked whether rules could be edited at
+    all - they couldn't: the rule list only ever offered enable/disable, delete, and fire-now, never
+    a way to change a rule's trigger/action/targets short of deleting and rebuilding it from
+    scratch. The backend already supported this (`SaveRule` creates or updates depending on whether
+    `rule.id` matches an existing one - the enable/disable checkbox already relied on exactly that),
+    so this was purely a console UI gap.
+    - New `ConsoleApp::start_editing_rule`, the reverse of `new_rule_trigger`/`new_rule_action`:
+      populates every form field from an existing `Rule` and opens the form, tracked via
+      `editing_rule_id: Option<Uuid>` (`None` = building a new rule as before, `Some(id)` = Save
+      updates that id instead of minting a new one) plus `editing_rule_enabled`/
+      `editing_rule_quick_rule` so Save doesn't silently flip a disabled rule back on or detach a
+      quick-rule-tagged rule from its lamp-card toggle just because it went through the pencil-edit
+      form instead. New `rules.edit` button alongside Delete/Fire now; "+ New rule" and Cancel both
+      reset the editing-tracking fields so a subsequent save can't land on the wrong rule.
+    - **One real, called-out limitation, not silently guessed around**: `Action::Notify`'s
+      `pattern_ms` is the firmware's already-flattened repeated pattern by the time it's saved (any
+      `repeat` count from the form was baked in then) - there's no way to recover the original base
+      pattern/repeat count from the flattened list alone (genuinely ambiguous, e.g. `[120, 60, 120,
+      60]` could be base `[120, 60]` repeated twice or itself with repeat 1). Editing loads it as
+      the literal stored pattern with repeat reset to 1 - mathematically a no-op in
+      `new_rule_action`'s own cycle/take logic, so this is an exact, lossless round trip for the
+      *result*, just not a recovery of whatever repeat count was originally typed.
+    - Verified by building, clippy, and a careful side-by-side field review against
+      `new_rule_trigger`/`new_rule_action` (confirmed every field `start_editing_rule` sets is
+      exactly one `new_rule_trigger`/`new_rule_action` reads, for every `Trigger`/`Action` variant)
+      rather than a live click-through - no input-simulation tool is available in this environment
+      to actually click the Edit button and inspect the opened form (same limitation noted in items
+      17/18 for this session). The underlying `SaveRule`-updates-an-existing-id mechanism this
+      feature depends on was already exercised live multiple times earlier this session (the
+      enable/disable checkbox, the quick-rule toggles).
 
 ## Verification
 

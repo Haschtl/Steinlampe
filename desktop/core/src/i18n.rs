@@ -118,6 +118,7 @@ dict! {
     "rules.saveRule" => ["Save rule", "Regel speichern"],
     "rules.delete" => ["Delete", "L\u{f6}schen"],
     "rules.fireNow" => ["Fire now", "Jetzt ausf\u{fc}hren"],
+    "rules.edit" => ["Edit", "Bearbeiten"],
     "rules.appNameLabel" =>
         ["App name (as the OS reports it, e.g. \"firefox\"):",
          "App-Name (wie vom Betriebssystem gemeldet, z. B. \"firefox\"):"],
