@@ -59,6 +59,11 @@ pub enum RequestKind {
     /// `app::spawn_update_check_loop`) last found - never triggers a check
     /// itself, just reads the last result.
     GetUpdateStatus,
+    /// The auth token a `Trigger::Webhook`'s URL needs as its `?token=`
+    /// query parameter - just for the console to build/display the full
+    /// URL (together with the fixed `ipc::WEBHOOK_PORT`) for the user to
+    /// copy into whatever external tool calls it.
+    GetWebhookInfo,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -71,6 +76,7 @@ pub enum IpcResponse {
     Rules { rules: Vec<Rule> },
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
     UpdateStatus { available: Option<UpdateInfo> },
+    WebhookInfo { token: String },
 }
 
 /// Loudness (RMS of system audio) drives brightness, linearly, between

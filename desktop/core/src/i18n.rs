@@ -81,6 +81,7 @@ dict! {
     "tray.tooltipOnWord" => ["on", "an"],
     "tray.tooltipNoLamps" => ["no lamps connected", "keine Lampen verbunden"],
     "tray.updateAvailable" => ["Update available\u{2026}", "Update verf\u{fc}gbar\u{2026}"],
+    "tray.pauseAutomations" => ["Pause automations", "Automationen pausieren"],
 
     // Console: sidebar nav + chrome.
     "nav.connections" => ["Connections", "Verbindungen"],
@@ -143,6 +144,9 @@ dict! {
     "rules.profileSlotPrefix" => ["profile slot ", "Profil-Slot "],
     "rules.secondsSuffix" => [" s", " s"],
     "rules.textLabel" => ["Text:", "Text:"],
+    "rules.triggersListHeading" => ["Triggers (any of):", "Trigger (einer von):"],
+    "rules.addTrigger" => ["+ Add trigger", "+ Trigger hinzuf\u{fc}gen"],
+    "rules.orSeparator" => ["or", "oder"],
 
     // New-rule trigger picker (TriggerKind labels).
     "trigger.micActive" => ["Mic becomes active", "Mikrofon wird aktiv"],
@@ -159,6 +163,10 @@ dict! {
     "trigger.onAppOpen" => ["An app starts", "Eine App startet"],
     "trigger.onKeyPress" =>
         ["A hotkey is pressed (not on Wayland)", "Eine Tastenkombination wird gedr\u{fc}ckt (nicht unter Wayland)"],
+    "trigger.atTime" => ["At a specific time (daily)", "Zu einer bestimmten Uhrzeit (t\u{e4}glich)"],
+    "trigger.screenLocked" => ["Screen locks (Linux only)", "Bildschirm wird gesperrt (nur Linux)"],
+    "trigger.screenUnlocked" => ["Screen unlocks (Linux only)", "Bildschirm wird entsperrt (nur Linux)"],
+    "trigger.webhook" => ["Webhook (HTTP request)", "Webhook (HTTP-Anfrage)"],
 
     // New-rule action picker (ActionKind labels).
     "actionKind.on" => ["On", "Ein"],
@@ -195,4 +203,7 @@ dict! {
         ["Flashes this lamp whenever a Microsoft Teams notification arrives (Linux only)",
          "L\u{e4}sst diese Lampe aufblitzen, sobald eine Microsoft-Teams-Benachrichtigung eintrifft (nur Linux)"],
     "quickRule.teamsNotificationRuleName" => ["Teams notification", "Teams-Benachrichtigung"],
+
+    // Tray daemon: single-instance guard.
+    "singleInstance.alreadyRunning" => ["Quarzlampe is already running.", "Quarzlampe l\u{e4}uft bereits."],
 }

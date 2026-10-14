@@ -69,6 +69,25 @@ pub enum Trigger {
     /// `app`'s key-press trigger loop for the exact format (modifiers
     /// lowercase + `+`, then a `keyboard_types::Code` name).
     OnKeyPress { key: String },
+    /// Fires once daily at this local wall-clock time (`app`'s
+    /// `spawn_time_trigger_loop` edge-detects the calendar-minute rollover,
+    /// so this can't double-fire within the same minute even if the check
+    /// loop ticks more than once inside it).
+    AtTime { hour: u8, minute: u8 },
+    /// The session's screen lock state changes - Linux only (best-effort:
+    /// watches the `org.freedesktop.ScreenSaver` session-bus signal most
+    /// desktop environments implement, see `app`'s `spawn_screen_lock_watch`
+    /// doc comment for exactly which ones are confirmed).
+    ScreenLocked,
+    ScreenUnlocked,
+    /// Fires when a `GET` request hits this trigger's own URL on the
+    /// daemon's local webhook server (`app`'s `spawn_webhook_server`,
+    /// `127.0.0.1`-only). `id` is generated once when the trigger is added
+    /// in the console and never changes afterward - it's embedded directly
+    /// in the URL an external tool (Stream Deck, Home Assistant
+    /// `rest_command`, a shell script) is configured with, so regenerating
+    /// it on every edit would silently break whatever already points at it.
+    Webhook { id: Uuid },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -76,7 +95,13 @@ pub struct Rule {
     pub id: Uuid,
     pub name: String,
     pub enabled: bool,
-    pub trigger: Trigger,
+    /// `OR`ed together - the rule fires when *any* of these triggers does.
+    /// `#[serde(alias = "trigger")]` + `deserialize_triggers` accept a
+    /// `rules.toml` saved before a rule could hold more than one trigger
+    /// (back then this was a single `trigger = {...}` table, not an array)
+    /// and load it as a one-element list, exactly its old behavior.
+    #[serde(alias = "trigger", deserialize_with = "deserialize_triggers")]
+    pub triggers: Vec<Trigger>,
     /// Lamp keys (same identifier `LampSummary`/`ScannedLamp` use over
     /// IPC), not live handles - a rule must survive the daemon restarting
     /// and lamps connecting/disconnecting in between.
@@ -89,6 +114,22 @@ pub struct Rule {
     /// a `rules.toml` saved before this field existed still loads fine.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_rule: Option<QuickRuleKind>,
+}
+
+fn deserialize_triggers<'de, D>(deserializer: D) -> Result<Vec<Trigger>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        Many(Vec<Trigger>),
+        One(Trigger),
+    }
+    Ok(match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::Many(v) => v,
+        OneOrMany::One(t) => vec![t],
+    })
 }
 
 /// A "quick rule" is a named bundle of ordinary `Rule`s aimed at casual

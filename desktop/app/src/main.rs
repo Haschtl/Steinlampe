@@ -24,6 +24,7 @@ use std::process::{Child, Command};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use chrono::Timelike;
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -34,8 +35,11 @@ use quarzlampe_core::mic::{self, MicActivity};
 use quarzlampe_core::rules::{action_to_command, Trigger};
 use quarzlampe_core::state::ConnectionState;
 use sysinfo::{ProcessesToUpdate, System};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tray_icon::{TrayIconBuilder, TrayIconEvent};
+use uuid::Uuid;
 
 mod autostart;
 mod install;
@@ -92,6 +96,8 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
                 visualizer: None,
                 visualizer_error: None,
                 update_available: None,
+                auth_token: Uuid::new_v4().to_string(),
+                automations_paused: false,
             }));
             let _ = state_tx.send(Arc::clone(&state));
 
@@ -99,9 +105,11 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
             {
                 spawn_power_event_watch(Arc::clone(&state)).await;
                 spawn_notification_watch(Arc::clone(&state)).await;
+                spawn_screen_lock_watch(Arc::clone(&state)).await;
             }
             fire_rules_where_async(&state, |t| *t == Trigger::OnBoot).await;
             spawn_auto_reconnect_loop(Arc::clone(&state));
+            tokio::spawn(run_webhook_server(Arc::clone(&state)));
 
             if let Err(e) = IpcServer::bind_and_serve(state).await {
                 eprintln!("[daemon] IPC server error: {e}");
@@ -109,6 +117,82 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
         });
     });
     state_rx
+}
+
+/// Parses a webhook request's `GET` line (`GET /webhook/<uuid>?token=<tok>
+/// HTTP/1.1`) into the trigger id + the supplied token - no routing
+/// framework, since this is a single hand-rolled endpoint shape, the same
+/// "simple over generic" choice this daemon already made for the IPC
+/// protocol (plain newline-JSON over TCP, not a full RPC framework).
+fn parse_webhook_request_line(line: &str) -> Option<(Uuid, String)> {
+    let mut parts = line.split_whitespace();
+    if parts.next()? != "GET" {
+        return None;
+    }
+    let target = parts.next()?;
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let id = Uuid::parse_str(path.strip_prefix("/webhook/")?).ok()?;
+    let token = query.split('&').find_map(|kv| kv.strip_prefix("token=")).unwrap_or("").to_string();
+    Some((id, token))
+}
+
+/// A minimal, `GET`-only HTTP responder - just enough for a Stream Deck
+/// "HTTP request" action, Home Assistant's `rest_command`, or `curl` to
+/// trigger a rule, not a real HTTP server (no headers are parsed beyond the
+/// request line, no keep-alive, every response closes the connection).
+/// `127.0.0.1`-only (`run_webhook_server`'s listener), so the only real
+/// defense this needs is against another local process/user guessing a
+/// trigger's id - hence still checking `?token=` against the same
+/// `auth_token` the IPC server already requires.
+async fn handle_webhook_connection(stream: tokio::net::TcpStream, state: Arc<Mutex<DaemonState>>) -> anyhow::Result<()> {
+    let (reader, mut writer) = stream.into_split();
+    let mut lines = BufReader::new(reader).lines();
+    let Some(line) = lines.next_line().await? else { return Ok(()) };
+
+    let (status, body) = match parse_webhook_request_line(&line) {
+        None => ("400 Bad Request", "bad request".to_string()),
+        Some((id, token)) => {
+            let auth_token = state.lock().await.auth_token.clone();
+            if token != auth_token {
+                ("403 Forbidden", "bad token".to_string())
+            } else {
+                fire_rules_where_async(&state, |t| matches!(t, Trigger::Webhook { id: trigger_id } if *trigger_id == id))
+                    .await;
+                ("200 OK", "ok".to_string())
+            }
+        }
+    };
+    let response =
+        format!("HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    writer.write_all(response.as_bytes()).await?;
+    Ok(())
+}
+
+/// Binds the fixed `quarzlampe_core::ipc::WEBHOOK_PORT` on loopback and
+/// serves `Trigger::Webhook` requests forever - mirrors
+/// `IpcServer::bind_and_serve`'s accept loop shape exactly, just for a
+/// different wire protocol (HTTP instead of newline-JSON).
+async fn run_webhook_server(state: Arc<Mutex<DaemonState>>) {
+    let listener = match TcpListener::bind(("127.0.0.1", quarzlampe_core::ipc::WEBHOOK_PORT)).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[webhook] could not bind port {}: {e}", quarzlampe_core::ipc::WEBHOOK_PORT);
+            return;
+        }
+    };
+    loop {
+        match listener.accept().await {
+            Ok((stream, _)) => {
+                let state = Arc::clone(&state);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_webhook_connection(stream, state).await {
+                        eprintln!("[webhook] connection error: {e}");
+                    }
+                });
+            }
+            Err(e) => eprintln!("[webhook] accept error: {e}"),
+        }
+    }
 }
 
 /// Finds the console binary, assumed to be a sibling of this daemon's own
@@ -356,12 +440,14 @@ fn status_text(lang: Lang, connection: &ConnectionState, on: Option<bool>, brigh
 /// state means replacing the entire `Menu` on a timer (see the main loop).
 /// `show_item`/`quit_item` are the two items that never change, kept alive
 /// across rebuilds and simply re-appended each time.
+#[allow(clippy::too_many_arguments)]
 fn build_menu(
     lang: Lang,
     lamps: &[LampSnapshot],
     index: &mut LampIndex,
     show_item: &MenuItem,
     autostart_item: &CheckMenuItem,
+    pause_item: &CheckMenuItem,
     update_available: bool,
     quit_item: &MenuItem,
 ) -> Menu {
@@ -400,6 +486,7 @@ fn build_menu(
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(show_item);
     let _ = menu.append(autostart_item);
+    let _ = menu.append(pause_item);
     if update_available {
         let _ = menu.append(&MenuItem::with_id("open-update", t(lang, "tray.updateAvailable"), true, None));
     }
@@ -670,7 +757,11 @@ fn spawn_auto_reconnect_loop(state: Arc<Mutex<DaemonState>>) {
 /// `fire_rules_where_async` below rather than this one.
 fn fire_rules_where(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) -> bool) {
     let guard = state.blocking_lock();
-    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && matches(&r.trigger)).collect();
+    if guard.automations_paused {
+        return;
+    }
+    let matched: Vec<_> =
+        guard.rules.iter().filter(|r| r.enabled && r.triggers.iter().any(&matches)).collect();
     if matched.is_empty() {
         return;
     }
@@ -685,7 +776,11 @@ fn fire_rules_where(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) 
 
 async fn fire_rules_where_async(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) -> bool) {
     let guard = state.lock().await;
-    let matched: Vec<_> = guard.rules.iter().filter(|r| r.enabled && matches(&r.trigger)).collect();
+    if guard.automations_paused {
+        return;
+    }
+    let matched: Vec<_> =
+        guard.rules.iter().filter(|r| r.enabled && r.triggers.iter().any(&matches)).collect();
     if matched.is_empty() {
         return;
     }
@@ -723,6 +818,34 @@ fn spawn_app_open_watch_loop(state: Arc<Mutex<DaemonState>>) {
     });
 }
 
+/// Fires `AtTime` rules at most once per calendar minute - `chrono::Local`
+/// rather than anything timezone-naive, so a laptop's lamp rules keep
+/// matching the wall clock it's actually displaying across travel/DST,
+/// not whatever timezone the daemon happened to start in. Dedupes on a
+/// monotonically increasing "minute id" (`timestamp() / 60`) instead of
+/// comparing `(hour, minute)` to the previous tick - comparing the pair
+/// alone would refire every day once the clock comes back around to the
+/// same wall-clock minute, which is exactly the once-a-day behavior
+/// wanted, but it would *also* refire if this loop's own tick happened to
+/// land on the same tuple twice in a row across a backwards clock jump (a
+/// NTP correction, a laptop resuming with a stale RTC) - the minute id is
+/// immune to that since it only ever increases.
+fn spawn_time_trigger_loop(state: Arc<Mutex<DaemonState>>) {
+    std::thread::spawn(move || {
+        let mut last_minute_id: Option<i64> = None;
+        loop {
+            let now = chrono::Local::now();
+            let minute_id = now.timestamp().div_euclid(60);
+            if last_minute_id != Some(minute_id) {
+                last_minute_id = Some(minute_id);
+                let (hour, minute) = (now.hour() as u8, now.minute() as u8);
+                fire_rules_where(&state, |t| matches!(t, Trigger::AtTime { hour: h, minute: m } if *h == hour && *m == minute));
+            }
+            std::thread::sleep(Duration::from_secs(5));
+        }
+    });
+}
+
 /// Linux-only: `logind`'s `PrepareForSleep`/`PrepareForShutdown` D-Bus
 /// signals on the system bus - the standard, portable (across desktop
 /// environments) way to learn about an imminent suspend or shutdown on a
@@ -740,6 +863,61 @@ trait Login1Manager {
     fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
     #[zbus(signal)]
     fn prepare_for_shutdown(&self, start: bool) -> zbus::Result<()>;
+}
+
+/// The `freedesktop.org` screen-saver spec's `ActiveChanged` signal, the
+/// most broadly-implemented portable way to learn "the session just got
+/// locked/unlocked" on Linux - GNOME and KDE both expose
+/// `org.freedesktop.ScreenSaver` (GNOME additionally under
+/// `org.gnome.ScreenSaver`, not needed here since a zbus signal proxy
+/// matches on path+interface, not sender name). Other desktop environments
+/// may simply never emit it - same graceful-degradation shape as every
+/// other best-effort Linux trigger in this file (`OnNotification`,
+/// `OnBeforeSleep`): the trigger just never fires there, nothing breaks.
+#[cfg(target_os = "linux")]
+#[zbus::proxy(
+    default_service = "org.freedesktop.ScreenSaver",
+    default_path = "/org/freedesktop/ScreenSaver",
+    interface = "org.freedesktop.ScreenSaver"
+)]
+trait ScreenSaver {
+    #[zbus(signal)]
+    fn active_changed(&self, active: bool) -> zbus::Result<()>;
+}
+
+#[cfg(target_os = "linux")]
+async fn spawn_screen_lock_watch(state: Arc<Mutex<DaemonState>>) {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let connection = match zbus::Connection::session().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[screen-lock] could not connect to the session bus, lock/unlock triggers won't fire: {e}");
+                return;
+            }
+        };
+        let proxy = match ScreenSaverProxy::new(&connection).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[screen-lock] org.freedesktop.ScreenSaver unavailable, lock/unlock triggers won't fire: {e}");
+                return;
+            }
+        };
+        let Ok(mut stream) = proxy.receive_active_changed().await else {
+            eprintln!("[screen-lock] could not subscribe to ActiveChanged, lock/unlock triggers won't fire");
+            return;
+        };
+        while let Some(msg) = stream.next().await {
+            if let Ok(args) = msg.args() {
+                if args.active {
+                    fire_rules_where_async(&state, |t| *t == Trigger::ScreenLocked).await;
+                } else {
+                    fire_rules_where_async(&state, |t| *t == Trigger::ScreenUnlocked).await;
+                }
+            }
+        }
+    });
 }
 
 #[cfg(target_os = "linux")]
@@ -909,7 +1087,8 @@ fn sync_registered_hotkeys(
     let desired: HashMap<String, HotKey> = rules
         .iter()
         .filter(|r| r.enabled)
-        .filter_map(|r| match &r.trigger {
+        .flat_map(|r| r.triggers.iter())
+        .filter_map(|t| match t {
             Trigger::OnKeyPress { key } => key.parse::<HotKey>().ok().map(|hk| (key.clone(), hk)),
             _ => None,
         })
@@ -927,6 +1106,61 @@ fn sync_registered_hotkeys(
     desired
 }
 
+/// A fixed loopback port, bound for the whole process lifetime, used purely
+/// as a cross-platform "only one of these binds successfully" mutex - a
+/// second `quarzlampe-tray` launched while one is already running fails to
+/// bind this and exits instead of creating a second tray icon, second BLE
+/// manager, and a second (port-colliding) discovery file. Deliberately
+/// separate from the IPC server's own listener (`ipc::discovery_file_path`),
+/// which always binds to an OS-assigned port (`127.0.0.1:0`) - this one has
+/// to be fixed precisely because its only job is "can a second instance
+/// bind the exact same address".
+const SINGLE_INSTANCE_PORT: u16 = 47_621;
+
+/// `Some` (holding the bound listener - keep it alive for the process's
+/// whole lifetime, dropping it releases the lock) if this is the only
+/// running instance, `None` if another one already holds the port.
+fn acquire_single_instance_lock() -> Option<std::net::TcpListener> {
+    std::net::TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)).ok()
+}
+
+/// Linux-only, best-effort (same shape as `spawn_notification_watch`): the
+/// daemon has no window of its own to show a dialog from, so a desktop
+/// notification is the only way to tell a user who just relaunched it that
+/// nothing new happened. Silently does nothing if the session bus or the
+/// notification daemon isn't reachable - the `eprintln!` right before this
+/// is called is the only guaranteed-visible trace on Windows/macOS or a
+/// headless Linux session.
+#[cfg(target_os = "linux")]
+fn notify_already_running(lang: Lang) {
+    let Ok(rt) = tokio::runtime::Runtime::new() else { return };
+    rt.block_on(async {
+        let Ok(connection) = zbus::Connection::session().await else { return };
+        let hints: HashMap<String, zbus::zvariant::Value> = HashMap::new();
+        let _ = connection
+            .call_method(
+                Some("org.freedesktop.Notifications"),
+                "/org/freedesktop/Notifications",
+                Some("org.freedesktop.Notifications"),
+                "Notify",
+                &(
+                    "Quarzlampe",
+                    0u32,
+                    "",
+                    "Quarzlampe",
+                    t(lang, "singleInstance.alreadyRunning"),
+                    Vec::<String>::new(),
+                    hints,
+                    5000i32,
+                ),
+            )
+            .await;
+    });
+}
+
+#[cfg(not(target_os = "linux"))]
+fn notify_already_running(_lang: Lang) {}
+
 fn main() -> anyhow::Result<()> {
     if let Some(action) = std::env::args().nth(1)
         && (action == "--install" || action == "--uninstall")
@@ -936,9 +1170,17 @@ fn main() -> anyhow::Result<()> {
 
     let lang = Lang::detect();
 
+    let Some(_single_instance_lock) = acquire_single_instance_lock() else {
+        eprintln!("[tray] {}", t(lang, "singleInstance.alreadyRunning"));
+        notify_already_running(lang);
+        return Ok(());
+    };
+
     let show_item = MenuItem::with_id("show-console", t(lang, "tray.showConsole"), true, None);
     let autostart_item =
         CheckMenuItem::with_id("toggle-autostart", t(lang, "tray.startOnBoot"), true, autostart::is_enabled(), None);
+    let pause_item =
+        CheckMenuItem::with_id("toggle-automations-paused", t(lang, "tray.pauseAutomations"), true, false, None);
     let quit_item = MenuItem::with_id("quit", t(lang, "tray.quit"), true, None);
 
     let starting_menu = Menu::new();
@@ -946,6 +1188,7 @@ fn main() -> anyhow::Result<()> {
     let _ = starting_menu.append(&PredefinedMenuItem::separator());
     let _ = starting_menu.append(&show_item);
     let _ = starting_menu.append(&autostart_item);
+    let _ = starting_menu.append(&pause_item);
     let _ = starting_menu.append(&quit_item);
 
     // Kept alive for the whole process lifetime - dropping this removes the
@@ -975,6 +1218,7 @@ fn main() -> anyhow::Result<()> {
             spawn_app_open_watch_loop(Arc::clone(&s));
             spawn_visualizer_loop(Arc::clone(&s));
             spawn_update_check_loop(Arc::clone(&s));
+            spawn_time_trigger_loop(Arc::clone(&s));
             daemon_state = Some(s);
         }
 
@@ -983,8 +1227,17 @@ fn main() -> anyhow::Result<()> {
             if needs_refresh {
                 let lamps = snapshot_lamps(state);
                 let update_available = state.blocking_lock().update_available.is_some();
-                let menu =
-                    build_menu(lang, &lamps, &mut lamp_index, &show_item, &autostart_item, update_available, &quit_item);
+                pause_item.set_checked(state.blocking_lock().automations_paused);
+                let menu = build_menu(
+                    lang,
+                    &lamps,
+                    &mut lamp_index,
+                    &show_item,
+                    &autostart_item,
+                    &pause_item,
+                    update_available,
+                    &quit_item,
+                );
                 tray_icon.set_menu(Some(Box::new(menu)));
                 let icon_colors = ordered_lamp_colors(&lamps, &mut lamp_index);
                 let _ = tray_icon.set_icon(Some(render_status_icon(&icon_colors)));
@@ -1007,6 +1260,15 @@ fn main() -> anyhow::Result<()> {
                 let enabled = autostart::is_enabled();
                 if let Err(e) = autostart::set_enabled(!enabled) {
                     eprintln!("[tray] failed to change start-on-boot setting: {e}");
+                }
+            } else if event.id == "toggle-automations-paused" {
+                if let Some(state) = &daemon_state {
+                    let mut guard = state.blocking_lock();
+                    guard.automations_paused = !guard.automations_paused;
+                    println!(
+                        "[tray] automations {}",
+                        if guard.automations_paused { "paused" } else { "resumed" }
+                    );
                 }
             } else if event.id == "open-update" {
                 if let Some(state) = &daemon_state

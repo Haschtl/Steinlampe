@@ -64,6 +64,7 @@ enum CoreToUi {
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
     UpdateStatus(Option<UpdateInfo>),
     Status(String),
+    WebhookToken(String),
 }
 
 /// Runs on a background tokio runtime (its own OS thread - eframe owns the
@@ -82,6 +83,12 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
         }
     };
     let _ = to_ui.send(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
+    // The webhook auth token never changes while this daemon instance is
+    // alive - fetched once here, not on every poll tick like the rest of
+    // this function's state (`GetVisualizer`, `GetUpdateStatus`, ...).
+    if let Ok(IpcResponse::WebhookInfo { token }) = client.request(RequestKind::GetWebhookInfo).await {
+        let _ = to_ui.send(CoreToUi::WebhookToken(token));
+    }
 
     let mut poll = tokio::time::interval(Duration::from_millis(1500));
     loop {
@@ -163,10 +170,14 @@ enum TriggerKind {
     OnNotification,
     OnAppOpen,
     OnKeyPress,
+    AtTime,
+    ScreenLocked,
+    ScreenUnlocked,
+    Webhook,
 }
 
 impl TriggerKind {
-    const ALL: [TriggerKind; 10] = [
+    const ALL: [TriggerKind; 14] = [
         Self::MicActive,
         Self::MicInactive,
         Self::CameraActive,
@@ -177,6 +188,10 @@ impl TriggerKind {
         Self::OnNotification,
         Self::OnAppOpen,
         Self::OnKeyPress,
+        Self::AtTime,
+        Self::ScreenLocked,
+        Self::ScreenUnlocked,
+        Self::Webhook,
     ];
 
     fn label(&self, lang: Lang) -> &'static str {
@@ -191,6 +206,10 @@ impl TriggerKind {
             Self::OnNotification => "trigger.onNotification",
             Self::OnAppOpen => "trigger.onAppOpen",
             Self::OnKeyPress => "trigger.onKeyPress",
+            Self::AtTime => "trigger.atTime",
+            Self::ScreenLocked => "trigger.screenLocked",
+            Self::ScreenUnlocked => "trigger.screenUnlocked",
+            Self::Webhook => "trigger.webhook",
         };
         t(lang, key)
     }
@@ -270,9 +289,17 @@ struct ConsoleApp {
     show_new_rule: bool,
     new_rule_name: String,
     new_rule_targets: HashSet<String>,
+    /// Triggers already added to the rule being built/edited - `OR`ed
+    /// together (see `Rule::triggers`'s doc comment: this app only offers
+    /// "any of these", never an AND/time-window combination). The
+    /// `new_rule_trigger_kind`+fields below are just the staging area for
+    /// building the *next* one to add, not a live view of this list.
+    new_rule_triggers: Vec<Trigger>,
     new_rule_trigger_kind: TriggerKind,
     new_rule_app_name: String,
     new_rule_notification_app_filter: String,
+    new_rule_time_hour: u8,
+    new_rule_time_minute: u8,
     new_rule_key_ctrl: bool,
     new_rule_key_alt: bool,
     new_rule_key_shift: bool,
@@ -309,6 +336,12 @@ struct ConsoleApp {
     visualizer_gain: f32,
     visualizer_unsupported: Option<String>,
     update_available: Option<UpdateInfo>,
+    /// The daemon's auth token, fetched once right after connecting
+    /// (`GetWebhookInfo`) - combined with `quarzlampe_core::ipc::WEBHOOK_PORT`
+    /// and a `Trigger::Webhook`'s own `id` to build the full URL shown for
+    /// the user to copy into an external tool. `None` until that first
+    /// request completes.
+    webhook_token: Option<String>,
 }
 
 impl ConsoleApp {
@@ -329,6 +362,26 @@ impl ConsoleApp {
             }
             TriggerKind::OnAppOpen => Trigger::OnAppOpen { app_name: self.new_rule_app_name.trim().to_string() },
             TriggerKind::OnKeyPress => Trigger::OnKeyPress { key: self.new_rule_hotkey_string() },
+            TriggerKind::AtTime => Trigger::AtTime { hour: self.new_rule_time_hour, minute: self.new_rule_time_minute },
+            TriggerKind::ScreenLocked => Trigger::ScreenLocked,
+            TriggerKind::ScreenUnlocked => Trigger::ScreenUnlocked,
+            // A fresh id every time this is built - only ever called once,
+            // right when "+ Add trigger" is clicked (see `rules_ui`), never
+            // while just re-rendering the picker, so this can't regenerate
+            // an id out from under an already-added webhook trigger and
+            // break a URL someone already configured elsewhere with it.
+            TriggerKind::Webhook => Trigger::Webhook { id: Uuid::new_v4() },
+        }
+    }
+
+    /// Whether the currently staged trigger-kind + fields have everything
+    /// they need to become a `Trigger` - gates the "+ Add trigger" button,
+    /// separately from `new_rule_valid()` (which gates Save and only cares
+    /// whether *any* triggers have actually been added to the list).
+    fn add_trigger_valid(&self) -> bool {
+        match self.new_rule_trigger_kind {
+            TriggerKind::OnAppOpen => !self.new_rule_app_name.trim().is_empty(),
+            _ => true,
         }
     }
 
@@ -380,16 +433,14 @@ impl ConsoleApp {
     }
 
     fn new_rule_valid(&self) -> bool {
-        let base_ok = !self.new_rule_name.trim().is_empty() && !self.new_rule_targets.is_empty();
-        let trigger_ok = match self.new_rule_trigger_kind {
-            TriggerKind::OnAppOpen => !self.new_rule_app_name.trim().is_empty(),
-            _ => true,
-        };
+        let base_ok = !self.new_rule_name.trim().is_empty()
+            && !self.new_rule_targets.is_empty()
+            && !self.new_rule_triggers.is_empty();
         let action_ok = match self.new_rule_action_kind {
             ActionKind::SendMorse => !self.new_rule_morse_text.trim().is_empty(),
             _ => true,
         };
-        base_ok && trigger_ok && action_ok
+        base_ok && action_ok
     }
 
     /// Populates every form field from an existing rule and opens the
@@ -409,28 +460,11 @@ impl ConsoleApp {
         self.editing_rule_quick_rule = rule.quick_rule;
         self.new_rule_name = rule.name.clone();
         self.new_rule_targets = rule.targets.iter().cloned().collect();
-
-        match &rule.trigger {
-            Trigger::MicActive => self.new_rule_trigger_kind = TriggerKind::MicActive,
-            Trigger::MicInactive => self.new_rule_trigger_kind = TriggerKind::MicInactive,
-            Trigger::CameraActive => self.new_rule_trigger_kind = TriggerKind::CameraActive,
-            Trigger::CameraInactive => self.new_rule_trigger_kind = TriggerKind::CameraInactive,
-            Trigger::OnBoot => self.new_rule_trigger_kind = TriggerKind::OnBoot,
-            Trigger::OnBeforeSleep => self.new_rule_trigger_kind = TriggerKind::OnBeforeSleep,
-            Trigger::BeforeShutdown => self.new_rule_trigger_kind = TriggerKind::BeforeShutdown,
-            Trigger::OnNotification { app_name_filter } => {
-                self.new_rule_trigger_kind = TriggerKind::OnNotification;
-                self.new_rule_notification_app_filter = app_name_filter.clone().unwrap_or_default();
-            }
-            Trigger::OnAppOpen { app_name } => {
-                self.new_rule_trigger_kind = TriggerKind::OnAppOpen;
-                self.new_rule_app_name = app_name.clone();
-            }
-            Trigger::OnKeyPress { key } => {
-                self.new_rule_trigger_kind = TriggerKind::OnKeyPress;
-                self.set_hotkey_fields_from(key);
-            }
-        }
+        // Already-built `Trigger` values, not form fields - unlike the
+        // action below, there's nothing to "reverse" here; the add-picker
+        // underneath stays at whatever it was last showing, ready to add
+        // another entry on top of these.
+        self.new_rule_triggers = rule.triggers.clone();
 
         match &rule.action {
             Action::On => self.new_rule_action_kind = ActionKind::On,
@@ -476,29 +510,6 @@ impl ConsoleApp {
         }
 
         self.show_new_rule = true;
-    }
-
-    /// Parses `global-hotkey`'s `<lowercase modifiers>+<Code>` combo
-    /// string (e.g. `"control+alt+KeyL"`) back into the checkbox/dropdown
-    /// fields the form edits - the reverse of `new_rule_hotkey_string`.
-    fn set_hotkey_fields_from(&mut self, key: &str) {
-        self.new_rule_key_ctrl = false;
-        self.new_rule_key_alt = false;
-        self.new_rule_key_shift = false;
-        self.new_rule_key_super = false;
-        let mut parts: Vec<&str> = key.split('+').collect();
-        if let Some(code) = parts.pop() {
-            self.new_rule_key_code = code.to_string();
-        }
-        for modifier in parts {
-            match modifier {
-                "control" => self.new_rule_key_ctrl = true,
-                "alt" => self.new_rule_key_alt = true,
-                "shift" => self.new_rule_key_shift = true,
-                "super" => self.new_rule_key_super = true,
-                _ => {}
-            }
-        }
     }
 
     fn lamp_display_name(&self, lamp_key: &str) -> String {
@@ -608,6 +619,7 @@ impl ConsoleApp {
                     self.editing_rule_quick_rule = None;
                     self.new_rule_name.clear();
                     self.new_rule_targets.clear();
+                    self.new_rule_triggers.clear();
                 }
             });
         });
@@ -623,6 +635,26 @@ impl ConsoleApp {
                         ui.label(t(lang, "rules.name"));
                         ui.text_edit_singleline(&mut self.new_rule_name);
                     });
+
+                    ui.add_space(4.0);
+                    ui.label(t(lang, "rules.triggersListHeading"));
+                    let mut trigger_to_remove: Option<usize> = None;
+                    for (idx, trig) in self.new_rule_triggers.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(describe_trigger(lang, trig));
+                            if ui.small_button(t(lang, "rules.delete")).clicked() {
+                                trigger_to_remove = Some(idx);
+                            }
+                        });
+                        if let Trigger::Webhook { id } = trig
+                            && let Some(token) = &self.webhook_token {
+                                let mut url = webhook_url(*id, token);
+                                ui.text_edit_singleline(&mut url);
+                            }
+                    }
+                    if let Some(idx) = trigger_to_remove {
+                        self.new_rule_triggers.remove(idx);
+                    }
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -666,7 +698,18 @@ impl ConsoleApp {
                                     });
                             });
                         }
+                        TriggerKind::AtTime => {
+                            ui.horizontal(|ui| {
+                                ui.add(egui::DragValue::new(&mut self.new_rule_time_hour).range(0..=23));
+                                ui.label(":");
+                                ui.add(egui::DragValue::new(&mut self.new_rule_time_minute).range(0..=59));
+                            });
+                        }
                         _ => {}
+                    }
+                    if ui.add_enabled(self.add_trigger_valid(), egui::Button::new(t(lang, "rules.addTrigger"))).clicked()
+                    {
+                        self.new_rule_triggers.push(self.new_rule_trigger());
                     }
 
                     ui.add_space(4.0);
@@ -778,7 +821,7 @@ impl ConsoleApp {
                                 id: self.editing_rule_id.unwrap_or_else(Uuid::new_v4),
                                 name: std::mem::take(&mut self.new_rule_name),
                                 enabled: self.editing_rule_enabled,
-                                trigger: self.new_rule_trigger(),
+                                triggers: std::mem::take(&mut self.new_rule_triggers),
                                 targets: self.new_rule_targets.iter().cloned().collect(),
                                 action: self.new_rule_action(),
                                 quick_rule: self.editing_rule_quick_rule,
@@ -828,16 +871,27 @@ impl ConsoleApp {
                         });
                     });
                     let targets: Vec<String> = rule.targets.iter().map(|k| self.lamp_display_name(k)).collect();
+                    let triggers_desc: Vec<String> =
+                        rule.triggers.iter().map(|t| describe_trigger(lang, t)).collect();
                     ui.label(
                         egui::RichText::new(format!(
                             "{} \u{2192} {} \u{b7} {}",
-                            describe_trigger(lang, &rule.trigger),
+                            triggers_desc.join(&format!(" {} ", t(lang, "rules.orSeparator"))),
                             describe_action(lang, &rule.action),
                             targets.join(", ")
                         ))
                         .small()
                         .color(ui.visuals().weak_text_color()),
                     );
+                    for trigger in &rule.triggers {
+                        if let Trigger::Webhook { id } = trigger
+                            && let Some(token) = &self.webhook_token {
+                                let mut url = webhook_url(*id, token);
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut url).desired_width(f32::INFINITY),
+                                );
+                            }
+                    }
                 });
             ui.add_space(8.0);
         }
@@ -871,6 +925,15 @@ fn header_bar(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui)) {
         });
 }
 
+/// The full URL an external tool (Stream Deck, Home Assistant's
+/// `rest_command`, a shell script) needs to fire a `Trigger::Webhook` -
+/// `quarzlampe_core::ipc::WEBHOOK_PORT` is fixed across daemon restarts
+/// (see its own doc comment for why), so only the trigger's own `id` and
+/// the daemon's current auth token vary.
+fn webhook_url(id: Uuid, token: &str) -> String {
+    format!("http://127.0.0.1:{}/webhook/{id}?token={token}", quarzlampe_core::ipc::WEBHOOK_PORT)
+}
+
 fn describe_trigger(lang: Lang, trigger: &Trigger) -> String {
     match (lang, trigger) {
         (Lang::En, Trigger::MicActive) => "mic becomes active".to_string(),
@@ -895,6 +958,14 @@ fn describe_trigger(lang: Lang, trigger: &Trigger) -> String {
         (Lang::De, Trigger::OnAppOpen { app_name }) => format!("\"{app_name}\" startet"),
         (Lang::En, Trigger::OnKeyPress { key }) => format!("hotkey {key} is pressed"),
         (Lang::De, Trigger::OnKeyPress { key }) => format!("Tastenkombination {key} wird gedr\u{fc}ckt"),
+        (Lang::En, Trigger::AtTime { hour, minute }) => format!("daily at {hour:02}:{minute:02}"),
+        (Lang::De, Trigger::AtTime { hour, minute }) => format!("t\u{e4}glich um {hour:02}:{minute:02}"),
+        (Lang::En, Trigger::ScreenLocked) => "the screen locks".to_string(),
+        (Lang::De, Trigger::ScreenLocked) => "der Bildschirm gesperrt wird".to_string(),
+        (Lang::En, Trigger::ScreenUnlocked) => "the screen unlocks".to_string(),
+        (Lang::De, Trigger::ScreenUnlocked) => "der Bildschirm entsperrt wird".to_string(),
+        (Lang::En, Trigger::Webhook { .. }) => "a webhook request arrives".to_string(),
+        (Lang::De, Trigger::Webhook { .. }) => "eine Webhook-Anfrage eingeht".to_string(),
     }
 }
 
@@ -1012,7 +1083,7 @@ fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule
                 id: Uuid::new_v4(),
                 name: t(lang, name_key).to_string(),
                 enabled: true,
-                trigger,
+                triggers: vec![trigger],
                 targets: vec![lamp_key.to_string()],
                 action,
                 quick_rule: Some(kind),
@@ -1245,6 +1316,7 @@ impl eframe::App for ConsoleApp {
                 }
                 CoreToUi::UpdateStatus(available) => self.update_available = available,
                 CoreToUi::Status(s) => self.status = s,
+                CoreToUi::WebhookToken(token) => self.webhook_token = Some(token),
             }
         }
 
@@ -1398,9 +1470,12 @@ fn main() -> eframe::Result<()> {
                 show_new_rule: false,
                 new_rule_name: String::new(),
                 new_rule_targets: HashSet::new(),
+                new_rule_triggers: Vec::new(),
                 new_rule_trigger_kind: TriggerKind::MicActive,
                 new_rule_app_name: String::new(),
                 new_rule_notification_app_filter: String::new(),
+                new_rule_time_hour: 20,
+                new_rule_time_minute: 0,
                 new_rule_key_ctrl: true,
                 new_rule_key_alt: true,
                 new_rule_key_shift: false,
@@ -1428,6 +1503,7 @@ fn main() -> eframe::Result<()> {
                 visualizer_gain: 4.0,
                 visualizer_unsupported: None,
                 update_available: None,
+                webhook_token: None,
             }))
         }),
     )

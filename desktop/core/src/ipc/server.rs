@@ -7,7 +7,6 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use uuid::Uuid;
 
 use crate::ble::{LampCommand, LampManager};
 use crate::config;
@@ -37,6 +36,27 @@ pub struct DaemonState {
     /// local dev build; see `core::update`). Written only by that loop,
     /// read here for `GetUpdateStatus`.
     pub update_available: Option<UpdateInfo>,
+    /// Generated once at daemon startup (`app::spawn_core_runtime`) and
+    /// shared by both servers that need to authenticate a caller: this IPC
+    /// server (written to the discovery file, as before) and
+    /// `app::spawn_webhook_server` (checked against a webhook URL's
+    /// `?token=` parameter). One token for both, rather than a second one
+    /// just for webhooks, since they're the same "something only this
+    /// machine's own user could have" security property.
+    pub auth_token: String,
+    /// Set/cleared only by the tray menu's "Pause automations" toggle
+    /// (`app`'s own event loop, same process, no IPC round-trip needed for
+    /// that) - checked once at the top of `fire_rules_where`/
+    /// `fire_rules_where_async` so every trigger source (mic, camera,
+    /// boot, sleep/shutdown, notifications, hotkeys, the scheduled-time
+    /// loop, the webhook server, screen lock/unlock) is covered by a
+    /// single choke point rather than needing its own pause check. Not
+    /// persisted - always starts `false` on a fresh daemon, same as
+    /// `visualizer`, so a restart can't leave automations silently paused
+    /// from a setting nobody remembers toggling days ago. Manually firing
+    /// a rule from the console (`FireRule`) deliberately bypasses this -
+    /// that's an explicit click, not an automation.
+    pub automations_paused: bool,
 }
 
 pub struct IpcServer;
@@ -47,9 +67,9 @@ impl IpcServer {
     /// a background tokio task in the daemon - this never returns under
     /// normal operation).
     pub async fn bind_and_serve(state: Arc<Mutex<DaemonState>>) -> anyhow::Result<()> {
+        let auth_token = state.lock().await.auth_token.clone();
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
-        let auth_token = Uuid::new_v4().to_string();
         std::fs::write(discovery_file_path()?, format!("{port}\n{auth_token}"))?;
 
         loop {
@@ -208,6 +228,10 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
         RequestKind::GetUpdateStatus => {
             let state = state.lock().await;
             IpcResponse::UpdateStatus { available: state.update_available.clone() }
+        }
+        RequestKind::GetWebhookInfo => {
+            let state = state.lock().await;
+            IpcResponse::WebhookInfo { token: state.auth_token.clone() }
         }
     }
 }

@@ -75,6 +75,9 @@ static const float RADAR_REACTIVE_RANGE_CM = 120.0f; // fades out to no effect b
 
 static uint32_t radarMotionLastQualifyMs = 0;
 static uint32_t radarOffGraceDeadline = 0;
+// Whether the *previous* frame had a target present - see its use in radarTryParseFrame()'s
+// single-target speed-delta derivation.
+static bool radarWasPresent = false;
 
 // LD2450-style signed-magnitude decode: bit15 set => positive magnitude in low 15 bits,
 // bit15 clear => negative. Community-documented, unverified against this hardware.
@@ -212,12 +215,22 @@ static bool radarTryParseFrame()
     if (radarPresent)
     {
 #if !RD03_MULTI_TARGET
-        // No native speed field on the single-target protocol: derive it from distance delta.
-        if (radarLastFrameMs > 0 && radarDistanceCm >= 0.0f)
+        // No native speed field on the single-target protocol: derive it from distance delta -
+        // but only across two *consecutive* present frames. `radarLastFrameMs` advances every
+        // frame regardless of presence, so without the `radarWasPresent` check, a target that
+        // left and later came back would get its delta computed against the stale
+        // pre-absence `radarDistanceCm` over a one-frame `dt`, producing a huge bogus speed
+        // spike the instant presence resumes - exactly the kind of reading that would
+        // spuriously trip `radarMotionOnEnabled`'s threshold.
+        if (radarWasPresent && radarLastFrameMs > 0 && radarDistanceCm >= 0.0f)
         {
             float dtS = (float)(now - radarLastFrameMs) / 1000.0f;
             if (dtS > 0.01f)
                 bestSpeedCmS = (bestDistanceCm - radarDistanceCm) / dtS;
+        }
+        else
+        {
+            bestSpeedCmS = 0.0f; // first frame after an absence: no valid delta yet
         }
 #endif
         radarDistanceCm = bestDistanceCm;
@@ -227,6 +240,7 @@ static bool radarTryParseFrame()
     {
         radarSpeedCmS = 0.0f;
     }
+    radarWasPresent = radarPresent;
     radarLastFrameMs = now;
 
     radarBufferConsume(RD03_FRAME_BYTES);

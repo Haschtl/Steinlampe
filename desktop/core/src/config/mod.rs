@@ -56,7 +56,7 @@ mod tests {
             id: Uuid::new_v4(),
             name: "mic on -> on_air".to_string(),
             enabled: true,
-            trigger: Trigger::MicActive,
+            triggers: vec![Trigger::MicActive],
             targets: vec!["lamp-1".to_string()],
             action: Action::On,
             quick_rule: None,
@@ -64,6 +64,26 @@ mod tests {
         let text = toml::to_string_pretty(&RulesFile { rules: rules.clone() }).unwrap();
         let parsed: RulesFile = toml::from_str(&text).unwrap();
         assert_eq!(parsed.rules, rules);
+    }
+
+    #[test]
+    fn legacy_single_trigger_field_migrates_to_a_one_element_list() {
+        let text = r#"
+            [[rules]]
+            id = "4b8b2e0e-8b8b-4e8e-8b8b-8b8b8b8b8b8b"
+            name = "mic on -> on_air"
+            enabled = true
+            targets = ["lamp-1"]
+
+            [rules.trigger]
+            type = "mic_active"
+
+            [rules.action]
+            type = "on"
+        "#;
+        let file: RulesFile = toml::from_str(text).unwrap();
+        assert_eq!(file.rules.len(), 1);
+        assert_eq!(file.rules[0].triggers, vec![Trigger::MicActive]);
     }
 
     #[test]

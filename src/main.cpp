@@ -151,7 +151,12 @@ void updatePatternEngine()
       if (!presenceBleDetected)
         sendFeedback(F("[PresenceBLE] detected"));
       presenceBleDetected = true;
-      lastPresenceBleSeenMs = nowMs;
+      // Deliberately NOT re-stamping `lastPresenceBleSeenMs` here: a real detection (direct BLE
+      // match above, or presenceBleScanOnce()) already stamps it at its own point. Re-stamping it
+      // unconditionally here - including when `detected` is only true because of the "seen
+      // recently" grace check a few lines up - made that check perpetually true (every tick kept
+      // pushing its own deadline back out by a full `presenceBleGraceMs`), so presence got stuck
+      // "detected" forever after the very first sighting and auto-off below never actually fired.
       if (lampEnabled)
         presenceBleLastOffByPresence = false;
       if (presenceBleAutoOn && presenceBleLastOffByPresence && !lampEnabled &&
