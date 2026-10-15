@@ -72,58 +72,80 @@ enum CoreToUi {
 /// up), then polls `ListLamps` periodically and forwards UI-initiated
 /// requests, relaying everything to the UI thread over a plain
 /// `std::sync::mpsc` channel it can drain non-blockingly each frame.
-async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: std_mpsc::Sender<CoreToUi>, lang: Lang) {
+async fn run_core(
+    mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>,
+    to_ui: std_mpsc::Sender<CoreToUi>,
+    lang: Lang,
+    ctx: egui::Context,
+) {
+    // `request_repaint_after` in `ConsoleApp::ui` only re-polls `from_core` at
+    // a periodic ceiling, which meant every update sent from here (lamp
+    // state, rules, ...) could sit unseen until that timer next fired. Each
+    // send below also pokes `ctx` directly, which wakes the UI thread's
+    // event loop immediately - `egui::Context::request_repaint` is designed
+    // to be called from any thread. The periodic repaint stays too, as a
+    // fallback heartbeat.
+    let notify = |msg: CoreToUi| {
+        let _ = to_ui.send(msg);
+        ctx.request_repaint();
+    };
+
     let mut client = loop {
         match IpcClient::connect().await {
             Ok(c) => break c,
             Err(e) => {
-                let _ = to_ui.send(CoreToUi::Status(format!("{}: {e}", t(lang, "console.waitingForDaemon"))));
+                notify(CoreToUi::Status(format!("{}: {e}", t(lang, "console.waitingForDaemon"))));
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     };
-    let _ = to_ui.send(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
+    notify(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
     // The webhook auth token never changes while this daemon instance is
     // alive - fetched once here, not on every poll tick like the rest of
     // this function's state (`GetVisualizer`, `GetUpdateStatus`, ...).
     if let Ok(IpcResponse::WebhookInfo { token }) = client.request(RequestKind::GetWebhookInfo).await {
-        let _ = to_ui.send(CoreToUi::WebhookToken(token));
+        notify(CoreToUi::WebhookToken(token));
     }
 
-    let mut poll = tokio::time::interval(Duration::from_millis(1500));
+    // Lamp state is what the UI's on/off switch and brightness live-track, so
+    // it gets its own fast poll - this is a local IPC round-trip against the
+    // daemon's already-current `watch` state (no BLE involved, see
+    // `lamp_actor::run_connected`), so polling it quickly is cheap. Rules/
+    // visualizer/update-status change rarely and stay on the slower cadence
+    // they always had.
+    let mut lamp_poll = tokio::time::interval(Duration::from_millis(150));
+    let mut aux_poll = tokio::time::interval(Duration::from_millis(1500));
     loop {
         tokio::select! {
-            _ = poll.tick() => {
+            _ = lamp_poll.tick() => {
                 match client.request(RequestKind::ListLamps).await {
-                    Ok(IpcResponse::Lamps { lamps }) => { let _ = to_ui.send(CoreToUi::Lamps(lamps)); }
-                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(IpcResponse::Lamps { lamps }) => notify(CoreToUi::Lamps(lamps)),
+                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                     Ok(_) => {}
-                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                    Err(e) => notify(CoreToUi::Status(e.to_string())),
                 }
-                // Rules/visualizer change rarely - polling at the same
-                // cadence as lamp state is wasteful, but simple, and this
-                // is a handful of small requests a second at most. Revisit
-                // if it matters.
+            }
+            _ = aux_poll.tick() => {
                 match client.request(RequestKind::ListRules).await {
-                    Ok(IpcResponse::Rules { rules }) => { let _ = to_ui.send(CoreToUi::Rules(rules)); }
-                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
+                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                     Ok(_) => {}
-                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                    Err(e) => notify(CoreToUi::Status(e.to_string())),
                 }
                 match client.request(RequestKind::GetVisualizer).await {
-                    Ok(IpcResponse::Visualizer { config, last_error }) => { let _ = to_ui.send(CoreToUi::Visualizer { config, last_error }); }
-                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
+                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                     Ok(_) => {}
-                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                    Err(e) => notify(CoreToUi::Status(e.to_string())),
                 }
                 // Reads whatever the daemon's own background check last
                 // found - never triggers a check itself (see
                 // `core::update`'s doc comment for why this is notify-only).
                 match client.request(RequestKind::GetUpdateStatus).await {
-                    Ok(IpcResponse::UpdateStatus { available }) => { let _ = to_ui.send(CoreToUi::UpdateStatus(available)); }
-                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(IpcResponse::UpdateStatus { available }) => notify(CoreToUi::UpdateStatus(available)),
+                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                     Ok(_) => {}
-                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                    Err(e) => notify(CoreToUi::Status(e.to_string())),
                 }
             }
             msg = from_ui.recv() => {
@@ -139,12 +161,12 @@ async fn run_core(mut from_ui: tokio_mpsc::UnboundedReceiver<UiToCore>, to_ui: s
                     UiToCore::SetVisualizer(config) => RequestKind::SetVisualizer { config },
                 };
                 match client.request(kind).await {
-                    Ok(IpcResponse::ScanResults { lamps }) => { let _ = to_ui.send(CoreToUi::ScanResults(lamps)); }
-                    Ok(IpcResponse::Rules { rules }) => { let _ = to_ui.send(CoreToUi::Rules(rules)); }
-                    Ok(IpcResponse::Visualizer { config, last_error }) => { let _ = to_ui.send(CoreToUi::Visualizer { config, last_error }); }
-                    Ok(IpcResponse::Error { message }) => { let _ = to_ui.send(CoreToUi::Status(message)); }
+                    Ok(IpcResponse::ScanResults { lamps }) => notify(CoreToUi::ScanResults(lamps)),
+                    Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
+                    Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
+                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                     Ok(_) => {}
-                    Err(e) => { let _ = to_ui.send(CoreToUi::Status(e.to_string())); }
+                    Err(e) => notify(CoreToUi::Status(e.to_string())),
                 }
             }
         }
@@ -1434,11 +1456,6 @@ fn main() -> eframe::Result<()> {
     let (to_core, from_ui) = tokio_mpsc::unbounded_channel::<UiToCore>();
     let (to_ui, from_core) = std_mpsc::channel::<CoreToUi>();
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
-        rt.block_on(run_core(from_ui, to_ui, lang));
-    });
-
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([860.0, 620.0])
@@ -1458,6 +1475,14 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             apply_visuals(&cc.egui_ctx);
             let icon_texture = load_icon_texture(&cc.egui_ctx);
+            // Spawned here, not earlier, so run_core can take a clone of the
+            // real egui::Context and poke it directly on every update
+            // instead of waiting for ConsoleApp::ui's periodic repaint.
+            let ctx_for_core = cc.egui_ctx.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
+                rt.block_on(run_core(from_ui, to_ui, lang, ctx_for_core));
+            });
             Ok(Box::new(ConsoleApp {
                 lang,
                 icon_texture,
