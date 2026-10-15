@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
-import { Trans } from '@/i18n';
+import { Trans, useI18n } from '@/i18n';
 
 export function PotiCard() {
   const { status, sendCmd } = useConnection();
+  const { t } = useI18n();
   const [enabled, setEnabled] = useState(true);
+  const [mode, setMode] = useState<'brightness' | 'scan'>('brightness');
   const [alpha, editAlpha] = useSyncedValue(status.potiAlpha, {
     tolerance: 0.01,
     send: (v) => sendCmd(`poti alpha ${v.toFixed(2)}`).catch((e) => console.warn(e)),
@@ -34,7 +37,8 @@ export function PotiCard() {
     if (typeof status.potiMin === 'number') setCalMin(status.potiMin);
     if (typeof status.potiMax === 'number') setCalMax(status.potiMax);
     if (typeof status.potiInvert === 'boolean') setInvert(status.potiInvert);
-  }, [status.potiEnabled, status.potiMax, status.potiMin, status.potiInvert]);
+    if (status.potiMode === 'brightness' || status.potiMode === 'scan') setMode(status.potiMode);
+  }, [status.potiEnabled, status.potiMax, status.potiMin, status.potiInvert, status.potiMode]);
 
   useEffect(() => {
     if (typeof status.potiVal === 'number') {
@@ -176,6 +180,30 @@ export function PotiCard() {
           />{' '}
           <Trans k="label.potiInvert">Invert poti</Trans>
         </label>
+        <div>
+          <label className="text-sm font-medium">
+            <Trans k="label.potiMode">Mode</Trans>
+          </label>
+          <div className="text-xs text-muted-foreground mb-1">
+            <Trans k="desc.potiMode">What the knob position controls while the lamp is on</Trans>
+          </div>
+          <Select
+            value={mode}
+            onValueChange={(v) => {
+              const next = v === 'scan' ? 'scan' : 'brightness';
+              setMode(next);
+              apply(`poti mode ${next}`);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="brightness">{t('label.potiModeBrightness', 'Brightness')}</SelectItem>
+              <SelectItem value="scan">{t('label.potiModeScan', 'Scan profiles')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <SliderRow
           label={<Trans k="label.delta">Delta</Trans>}
           description={<Trans k="desc.potiDelta">Min. change before updating</Trans>}

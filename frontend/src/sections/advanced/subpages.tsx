@@ -1,5 +1,6 @@
 import { PotiCard } from '@/cards/PotiCard';
 import { PushButtonCard } from '@/cards/PushButtonCard';
+import { ButtonsOverviewCard } from '@/cards/ButtonsOverviewCard';
 import { PresenceBleCard } from '@/cards/PresenceBleCard';
 import { MusicCard } from '@/cards/MusicCard';
 import { RadarCard } from '@/cards/RadarCard';
@@ -19,9 +20,12 @@ export function PotiPage() {
 
 export function TasterPage() {
   const { status } = useConnection();
+  const hasAnyButtons = (status.buttons?.length ?? 0) > 0;
+  const hasMomentary = status.buttons?.some((b) => b.type === 'momentary') ?? false;
   return (
-    <HardwareSubpage available={status.hasPush !== false}>
-      <PushButtonCard />
+    <HardwareSubpage available={status.hasPush !== false || hasAnyButtons}>
+      <ButtonsOverviewCard />
+      {(status.hasPush !== false || hasMomentary) && <PushButtonCard />}
     </HardwareSubpage>
   );
 }

@@ -12,7 +12,13 @@ export function AdvancedOverview() {
 
   const tiles = [
     { to: '/advanced/poti' as const, icon: Gauge, labelKey: 'nav.poti', labelFallback: 'Poti', show: status.hasPoti !== false },
-    { to: '/advanced/taster' as const, icon: ToggleLeft, labelKey: 'nav.taster', labelFallback: 'Taster', show: status.hasPush !== false },
+    {
+      to: '/advanced/taster' as const,
+      icon: ToggleLeft,
+      labelKey: 'nav.taster',
+      labelFallback: 'Taster',
+      show: status.hasPush !== false || (status.buttons?.length ?? 0) > 0,
+    },
     { to: '/advanced/anwesenheit' as const, icon: Users, labelKey: 'nav.anwesenheit', labelFallback: 'Anwesenheit', show: status.hasPresenceBle !== false },
     { to: '/advanced/musik' as const, icon: Music, labelKey: 'nav.musik', labelFallback: 'Musik', show: status.hasMusic !== false },
     { to: '/advanced/radar' as const, icon: Radar, labelKey: 'nav.radar', labelFallback: 'Radar', show: status.hasRadar !== false },

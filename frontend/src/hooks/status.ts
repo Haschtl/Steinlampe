@@ -1,5 +1,34 @@
 import { Dispatch, SetStateAction } from 'react';
 
+export type ButtonRoleId = 'power' | 'modenext' | 'briup' | 'bridown';
+
+export type ButtonInfo = {
+  label: string;
+  type: 'toggle' | 'momentary';
+  role: ButtonRoleId;
+  state: string;
+};
+
+/**
+ * Parses the firmware's `label:type:role:state,...` button list (see
+ * `buttons=` in src/print.cpp) into structured entries. Unknown/malformed
+ * segments are skipped rather than throwing, since this is live device data.
+ */
+function parseButtonsField(raw: string): ButtonInfo[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((entry) => {
+      const parts = entry.split(':');
+      if (parts.length < 4) return null;
+      const [label, type, role, state] = parts;
+      if (type !== 'toggle' && type !== 'momentary') return null;
+      if (role !== 'power' && role !== 'modenext' && role !== 'briup' && role !== 'bridown') return null;
+      return { label, type, role, state } as ButtonInfo;
+    })
+    .filter((b): b is ButtonInfo => b !== null);
+}
+
 export type DeviceStatus = {
   connected: boolean;
   // True once the initial post-connect status snapshot (refreshStatus()) has
@@ -22,6 +51,7 @@ export type DeviceStatus = {
   lampState?: string;
   switchState?: string;
   hasSwitch?: boolean;
+  buttons?: ButtonInfo[];
   touchState?: string;
   hasTouch?: boolean;
   touchBase?: number;
@@ -148,6 +178,7 @@ export type DeviceStatus = {
   potiMin?: number;
   potiMax?: number;
   potiInvert?: boolean;
+  potiMode?: 'brightness' | 'scan';
   potiVal?: number;
   potiRaw?: number;
   hasPush?: boolean;
@@ -270,6 +301,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const potiMin = Object.prototype.hasOwnProperty.call(kv, 'poti_min') ? asNum('poti_min') : undefined;
       const potiMax = Object.prototype.hasOwnProperty.call(kv, 'poti_max') ? asNum('poti_max') : undefined;
       const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
+      const potiMode = kv.poti_mode === 'scan' || kv.poti_mode === 'brightness' ? kv.poti_mode : undefined;
+      const buttons = Object.prototype.hasOwnProperty.call(kv, 'buttons') ? parseButtonsField(kv.buttons) : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresenceBle = kv.presence_ble ? isAvailable('presence_ble') : s.hasPresenceBle;
       const presenceBleList = kv.presence_ble_list
@@ -290,6 +323,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         lampState: kv.lamp ?? s.lampState,
         switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
         hasSwitch,
+        buttons: buttons ?? s.buttons,
         hasTouch,
         touchState: kv.touch
           ? kv.touch.toUpperCase()
@@ -426,6 +460,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         potiMin: potiMin ?? s.potiMin,
         potiMax: potiMax ?? s.potiMax,
         potiInvert: typeof potiInvert === 'boolean' ? potiInvert : s.potiInvert,
+        potiMode: potiMode ?? s.potiMode,
         potiVal: potiVal ?? s.potiVal,
         potiRaw: potiRaw ?? s.potiRaw,
         hasPush,

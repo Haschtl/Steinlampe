@@ -471,6 +471,24 @@ void printStatusStructured(const bool &force)
             line += F(",");
         line += BUTTONS[bi].label;
         line += F(":");
+        line += (BUTTONS[bi].type == BTN_TOGGLE) ? F("toggle") : F("momentary");
+        line += F(":");
+        switch (BUTTONS[bi].role)
+        {
+        case ROLE_POWER:
+            line += F("power");
+            break;
+        case ROLE_MODE_NEXT:
+            line += F("modenext");
+            break;
+        case ROLE_BRIGHTNESS_UP:
+            line += F("briup");
+            break;
+        case ROLE_BRIGHTNESS_DOWN:
+            line += F("bridown");
+            break;
+        }
+        line += F(":");
         if (BUTTONS[bi].type == BTN_TOGGLE)
             line += (buttonStates[bi].debounced ? F("on") : F("off"));
         else
@@ -705,6 +723,8 @@ void printStatusStructured(const bool &force)
     lineIO += String(potiCalibMax, 3);
     lineIO += F("|poti_inv=");
     lineIO += potiInvert ? F("1") : F("0");
+    lineIO += F("|poti_mode=");
+    lineIO += (potiRole == POTI_ROLE_MODE_SCAN) ? F("scan") : F("brightness");
     lineIO += F("|poti_val=");
     lineIO += String(potiFiltered, 3);
     lineIO += F("|poti_raw=");
