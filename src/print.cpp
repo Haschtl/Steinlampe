@@ -134,9 +134,17 @@ void printStatus(const bool &force)
 
     String line2 = String(F("Lamp=")) + ((lampEnabled && !lampOffPending) ? F("ON") : F("OFF")) + F(" | Brightness=") +
                    String(masterBrightness * 100.0f, 1) + F("%");
-#if ENABLE_SWITCH
-    line2 += F(" | Switch=");
-    line2 += (switchDebouncedState ? F("ON") : F("OFF"));
+#if ENABLE_BUTTONS
+    for (size_t bi = 0; bi < BUTTON_COUNT; ++bi)
+    {
+        line2 += F(" | ");
+        line2 += BUTTONS[bi].label;
+        line2 += F("=");
+        if (BUTTONS[bi].type == BTN_TOGGLE)
+            line2 += (buttonStates[bi].debounced ? F("ON") : F("OFF"));
+        else
+            line2 += (buttonStates[bi].debounced ? F("pressed") : F("released"));
+    }
 #endif
     sendFeedback(line2,force);
 
@@ -445,9 +453,28 @@ void printStatusStructured(const bool &force)
     line += String(masterBrightness * 100.0f, 1);
     line += F("|lamp=");
     line += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
-#if ENABLE_SWITCH
-    line += F("|switch=");
-    line += switchDebouncedState ? F("ON") : F("OFF");
+#if ENABLE_BUTTONS
+    if (firstPowerToggleButton())
+    {
+        line += F("|switch=");
+        line += switchDebouncedState ? F("ON") : F("OFF");
+    }
+    else
+    {
+        line += F("|switch=N/A");
+    }
+    line += F("|buttons=");
+    for (size_t bi = 0; bi < BUTTON_COUNT; ++bi)
+    {
+        if (bi > 0)
+            line += F(",");
+        line += BUTTONS[bi].label;
+        line += F(":");
+        if (BUTTONS[bi].type == BTN_TOGGLE)
+            line += (buttonStates[bi].debounced ? F("on") : F("off"));
+        else
+            line += (buttonStates[bi].debounced ? F("pressed") : F("released"));
+    }
 #else
     line += F("|switch=N/A");
 #endif

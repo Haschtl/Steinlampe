@@ -2,6 +2,7 @@
 
 #include "settings.h"
 #include "pinout.h"
+#include "inputs.h"
 #include "comms.h"
 #include "quickmode.h"
 #include "lamp_state.h"
@@ -11,14 +12,10 @@
 #include "utils.h"
 #include "sleepwake.h"
 
-// Switch handling
-#if ENABLE_SWITCH
-bool switchRawState = false;
 bool switchDebouncedState = false;
-uint32_t switchLastDebounceMs = 0;
-uint32_t lastSwitchOffMs = 0;
-uint32_t lastSwitchOnMs = 0;
-bool modeTapArmed = false;
+
+#if ENABLE_BUTTONS
+ButtonState buttonStates[BUTTON_COUNT];
 #endif
 
 #if ENABLE_POTI
@@ -64,18 +61,9 @@ bool extInputLastDigital = false;
 
 #if ENABLE_PUSH_BUTTON
 bool pushEnabled = true;
-bool pushRawState = false;
-bool pushDebouncedState = false;
-uint32_t pushLastDebounceMs = 0;
-uint32_t pushPressMs = 0;
-uint32_t pushLastReleaseMs = 0;
-bool pushAwaitDouble = false;
-bool pushHoldActive = false;
-uint32_t pushHoldLastStepMs = 0;
 #endif
 
 // ---------- Schalter / Touch ----------
-extern const int SWITCH_ACTIVE_LEVEL = LOW;
 extern const uint32_t SWITCH_DEBOUNCE_MS = 35;
 extern const uint32_t MODE_TAP_MAX_MS = 600; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 extern const uint32_t TOUCH_DOUBLE_MS = 500; // Touch-Doppeltipp Erkennung
@@ -137,107 +125,345 @@ uint32_t pushStepMs = Settings::PUSH_BRI_STEP_MS;
 float pushStep = Settings::PUSH_BRI_STEP;
 #endif
 
+#if ENABLE_BUTTONS
+static int firstPowerToggleIndex();
+#endif
+
 /**
- * @brief Force lamp state to match current physical switch position.
+ * @brief Force lamp state to match the first toggle/Power button's position.
  */
 void syncLampToSwitch()
 {
-#if !ENABLE_SWITCH
-    sendFeedback(F("[Sync] Switch disabled at build"));
-    return;
-#else
-    setLampEnabled(switchDebouncedState, "sync switch");
-    sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (switchDebouncedState ? F("ON") : F("OFF")));
+#if ENABLE_BUTTONS
+    int idx = firstPowerToggleIndex();
+    if (idx >= 0)
+    {
+        bool on = buttonStates[idx].debounced;
+        switchDebouncedState = on;
+        setLampEnabled(on, "sync switch");
+        sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (on ? F("ON") : F("OFF")));
+        return;
+    }
 #endif
+    sendFeedback(F("[Sync] Switch disabled at build"));
 }
 
 bool hardwareWantsOn()
 {
-#if ENABLE_SWITCH
-    return switchDebouncedState;
-#elif ENABLE_POTI
+#if ENABLE_BUTTONS
+    int idx = firstPowerToggleIndex();
+    if (idx >= 0)
+        return buttonStates[idx].debounced;
+#endif
+#if ENABLE_POTI
     return potiFiltered > potiOffThreshold;
 #else
     return true; // no hardware switch/poti compiled in - nothing to gate against
 #endif
 }
 
-
-#if ENABLE_SWITCH
+#if ENABLE_BUTTONS
 /**
- * @brief Read the current raw logic level of the mechanical switch.
+ * @brief Index of the first configured ROLE_POWER + BTN_TOGGLE button, or -1.
  */
-bool readSwitchRaw()
+static int firstPowerToggleIndex()
 {
-    return digitalRead(PIN_SWITCH) == SWITCH_ACTIVE_LEVEL;
+    for (size_t i = 0; i < BUTTON_COUNT; ++i)
+        if (BUTTONS[i].type == BTN_TOGGLE && BUTTONS[i].role == ROLE_POWER)
+            return (int)i;
+    return -1;
+}
+
+const ButtonConfig *firstPowerToggleButton()
+{
+    int idx = firstPowerToggleIndex();
+    return idx >= 0 ? &BUTTONS[idx] : nullptr;
+}
+
+static bool readButtonRaw(size_t i)
+{
+    bool level = digitalRead(BUTTONS[i].pin) == HIGH;
+    return BUTTONS[i].activeLow ? !level : level;
+}
+
+static void advanceQuickModeFromButton()
+{
+    size_t from = currentModeIndex;
+    if (from >= quickModeCount())
+        from = 0;
+    size_t next = nextQuickMode(from);
+    applyQuickMode(next);
+}
+
+void initButtonPins()
+{
+    for (size_t i = 0; i < BUTTON_COUNT; ++i)
+        pinMode(BUTTONS[i].pin, BUTTONS[i].activeLow ? INPUT_PULLUP : INPUT_PULLDOWN);
 }
 
 /**
- * @brief Initializes switch debouncing state from current hardware level.
+ * @brief Seed debounced state from current hardware levels and apply the boot
+ * power state from the first toggle/Power button, if any.
  */
-void initSwitchState()
+void initButtons()
 {
-    switchRawState = readSwitchRaw();
-    switchDebouncedState = switchRawState;
-    // Apply switch state via setLampEnabled so ramps/guards are respected.
-    setLampEnabled(switchDebouncedState, "init switch");
-    lastSwitchOffMs = millis();
-    lastSwitchOnMs = lampEnabled ? lastSwitchOffMs : 0;
-    modeTapArmed = false;
+    for (size_t i = 0; i < BUTTON_COUNT; ++i)
+    {
+        bool raw = readButtonRaw(i);
+        buttonStates[i] = ButtonState();
+        buttonStates[i].raw = raw;
+        buttonStates[i].debounced = raw;
+    }
+    int idx = firstPowerToggleIndex();
+    if (idx >= 0)
+    {
+        switchDebouncedState = buttonStates[idx].debounced;
+        // Apply switch state via setLampEnabled so ramps/guards are respected.
+        setLampEnabled(switchDebouncedState, "init switch");
+        buttonStates[idx].lastOffMs = millis();
+        buttonStates[idx].lastOnMs = lampEnabled ? buttonStates[idx].lastOffMs : 0;
+        buttonStates[idx].modeTapArmed = false;
+    }
+    else
+    {
+        switchDebouncedState = false;
+    }
 }
+
 /**
- * @brief Debounce the toggle switch and handle on/off plus mode tap detection.
+ * @brief Toggle-type button just became active (closed). Dispatches by role.
  */
-void updateSwitchLogic()
+static void onToggleActivated(size_t i)
+{
+    const ButtonConfig &cfg = BUTTONS[i];
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    switch (cfg.role)
+    {
+    case ROLE_POWER:
+        // Short off->on within MODE_TAP_MAX_MS: advance pattern
+        if (st.modeTapArmed && (now - st.lastOffMs) <= MODE_TAP_MAX_MS)
+            advanceQuickModeFromButton();
+        st.modeTapArmed = false;
+        st.lastOnMs = now;
+        switchDebouncedState = true;
+        setLampEnabled(true, "switch on");
+        sendFeedback(String(F("[")) + cfg.label + F("] ON"));
+        confirmBtPairing(cfg.label);
+        break;
+    case ROLE_MODE_NEXT:
+        advanceQuickModeFromButton();
+        break;
+    case ROLE_BRIGHTNESS_UP:
+    case ROLE_BRIGHTNESS_DOWN:
+        st.holdLastStepMs = now; // (re)start the ramp-repeat timer
+        break;
+    }
+    lastActivityMs = now;
+}
+
+/**
+ * @brief Toggle-type button just became inactive (open). Dispatches by role.
+ */
+static void onToggleDeactivated(size_t i)
+{
+    const ButtonConfig &cfg = BUTTONS[i];
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    if (cfg.role == ROLE_POWER)
+    {
+        // Arm mode change if lamp was on before this off edge
+        st.modeTapArmed = lampEnabled;
+        st.lastOffMs = now;
+        switchDebouncedState = false;
+        setLampEnabled(false, "switch off");
+        sendFeedback(String(F("[")) + cfg.label + F("] OFF"));
+        confirmBtPairing(cfg.label);
+    }
+    // Lamp on/off is not persisted; a mode-tap already saves via applyQuickMode(),
+    // so avoid an extra NVS write on every toggle to reduce flash wear.
+    lastActivityMs = now;
+}
+
+#if ENABLE_PUSH_BUTTON
+static void momentaryPowerPress(size_t i)
+{
+    ButtonState &st = buttonStates[i];
+    st.pressMs = millis();
+    st.holdActive = false;
+}
+
+static void momentaryPowerRelease(size_t i)
+{
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    if (st.holdActive)
+    {
+        st.holdActive = false;
+        return;
+    }
+    if (st.awaitDouble && (now - st.lastReleaseMs) <= pushDoubleMs)
+    {
+        st.awaitDouble = false;
+        advanceQuickModeFromButton();
+    }
+    else
+    {
+        st.awaitDouble = true;
+        st.lastReleaseMs = now;
+    }
+}
+
+static void momentaryPowerTick(size_t i)
+{
+    const ButtonConfig &cfg = BUTTONS[i];
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    if (st.awaitDouble && (now - st.lastReleaseMs) > pushDoubleMs)
+    {
+        st.awaitDouble = false;
+        setLampEnabled(!lampEnabled, cfg.label);
+    }
+    if (st.debounced && !st.holdActive && (now - st.pressMs) >= pushHoldMs)
+    {
+        st.holdActive = true;
+        st.holdLastStepMs = now;
+        st.awaitDouble = false;
+    }
+    if (st.holdActive && st.debounced)
+    {
+        if (now - st.holdLastStepMs >= pushStepMs)
+        {
+            st.holdLastStepMs = now;
+            float pct = masterBrightness * 100.0f + pushStep * 100.0f;
+            if (pct > 100.0f)
+                pct = briMinUser * 100.0f;
+            setBrightnessPercent(pct, true);
+        }
+    }
+    if (!st.debounced && st.holdActive)
+        st.holdActive = false;
+}
+
+static void momentaryBrightnessPress(size_t i, float dir)
+{
+    ButtonState &st = buttonStates[i];
+    st.pressMs = millis();
+    st.holdActive = false;
+    float pct = constrain(masterBrightness * 100.0f + dir * pushStep * 100.0f, briMinUser * 100.0f, 100.0f);
+    setBrightnessPercent(pct, true);
+}
+
+static void momentaryBrightnessTick(size_t i, float dir)
+{
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    if (st.debounced && !st.holdActive && (now - st.pressMs) >= pushHoldMs)
+    {
+        st.holdActive = true;
+        st.holdLastStepMs = now;
+    }
+    if (st.holdActive && st.debounced)
+    {
+        if (now - st.holdLastStepMs >= pushStepMs)
+        {
+            st.holdLastStepMs = now;
+            float pct = constrain(masterBrightness * 100.0f + dir * pushStep * 100.0f, briMinUser * 100.0f, 100.0f);
+            setBrightnessPercent(pct, true);
+        }
+    }
+    if (!st.debounced && st.holdActive)
+        st.holdActive = false;
+}
+#endif // ENABLE_PUSH_BUTTON
+
+/**
+ * @brief Debounce every configured button and dispatch its role's behavior.
+ */
+void updateButtons()
 {
     uint32_t now = millis();
-    bool raw = readSwitchRaw();
-    if (raw != switchRawState)
+    for (size_t i = 0; i < BUTTON_COUNT; ++i)
     {
-        switchRawState = raw;
-        switchLastDebounceMs = now;
-    }
+        const ButtonConfig &cfg = BUTTONS[i];
+        ButtonState &st = buttonStates[i];
+#if ENABLE_PUSH_BUTTON
+        uint32_t debounceMs = (cfg.type == BTN_TOGGLE) ? SWITCH_DEBOUNCE_MS : pushDebounceMs;
+#else
+        uint32_t debounceMs = SWITCH_DEBOUNCE_MS;
+#endif
+        bool raw = readButtonRaw(i);
+        if (raw != st.raw)
+        {
+            st.raw = raw;
+            st.lastDebounceMs = now;
+        }
+        bool changed = false;
+        if ((now - st.lastDebounceMs) >= debounceMs && st.debounced != st.raw)
+        {
+            st.debounced = st.raw;
+            changed = true;
+        }
 
-    if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
-    {
-        switchDebouncedState = switchRawState;
-        if (switchDebouncedState)
+        if (cfg.type == BTN_TOGGLE)
         {
-            uint32_t nowOn = now;
-            // if (lastSwitchOnMs > 0 && (nowOn - lastSwitchOnMs) <= DOUBLE_TAP_MS)
-            // {
-            //   startWakeFade(Settings::DEFAULT_WAKE_MS / 6, true); // schneller Wake-Kick
-            // }
-            lastSwitchOnMs = nowOn;
-            // Short off→on within MODE_TAP_MAX_MS: advance pattern
-            if (modeTapArmed && (now - lastSwitchOffMs) <= MODE_TAP_MAX_MS)
+            if (changed)
             {
-                size_t from = currentModeIndex;
-                if (from >= quickModeCount())
-                    from = 0;
-                size_t next = nextQuickMode(from);
-                applyQuickMode(next);
+                if (st.debounced)
+                    onToggleActivated(i);
+                else
+                    onToggleDeactivated(i);
             }
-            modeTapArmed = false;
-            setLampEnabled(true, "switch on");
-            sendFeedback(F("[Switch] ON"));
-            confirmBtPairing("switch");
+#if ENABLE_PUSH_BUTTON
+            if ((cfg.role == ROLE_BRIGHTNESS_UP || cfg.role == ROLE_BRIGHTNESS_DOWN) && st.debounced)
+            {
+                if (now - st.holdLastStepMs >= pushStepMs)
+                {
+                    st.holdLastStepMs = now;
+                    float dir = (cfg.role == ROLE_BRIGHTNESS_UP) ? 1.0f : -1.0f;
+                    float pct = constrain(masterBrightness * 100.0f + dir * pushStep * 100.0f, briMinUser * 100.0f, 100.0f);
+                    setBrightnessPercent(pct, true);
+                }
+            }
+#endif
         }
-        else
+        else // BTN_MOMENTARY
         {
-            // Arm mode change if lamp was on before this off edge
-            modeTapArmed = lampEnabled;
-            lastSwitchOffMs = now;
-            setLampEnabled(false, "switch off");
-            sendFeedback(F("[Switch] OFF"));
-            confirmBtPairing("switch");
+#if ENABLE_PUSH_BUTTON
+            if (!pushEnabled)
+                continue;
+            if (changed)
+            {
+                if (st.debounced)
+                {
+                    if (cfg.role == ROLE_POWER)
+                        momentaryPowerPress(i);
+                    else if (cfg.role == ROLE_BRIGHTNESS_UP)
+                        momentaryBrightnessPress(i, 1.0f);
+                    else if (cfg.role == ROLE_BRIGHTNESS_DOWN)
+                        momentaryBrightnessPress(i, -1.0f);
+                    else
+                        st.pressMs = now;
+                }
+                else
+                {
+                    if (cfg.role == ROLE_POWER)
+                        momentaryPowerRelease(i);
+                    else if (cfg.role == ROLE_MODE_NEXT)
+                        advanceQuickModeFromButton();
+                }
+            }
+            if (cfg.role == ROLE_POWER)
+                momentaryPowerTick(i);
+            else if (cfg.role == ROLE_BRIGHTNESS_UP)
+                momentaryBrightnessTick(i, 1.0f);
+            else if (cfg.role == ROLE_BRIGHTNESS_DOWN)
+                momentaryBrightnessTick(i, -1.0f);
+#endif
         }
-        // Lamp on/off is not persisted; a mode-tap already saves via applyQuickMode(),
-        // so avoid an extra NVS write on every toggle to reduce flash wear.
-        lastActivityMs = now;
     }
 }
-#endif
+#endif // ENABLE_BUTTONS
 
 /**
  * @brief During the secure-boot window, debounce the switch and count toggles without running full logic.
@@ -246,33 +472,39 @@ void processStartupSwitch()
 {
     if (secureBootWindowClosed)
         return;
-#if ENABLE_SWITCH
+#if ENABLE_BUTTONS
     {
         uint32_t now = millis();
-        bool raw = readSwitchRaw();
-        if (raw != switchRawState)
+        for (size_t i = 0; i < BUTTON_COUNT; ++i)
         {
-            switchRawState = raw;
-            switchLastDebounceMs = now;
-        }
-        if ((now - switchLastDebounceMs) >= SWITCH_DEBOUNCE_MS && switchDebouncedState != switchRawState)
-        {
-            switchDebouncedState = switchRawState;
-            if (!secureBootLatched && !secureBootWindowClosed)
+            if (BUTTONS[i].type != BTN_TOGGLE)
+                continue;
+            ButtonState &st = buttonStates[i];
+            bool raw = readButtonRaw(i);
+            if (raw != st.raw)
             {
-                secureBootToggleCount++;
-                if (secureBootToggleCount >= SECURE_BOOT_TOGGLES_REQUIRED)
+                st.raw = raw;
+                st.lastDebounceMs = now;
+            }
+            if ((now - st.lastDebounceMs) >= SWITCH_DEBOUNCE_MS && st.debounced != st.raw)
+            {
+                st.debounced = st.raw;
+                if (!secureBootLatched && !secureBootWindowClosed)
                 {
-                    secureBootLatched = true;
-                    secureBootWindowClosed = true;
-                    startupHoldActive = false;
-                    applyDefaultSettings(0.20f, false);
-                    sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
-                    printStatus();
-                }
-                else
-                {
-                    sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/") + String(SECURE_BOOT_TOGGLES_REQUIRED));
+                    secureBootToggleCount++;
+                    if (secureBootToggleCount >= SECURE_BOOT_TOGGLES_REQUIRED)
+                    {
+                        secureBootLatched = true;
+                        secureBootWindowClosed = true;
+                        startupHoldActive = false;
+                        applyDefaultSettings(0.20f, false);
+                        sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
+                        printStatus();
+                    }
+                    else
+                    {
+                        sendFeedback(String(F("[SecureBoot] Toggle ")) + String(secureBootToggleCount) + F("/") + String(SECURE_BOOT_TOGGLES_REQUIRED));
+                    }
                 }
             }
         }
@@ -502,85 +734,6 @@ void updateTouchBrightness()
 #endif
 }
 
-
-#if ENABLE_PUSH_BUTTON
-void updatePushButton()
-{
-    if (!pushEnabled)
-        return;
-    uint32_t now = millis();
-    bool raw = digitalRead(PIN_PUSHBTN) == PUSH_ACTIVE_LEVEL;
-    if (raw != pushRawState)
-    {
-        pushRawState = raw;
-        pushLastDebounceMs = now;
-    }
-    if ((now - pushLastDebounceMs) >= pushDebounceMs && pushDebouncedState != pushRawState)
-    {
-        pushDebouncedState = pushRawState;
-        if (pushDebouncedState)
-        {
-            pushPressMs = now;
-            pushHoldActive = false;
-        }
-        else
-        {
-            if (pushHoldActive)
-            {
-                pushHoldActive = false;
-            }
-            else
-            {
-                if (pushAwaitDouble && (now - pushLastReleaseMs) <= pushDoubleMs)
-                {
-                    pushAwaitDouble = false;
-                    size_t from = currentModeIndex;
-                    if (from >= quickModeCount())
-                        from = 0;
-                    size_t next = nextQuickMode(from);
-                    applyQuickMode(next);
-                }
-                else
-                {
-                    pushAwaitDouble = true;
-                    pushLastReleaseMs = now;
-                }
-            }
-        }
-    }
-
-    // finalize single click if waiting too long
-    if (pushAwaitDouble && (now - pushLastReleaseMs) > pushDoubleMs)
-    {
-        pushAwaitDouble = false;
-        setLampEnabled(!lampEnabled, "pushbtn");
-    }
-
-    // hold brightness adjustment
-    if (pushDebouncedState && !pushHoldActive && (now - pushPressMs) >= pushHoldMs)
-    {
-        pushHoldActive = true;
-        pushHoldLastStepMs = now;
-        pushAwaitDouble = false;
-    }
-
-    if (pushHoldActive && pushDebouncedState)
-    {
-        if (now - pushHoldLastStepMs >= pushStepMs)
-        {
-            pushHoldLastStepMs = now;
-            float pct = masterBrightness * 100.0f + pushStep * 100.0f;
-            if (pct > 100.0f)
-                pct = briMinUser * 100.0f;
-            setBrightnessPercent(pct, true);
-        }
-    }
-    if (!pushDebouncedState && pushHoldActive)
-    {
-        pushHoldActive = false;
-    }
-}
-#endif
 
 #if ENABLE_POTI
 void updatePoti()

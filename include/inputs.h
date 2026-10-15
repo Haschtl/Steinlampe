@@ -5,14 +5,57 @@
 #include "settings.h"
 
 
-// Switch handling
-#if ENABLE_SWITCH
-extern bool switchRawState;
+// Mirrors the first ROLE_POWER+BTN_TOGGLE button's debounced level (false if
+// none configured). Kept as an unconditional global since other subsystems
+// (idle-off gating in main.cpp, music auto-lamp in microphone.cpp, status in
+// print.cpp) read it regardless of which boards compile in a toggle switch.
 extern bool switchDebouncedState;
-extern uint32_t switchLastDebounceMs;
-extern uint32_t lastSwitchOffMs;
-extern uint32_t lastSwitchOnMs;
-extern bool modeTapArmed;
+
+#if ENABLE_BUTTONS
+// Per-button runtime state, parallel to the compile-time BUTTONS[] config array
+// (see pinout.h). Holds both toggle-debounce bookkeeping and momentary
+// press/release/hold bookkeeping - whichever fields a given button's type/role
+// actually use.
+struct ButtonState
+{
+    bool raw = false;
+    bool debounced = false;
+    uint32_t lastDebounceMs = 0;
+    uint32_t pressMs = 0;      // momentary: last press edge
+    uint32_t lastReleaseMs = 0; // momentary: last release edge
+    bool awaitDouble = false;   // momentary ROLE_POWER
+    bool holdActive = false;    // momentary: currently in hold-repeat
+    uint32_t holdLastStepMs = 0;
+    bool modeTapArmed = false;  // toggle ROLE_POWER
+    uint32_t lastOnMs = 0;      // toggle ROLE_POWER
+    uint32_t lastOffMs = 0;     // toggle ROLE_POWER
+};
+extern ButtonState buttonStates[];
+
+/**
+ * @brief Configure pin modes for all configured buttons. Call early in setup(),
+ * before loadSettings()/output init.
+ */
+void initButtonPins();
+
+/**
+ * @brief Seed debounced state from current hardware levels and apply the boot
+ * power state from the first toggle/Power button, if any. Call late in setup(),
+ * after output + settings are ready.
+ */
+void initButtons();
+
+/**
+ * @brief Debounce every configured button and dispatch its role's behavior.
+ */
+void updateButtons();
+
+/**
+ * @brief The first configured ROLE_POWER + BTN_TOGGLE button, or nullptr if none.
+ * Used for light-sleep ext0 wakeup (single-pin hardware limit) as well as
+ * hardwareWantsOn()/syncLampToSwitch().
+ */
+const ButtonConfig *firstPowerToggleButton();
 #endif
 
 // Secure-boot window state (used by switch or poti)
@@ -35,18 +78,9 @@ extern bool extInputLastDigital;
 
 #if ENABLE_PUSH_BUTTON
 extern bool pushEnabled;
-extern bool pushRawState;
-extern bool pushDebouncedState;
-extern uint32_t pushLastDebounceMs;
-extern uint32_t pushPressMs;
-extern uint32_t pushLastReleaseMs;
-extern bool pushAwaitDouble;
-extern bool pushHoldActive;
-extern uint32_t pushHoldLastStepMs;
 #endif
 
 // ---------- Schalter / Touch ----------
-extern const int SWITCH_ACTIVE_LEVEL;
 extern const uint32_t SWITCH_DEBOUNCE_MS;
 extern const uint32_t MODE_TAP_MAX_MS; // max. Dauer für "kurz Aus" (Mode-Wechsel)
 extern const uint32_t TOUCH_DOUBLE_MS; // Touch-Doppeltipp Erkennung
@@ -114,23 +148,6 @@ void syncLampToSwitch();
  */
 bool hardwareWantsOn();
 
-#if ENABLE_SWITCH
-/**
- * @brief Read the current raw logic level of the mechanical switch.
- */
-bool readSwitchRaw();
-
-/**
- * @brief Initializes switch debouncing state from current hardware level.
- */
-void initSwitchState();
-
-/**
- * @brief Debounce the toggle switch and handle on/off plus mode tap detection.
- */
-void updateSwitchLogic();
-#endif
-
 /**
  * @brief During the secure-boot window, look for the unlock gesture (switch toggles or poti swings).
  */
@@ -150,11 +167,6 @@ void calibrateTouchGuided();
  * @brief Periodically sample the touch sensor to control long-press dimming.
  */
 void updateTouchBrightness();
-
-
-#if ENABLE_PUSH_BUTTON
-void updatePushButton();
-#endif
 
 #if ENABLE_POTI
 void updatePoti();

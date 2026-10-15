@@ -7,6 +7,8 @@
 
 #include <Arduino.h>
 
+#include "pinout.h"
+
 namespace Settings
 {
 // ---- Names / IDs ----

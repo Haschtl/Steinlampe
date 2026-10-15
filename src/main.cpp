@@ -202,11 +202,9 @@ void updatePatternEngine()
   }
 
   // idle-off timer
-  if (idleOffMs > 0 && lampEnabled && !rampActive
-#if ENABLE_SWITCH
-      && !switchDebouncedState
-#endif
-  )
+  // switchDebouncedState stays false forever when no toggle/Power button is
+  // configured, so this check is a no-op in that case - no #if guard needed.
+  if (idleOffMs > 0 && lampEnabled && !rampActive && !switchDebouncedState)
   {
     if (now - lastActivityMs >= idleOffMs)
     {
@@ -403,13 +401,18 @@ void maybeLightSleep()
   if (lampEnabled || wakeFadeActive || sleepFadeActive || rampActive)
     return;
   esp_sleep_enable_timer_wakeup(200000); // 200 ms
-#if ENABLE_SWITCH
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_SWITCH, SWITCH_ACTIVE_LEVEL == LOW ? 0 : 1);
+#if ENABLE_BUTTONS
+  // ESP32 ext0 wakeup is single-pin, so only the first toggle/Power button can
+  // wake the chip; additional toggle buttons won't wake it from light sleep.
+  const ButtonConfig *wakeBtn = firstPowerToggleButton();
+  if (wakeBtn)
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)wakeBtn->pin, wakeBtn->activeLow ? 0 : 1);
 #endif
   esp_light_sleep_start();
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-#if ENABLE_SWITCH
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+#if ENABLE_BUTTONS
+  if (wakeBtn)
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
 #endif
 #endif
 }
@@ -433,7 +436,7 @@ void setup()
   Serial.println(F("Quarzlampe PWM-Demo"));
   ensureBaseMac();
   // Allow secure-boot window via switch or poti
-#if ENABLE_SWITCH || ENABLE_POTI
+#if ENABLE_BUTTONS || ENABLE_POTI
   bootStartMs = millis();
   secureBootToggleCount = 0;
   secureBootLatched = false;
@@ -441,8 +444,8 @@ void setup()
   startupHoldActive = true;
 #endif
 
-#if ENABLE_SWITCH
-  pinMode(PIN_SWITCH, INPUT_PULLUP);
+#if ENABLE_BUTTONS
+  initButtonPins();
 #endif
 #if ENABLE_TOUCH_DIM
   calibrateTouchBaseline();
@@ -474,9 +477,6 @@ void setup()
   analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
   pinMode(Settings::MUSIC_PIN, INPUT);
 #endif
-#if ENABLE_PUSH_BUTTON
-  pinMode(PIN_PUSHBTN, INPUT_PULLUP);
-#endif
 #if ENABLE_RD03
   radarSetup();
 #endif
@@ -499,8 +499,8 @@ void setup()
   setupCommunications();
   updatePatternEngine();
 
-#if ENABLE_SWITCH
-  initSwitchState();
+#if ENABLE_BUTTONS
+  initButtons();
 #endif
 }
 
@@ -534,8 +534,8 @@ void loop()
     setLampEnabled(hardwareWantsOn(), "secure-boot window closed");
   }
   pollCommunications();
-#if ENABLE_SWITCH
-  updateSwitchLogic();
+#if ENABLE_BUTTONS
+  updateButtons();
 #endif
 #if ENABLE_TOUCH_DIM
   updateTouchBrightness();
@@ -545,9 +545,6 @@ void loop()
   updateLightSensor();
 #if ENABLE_POTI
   updatePoti();
-#endif
-#if ENABLE_PUSH_BUTTON
-  updatePushButton();
 #endif
 #if ENABLE_MUSIC_MODE
   updateMusicSensor();

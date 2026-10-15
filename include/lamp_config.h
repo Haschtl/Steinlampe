@@ -54,6 +54,28 @@
 #define ENABLE_PUSH_BUTTON 0
 #endif
 
+// ---------- Generic multi-button slots (see pinout.h for ButtonConfig) ----------
+// Up to 4 independent physical buttons, each freely a latching toggle switch or a
+// momentary push button, with its own role. Slot 0 defaults from the legacy
+// ENABLE_SWITCH/PIN_SWITCH flags so existing boards need no changes; slots 1-3 are
+// opt-in extras (set e.g. -DENABLE_BUTTON1=1 -DBUTTON1_PIN=27 -DBUTTON1_TYPE=1
+// -DBUTTON1_ROLE=1 for a momentary mode-next button on GPIO27). ENABLE_PUSH_BUTTON
+// is auto-derived in pinout.h from whether any configured slot is momentary - it
+// no longer needs to be set by hand, it just keeps gating the shared momentary
+// tunables (pushDebounceMs etc.) in settings.h/persistence.cpp/command.cpp.
+#ifndef ENABLE_BUTTON0
+#define ENABLE_BUTTON0 ENABLE_SWITCH
+#endif
+#ifndef ENABLE_BUTTON1
+#define ENABLE_BUTTON1 0
+#endif
+#ifndef ENABLE_BUTTON2
+#define ENABLE_BUTTON2 0
+#endif
+#ifndef ENABLE_BUTTON3
+#define ENABLE_BUTTON3 0
+#endif
+
 #ifndef ENABLE_EXT_INPUT
 #define ENABLE_EXT_INPUT 0
 #endif
