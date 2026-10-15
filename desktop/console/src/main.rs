@@ -14,6 +14,15 @@
 //! UI text goes through `quarzlampe_core::i18n` (English/German, picked up
 //! from the OS locale once at startup - no in-app language switcher).
 
+// Without this, Windows gives this (and every console-subsystem binary) its
+// own terminal window alongside the eframe window - this switches the PE
+// header to the GUI subsystem, which never gets a console allocated. A
+// no-op attribute on every other target. Also covers the case where the
+// tray daemon spawns this exe as a child process (`app/src/main.rs`'s
+// `Command::new(console_path).spawn()`): the subsystem is a property of
+// this binary's own PE header, not inherited from whoever launched it.
+#![windows_subsystem = "windows"]
+
 use std::collections::HashSet;
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;

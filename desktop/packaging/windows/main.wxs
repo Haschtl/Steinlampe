@@ -13,8 +13,11 @@
   Windows machine or WiX toolchain is available in this dev environment
   to actually compile this. See desktop/PLAN.md.
 
-  Built with (from the `desktop` directory, after a release build):
-    candle.exe -dCargoTargetBinDir=target\release -dVersion=0.1.0 packaging\windows\main.wxs -o main.wixobj
+  Built with (from the repo root, after a release build in `desktop/`;
+  matches .github/workflows/desktop-build.yml's actual invocation - Source/
+  SourceFile paths below, including the icon, are resolved relative to this
+  working directory, not the .wxs file's own location):
+    candle.exe -dCargoTargetBinDir=desktop\target\release -dVersion=0.1.0 desktop\packaging\windows\main.wxs -o main.wixobj
     light.exe -ext WixUIExtension main.wixobj -o quarzlampe-installer.msi
 
   `Version` is passed in rather than read from the exe's own file-version
@@ -61,6 +64,19 @@
             Schedule='afterInstallInitialize'
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
+        <!--
+          Neither exe has a Windows icon resource embedded (no build.rs step
+          for that in this workspace), and a Shortcut with no Icon falls
+          back to a generic/blank one - this is what gives the Start Menu
+          entry its own icon regardless. Rasterized ahead of time from
+          console/assets/icon.png (the same lamp icon used for the web
+          frontend's favicon and the console window's own icon) via
+          `magick icon.png -define icon:auto-resize=256,128,64,48,32,16
+          icon.ico`, since nothing in this repo's toolchain can do ICO
+          multi-resolution export at build time.
+        -->
+        <Icon Id='AppIcon.ico' SourceFile='desktop\packaging\windows\icon.ico'/>
+
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
         <Property Id='DiskPrompt' Value='Quarzlampe Installation'/>
 
@@ -97,7 +113,8 @@
                         Name='Quarzlampe'
                         Description='Control and automate your Quarzlampe lamps'
                         Target='[APPLICATIONFOLDER]quarzlampe-tray.exe'
-                        WorkingDirectory='APPLICATIONFOLDER'/>
+                        WorkingDirectory='APPLICATIONFOLDER'
+                        Icon='AppIcon.ico'/>
                     <RemoveFolder Id='CleanUpShortcutDir' On='uninstall'/>
                     <RegistryValue
                         Root='HKCU'

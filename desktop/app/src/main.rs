@@ -19,6 +19,15 @@
 //! rebuilt from `DaemonState` on a timer, since muda has no way to patch a
 //! native menu in place item by item.
 
+// Default (console/CUI) subsystem binaries get an OS-allocated console
+// window on Windows - invisible everywhere else, but on Windows this is
+// exactly the "always-open terminal" that follows this always-running
+// daemon around. `windows_subsystem = "windows"` switches the PE header to
+// the GUI subsystem instead, which never gets a console allocated - no
+// `AllocConsole()` call anywhere in this binary, so there's nothing to
+// suppress beyond that. A no-op attribute on every other target.
+#![windows_subsystem = "windows"]
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::{Child, Command};
