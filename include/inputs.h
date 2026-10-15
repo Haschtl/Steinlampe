@@ -136,6 +136,8 @@ extern float potiCalibMin;
 extern float potiCalibMax;
 extern bool potiInvert;
 extern PotiRole potiRole;
+/// Inert today - see CHANNEL_TARGET_ALL in pinout.h.
+extern uint8_t potiTarget;
 #endif
 
 #if ENABLE_PUSH_BUTTON

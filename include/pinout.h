@@ -44,6 +44,14 @@ static const int PIN_PUSHBTN = 34;
 enum ButtonType : uint8_t { BTN_TOGGLE = 0, BTN_MOMENTARY = 1 };
 enum ButtonRole : uint8_t { ROLE_POWER = 0, ROLE_MODE_NEXT = 1, ROLE_BRIGHTNESS_UP = 2, ROLE_BRIGHTNESS_DOWN = 3 };
 
+// Which output channel a button/poti's action applies to. Inert today -
+// there is only one output channel (see MULTI_CHANNEL_FEATURE_PLAN.md,
+// §5.2/§5.5) - but present now so a future multi-channel build can read an
+// already-configured target instead of needing to extend ButtonConfig (and
+// every build_flags set that constructs one) again later. 0..N-1 addresses
+// a specific channel; CHANNEL_TARGET_ALL broadcasts to all of them.
+static const uint8_t CHANNEL_TARGET_ALL = 255;
+
 struct ButtonConfig
 {
     uint8_t pin;
@@ -51,6 +59,7 @@ struct ButtonConfig
     ButtonRole role;
     bool activeLow;
     const char *label;
+    uint8_t target; // channel index, or CHANNEL_TARGET_ALL
 };
 
 // Slot 0: defaults from the legacy toggle switch pin ("Kippschalter").
@@ -69,6 +78,9 @@ struct ButtonConfig
 #endif
 #ifndef BUTTON0_LABEL
 #define BUTTON0_LABEL "switch"
+#endif
+#ifndef BUTTON0_TARGET
+#define BUTTON0_TARGET CHANNEL_TARGET_ALL
 #endif
 #endif
 
@@ -89,6 +101,9 @@ struct ButtonConfig
 #ifndef BUTTON1_LABEL
 #define BUTTON1_LABEL "push"
 #endif
+#ifndef BUTTON1_TARGET
+#define BUTTON1_TARGET CHANNEL_TARGET_ALL
+#endif
 #endif
 
 // Slots 2-3: free extras, no sane pin default - must be supplied by the env.
@@ -105,6 +120,9 @@ struct ButtonConfig
 #ifndef BUTTON2_LABEL
 #define BUTTON2_LABEL "btn2"
 #endif
+#ifndef BUTTON2_TARGET
+#define BUTTON2_TARGET CHANNEL_TARGET_ALL
+#endif
 #endif
 
 #if ENABLE_BUTTON3
@@ -119,6 +137,9 @@ struct ButtonConfig
 #endif
 #ifndef BUTTON3_LABEL
 #define BUTTON3_LABEL "btn3"
+#endif
+#ifndef BUTTON3_TARGET
+#define BUTTON3_TARGET CHANNEL_TARGET_ALL
 #endif
 #endif
 
@@ -146,16 +167,16 @@ struct ButtonConfig
 #if ENABLE_BUTTONS
 static const ButtonConfig BUTTONS[] = {
 #if ENABLE_BUTTON0
-    {(uint8_t)BUTTON0_PIN, (ButtonType)BUTTON0_TYPE, (ButtonRole)BUTTON0_ROLE, (bool)BUTTON0_ACTIVE_LOW, BUTTON0_LABEL},
+    {(uint8_t)BUTTON0_PIN, (ButtonType)BUTTON0_TYPE, (ButtonRole)BUTTON0_ROLE, (bool)BUTTON0_ACTIVE_LOW, BUTTON0_LABEL, (uint8_t)BUTTON0_TARGET},
 #endif
 #if ENABLE_BUTTON1
-    {(uint8_t)BUTTON1_PIN, (ButtonType)BUTTON1_TYPE, (ButtonRole)BUTTON1_ROLE, (bool)BUTTON1_ACTIVE_LOW, BUTTON1_LABEL},
+    {(uint8_t)BUTTON1_PIN, (ButtonType)BUTTON1_TYPE, (ButtonRole)BUTTON1_ROLE, (bool)BUTTON1_ACTIVE_LOW, BUTTON1_LABEL, (uint8_t)BUTTON1_TARGET},
 #endif
 #if ENABLE_BUTTON2
-    {(uint8_t)BUTTON2_PIN, (ButtonType)BUTTON2_TYPE, (ButtonRole)BUTTON2_ROLE, (bool)BUTTON2_ACTIVE_LOW, BUTTON2_LABEL},
+    {(uint8_t)BUTTON2_PIN, (ButtonType)BUTTON2_TYPE, (ButtonRole)BUTTON2_ROLE, (bool)BUTTON2_ACTIVE_LOW, BUTTON2_LABEL, (uint8_t)BUTTON2_TARGET},
 #endif
 #if ENABLE_BUTTON3
-    {(uint8_t)BUTTON3_PIN, (ButtonType)BUTTON3_TYPE, (ButtonRole)BUTTON3_ROLE, (bool)BUTTON3_ACTIVE_LOW, BUTTON3_LABEL},
+    {(uint8_t)BUTTON3_PIN, (ButtonType)BUTTON3_TYPE, (ButtonRole)BUTTON3_ROLE, (bool)BUTTON3_ACTIVE_LOW, BUTTON3_LABEL, (uint8_t)BUTTON3_TARGET},
 #endif
 };
 static const size_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);

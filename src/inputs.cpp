@@ -116,6 +116,7 @@ float potiCalibMax = Settings::POTI_MAX_DEFAULT;
 bool potiInvert = Settings::POTI_INVERT_DEFAULT;
 bool potiWasBelowOff = false;
 PotiRole potiRole = (PotiRole)Settings::POTI_ROLE_DEFAULT;
+uint8_t potiTarget = Settings::POTI_TARGET_DEFAULT;
 static int potiLastQuickIdx = -1; // last mode applied in POTI_ROLE_MODE_SCAN, -1 = force reapply
 #endif
 

@@ -1598,6 +1598,36 @@ void handleCommand(String line)
                 sendFeedback(F("Usage: poti mode brightness|scan"));
             }
         }
+        else if (arg.startsWith("target"))
+        {
+            // Inert today - there is only one output channel (see
+            // MULTI_CHANNEL_FEATURE_PLAN.md). Accepted and persisted anyway
+            // so an existing config already has a sane value once a
+            // multi-channel build actually reads this.
+            String v = arg.substring(6);
+            v.trim();
+            v.toLowerCase();
+            if (v == "all")
+            {
+                potiTarget = CHANNEL_TARGET_ALL;
+                saveSettings();
+                sendFeedback(F("[Poti] target=all (not yet used - single-channel build)"));
+            }
+            else
+            {
+                long n = v.toInt();
+                if (n >= 0 && n < CHANNEL_TARGET_ALL)
+                {
+                    potiTarget = (uint8_t)n;
+                    saveSettings();
+                    sendFeedback(String(F("[Poti] target=")) + String(n) + F(" (not yet used - single-channel build)"));
+                }
+                else
+                {
+                    sendFeedback(F("Usage: poti target <channel 0-254>|all"));
+                }
+            }
+        }
         else
         {
             sendFeedback(String(F("[Poti] ")) + (potiEnabled ? F("ON ") : F("OFF ")) + F("a=") + String(potiAlpha, 2) +
@@ -1605,7 +1635,8 @@ void handleCommand(String line)
                          F(" smpl=") + String(potiSampleMs) + F("ms") +
                          F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
                          F(" inv=") + (potiInvert ? F("1") : F("0")) +
-                         F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")));
+                         F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")) +
+                         F(" target=") + (potiTarget == CHANNEL_TARGET_ALL ? F("all") : String(potiTarget)));
         }
         return;
     }

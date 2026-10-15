@@ -130,6 +130,9 @@ constexpr bool POTI_INVERT_DEFAULT = false;
 constexpr float POTI_MIN_DEFAULT = 0.0f;   ///< normalized min after calibration (0..1)
 constexpr float POTI_MAX_DEFAULT = 1.0f;   ///< normalized max after calibration (0..1)
 constexpr uint8_t POTI_ROLE_DEFAULT = 0;   ///< 0=brightness, 1=mode-scan (see PotiRole in inputs.h)
+/// Inert today - see CHANNEL_TARGET_ALL in pinout.h. Defaults to broadcast
+/// since there is currently only one channel to broadcast to.
+constexpr uint8_t POTI_TARGET_DEFAULT = CHANNEL_TARGET_ALL;
 #endif
 
 #if ENABLE_PUSH_BUTTON

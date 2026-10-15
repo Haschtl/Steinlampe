@@ -6,11 +6,16 @@ export type ButtonInfo = {
   label: string;
   type: 'toggle' | 'momentary';
   role: ButtonRoleId;
+  /** Which output channel this button's action applies to - 'all' or a
+   *  numeric channel index as a string. Inert today (single-channel
+   *  firmware, see MULTI_CHANNEL_FEATURE_PLAN.md); carried through now so
+   *  the UI doesn't need another wire-format bump once channels exist. */
+  target: string;
   state: string;
 };
 
 /**
- * Parses the firmware's `label:type:role:state,...` button list (see
+ * Parses the firmware's `label:type:role:target:state,...` button list (see
  * `buttons=` in src/print.cpp) into structured entries. Unknown/malformed
  * segments are skipped rather than throwing, since this is live device data.
  */
@@ -20,11 +25,11 @@ function parseButtonsField(raw: string): ButtonInfo[] {
     .split(',')
     .map((entry) => {
       const parts = entry.split(':');
-      if (parts.length < 4) return null;
-      const [label, type, role, state] = parts;
+      if (parts.length < 5) return null;
+      const [label, type, role, target, state] = parts;
       if (type !== 'toggle' && type !== 'momentary') return null;
       if (role !== 'power' && role !== 'modenext' && role !== 'briup' && role !== 'bridown') return null;
-      return { label, type, role, state } as ButtonInfo;
+      return { label, type, role, target, state } as ButtonInfo;
     })
     .filter((b): b is ButtonInfo => b !== null);
 }
@@ -179,6 +184,8 @@ export type DeviceStatus = {
   potiMax?: number;
   potiInvert?: boolean;
   potiMode?: 'brightness' | 'scan';
+  /** 'all' or a numeric channel index as a string - inert today, see ButtonInfo.target. */
+  potiTarget?: string;
   potiVal?: number;
   potiRaw?: number;
   hasPush?: boolean;
@@ -302,6 +309,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       const potiMax = Object.prototype.hasOwnProperty.call(kv, 'poti_max') ? asNum('poti_max') : undefined;
       const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
       const potiMode = kv.poti_mode === 'scan' || kv.poti_mode === 'brightness' ? kv.poti_mode : undefined;
+      const potiTarget = kv.poti_target;
       const buttons = Object.prototype.hasOwnProperty.call(kv, 'buttons') ? parseButtonsField(kv.buttons) : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresenceBle = kv.presence_ble ? isAvailable('presence_ble') : s.hasPresenceBle;
@@ -461,6 +469,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         potiMax: potiMax ?? s.potiMax,
         potiInvert: typeof potiInvert === 'boolean' ? potiInvert : s.potiInvert,
         potiMode: potiMode ?? s.potiMode,
+        potiTarget: potiTarget ?? s.potiTarget,
         potiVal: potiVal ?? s.potiVal,
         potiRaw: potiRaw ?? s.potiRaw,
         hasPush,

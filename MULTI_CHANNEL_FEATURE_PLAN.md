@@ -69,6 +69,8 @@ Avoid building a generic many-to-many mapping engine. Instead, generalize the ex
 - Same pattern for switches/buttons: a virtual switch instance per physical pin + action, with a channel (or broadcast) target instead of a hardcoded global call.
 - Config for virtual inputs (which physical pin, curve params, target channel) needs a persistence + command-parser representation (see §5.4) and ideally a frontend UI (see §5.6).
 
+**Groundwork already done (2026-10), ahead of §5.1's `Channel` struct existing:** the multi-button (`BUTTONS[]`/`ButtonConfig` in `include/pinout.h`) and poti-role (`potiRole`/`PotiRole` in `include/inputs.h`) work added this session each carry a `target` field (`uint8_t`, 0..254 = channel index, `CHANNEL_TARGET_ALL` = 255 = broadcast - the same sentinel convention decided for the wire format in §5.5/§7). It's wired through persistence, commands (`poti target <n>|all`), and status (`buttons=label:type:role:target:state`, `poti_target=`) but has **no behavioral effect yet** - there's only one channel to target. When §5.1 lands, dispatch just needs to start reading a value that's already there end-to-end, instead of needing another round of struct/persistence/wire-format changes.
+
 ### 5.3 Functions / notifications
 
 Per the original requirement: most sensor-driven functions do **not** need to scale per channel — light sensor, music mode, radar/presence, BLE presence stay **global scalar multipliers**, applied identically to all channels (as today, just applied once per channel in the loop instead of once per lamp).
@@ -86,8 +88,13 @@ Either way, this needs backward-compatible defaults so existing single-channel l
 
 ### 5.5 Command parser & status protocol
 
-- `src/command.cpp`: every global today is an individually named command (`poti …`, `bri …`, `pattern …`, `ramp …`). These need a channel-selector argument (e.g. `bri 0 80` / `bri all 80`), plus new commands for virtual-input routing config.
-- `src/print.cpp` (`emitLiveState()`): the pipe-delimited status line and BLE status characteristic currently assume one `bri=`/`pattern=`/`out=` field each. This needs an array-shaped representation (e.g. `bri=0:80,1:40` or repeated per-channel blocks) — this is a wire-format change, so needs versioning/back-compat handling for existing consumers (HA integration, frontend, anything else parsing today's format).
+**Decided (2026-10), not yet applied to any existing single-channel field** (changing e.g. `bri`'s syntax today would break every current consumer for zero present benefit - see §8):
+
+- **Commands**: `<cmd> <target> <args...>` - `target` is a 0-based channel index or the literal `all` (e.g. `bri 0 80` / `bri all 80`). Matches the `poti target <n>|all` command already added as groundwork (see §5.2) for the inert per-input target field.
+- **Status wire format**: comma-joined `index:value` pairs for any per-channel field, e.g. `bri=0:80,1:40` - no repeated per-channel blocks, no separate array-length field. `all`, not a numeric pseudo-channel, is how broadcast state is represented when it ever needs to appear here (resolves the §7 "real pseudo-channel-ID or special-cased flag" question in favor of the flag). This is the exact convention already in use for `buttons=label:type:role:target:state,...` (`print.cpp`) - multi-channel fields extend it rather than inventing a second one.
+- Both of these are additive to the existing flat fields (`bri=`, `pattern=`, …), not a replacement, until N>1 channels actually exist for a build - see §8's non-goal about not forcing WROOM-based single-channel lamps onto new wire shapes they have no use for.
+- `src/command.cpp`: every global today is an individually named command (`poti …`, `bri …`, `pattern …`, `ramp …`) and will need the `<target>` argument added per-command when §5.1 lands, plus new commands for virtual-input routing config.
+- `src/print.cpp` (`emitLiveState()`/`printStatusStructured()`): add the array-shaped fields per-channel-aware field when §5.1 lands; this is still a wire-format *addition*, so needs the usual versioning/back-compat handling for existing consumers (HA integration, frontend, anything else parsing today's format) only insofar as those consumers must keep tolerating unknown new fields, which `frontend/src/hooks/status.ts`'s key-value parsing already does.
 
 ### 5.6 Home Assistant integration & frontend
 
@@ -113,7 +120,7 @@ Either way, this needs backward-compatible defaults so existing single-channel l
 - Should custom patterns (`customPattern[32]` buffer) be per-channel or still shared/global?
 - Soft limit on channel count and virtual-input count for UI/command-parser sanity (not a hardware limit, but a usability one)?
 - Naming/addressing convention for channels in commands, status, and persistence (numeric index vs. user-assignable labels)?
-- Should "all channels" broadcast targeting for virtual inputs be a real pseudo-channel-ID, or a special-cased flag?
+- ~~Should "all channels" broadcast targeting for virtual inputs be a real pseudo-channel-ID, or a special-cased flag?~~ **Decided (2026-10, §5.5): a special-cased `all` flag**, not a numeric pseudo-ID - matches `CHANNEL_TARGET_ALL` (`include/pinout.h`) and the `poti target <n>|all` command already shipped as inert groundwork.
 
 ## 8. Non-Goals
 

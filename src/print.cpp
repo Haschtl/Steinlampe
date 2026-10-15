@@ -362,7 +362,8 @@ void printStatus(const bool &force)
                       F(" smpl=") + String(potiSampleMs) + F("ms") +
                       F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
                       F(" inv=") + (potiInvert ? F("1") : F("0")) +
-                      F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness"));
+                      F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")) +
+                      F(" target=") + (potiTarget == CHANNEL_TARGET_ALL ? F("all") : String(potiTarget));
 #else
     String potiLine = F("[Poti] N/A");
 #endif
@@ -488,6 +489,9 @@ void printStatusStructured(const bool &force)
             line += F("bridown");
             break;
         }
+        line += F(":");
+        // Inert today - see CHANNEL_TARGET_ALL in pinout.h.
+        line += (BUTTONS[bi].target == CHANNEL_TARGET_ALL) ? F("all") : String(BUTTONS[bi].target);
         line += F(":");
         if (BUTTONS[bi].type == BTN_TOGGLE)
             line += (buttonStates[bi].debounced ? F("on") : F("off"));
@@ -725,6 +729,8 @@ void printStatusStructured(const bool &force)
     lineIO += potiInvert ? F("1") : F("0");
     lineIO += F("|poti_mode=");
     lineIO += (potiRole == POTI_ROLE_MODE_SCAN) ? F("scan") : F("brightness");
+    lineIO += F("|poti_target=");
+    lineIO += (potiTarget == CHANNEL_TARGET_ALL) ? F("all") : String(potiTarget);
     lineIO += F("|poti_val=");
     lineIO += String(potiFiltered, 3);
     lineIO += F("|poti_raw=");
