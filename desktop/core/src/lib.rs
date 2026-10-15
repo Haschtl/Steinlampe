@@ -6,5 +6,6 @@ pub mod i18n;
 pub mod ipc;
 pub mod mic;
 pub mod rules;
+pub mod self_update;
 pub mod state;
 pub mod update;

@@ -41,6 +41,7 @@ use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu
 use quarzlampe_core::ble::{FileTokenStore, LampCommand, LampManager};
 use quarzlampe_core::i18n::{t, Lang};
 use quarzlampe_core::ipc::{DaemonState, IpcServer};
+use quarzlampe_core::self_update;
 use quarzlampe_core::mic::{self, MicActivity};
 use quarzlampe_core::rules::{action_to_command, Trigger};
 use quarzlampe_core::state::ConnectionState;
@@ -503,6 +504,7 @@ fn build_menu(
     let _ = menu.append(autostart_item);
     let _ = menu.append(pause_item);
     if update_available {
+        let _ = menu.append(&MenuItem::with_id("apply-update", t(lang, "tray.applyUpdate"), true, None));
         let _ = menu.append(&MenuItem::with_id("open-update", t(lang, "tray.updateAvailable"), true, None));
     }
     let _ = menu.append(quit_item);
@@ -1324,6 +1326,29 @@ impl MainLoopCtx {
                         "[tray] automations {}",
                         if guard.automations_paused { "paused" } else { "resumed" }
                     );
+                }
+            } else if event.id == "apply-update" {
+                if let Some(state) = &self.daemon_state {
+                    let asset_url = state.blocking_lock().update_available.as_ref().and_then(|u| u.asset_url.clone());
+                    match asset_url {
+                        // Genuinely separate OS thread, not a tokio task -
+                        // this closure (`handle_system_event`'s caller, the
+                        // main message-pump loop) runs synchronously outside
+                        // any tokio runtime, and apply_update's download +
+                        // extract + swap is blocking I/O that must not stall
+                        // the menu/tray event pump while it runs.
+                        Some(url) => {
+                            println!("[update] applying update\u{2026}");
+                            std::thread::spawn(move || match self_update::apply_update(&url) {
+                                Ok(()) => {
+                                    println!("[update] applied - restarting");
+                                    std::process::exit(0);
+                                }
+                                Err(e) => eprintln!("[update] failed: {e}"),
+                            });
+                        }
+                        None => eprintln!("[update] no download URL available for this platform"),
+                    }
                 }
             } else if event.id == "open-update" {
                 if let Some(state) = &self.daemon_state

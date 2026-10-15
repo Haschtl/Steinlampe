@@ -59,6 +59,13 @@ pub enum RequestKind {
     /// `app::spawn_update_check_loop`) last found - never triggers a check
     /// itself, just reads the last result.
     GetUpdateStatus,
+    /// Downloads and applies whatever update `GetUpdateStatus` last found
+    /// (see `self_update::apply_update`) and, on success, exits the daemon
+    /// shortly after responding so the swap/relaunch can complete - see
+    /// that module's doc comment for why this can't just happen inline.
+    /// Errors (no update available, download/extract/swap failure) leave
+    /// the daemon running untouched.
+    ApplyUpdate,
     /// The auth token a `Trigger::Webhook`'s URL needs as its `?token=`
     /// query parameter - just for the console to build/display the full
     /// URL (together with the fixed `ipc::WEBHOOK_PORT`) for the user to

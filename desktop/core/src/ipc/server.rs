@@ -243,6 +243,35 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
             let state = state.lock().await;
             IpcResponse::UpdateStatus { available: state.update_available.clone() }
         }
+        RequestKind::ApplyUpdate => {
+            let asset_url = {
+                let state = state.lock().await;
+                state.update_available.as_ref().and_then(|u| u.asset_url.clone())
+            };
+            let Some(asset_url) = asset_url else {
+                return IpcResponse::Error { message: "no update asset available for this platform".to_string() };
+            };
+            // Download+extract+swap is blocking I/O (ureq, std::fs,
+            // std::process::Command::status) - spawn_blocking moves it off
+            // this connection's async task so it doesn't stall every other
+            // IPC request in the meantime (a ~15-20MB download is not instant).
+            let result = tokio::task::spawn_blocking(move || crate::self_update::apply_update(&asset_url)).await;
+            match result {
+                Ok(Ok(())) => {
+                    // Give the response write below time to actually reach
+                    // the client before this process disappears - matches
+                    // the delay the tray menu's own "Update now" handler
+                    // uses for the same reason.
+                    tokio::spawn(async {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        std::process::exit(0);
+                    });
+                    IpcResponse::Ok
+                }
+                Ok(Err(e)) => IpcResponse::Error { message: e },
+                Err(e) => IpcResponse::Error { message: format!("update task panicked: {e}") },
+            }
+        }
         RequestKind::GetWebhookInfo => {
             let state = state.lock().await;
             IpcResponse::WebhookInfo { token: state.auth_token.clone() }

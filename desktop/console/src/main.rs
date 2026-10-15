@@ -64,6 +64,7 @@ enum UiToCore {
     DeleteRule(Uuid),
     FireRule(Uuid),
     SetVisualizer(Option<VisualizerConfig>),
+    ApplyUpdate,
 }
 
 enum CoreToUi {
@@ -72,6 +73,13 @@ enum CoreToUi {
     Rules(Vec<Rule>),
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
     UpdateStatus(Option<UpdateInfo>),
+    /// Distinct from the generic `Status` line specifically so the UI can
+    /// tell "the update attempt itself failed" apart from the ordinary
+    /// connect/reconnect chatter that also flows through `Status` while an
+    /// update is in flight (which must NOT clear `applying_update` - the
+    /// brief disconnect while the daemon restarts is expected, not a
+    /// failure).
+    UpdateApplyFailed(String),
     Status(String),
     WebhookToken(String),
 }
@@ -99,83 +107,118 @@ async fn run_core(
         ctx.request_repaint();
     };
 
-    let mut client = loop {
-        match IpcClient::connect().await {
-            Ok(c) => break c,
-            Err(e) => {
-                notify(CoreToUi::Status(format!("{}: {e}", t(lang, "console.waitingForDaemon"))));
-                tokio::time::sleep(Duration::from_secs(1)).await;
+    // Outer loop so a lost connection - the daemon crashing, or (new) the
+    // daemon deliberately exiting after applying a self-update - reconnects
+    // instead of leaving this console stuck replaying the same transport
+    // error on every poll tick forever. `IpcClient` holds one persistent
+    // TCP stream (see `ipc::client`'s doc comment); once that's dead, every
+    // `.request()` on it fails the same way until a fresh `connect()`.
+    'reconnect: loop {
+        let mut client = loop {
+            match IpcClient::connect().await {
+                Ok(c) => break c,
+                Err(e) => {
+                    notify(CoreToUi::Status(format!("{}: {e}", t(lang, "console.waitingForDaemon"))));
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
             }
+        };
+        notify(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
+        // The webhook auth token never changes while this daemon instance is
+        // alive - fetched once here, not on every poll tick like the rest of
+        // this function's state (`GetVisualizer`, `GetUpdateStatus`, ...).
+        if let Ok(IpcResponse::WebhookInfo { token }) = client.request(RequestKind::GetWebhookInfo).await {
+            notify(CoreToUi::WebhookToken(token));
         }
-    };
-    notify(CoreToUi::Status(t(lang, "console.connectedToDaemon").to_string()));
-    // The webhook auth token never changes while this daemon instance is
-    // alive - fetched once here, not on every poll tick like the rest of
-    // this function's state (`GetVisualizer`, `GetUpdateStatus`, ...).
-    if let Ok(IpcResponse::WebhookInfo { token }) = client.request(RequestKind::GetWebhookInfo).await {
-        notify(CoreToUi::WebhookToken(token));
-    }
 
-    // Lamp state is what the UI's on/off switch and brightness live-track, so
-    // it gets its own fast poll - this is a local IPC round-trip against the
-    // daemon's already-current `watch` state (no BLE involved, see
-    // `lamp_actor::run_connected`), so polling it quickly is cheap. Rules/
-    // visualizer/update-status change rarely and stay on the slower cadence
-    // they always had.
-    let mut lamp_poll = tokio::time::interval(Duration::from_millis(150));
-    let mut aux_poll = tokio::time::interval(Duration::from_millis(1500));
-    loop {
-        tokio::select! {
-            _ = lamp_poll.tick() => {
-                match client.request(RequestKind::ListLamps).await {
-                    Ok(IpcResponse::Lamps { lamps }) => notify(CoreToUi::Lamps(lamps)),
-                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
-                    Ok(_) => {}
-                    Err(e) => notify(CoreToUi::Status(e.to_string())),
+        // Lamp state is what the UI's on/off switch and brightness live-track, so
+        // it gets its own fast poll - this is a local IPC round-trip against the
+        // daemon's already-current `watch` state (no BLE involved, see
+        // `lamp_actor::run_connected`), so polling it quickly is cheap. Rules/
+        // visualizer/update-status change rarely and stay on the slower cadence
+        // they always had.
+        let mut lamp_poll = tokio::time::interval(Duration::from_millis(150));
+        let mut aux_poll = tokio::time::interval(Duration::from_millis(1500));
+        loop {
+            tokio::select! {
+                _ = lamp_poll.tick() => {
+                    match client.request(RequestKind::ListLamps).await {
+                        Ok(IpcResponse::Lamps { lamps }) => notify(CoreToUi::Lamps(lamps)),
+                        Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
+                        Ok(_) => {}
+                        Err(e) => {
+                            notify(CoreToUi::Status(e.to_string()));
+                            continue 'reconnect;
+                        }
+                    }
                 }
-            }
-            _ = aux_poll.tick() => {
-                match client.request(RequestKind::ListRules).await {
-                    Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
-                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
-                    Ok(_) => {}
-                    Err(e) => notify(CoreToUi::Status(e.to_string())),
+                _ = aux_poll.tick() => {
+                    match client.request(RequestKind::ListRules).await {
+                        Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
+                        Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
+                        Ok(_) => {}
+                        Err(e) => {
+                            notify(CoreToUi::Status(e.to_string()));
+                            continue 'reconnect;
+                        }
+                    }
+                    match client.request(RequestKind::GetVisualizer).await {
+                        Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
+                        Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
+                        Ok(_) => {}
+                        Err(e) => {
+                            notify(CoreToUi::Status(e.to_string()));
+                            continue 'reconnect;
+                        }
+                    }
+                    // Reads whatever the daemon's own background check last
+                    // found - never triggers a check itself (see
+                    // `core::update`'s doc comment for why this is notify-only).
+                    match client.request(RequestKind::GetUpdateStatus).await {
+                        Ok(IpcResponse::UpdateStatus { available }) => notify(CoreToUi::UpdateStatus(available)),
+                        Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
+                        Ok(_) => {}
+                        Err(e) => {
+                            notify(CoreToUi::Status(e.to_string()));
+                            continue 'reconnect;
+                        }
+                    }
                 }
-                match client.request(RequestKind::GetVisualizer).await {
-                    Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
-                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
-                    Ok(_) => {}
-                    Err(e) => notify(CoreToUi::Status(e.to_string())),
-                }
-                // Reads whatever the daemon's own background check last
-                // found - never triggers a check itself (see
-                // `core::update`'s doc comment for why this is notify-only).
-                match client.request(RequestKind::GetUpdateStatus).await {
-                    Ok(IpcResponse::UpdateStatus { available }) => notify(CoreToUi::UpdateStatus(available)),
-                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
-                    Ok(_) => {}
-                    Err(e) => notify(CoreToUi::Status(e.to_string())),
-                }
-            }
-            msg = from_ui.recv() => {
-                let Some(msg) = msg else { break };
-                let kind = match msg {
-                    UiToCore::Scan => RequestKind::Scan { seconds: 4 },
-                    UiToCore::Connect { lamp_key, name } => RequestKind::Connect { lamp_key, name },
-                    UiToCore::SendCommand { lamp_key, line } => RequestKind::SendCommand { lamp_key, line },
-                    UiToCore::Reconnect(lamp_key) => RequestKind::Reconnect { lamp_key },
-                    UiToCore::SaveRule(rule) => RequestKind::SaveRule { rule },
-                    UiToCore::DeleteRule(id) => RequestKind::DeleteRule { id },
-                    UiToCore::FireRule(id) => RequestKind::FireRule { id },
-                    UiToCore::SetVisualizer(config) => RequestKind::SetVisualizer { config },
-                };
-                match client.request(kind).await {
-                    Ok(IpcResponse::ScanResults { lamps }) => notify(CoreToUi::ScanResults(lamps)),
-                    Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
-                    Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
-                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
-                    Ok(_) => {}
-                    Err(e) => notify(CoreToUi::Status(e.to_string())),
+                msg = from_ui.recv() => {
+                    // The sender side closing means the console is shutting
+                    // down (not a daemon-connection problem) - exit for
+                    // good, not back to the top of the reconnect loop.
+                    let Some(msg) = msg else { return };
+                    let is_apply_update = matches!(&msg, UiToCore::ApplyUpdate);
+                    let kind = match msg {
+                        UiToCore::Scan => RequestKind::Scan { seconds: 4 },
+                        UiToCore::Connect { lamp_key, name } => RequestKind::Connect { lamp_key, name },
+                        UiToCore::SendCommand { lamp_key, line } => RequestKind::SendCommand { lamp_key, line },
+                        UiToCore::Reconnect(lamp_key) => RequestKind::Reconnect { lamp_key },
+                        UiToCore::SaveRule(rule) => RequestKind::SaveRule { rule },
+                        UiToCore::DeleteRule(id) => RequestKind::DeleteRule { id },
+                        UiToCore::FireRule(id) => RequestKind::FireRule { id },
+                        UiToCore::SetVisualizer(config) => RequestKind::SetVisualizer { config },
+                        UiToCore::ApplyUpdate => RequestKind::ApplyUpdate,
+                    };
+                    match client.request(kind).await {
+                        // The daemon exits itself shortly after this response
+                        // (see server.rs's ApplyUpdate handler) - the `Err`
+                        // arm below picks up the resulting disconnect on
+                        // whichever request notices it first and reconnects
+                        // once the relaunched daemon's IPC socket is back up.
+                        Ok(IpcResponse::Ok) if is_apply_update => notify(CoreToUi::Status(t(lang, "console.updateApplied").to_string())),
+                        Ok(IpcResponse::Error { message }) if is_apply_update => notify(CoreToUi::UpdateApplyFailed(message)),
+                        Ok(IpcResponse::ScanResults { lamps }) => notify(CoreToUi::ScanResults(lamps)),
+                        Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
+                        Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
+                        Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
+                        Ok(_) => {}
+                        Err(e) => {
+                            notify(CoreToUi::Status(e.to_string()));
+                            continue 'reconnect;
+                        }
+                    }
                 }
             }
         }
@@ -367,6 +410,13 @@ struct ConsoleApp {
     visualizer_gain: f32,
     visualizer_unsupported: Option<String>,
     update_available: Option<UpdateInfo>,
+    /// True from clicking "Update now" until either a fresh `UpdateStatus`
+    /// comes back with nothing available (success - the daemon restarted on
+    /// the new version and no longer thinks itself outdated) or a `Status`
+    /// message reports a failure. Just disables the button and swaps its
+    /// label meanwhile; `ApplyUpdate`'s own progress happens entirely on the
+    /// daemon side (see `self_update::apply_update`).
+    applying_update: bool,
     /// The daemon's auth token, fetched once right after connecting
     /// (`GetWebhookInfo`) - combined with `quarzlampe_core::ipc::WEBHOOK_PORT`
     /// and a `Trigger::Webhook`'s own `id` to build the full URL shown for
@@ -1346,7 +1396,22 @@ impl eframe::App for ConsoleApp {
                     }
                     self.visualizer_unsupported = last_error;
                 }
-                CoreToUi::UpdateStatus(available) => self.update_available = available,
+                CoreToUi::UpdateStatus(available) => {
+                    // A fresh "nothing available" after an apply-update
+                    // click means the restarted daemon is on the new build
+                    // and no longer sees itself as outdated - the success
+                    // signal, since ApplyUpdate's own response only means
+                    // "the swap was accepted", not "it's actually running
+                    // the new version yet".
+                    if self.applying_update && available.is_none() {
+                        self.applying_update = false;
+                    }
+                    self.update_available = available;
+                }
+                CoreToUi::UpdateApplyFailed(s) => {
+                    self.applying_update = false;
+                    self.status = s;
+                }
                 CoreToUi::Status(s) => self.status = s,
                 CoreToUi::WebhookToken(token) => self.webhook_token = Some(token),
             }
@@ -1388,6 +1453,14 @@ impl eframe::App for ConsoleApp {
                 // not a reimplementation of it.
                 ui.hyperlink_to(t(lang, "nav.openWeb"), WEB_INTERFACE_URL);
                 if let Some(info) = &self.update_available {
+                    ui.add_space(4.0);
+                    ui.add_enabled_ui(!self.applying_update, |ui| {
+                        let label = if self.applying_update { t(lang, "nav.updateApplying") } else { t(lang, "nav.applyUpdate") };
+                        if ui.button(label).clicked() {
+                            self.applying_update = true;
+                            let _ = self.to_core.send(UiToCore::ApplyUpdate);
+                        }
+                    });
                     ui.add_space(4.0);
                     ui.hyperlink_to(t(lang, "nav.updateAvailable"), &info.html_url);
                 }
@@ -1538,6 +1611,7 @@ fn main() -> eframe::Result<()> {
                 visualizer_gain: 4.0,
                 visualizer_unsupported: None,
                 update_available: None,
+                applying_update: false,
                 webhook_token: None,
             }))
         }),

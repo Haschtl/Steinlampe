@@ -63,20 +63,17 @@ jobs:
         working-directory: desktop
         run: cargo build --release --workspace
 
-      - name: Collect loose binaries (Linux/macOS)
-        if: matrix.platform != 'windows'
-        run: |
-          mkdir -p dist
-          cp desktop/target/release/quarzlampe-tray dist/
-          cp desktop/target/release/quarzlampe-console dist/
-
-      - name: Collect loose binaries (Windows)
+      # Both exes, zipped - extract and run quarzlampe-tray.exe directly, no
+      # installer needed. `quarzlampe-tray.exe --install` still works from
+      # inside the extracted folder for anyone who wants autostart without
+      # the MSI. This (not a loose single .exe) is also what the in-app
+      # updater (`core::self_update`) downloads for a Windows self-update.
+      - name: Build portable zip (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist
-          Copy-Item desktop/target/release/quarzlampe-tray.exe dist/
-          Copy-Item desktop/target/release/quarzlampe-console.exe dist/
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          pwsh -File desktop/packaging/windows/build-portable-zip.ps1 -ReleaseDir desktop/target/release -OutDir dist
 
       # Builds Quarzlampe-x86_64.AppImage - verified live on a real
       # Manjaro machine (not just written-by-inspection like the other two
@@ -91,7 +88,10 @@ jobs:
       # Builds Quarzlampe.dmg (a real .app bundle, ad-hoc signed - free,
       # see the script's own comments for why that's not the same as
       # Gatekeeper-clearing notarization - inside a disk image with a
-      # symlink to /Applications for the standard drag-to-install flow).
+      # symlink to /Applications for the standard drag-to-install flow) -
+      # and, from the same signed .app bundle, Quarzlampe-portable-macos.zip
+      # (no /Applications drag-and-drop needed; also what the in-app
+      # updater downloads for a macOS self-update).
       # Unverified: no macOS machine here to run this.
       - name: Build DMG
         if: matrix.platform == 'macos'
@@ -179,17 +179,12 @@ jobs:
         run: |
           set -eu
           mkdir -p release
-          cp artifacts/quarzlampe-desktop-linux/quarzlampe-tray release/quarzlampe-tray-linux
-          cp artifacts/quarzlampe-desktop-linux/quarzlampe-console release/quarzlampe-console-linux
           cp artifacts/quarzlampe-desktop-linux/Quarzlampe-x86_64.AppImage release/Quarzlampe-x86_64.AppImage
-          cp artifacts/quarzlampe-desktop-macos/quarzlampe-tray release/quarzlampe-tray-macos
-          cp artifacts/quarzlampe-desktop-macos/quarzlampe-console release/quarzlampe-console-macos
           cp artifacts/quarzlampe-desktop-macos/Quarzlampe.dmg release/Quarzlampe.dmg
-          cp artifacts/quarzlampe-desktop-windows/quarzlampe-tray.exe release/quarzlampe-tray-windows.exe
-          cp artifacts/quarzlampe-desktop-windows/quarzlampe-console.exe release/quarzlampe-console-windows.exe
+          cp artifacts/quarzlampe-desktop-macos/Quarzlampe-portable-macos.zip release/Quarzlampe-portable-macos.zip
           cp artifacts/quarzlampe-desktop-windows/quarzlampe-installer.msi release/Quarzlampe-installer.msi
-          chmod +x release/quarzlampe-tray-linux release/quarzlampe-console-linux release/quarzlampe-tray-macos \
-            release/quarzlampe-console-macos release/Quarzlampe-x86_64.AppImage
+          cp artifacts/quarzlampe-desktop-windows/Quarzlampe-portable-windows.zip release/Quarzlampe-portable-windows.zip
+          chmod +x release/Quarzlampe-x86_64.AppImage
 
       # `core::update::check_for_update` compares the running binary's own
       # embedded commit (baked in by `core/build.rs` from `GITHUB_SHA`,
@@ -209,21 +204,28 @@ jobs:
           body: |
             Builds of the Quarzlampe desktop tray app, rebuilt from the tip of `main` whenever this
             workflow is run by hand - not a versioned release. The app itself checks this release
-            periodically and shows an "Update available" link (tray menu + console) when a newer
-            build has been published; it never downloads or installs anything automatically.
+            periodically and offers to update in place (tray menu + console "Update now") when a
+            newer build has been published - see the self-update note below.
 
-            **Recommended download**: `Quarzlampe-x86_64.AppImage` (Linux), `Quarzlampe.dmg` (macOS),
-            `Quarzlampe-installer.msi` (Windows). The other files are the two loose binaries
-            (tray + console) per platform, for anyone who'd rather run `quarzlampe-tray --install`
-            themselves than use the packaged installer.
+            **Two options per platform**: a proper installer (`Quarzlampe-installer.msi` on
+            Windows, `Quarzlampe.dmg` on macOS - Start Menu/Applications entry, uninstaller) or a
+            standalone zip (`Quarzlampe-portable-*.zip`) you just extract and run, no installation
+            step at all. **Linux** only has one option, `Quarzlampe-x86_64.AppImage`, which is
+            already both (a single file, nothing to install).
 
             **Linux**: built and functionally verified against real hardware; the AppImage itself
             was verified live too (daemon starts correctly from the mounted image).
             **Windows/macOS**: built on that OS's own GitHub-hosted runner, but BLE and mic/camera
-            activity detection - and the installer packaging itself - have not been exercised on
-            either. Treat as experimental.
+            activity detection - and the installer/zip packaging itself - have not been exercised
+            on either. Treat as experimental.
 
-            **macOS**: the `.app` inside the DMG is ad-hoc signed (free), not notarized. Gatekeeper
+            **Self-update**: downloads the matching file above (AppImage/portable zip) and swaps it
+            into the currently running install, then restarts. Still unsigned (see
+            `desktop/CODE_SIGNING_POLICY.md`), so this trusts plain HTTPS + GitHub with nothing
+            further to verify the download against - a deliberate, accepted tradeoff until real
+            code signing exists, not an oversight. Manual download always remains the fallback.
+
+            **macOS**: the `.app` (DMG or portable zip) is ad-hoc signed (free), not notarized. Gatekeeper
             will still block it on first launch - right-click (or Control-click) it, choose "Open",
             then confirm "Open Anyway".
             **Windows**: the MSI is signed via a free [SignPath](https://signpath.io/) certificate

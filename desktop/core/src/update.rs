@@ -1,23 +1,19 @@
 //! Checks whether a newer desktop build than the one currently running has
-//! been published to this repo's rolling `desktop-latest` GitHub release,
-//! and nothing more - deliberately notify-only, not a self-replacing
-//! updater. Two reasons:
+//! been published to this repo's rolling `desktop-latest` GitHub release.
 //!
-//! 1. There's no code signing yet (see `.github/workflows/desktop-build.yml`'s
-//!    guarded signing steps). Silently downloading and swapping in a new
-//!    binary would mean trusting an unsigned file fetched over plain HTTPS
-//!    with nothing to verify it against - exactly the kind of
-//!    supply-chain-sensitive step that should wait until signing exists,
-//!    not be built around its absence.
-//! 2. Replacing a *running* executable's file is a genuinely different
-//!    operation per OS (Linux/macOS allow it outright; Windows generally
-//!    won't let you overwrite an open `.exe` without a separate
-//!    swap-on-restart dance), and none of that can be exercised from this
-//!    Linux dev environment anyway.
+//! Also resolves the direct download URL for *this platform's* self-update
+//! asset (`UpdateInfo::asset_url`) from that same release, for
+//! `self_update::apply_update` to use. There is still no real code signing
+//! (ad-hoc on macOS, optional/inactive SignPath on Windows) - downloading
+//! and swapping in an unsigned binary fetched over plain HTTPS, with
+//! nothing further to verify it against, is a real supply-chain tradeoff
+//! this project is knowingly accepting rather than overlooking; see
+//! `self_update`'s own doc comment. `html_url` (the release page) always
+//! stays available as the manual fallback regardless.
 //!
-//! What this does do: tell the daemon there's something newer, with a
-//! direct link to the release page, so the tray menu/console can surface
-//! it instead of updates going unnoticed.
+//! What this module does: tell the daemon there's something newer and
+//! where to get it, so the tray menu/console can surface it (and offer to
+//! apply it) instead of updates going unnoticed.
 //!
 //! "Newer" is decided by comparing the running build's embedded git commit
 //! SHA (`BUILD_SHA`, baked in by `build.rs` from the `GITHUB_SHA` env var -
@@ -37,10 +33,27 @@ pub const BUILD_SHA: &str = env!("QUARZLAMPE_BUILD_SHA");
 const RELEASE_API_URL: &str = "https://api.github.com/repos/Haschtl/Steinlampe/releases/tags/desktop-latest";
 const BUILD_SHA_ASSET_NAME: &str = "BUILD_SHA.txt";
 
+/// Name of this platform's self-update asset, as published by
+/// `.github/workflows/desktop-build.yml`'s `publish-release` job - a single
+/// file per OS that needs no installer (see `self_update`'s doc comment for
+/// why that matters: it's also the thing self-update downloads and swaps
+/// into place).
+#[cfg(target_os = "windows")]
+const SELF_UPDATE_ASSET_NAME: &str = "Quarzlampe-portable-windows.zip";
+#[cfg(target_os = "macos")]
+const SELF_UPDATE_ASSET_NAME: &str = "Quarzlampe-portable-macos.zip";
+#[cfg(target_os = "linux")]
+const SELF_UPDATE_ASSET_NAME: &str = "Quarzlampe-x86_64.AppImage";
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UpdateInfo {
     /// The release page a person can open to download the new build by hand.
     pub html_url: String,
+    /// Direct download URL for this platform's self-update asset, if the
+    /// release has one (absent only if the release is missing the expected
+    /// asset for this OS, which shouldn't normally happen once the build
+    /// workflow has run to completion).
+    pub asset_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +97,11 @@ pub fn check_for_update() -> Result<Option<UpdateInfo>, String> {
     if latest_sha.trim() == BUILD_SHA {
         Ok(None)
     } else {
-        Ok(Some(UpdateInfo { html_url: release.html_url }))
+        let asset_url = release
+            .assets
+            .iter()
+            .find(|a| a.name == SELF_UPDATE_ASSET_NAME)
+            .map(|a| a.browser_download_url.clone());
+        Ok(Some(UpdateInfo { html_url: release.html_url, asset_url }))
     }
 }

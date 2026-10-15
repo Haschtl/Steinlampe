@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Builds Quarzlampe.dmg from already-built release binaries: a real
-# Quarzlampe.app bundle (not loose binaries), ad-hoc signed (free - see
-# desktop/PLAN.md for why that's not the same as real Gatekeeper
-# notarization), inside a disk image with a symlink to /Applications for
-# the standard drag-to-install flow.
+# Builds Quarzlampe.dmg AND Quarzlampe-portable-macos.zip from the same
+# already-built release binaries: a real Quarzlampe.app bundle (not loose
+# binaries), ad-hoc signed (free - see desktop/PLAN.md for why that's not
+# the same as real Gatekeeper notarization). The DMG wraps it with a
+# symlink to /Applications for the standard drag-to-install flow; the zip
+# is the same signed bundle with no install step at all - extract and
+# double-click. The zip is also what `core::self_update` downloads for a
+# macOS self-update.
 #
 # Only uses tools already on every macOS runner (sips, iconutil, hdiutil,
-# codesign) - no third-party packaging tool. Unverified: no macOS machine
-# in this dev environment to actually run this.
+# ditto, codesign) - no third-party packaging tool. Unverified: no macOS
+# machine in this dev environment to actually run this.
 #
 # Usage: build-dmg.sh <path-to-target/release> <output-dir>
 set -euo pipefail
@@ -50,6 +53,13 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/quarzlampe.icns"
 codesign --force --deep --sign - "$APP"
 
 mkdir -p "$OUT_DIR"
+
+# `ditto` (not `zip`), per Apple's own guidance for zipping signed .app
+# bundles - it preserves resource forks/extended attributes and the code
+# signature's sealed structure, which plain `zip -r` is not guaranteed to.
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT_DIR/Quarzlampe-portable-macos.zip"
+echo "Built $OUT_DIR/Quarzlampe-portable-macos.zip"
+
 DMG_STAGING="$WORK_DIR/dmg-staging"
 mkdir -p "$DMG_STAGING"
 cp -R "$APP" "$DMG_STAGING/"
