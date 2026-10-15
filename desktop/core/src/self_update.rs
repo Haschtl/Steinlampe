@@ -29,6 +29,19 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
+
+/// How long the two self-update trigger paths (tray menu, IPC server) each
+/// wait after a successful `apply_update()` before calling
+/// `std::process::exit`, so an in-flight response (an IPC write, or just
+/// stdout) has time to actually reach its reader first. One shared constant
+/// specifically because these two call sites previously drifted (the IPC
+/// path delayed 500ms, the tray path exited immediately with a comment
+/// claiming they matched) - each call site still does its own sleep (one
+/// sync, one async - see `app::main`'s tray handler vs.
+/// `ipc::server::handle_request`'s `ApplyUpdate` arm), but now from the same
+/// duration instead of two independently-chosen ones.
+pub const EXIT_GRACE: Duration = Duration::from_millis(500);
 
 /// Downloads `asset_url` (the matching platform asset from the GitHub
 /// release `update::check_for_update` already found) and swaps it into the
@@ -51,8 +64,15 @@ pub fn apply_update(asset_url: &str) -> Result<(), String> {
 }
 
 fn download_to_file(url: &str, dest: &Path) -> Result<(), String> {
+    // ureq 3.4.2 defaults every timeout (global/connect/recv_body) to
+    // `None` - with no bound here, a stalled connection (dropped Wi-Fi,
+    // GitHub throttling) would hang this call forever. A 15-20MB file over
+    // even a slow connection finishes well inside this.
     let response = ureq::get(url)
         .header("User-Agent", "quarzlampe-desktop")
+        .config()
+        .timeout_global(Some(Duration::from_secs(120)))
+        .build()
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
     let mut reader = response.into_body().into_reader();
@@ -70,14 +90,23 @@ fn make_executable(path: &Path) -> Result<(), String> {
 }
 
 /// Spawns a detached helper that waits for this process to exit, then
-/// launches `target_exe`. Shared by Linux and macOS - both have `/bin/sh`
-/// and `kill -0`. The helper is a genuinely separate process (not a Tokio
-/// task or thread), since it must keep running after this process exits.
+/// launches `target_exe`. Shared by Linux and macOS - both have `/bin/sh`,
+/// `kill -0` and a POSIX-ish `ps`. The helper is a genuinely separate
+/// process (not a Tokio task or thread), since it must keep running after
+/// this process exits.
 #[cfg(unix)]
 fn spawn_relaunch_waiter(target_exe: &Path) -> Result<(), String> {
     let pid = std::process::id();
+    // `kill -0 $pid` alone only proves *some* process has this PID right
+    // now - if the OS recycles a just-freed PID for an unrelated process
+    // during the 0.2s poll window, that check alone would wait on the
+    // wrong process indefinitely (or not at all). Also matching the
+    // command name narrows that to "a process named quarzlampe-tray with
+    // this PID", which an unrelated reused-PID process essentially never
+    // is. `ps -p PID -o comm=` is supported by both GNU ps (Linux) and BSD
+    // ps (macOS) with no flag differences.
     let script = format!(
-        "while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; exec \"{}\"",
+        "while ps -p {pid} -o comm= 2>/dev/null | grep -q quarzlampe-tray; do sleep 0.2; done; exec \"{}\"",
         target_exe.display()
     );
     Command::new("sh")
@@ -142,15 +171,37 @@ fn apply_update_macos(asset_url: &str) -> Result<(), String> {
     }
 
     let new_bundle_macos = extract_dir.join("Quarzlampe.app/Contents/MacOS");
-    for bin in ["quarzlampe-tray", "quarzlampe-console"] {
+    const BINS: [&str; 2] = ["quarzlampe-tray", "quarzlampe-console"];
+
+    // Back up both originals before touching anything live, so a failure
+    // partway through (second binary missing/unreadable, disk full, a
+    // permissions error) can be undone instead of leaving the bundle in a
+    // mixed-version, unsealed state that only a full reinstall fixes.
+    for bin in BINS {
+        let backup = macos_dir.join(format!("{bin}.bak"));
+        fs::copy(macos_dir.join(bin), &backup).map_err(|e| format!("could not back up {bin}: {e}"))?;
+    }
+    let restore_backups = || {
+        for bin in BINS {
+            let _ = fs::rename(macos_dir.join(format!("{bin}.bak")), macos_dir.join(bin));
+        }
+    };
+
+    for bin in BINS {
         let src = new_bundle_macos.join(bin);
         if !src.exists() {
-            return Err(format!("update archive is missing {bin}"));
+            restore_backups();
+            return Err(format!("update archive is missing {bin} - rolled back"));
         }
         let staged = macos_dir.join(format!("{bin}.new"));
-        fs::copy(&src, &staged).map_err(|e| format!("could not stage {bin}: {e}"))?;
-        make_executable(&staged)?;
-        fs::rename(&staged, macos_dir.join(bin)).map_err(|e| format!("could not replace {bin}: {e}"))?;
+        if let Err(e) = fs::copy(&src, &staged).map_err(|e| e.to_string()).and_then(|_| make_executable(&staged)) {
+            restore_backups();
+            return Err(format!("could not stage {bin}: {e} - rolled back"));
+        }
+        if let Err(e) = fs::rename(&staged, macos_dir.join(bin)) {
+            restore_backups();
+            return Err(format!("could not replace {bin}: {e} - rolled back"));
+        }
     }
     drop(cleanup);
 
@@ -166,7 +217,20 @@ fn apply_update_macos(asset_url: &str) -> Result<(), String> {
         .status()
         .map_err(|e| format!("could not run codesign: {e}"))?;
     if !status.success() {
-        return Err("re-signing the updated app bundle failed".to_string());
+        // The new binaries are already in place and each individually
+        // signed (from the already-signed zip) - only the bundle-level
+        // seal is stale. Restoring the old binaries here would just
+        // re-create that same staleness against the old versions, so
+        // there's no clean rollback for this specific failure; surface it
+        // clearly instead.
+        return Err(
+            "re-signing the updated app bundle failed - the new binaries are in place but the bundle's \
+             signature seal is now stale; the app may refuse to launch until reinstalled"
+                .to_string(),
+        );
+    }
+    for bin in BINS {
+        let _ = fs::remove_file(macos_dir.join(format!("{bin}.bak")));
     }
 
     spawn_relaunch_waiter(&macos_dir.join("quarzlampe-tray"))?;
@@ -234,6 +298,29 @@ fn apply_update_windows(asset_url: &str) -> Result<(), String> {
     let tray_exe = install_dir.join("quarzlampe-tray.exe");
     let console_exe = install_dir.join("quarzlampe-console.exe");
     let script_path = tmp_dir.join("apply_update.cmd");
+    // Paths are arbitrary (user-chosen install dir, or the default
+    // per-user AppData one) and may legitimately contain `%` (e.g. a
+    // folder literally named "100% Lamps") - quoting alone doesn't stop
+    // cmd.exe from expanding `%...%` inside a quoted string, only doubling
+    // a literal `%` to `%%` does.
+    let esc = |p: &Path| p.display().to_string().replace('%', "%%");
+
+    // A separate tiny script, outside tmp_dir (in the shared temp root,
+    // not the per-update subdirectory), whose only job is deleting
+    // tmp_dir after a delay - apply_update.cmd itself can't do that to its
+    // own containing directory (cmd.exe re-reads a running .bat/.cmd from
+    // disk as it executes, including for the loops above, so deleting out
+    // from under itself mid-run is not safe) or even to a same-directory
+    // sibling script reliably. Left behind afterward rather than trying to
+    // self-delete too (a handful of bytes, not worth the extra quoting
+    // risk this close to the %-escaping fix above).
+    let cleanup_script_path = std::env::temp_dir().join(format!("quarzlampe-cleanup-{pid}.cmd"));
+    let cleanup_script = format!(
+        "@echo off\r\ntimeout /t 3 /nobreak >NUL\r\nrd /s /q \"{}\"\r\n",
+        esc(&tmp_dir)
+    );
+    fs::write(&cleanup_script_path, cleanup_script).map_err(|e| format!("could not write cleanup helper: {e}"))?;
+
     let script = format!(
         "@echo off\r\n\
          :wait\r\n\
@@ -242,14 +329,47 @@ fn apply_update_windows(asset_url: &str) -> Result<(), String> {
          \ttimeout /t 1 /nobreak >NUL\r\n\
          \tgoto wait\r\n\
          )\r\n\
-         move /y \"{staged_tray}\" \"{tray_exe}\" >NUL\r\n\
-         move /y \"{staged_console}\" \"{console_exe}\" >NUL\r\n\
-         start \"\" \"{tray_exe}\"\r\n",
+         rem quarzlampe-console.exe is a separate process the tray only\r\n\
+         rem spawns on demand - if its window is still open (the common\r\n\
+         rem case, since the console's own \"Update now\" button is the\r\n\
+         rem primary trigger), it still holds its own exe file locked even\r\n\
+         rem though the tray (this process) has already exited.\r\n\
+         tasklist /FI \"IMAGENAME eq quarzlampe-console.exe\" 2>NUL | find /I \"quarzlampe-console.exe\" >NUL\r\n\
+         if not errorlevel 1 (\r\n\
+         \ttimeout /t 1 /nobreak >NUL\r\n\
+         \tgoto wait\r\n\
+         )\r\n\
+         set TRAY_DONE=0\r\n\
+         set CONSOLE_DONE=0\r\n\
+         set RETRY=0\r\n\
+         :moveloop\r\n\
+         if %TRAY_DONE%==0 (\r\n\
+         \tmove /y \"{staged_tray}\" \"{tray_exe}\" >NUL 2>NUL\r\n\
+         \tif not errorlevel 1 set TRAY_DONE=1\r\n\
+         )\r\n\
+         if %CONSOLE_DONE%==0 (\r\n\
+         \tmove /y \"{staged_console}\" \"{console_exe}\" >NUL 2>NUL\r\n\
+         \tif not errorlevel 1 set CONSOLE_DONE=1\r\n\
+         )\r\n\
+         if %TRAY_DONE%==1 if %CONSOLE_DONE%==1 goto movedone\r\n\
+         set /a RETRY+=1\r\n\
+         if %RETRY% lss 10 (\r\n\
+         \ttimeout /t 1 /nobreak >NUL\r\n\
+         \tgoto moveloop\r\n\
+         )\r\n\
+         :movedone\r\n\
+         rem Whichever of the two moves never succeeded just stays on its\r\n\
+         rem old version (the pre-update file was never touched) rather\r\n\
+         rem than this script hanging forever - matches apply_update's own\r\n\
+         rem fail-safe rather than fail-loud posture elsewhere.\r\n\
+         start \"\" \"{tray_exe}\"\r\n\
+         start \"\" \"{cleanup_script}\"\r\n",
         pid = pid,
-        staged_tray = staged_tray.display(),
-        tray_exe = tray_exe.display(),
-        staged_console = staged_console.display(),
-        console_exe = console_exe.display(),
+        staged_tray = esc(&staged_tray),
+        tray_exe = esc(&tray_exe),
+        staged_console = esc(&staged_console),
+        console_exe = esc(&console_exe),
+        cleanup_script = esc(&cleanup_script_path),
     );
     fs::write(&script_path, script).map_err(|e| format!("could not write swap helper: {e}"))?;
 

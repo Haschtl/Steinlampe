@@ -57,6 +57,26 @@ pub struct DaemonState {
     /// a rule from the console (`FireRule`) deliberately bypasses this -
     /// that's an explicit click, not an automation.
     pub automations_paused: bool,
+    /// Guards against the tray menu's "Update now" and the console's IPC
+    /// `ApplyUpdate` request both calling `self_update::apply_update()` at
+    /// once - both run in this same process and, without this, would
+    /// stage/write to the identical paths concurrently (same PID-keyed temp
+    /// dir, same install-directory targets), corrupting the swap. Checked
+    /// and set together under this same lock by both trigger paths before
+    /// either starts; cleared again on failure so a failed attempt doesn't
+    /// permanently block retrying. Not cleared on success - the process
+    /// exits shortly after anyway (see `self_update::EXIT_GRACE`).
+    pub update_in_progress: bool,
+    /// One-shot mailbox from the tray menu's background update-apply thread
+    /// (`app::main`'s "apply-update" handler, a plain `std::thread::spawn`
+    /// with no return channel of its own) back to the tray's own tick loop,
+    /// which polls this same lock every ~1.5s anyway. Set on failure only
+    /// (success exits the process - nothing left to report to); consumed
+    /// (`Option::take`'d) by the tick loop the moment it's seen, so it
+    /// never doubles as the user-facing display state - that's
+    /// `MainLoopCtx::last_update_error`, which owns its own display-window
+    /// timer once it has the message.
+    pub last_apply_update_error: Option<String>,
 }
 
 pub struct IpcServer;
@@ -245,8 +265,22 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
         }
         RequestKind::ApplyUpdate => {
             let asset_url = {
-                let state = state.lock().await;
-                state.update_available.as_ref().and_then(|u| u.asset_url.clone())
+                let mut state = state.lock().await;
+                if state.update_in_progress {
+                    return IpcResponse::Error {
+                        message: "an update is already being applied (from here or the tray menu)".to_string(),
+                    };
+                }
+                let asset_url = state.update_available.as_ref().and_then(|u| u.asset_url.clone());
+                if asset_url.is_some() {
+                    // Claim it now, under the same lock as the check above,
+                    // before releasing the lock for the actual (blocking)
+                    // download/swap - see DaemonState::update_in_progress's
+                    // doc comment for why this has to be a shared flag and
+                    // not something local to this one handler.
+                    state.update_in_progress = true;
+                }
+                asset_url
             };
             let Some(asset_url) = asset_url else {
                 return IpcResponse::Error { message: "no update asset available for this platform".to_string() };
@@ -259,17 +293,23 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
             match result {
                 Ok(Ok(())) => {
                     // Give the response write below time to actually reach
-                    // the client before this process disappears - matches
-                    // the delay the tray menu's own "Update now" handler
-                    // uses for the same reason.
+                    // the client before this process disappears. Uses the
+                    // same constant the tray menu's own "Update now"
+                    // handler delays by - see EXIT_GRACE's doc comment.
                     tokio::spawn(async {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        tokio::time::sleep(crate::self_update::EXIT_GRACE).await;
                         std::process::exit(0);
                     });
                     IpcResponse::Ok
                 }
-                Ok(Err(e)) => IpcResponse::Error { message: e },
-                Err(e) => IpcResponse::Error { message: format!("update task panicked: {e}") },
+                Ok(Err(e)) => {
+                    state.lock().await.update_in_progress = false;
+                    IpcResponse::Error { message: e }
+                }
+                Err(e) => {
+                    state.lock().await.update_in_progress = false;
+                    IpcResponse::Error { message: format!("update task panicked: {e}") }
+                }
             }
         }
         RequestKind::GetWebhookInfo => {

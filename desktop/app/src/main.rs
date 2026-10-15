@@ -114,6 +114,8 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
                 update_available: None,
                 auth_token: Uuid::new_v4().to_string(),
                 automations_paused: false,
+                update_in_progress: false,
+                last_apply_update_error: None,
             }));
             let _ = state_tx.send(Arc::clone(&state));
 
@@ -1197,7 +1199,16 @@ struct MainLoopCtx {
     registered_hotkeys: HashMap<String, HotKey>,
     console_path: PathBuf,
     console_child: Option<Child>,
+    /// Set when the tray menu's own "Update now" fails, since this binary
+    /// has no console (windows_subsystem="windows") and no other visible
+    /// status surface to report to otherwise - eprintln!/println! just go
+    /// nowhere. Shown appended to the tray tooltip for a bounded window
+    /// (see LAST_UPDATE_ERROR_DISPLAY_SECS) rather than kept forever, so a
+    /// months-old failure can't sit there looking current.
+    last_update_error: Option<(String, Instant)>,
 }
+
+const LAST_UPDATE_ERROR_DISPLAY_SECS: u64 = 300;
 
 impl MainLoopCtx {
     fn new(lang: Lang) -> anyhow::Result<Self> {
@@ -1250,6 +1261,7 @@ impl MainLoopCtx {
             registered_hotkeys: HashMap::new(),
             console_path,
             console_child: None,
+            last_update_error: None,
         })
     }
 
@@ -1277,6 +1289,9 @@ impl MainLoopCtx {
                 let lamps = snapshot_lamps(state);
                 let update_available = state.blocking_lock().update_available.is_some();
                 self.pause_item.set_checked(state.blocking_lock().automations_paused);
+                if let Some(err) = state.blocking_lock().last_apply_update_error.take() {
+                    self.last_update_error = Some((err, Instant::now()));
+                }
                 let menu = build_menu(
                     self.lang,
                     &lamps,
@@ -1290,7 +1305,15 @@ impl MainLoopCtx {
                 self.tray_icon.set_menu(Some(Box::new(menu)));
                 let icon_colors = ordered_lamp_colors(&lamps, &mut self.lamp_index);
                 let _ = self.tray_icon.set_icon(Some(render_status_icon(&icon_colors)));
-                let _ = self.tray_icon.set_tooltip(Some(tooltip_text(self.lang, &lamps)));
+                let mut tooltip = tooltip_text(self.lang, &lamps);
+                if let Some((err, at)) = &self.last_update_error {
+                    if at.elapsed().as_secs() < LAST_UPDATE_ERROR_DISPLAY_SECS {
+                        tooltip.push_str(&format!("\n{}: {err}", t(self.lang, "tray.updateFailed")));
+                    } else {
+                        self.last_update_error = None;
+                    }
+                }
+                let _ = self.tray_icon.set_tooltip(Some(tooltip));
                 if let Some(manager) = &self.hotkey_manager {
                     let rules = state.blocking_lock().rules.clone();
                     self.registered_hotkeys = sync_registered_hotkeys(manager, &rules, &self.registered_hotkeys);
@@ -1329,25 +1352,48 @@ impl MainLoopCtx {
                 }
             } else if event.id == "apply-update" {
                 if let Some(state) = &self.daemon_state {
-                    let asset_url = state.blocking_lock().update_available.as_ref().and_then(|u| u.asset_url.clone());
-                    match asset_url {
+                    // Checked and claimed together under one lock, same as
+                    // the IPC `ApplyUpdate` handler - see
+                    // DaemonState::update_in_progress's doc comment for why
+                    // this has to be a flag shared with that other trigger
+                    // path rather than something local to this handler.
+                    let mut guard = state.blocking_lock();
+                    if guard.update_in_progress {
+                        self.last_update_error =
+                            Some((t(self.lang, "tray.updateInProgress").to_string(), Instant::now()));
+                    } else if let Some(url) = guard.update_available.as_ref().and_then(|u| u.asset_url.clone()) {
+                        guard.update_in_progress = true;
+                        drop(guard);
+                        let state = Arc::clone(state);
                         // Genuinely separate OS thread, not a tokio task -
                         // this closure (`handle_system_event`'s caller, the
                         // main message-pump loop) runs synchronously outside
                         // any tokio runtime, and apply_update's download +
                         // extract + swap is blocking I/O that must not stall
                         // the menu/tray event pump while it runs.
-                        Some(url) => {
-                            println!("[update] applying update\u{2026}");
-                            std::thread::spawn(move || match self_update::apply_update(&url) {
-                                Ok(()) => {
-                                    println!("[update] applied - restarting");
-                                    std::process::exit(0);
-                                }
-                                Err(e) => eprintln!("[update] failed: {e}"),
-                            });
-                        }
-                        None => eprintln!("[update] no download URL available for this platform"),
+                        println!("[update] applying update\u{2026}");
+                        std::thread::spawn(move || match self_update::apply_update(&url) {
+                            Ok(()) => {
+                                println!("[update] applied - restarting");
+                                std::thread::sleep(self_update::EXIT_GRACE);
+                                std::process::exit(0);
+                            }
+                            Err(e) => {
+                                eprintln!("[update] failed: {e}");
+                                // This thread has no direct line back to
+                                // MainLoopCtx (owned by the main/event-loop
+                                // thread) - drop the message in the shared
+                                // DaemonState mailbox instead; `tick()`
+                                // picks it up and clears it from there (see
+                                // last_apply_update_error's doc comment).
+                                let mut guard = state.blocking_lock();
+                                guard.update_in_progress = false;
+                                guard.last_apply_update_error = Some(e);
+                            }
+                        });
+                    } else {
+                        self.last_update_error =
+                            Some((t(self.lang, "tray.updateNoAsset").to_string(), Instant::now()));
                     }
                 }
             } else if event.id == "open-update" {

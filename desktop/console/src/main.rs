@@ -25,7 +25,7 @@
 
 use std::collections::HashSet;
 use std::sync::mpsc as std_mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 use quarzlampe_core::i18n::{t, Lang};
@@ -189,7 +189,39 @@ async fn run_core(
                     // down (not a daemon-connection problem) - exit for
                     // good, not back to the top of the reconnect loop.
                     let Some(msg) = msg else { return };
-                    let is_apply_update = matches!(&msg, UiToCore::ApplyUpdate);
+                    if matches!(&msg, UiToCore::ApplyUpdate) {
+                        // Deliberately NOT sent over the shared `client` -
+                        // that's one persistent, strictly request-then-
+                        // response TCP stream (see ipc::client's doc
+                        // comment), so awaiting this response in the same
+                        // place as lamp_poll/aux_poll would stall both of
+                        // them - the on/off switch, brightness, everything -
+                        // for as long as the daemon's download takes. A
+                        // dedicated connection on its own spawned task keeps
+                        // the main poll loop responsive throughout.
+                        let to_ui = to_ui.clone();
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            let notify = |msg: CoreToUi| {
+                                let _ = to_ui.send(msg);
+                                ctx.request_repaint();
+                            };
+                            match IpcClient::connect().await {
+                                Ok(mut fresh) => match fresh.request(RequestKind::ApplyUpdate).await {
+                                    Ok(IpcResponse::Ok) => {
+                                        notify(CoreToUi::Status(t(lang, "console.updateApplied").to_string()))
+                                    }
+                                    Ok(IpcResponse::Error { message }) => notify(CoreToUi::UpdateApplyFailed(message)),
+                                    Ok(_) => {}
+                                    Err(e) => notify(CoreToUi::UpdateApplyFailed(e.to_string())),
+                                },
+                                Err(e) => {
+                                    notify(CoreToUi::UpdateApplyFailed(format!("could not reach daemon: {e}")))
+                                }
+                            }
+                        });
+                        continue;
+                    }
                     let kind = match msg {
                         UiToCore::Scan => RequestKind::Scan { seconds: 4 },
                         UiToCore::Connect { lamp_key, name } => RequestKind::Connect { lamp_key, name },
@@ -199,16 +231,11 @@ async fn run_core(
                         UiToCore::DeleteRule(id) => RequestKind::DeleteRule { id },
                         UiToCore::FireRule(id) => RequestKind::FireRule { id },
                         UiToCore::SetVisualizer(config) => RequestKind::SetVisualizer { config },
-                        UiToCore::ApplyUpdate => RequestKind::ApplyUpdate,
+                        // Handled above (its own dedicated connection) and
+                        // `continue`d past before ever reaching here.
+                        UiToCore::ApplyUpdate => unreachable!("ApplyUpdate is handled on its own connection above"),
                     };
                     match client.request(kind).await {
-                        // The daemon exits itself shortly after this response
-                        // (see server.rs's ApplyUpdate handler) - the `Err`
-                        // arm below picks up the resulting disconnect on
-                        // whichever request notices it first and reconnects
-                        // once the relaunched daemon's IPC socket is back up.
-                        Ok(IpcResponse::Ok) if is_apply_update => notify(CoreToUi::Status(t(lang, "console.updateApplied").to_string())),
-                        Ok(IpcResponse::Error { message }) if is_apply_update => notify(CoreToUi::UpdateApplyFailed(message)),
                         Ok(IpcResponse::ScanResults { lamps }) => notify(CoreToUi::ScanResults(lamps)),
                         Ok(IpcResponse::Rules { rules }) => notify(CoreToUi::Rules(rules)),
                         Ok(IpcResponse::Visualizer { config, last_error }) => notify(CoreToUi::Visualizer { config, last_error }),
@@ -412,11 +439,17 @@ struct ConsoleApp {
     update_available: Option<UpdateInfo>,
     /// True from clicking "Update now" until either a fresh `UpdateStatus`
     /// comes back with nothing available (success - the daemon restarted on
-    /// the new version and no longer thinks itself outdated) or a `Status`
-    /// message reports a failure. Just disables the button and swaps its
-    /// label meanwhile; `ApplyUpdate`'s own progress happens entirely on the
-    /// daemon side (see `self_update::apply_update`).
+    /// the new version and no longer thinks itself outdated) or an
+    /// `UpdateApplyFailed` message reports a failure. Just disables the
+    /// button and swaps its label meanwhile; `ApplyUpdate`'s own progress
+    /// happens entirely on the daemon side (see `self_update::apply_update`).
+    /// Paired with `applying_update_since` for a hard timeout - without
+    /// one, any disconnect that isn't one of those two specific messages
+    /// (a crash during the daemon's relaunch, which self_update's own doc
+    /// comment admits is unverified on Windows/macOS) leaves this stuck
+    /// `true` forever, recoverable only by restarting the console.
     applying_update: bool,
+    applying_update_since: Option<Instant>,
     /// The daemon's auth token, fetched once right after connecting
     /// (`GetWebhookInfo`) - combined with `quarzlampe_core::ipc::WEBHOOK_PORT`
     /// and a `Trigger::Webhook`'s own `id` to build the full URL shown for
@@ -1405,16 +1438,35 @@ impl eframe::App for ConsoleApp {
                     // the new version yet".
                     if self.applying_update && available.is_none() {
                         self.applying_update = false;
+                        self.applying_update_since = None;
                     }
                     self.update_available = available;
                 }
                 CoreToUi::UpdateApplyFailed(s) => {
                     self.applying_update = false;
+                    self.applying_update_since = None;
                     self.status = s;
                 }
                 CoreToUi::Status(s) => self.status = s,
                 CoreToUi::WebhookToken(token) => self.webhook_token = Some(token),
             }
+        }
+
+        // Hard ceiling so a disconnect that isn't one of the two specific
+        // messages above (e.g. the daemon's relaunch itself failing after a
+        // successful swap - self_update's own doc comment admits the
+        // Windows/macOS relaunch paths are unverified) can't leave the
+        // button stuck on "Updating..." forever. Comfortably longer than
+        // download_to_file's own 120s timeout plus swap/relaunch overhead,
+        // so this never fires while a merely-slow update is still
+        // genuinely progressing.
+        const APPLY_UPDATE_TIMEOUT: Duration = Duration::from_secs(180);
+        if self.applying_update
+            && self.applying_update_since.is_some_and(|since| since.elapsed() >= APPLY_UPDATE_TIMEOUT)
+        {
+            self.applying_update = false;
+            self.applying_update_since = None;
+            self.status = t(self.lang, "console.updateTimedOut").to_string();
         }
 
         let lang = self.lang;
@@ -1458,6 +1510,7 @@ impl eframe::App for ConsoleApp {
                         let label = if self.applying_update { t(lang, "nav.updateApplying") } else { t(lang, "nav.applyUpdate") };
                         if ui.button(label).clicked() {
                             self.applying_update = true;
+                            self.applying_update_since = Some(Instant::now());
                             let _ = self.to_core.send(UiToCore::ApplyUpdate);
                         }
                     });
@@ -1612,6 +1665,7 @@ fn main() -> eframe::Result<()> {
                 visualizer_unsupported: None,
                 update_available: None,
                 applying_update: false,
+                applying_update_since: None,
                 webhook_token: None,
             }))
         }),

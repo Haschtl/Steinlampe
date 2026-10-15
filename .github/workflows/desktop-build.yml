@@ -175,6 +175,24 @@ jobs:
         with:
           path: artifacts
 
+      # softprops/action-gh-release only adds/replaces the files it's given
+      # (`files: release/*` below) - it never removes an asset that isn't
+      # in that set, so the six loose-binary files this workflow used to
+      # publish (tray/console per platform, pre-portable-zip) would
+      # otherwise stay attached to desktop-latest forever, silently frozen
+      # at whatever commit last touched them. `|| true` per asset: fine
+      # whether or not a given one is still there to delete (first run
+      # after this change, or a partial previous cleanup).
+      - name: Remove superseded loose-binary assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for name in quarzlampe-tray-linux quarzlampe-console-linux \
+                      quarzlampe-tray-macos quarzlampe-console-macos \
+                      quarzlampe-tray-windows.exe quarzlampe-console-windows.exe; do
+            gh release delete-asset desktop-latest "$name" --repo "$GITHUB_REPOSITORY" --yes || true
+          done
+
       - name: Rename binaries per platform
         run: |
           set -eu

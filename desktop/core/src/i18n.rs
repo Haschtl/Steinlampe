@@ -83,6 +83,9 @@ dict! {
     "tray.tooltipNoLamps" => ["no lamps connected", "keine Lampen verbunden"],
     "tray.updateAvailable" => ["View release page\u{2026}", "Release-Seite \u{f6}ffnen\u{2026}"],
     "tray.applyUpdate" => ["Update now", "Jetzt aktualisieren"],
+    "tray.updateFailed" => ["Update failed", "Update fehlgeschlagen"],
+    "tray.updateInProgress" => ["Update already in progress", "Update l\u{e4}uft bereits"],
+    "tray.updateNoAsset" => ["No update download available for this platform", "Kein Update-Download f\u{fc}r diese Plattform verf\u{fc}gbar"],
     "tray.pauseAutomations" => ["Pause automations", "Automationen pausieren"],
 
     // Console: sidebar nav + chrome.
@@ -97,6 +100,7 @@ dict! {
     "console.connectedToDaemon" => ["connected to daemon", "mit Daemon verbunden"],
     "console.waitingForDaemon" => ["waiting for daemon", "warte auf Daemon"],
     "console.updateApplied" => ["Update applied - restarting\u{2026}", "Update angewendet - startet neu\u{2026}"],
+    "console.updateTimedOut" => ["Update timed out - it may still finish in the background; restart if the lamp stops responding", "Update-Zeit\u{fc}berschreitung - l\u{e4}uft m\u{f6}glicherweise noch im Hintergrund weiter; neu starten, falls die Lampe nicht mehr reagiert"],
 
     // Console: Connections section.
     "lamps.heading" => ["Lamps", "Lampen"],

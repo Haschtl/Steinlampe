@@ -26,13 +26,19 @@
   resources into the binary without an extra build.rs step this project
   doesn't have - matching this to the workspace's Cargo.toml version via
   `-dVersion=` on the CI command line avoids needing that.
--->
 
-<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
-    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
-<?else ?>
-    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
-<?endif ?>
+  Per-user install under %LocalAppData%, not Program Files: this app's
+  in-app self-updater (`core::self_update`) writes new binaries directly
+  into its own install directory, with no elevation request anywhere in
+  that code. A per-machine Program Files install is UAC-protected, so
+  self-update would fail with access-denied for anyone who used this MSI -
+  exactly the installer this project's own release notes call the
+  recommended option. `InstallScope='perUser'` + `LocalAppDataFolder` below
+  needs no admin rights for the install OR for anything self-update does
+  afterward, at the cost of each Windows user account needing its own
+  install (no shared machine-wide one) - an acceptable tradeoff for a
+  single-user desktop tray app.
+-->
 
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
@@ -57,7 +63,7 @@
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
-            InstallScope='perMachine'
+            InstallScope='perUser'
             SummaryCodepage='1252'/>
 
         <MajorUpgrade
@@ -81,7 +87,7 @@
         <Property Id='DiskPrompt' Value='Quarzlampe Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
-            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
+            <Directory Id='LocalAppDataFolder'>
                 <Directory Id='APPLICATIONFOLDER' Name='Quarzlampe'>
                     <Component Id='TrayExe' Guid='*'>
                         <File Id='exeTray'

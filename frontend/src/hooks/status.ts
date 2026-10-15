@@ -15,9 +15,14 @@ export type ButtonInfo = {
 };
 
 /**
- * Parses the firmware's `label:type:role:target:state,...` button list (see
- * `buttons=` in src/print.cpp) into structured entries. Unknown/malformed
- * segments are skipped rather than throwing, since this is live device data.
+ * Parses the firmware's button list (see `buttons=` in src/print.cpp) into
+ * structured entries. Accepts both the current `label:type:role:target:state`
+ * shape and the older pre-target `label:type:role:state` one (4 fields) a
+ * lamp can still be reporting if it hasn't been reflashed since this field
+ * was added - this frontend auto-deploys on every push, independently of
+ * when any given physical lamp gets reflashed, so the two can disagree for
+ * a while. Unknown/malformed segments are skipped rather than throwing,
+ * since this is live device data.
  */
 function parseButtonsField(raw: string): ButtonInfo[] {
   if (!raw) return [];
@@ -25,8 +30,15 @@ function parseButtonsField(raw: string): ButtonInfo[] {
     .split(',')
     .map((entry) => {
       const parts = entry.split(':');
-      if (parts.length < 5) return null;
-      const [label, type, role, target, state] = parts;
+      let label: string, type: string, role: string, target: string, state: string;
+      if (parts.length >= 5) {
+        [label, type, role, target, state] = parts;
+      } else if (parts.length === 4) {
+        [label, type, role, state] = parts;
+        target = 'all'; // pre-target firmware had no concept of a target - broadcast is the closest equivalent
+      } else {
+        return null;
+      }
       if (type !== 'toggle' && type !== 'momentary') return null;
       if (role !== 'power' && role !== 'modenext' && role !== 'briup' && role !== 'bridown') return null;
       return { label, type, role, target, state } as ButtonInfo;

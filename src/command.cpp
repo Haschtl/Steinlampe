@@ -1615,8 +1615,15 @@ void handleCommand(String line)
             }
             else
             {
-                long n = v.toInt();
-                if (n >= 0 && n < CHANNEL_TARGET_ALL)
+                // String::toInt() returns 0 for non-numeric input (e.g. a
+                // typo), which would otherwise be silently accepted as
+                // "target=0" instead of rejected - check the input is
+                // actually all digits first.
+                bool numeric = v.length() > 0;
+                for (size_t i = 0; i < v.length() && numeric; ++i)
+                    numeric = isDigit(v[i]);
+                long n = numeric ? v.toInt() : -1;
+                if (numeric && n >= 0 && n < CHANNEL_TARGET_ALL)
                 {
                     potiTarget = (uint8_t)n;
                     saveSettings();
