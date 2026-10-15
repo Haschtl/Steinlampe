@@ -49,6 +49,31 @@ bool isQuickEnabled(size_t idx)
     return idx < total && idx < 64 && (quickMask & (1ULL << idx));
 }
 
+size_t enabledQuickModeCount()
+{
+    size_t total = quickModeCount();
+    size_t count = 0;
+    for (size_t i = 0; i < total; ++i)
+        if (isQuickEnabled(i))
+            ++count;
+    return count;
+}
+
+size_t nthEnabledQuickMode(size_t n)
+{
+    size_t total = quickModeCount();
+    size_t seen = 0;
+    for (size_t i = 0; i < total; ++i)
+    {
+        if (!isQuickEnabled(i))
+            continue;
+        if (seen == n)
+            return i;
+        ++seen;
+    }
+    return 0;
+}
+
 size_t nextQuickMode(size_t from)
 {
     size_t total = quickModeCount();

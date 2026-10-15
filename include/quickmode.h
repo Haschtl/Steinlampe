@@ -18,6 +18,17 @@ void sanitizeQuickMask();
 
 bool isQuickEnabled(size_t idx);
 
+/**
+ * @brief How many modes are currently enabled for quick-cycling.
+ */
+size_t enabledQuickModeCount();
+
+/**
+ * @brief The n-th enabled quick-cycle mode (0-based, in ascending index order).
+ * Clamps n to the last enabled entry; returns 0 if none are enabled.
+ */
+size_t nthEnabledQuickMode(size_t n);
+
 size_t nextQuickMode(size_t from);
 
 void applyQuickMode(size_t idx);

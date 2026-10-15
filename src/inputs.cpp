@@ -115,6 +115,8 @@ float potiCalibMin = Settings::POTI_MIN_DEFAULT;
 float potiCalibMax = Settings::POTI_MAX_DEFAULT;
 bool potiInvert = Settings::POTI_INVERT_DEFAULT;
 bool potiWasBelowOff = false;
+PotiRole potiRole = (PotiRole)Settings::POTI_ROLE_DEFAULT;
+static int potiLastQuickIdx = -1; // last mode applied in POTI_ROLE_MODE_SCAN, -1 = force reapply
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -776,6 +778,7 @@ void updatePoti()
         // Force next sample to be applied once we rise above the threshold.
         potiLastApplied = -1.0f;
         potiWasBelowOff = true;
+        potiLastQuickIdx = -1; // reapply mode-scan position on the next on-crossing
         return;
     }
 
@@ -787,8 +790,28 @@ void updatePoti()
     potiWasBelowOff = nowBelow;
     potiLastApplied = potiFiltered;
     queueLiveState();
-    // Fast, non-persisted updates for smooth knob response (no flash wear).
-    setBrightnessPercent(target * 100.0f, false, false, true);
+
+    if (potiRole == POTI_ROLE_MODE_SCAN)
+    {
+        size_t count = enabledQuickModeCount();
+        if (count > 0)
+        {
+            size_t pos = (size_t)(target * (float)count);
+            if (pos >= count)
+                pos = count - 1;
+            size_t idx = nthEnabledQuickMode(pos);
+            if ((int)idx != potiLastQuickIdx)
+            {
+                potiLastQuickIdx = (int)idx;
+                applyQuickMode(idx);
+            }
+        }
+    }
+    else
+    {
+        // Fast, non-persisted updates for smooth knob response (no flash wear).
+        setBrightnessPercent(target * 100.0f, false, false, true);
+    }
 }
 #endif
 

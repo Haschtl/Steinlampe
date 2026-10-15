@@ -115,6 +115,14 @@ extern float touchDimStep;
 #endif
 
 #if ENABLE_POTI
+// What the poti's position controls while the lamp is on (independent of the
+// on/off threshold crossing, which always applies regardless of role).
+enum PotiRole : uint8_t
+{
+    POTI_ROLE_BRIGHTNESS = 0, // today's behavior: position -> brightness
+    POTI_ROLE_MODE_SCAN = 1,  // position -> index into the quick-cycle-enabled modes
+};
+
 extern float potiFiltered;
 extern float potiLastApplied;
 extern uint32_t lastPotiSampleMs;
@@ -127,6 +135,7 @@ extern int potiLastRaw; // last ADC sample (0..4095)
 extern float potiCalibMin;
 extern float potiCalibMax;
 extern bool potiInvert;
+extern PotiRole potiRole;
 #endif
 
 #if ENABLE_PUSH_BUTTON

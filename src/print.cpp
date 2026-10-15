@@ -361,7 +361,8 @@ void printStatus(const bool &force)
                       F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
                       F(" smpl=") + String(potiSampleMs) + F("ms") +
                       F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
-                      F(" inv=") + (potiInvert ? F("1") : F("0"));
+                      F(" inv=") + (potiInvert ? F("1") : F("0")) +
+                      F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness"));
 #else
     String potiLine = F("[Poti] N/A");
 #endif

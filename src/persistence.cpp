@@ -110,6 +110,7 @@ static const char *PREF_KEY_POTI_SAMPLE = "poti_s";
 static const char *PREF_KEY_POTI_MIN = "poti_min";
 static const char *PREF_KEY_POTI_MAX = "poti_max";
 static const char *PREF_KEY_POTI_INV = "poti_inv";
+static const char *PREF_KEY_POTI_ROLE = "poti_role";
 #endif
 #if ENABLE_PUSH_BUTTON
 static const char *PREF_KEY_PUSH_EN = "push_en";
@@ -527,6 +528,7 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_POTI_MIN, potiCalibMin);
     prefs.putFloat(PREF_KEY_POTI_MAX, potiCalibMax);
     prefs.putBool(PREF_KEY_POTI_INV, potiInvert);
+    prefs.putUChar(PREF_KEY_POTI_ROLE, (uint8_t)potiRole);
 #endif
 #if ENABLE_PUSH_BUTTON
     prefs.putBool(PREF_KEY_PUSH_EN, pushEnabled);
@@ -996,6 +998,9 @@ void loadSettings()
         potiCalibMax = Settings::POTI_MAX_DEFAULT;
     }
     potiInvert = prefs.getBool(PREF_KEY_POTI_INV, Settings::POTI_INVERT_DEFAULT);
+    potiRole = (PotiRole)prefs.getUChar(PREF_KEY_POTI_ROLE, Settings::POTI_ROLE_DEFAULT);
+    if (potiRole != POTI_ROLE_BRIGHTNESS && potiRole != POTI_ROLE_MODE_SCAN)
+        potiRole = POTI_ROLE_BRIGHTNESS;
 #endif
 #if ENABLE_PUSH_BUTTON
     pushEnabled = prefs.getBool(PREF_KEY_PUSH_EN, true);

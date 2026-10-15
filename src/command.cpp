@@ -1576,13 +1576,36 @@ void handleCommand(String line)
             saveSettings();
             sendFeedback(String(F("[Poti] invert=")) + (potiInvert ? F("ON") : F("OFF")));
         }
+        else if (arg.startsWith("mode"))
+        {
+            String v = arg.substring(4);
+            v.trim();
+            v.toLowerCase();
+            if (v == "bri" || v == "brightness")
+            {
+                potiRole = POTI_ROLE_BRIGHTNESS;
+                saveSettings();
+                sendFeedback(F("[Poti] mode=brightness"));
+            }
+            else if (v == "scan" || v == "quick")
+            {
+                potiRole = POTI_ROLE_MODE_SCAN;
+                saveSettings();
+                sendFeedback(F("[Poti] mode=scan"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: poti mode brightness|scan"));
+            }
+        }
         else
         {
             sendFeedback(String(F("[Poti] ")) + (potiEnabled ? F("ON ") : F("OFF ")) + F("a=") + String(potiAlpha, 2) +
                          F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
                          F(" smpl=") + String(potiSampleMs) + F("ms") +
                          F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
-                         F(" inv=") + (potiInvert ? F("1") : F("0")));
+                         F(" inv=") + (potiInvert ? F("1") : F("0")) +
+                         F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")));
         }
         return;
     }
