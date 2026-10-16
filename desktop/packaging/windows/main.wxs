@@ -89,18 +89,43 @@
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='LocalAppDataFolder'>
                 <Directory Id='APPLICATIONFOLDER' Name='Quarzlampe'>
+                    <!--
+                      ICE38: a component installing into a per-user folder
+                      (LocalAppDataFolder, here) must key off an HKCU
+                      registry value, not the file itself - MSI can't use a
+                      per-user file as KeyPath for repair/uninstall
+                      detection the way it can for a per-machine one.
+                      ICE64: that same per-user folder also needs at least
+                      one RemoveFolder entry so it (and not just the files
+                      in it) actually gets cleaned up on uninstall; one is
+                      enough for the whole directory, so it's only on this
+                      component and not duplicated on ConsoleExe below.
+                    -->
                     <Component Id='TrayExe' Guid='*'>
                         <File Id='exeTray'
                             Name='quarzlampe-tray.exe'
                             DiskId='1'
-                            Source='$(var.CargoTargetBinDir)\quarzlampe-tray.exe'
+                            Source='$(var.CargoTargetBinDir)\quarzlampe-tray.exe'/>
+                        <RemoveFolder Id='CleanUpApplicationFolder' Directory='APPLICATIONFOLDER' On='uninstall'/>
+                        <RegistryValue
+                            Root='HKCU'
+                            Key='Software\Quarzlampe'
+                            Name='trayInstalled'
+                            Type='integer'
+                            Value='1'
                             KeyPath='yes'/>
                     </Component>
                     <Component Id='ConsoleExe' Guid='*'>
                         <File Id='exeConsole'
                             Name='quarzlampe-console.exe'
                             DiskId='1'
-                            Source='$(var.CargoTargetBinDir)\quarzlampe-console.exe'
+                            Source='$(var.CargoTargetBinDir)\quarzlampe-console.exe'/>
+                        <RegistryValue
+                            Root='HKCU'
+                            Key='Software\Quarzlampe'
+                            Name='consoleInstalled'
+                            Type='integer'
+                            Value='1'
                             KeyPath='yes'/>
                     </Component>
                 </Directory>
