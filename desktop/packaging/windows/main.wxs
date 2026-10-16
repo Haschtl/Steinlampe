@@ -100,8 +100,16 @@
                       in it) actually gets cleaned up on uninstall; one is
                       enough for the whole directory, so it's only on this
                       component and not duplicated on ConsoleExe below.
+
+                      Fixed (not '*') Guids below: candle.exe refuses an
+                      auto-generated one for a component that has both a
+                      File and a registry-value KeyPath (CNDL0230) - unlike
+                      ApplicationShortcut's Guid, which only needs to be
+                      stable because it has no File at all, these two are
+                      stable because WiX requires it here. Generated once,
+                      fixed forever, same as every other Guid in this file.
                     -->
-                    <Component Id='TrayExe' Guid='*'>
+                    <Component Id='TrayExe' Guid='877D3606-42D4-498F-A2E1-C208F9E99949'>
                         <File Id='exeTray'
                             Name='quarzlampe-tray.exe'
                             DiskId='1'
@@ -115,7 +123,7 @@
                             Value='1'
                             KeyPath='yes'/>
                     </Component>
-                    <Component Id='ConsoleExe' Guid='*'>
+                    <Component Id='ConsoleExe' Guid='4256A1AF-E45A-42D4-A1C5-D465F1E148E7'>
                         <File Id='exeConsole'
                             Name='quarzlampe-console.exe'
                             DiskId='1'
