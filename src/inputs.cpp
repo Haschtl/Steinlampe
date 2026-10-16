@@ -252,7 +252,7 @@ static void onToggleActivated(size_t i)
         switchDebouncedState = true;
         setLampEnabled(true, "switch on");
         sendFeedback(String(F("[")) + cfg.label + F("] ON"));
-        confirmBtPairing(cfg.label);
+        confirmPendingPairing(cfg.label);
         break;
     case ROLE_MODE_NEXT:
         advanceQuickModeFromButton();
@@ -281,7 +281,7 @@ static void onToggleDeactivated(size_t i)
         switchDebouncedState = false;
         setLampEnabled(false, "switch off");
         sendFeedback(String(F("[")) + cfg.label + F("] OFF"));
-        confirmBtPairing(cfg.label);
+        confirmPendingPairing(cfg.label);
     }
     // Lamp on/off is not persisted; a mode-tap already saves via applyQuickMode(),
     // so avoid an extra NVS write on every toggle to reduce flash wear.
@@ -781,7 +781,7 @@ void updatePoti()
     if (!crossedOn && !crossedOff && potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)
         return;
 
-    confirmBtPairing("poti");
+    confirmPendingPairing("poti");
     if (nowBelow)
     {
         if (crossedOff && lampEnabled)

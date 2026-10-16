@@ -64,6 +64,22 @@ static bool btPairPending = false;
 static uint32_t btPairStartMs = 0;
 static String btPendingAddr;
 static const uint32_t BT_PAIR_TIMEOUT_MS = 20000;
+#if ENABLE_BLE
+// BLE's equivalent of the above: a physical-gesture fallback for a genuinely
+// new device outside the trust grace window, so first-time pairing doesn't
+// require rebooting the lamp to reopen that window. Reached once
+// ENABLE_BLE_TRUST_TOKEN's own token-auth window (if compiled in) has
+// already failed to find a matching token - see onConnect/pollCommunications
+// in the ENABLE_BLE block below. Same 20s budget as BT-Classic's gesture
+// window, same confirmation mechanism (confirmPendingPairing, called from
+// the switch/poti handlers), same "commands are gated until confirmed"
+// posture - deliberately no light/blink feedback, only text.
+static bool blePairPending = false;
+static uint32_t blePairStartMs = 0;
+static String blePendingAddr;
+static uint16_t blePendingConnId = 0;
+static const uint32_t BLE_PAIR_TIMEOUT_MS = 20000;
+#endif
 #endif
 // Line buffers
 static String bufferUsb;
@@ -611,6 +627,25 @@ class LampBleServerCallbacks : public BLEServerCallbacks
         Serial.println(addr);
       }
       return;
+#elif ENABLE_BT_PAIRING
+      // No token mechanism compiled in, so there's nothing to wait for
+      // first - go straight to the physical-gesture fallback (same one
+      // ENABLE_BLE_TRUST_TOKEN's timeout path falls through to below).
+      bleClientConnected = true;
+      blePairPending = true;
+      blePairStartMs = millis();
+      blePendingAddr = addr;
+      blePendingConnId = param->connect.conn_id;
+      lastBtActivityMs = millis();
+      // Structured marker (force=true, like TRUST_TOKEN|) so a connected
+      // client can tell "deliberately holding you pending a physical
+      // gesture" apart from a generic status-snapshot timeout and wait
+      // this out instead of giving up and reconnecting (which would just
+      // restart this same 20s window from zero on the firmware side).
+      sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
+      if (feedbackAllowed())
+        sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
+      return;
 #else
       if (feedbackAllowed())
       {
@@ -674,6 +709,15 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     // timeout check later disconnect a since-reused conn_id).
     if (bleAwaitingToken && param->disconnect.conn_id == bleAwaitingTokenConnId)
       bleAwaitingToken = false;
+#endif
+#if ENABLE_BT_PAIRING
+    // Same idea for a device that disconnected while waiting on the
+    // physical-gesture confirmation.
+    if (blePairPending && param->disconnect.conn_id == blePendingConnId)
+    {
+      blePairPending = false;
+      blePendingAddr = "";
+    }
 #endif
     BLEDevice::startAdvertising();
   }
@@ -865,40 +909,74 @@ bool trustClearBleTokens(bool persist)
 }
 #endif
 
-void confirmBtPairing(const char *reason)
+/**
+ * @brief Confirms whichever pending pairing (BT-Classic and/or BLE) is
+ * currently waiting on a physical gesture - called from the switch/poti
+ * handlers. Both are checked independently (not an if/else-if chain) since
+ * a BT device and a BLE device could plausibly be pending confirmation at
+ * the same time.
+ */
+void confirmPendingPairing(const char *reason)
 {
+  (void)reason; // unused if neither sub-block below is compiled in
 #if ENABLE_BT_PAIRING
 #if ENABLE_BT_SERIAL
-  if (!btPairPending)
-    return;
-  if (!serialBt.hasClient())
+  if (btPairPending)
   {
-    btPairPending = false;
-    btPendingAddr = "";
-    return;
-  }
-  btPairPending = false;
-  btPairStartMs = 0;
-  if (btPendingAddr.length() > 0)
-  {
-    trustAddBt(btPendingAddr);
-    lastSppAddr = btPendingAddr;
-  }
-  btPendingAddr = "";
-  if (feedbackAllowed())
-  {
-    String msg = F("[BT] Pair confirmed");
-    if (reason && reason[0])
+    if (!serialBt.hasClient())
     {
-      msg += F(" (");
-      msg += reason;
-      msg += F(")");
+      btPairPending = false;
+      btPendingAddr = "";
     }
-    sendFeedback(msg);
+    else
+    {
+      btPairPending = false;
+      btPairStartMs = 0;
+      if (btPendingAddr.length() > 0)
+      {
+        trustAddBt(btPendingAddr);
+        lastSppAddr = btPendingAddr;
+      }
+      btPendingAddr = "";
+      if (feedbackAllowed())
+      {
+        String msg = F("[BT] Pair confirmed");
+        if (reason && reason[0])
+        {
+          msg += F(" (");
+          msg += reason;
+          msg += F(")");
+        }
+        sendFeedback(msg);
+      }
+      lastBtActivityMs = millis();
+    }
   }
-  lastBtActivityMs = millis();
-#else
-  (void)reason;
+#endif
+#if ENABLE_BLE
+  if (blePairPending)
+  {
+    blePairPending = false;
+    blePairStartMs = 0;
+    if (blePendingAddr.length() > 0)
+    {
+      trustAddBle(blePendingAddr);
+      bleLastAddr = blePendingAddr;
+    }
+    blePendingAddr = "";
+    if (feedbackAllowed())
+    {
+      String msg = F("[BLE] Pair confirmed");
+      if (reason && reason[0])
+      {
+        msg += F(" (");
+        msg += reason;
+        msg += F(")");
+      }
+      sendFeedback(msg);
+    }
+    lastBtActivityMs = millis();
+  }
 #endif
 #endif
 }
@@ -990,11 +1068,36 @@ void pollCommunications()
 #if ENABLE_BLE_TRUST_TOKEN
   if (bleAwaitingToken && (millis() - bleAwaitingTokenSinceMs) > BLE_TOKEN_AUTH_TIMEOUT_MS)
   {
+    bleAwaitingToken = false;
+#if ENABLE_BT_PAIRING
+    // No valid token showed up - this isn't necessarily a previously-
+    // trusted device with a rotated address after all. Give it a further,
+    // separate window to be confirmed by a human at the lamp instead of
+    // disconnecting outright, same as a brand-new BT-Classic device gets.
+    blePairPending = true;
+    blePairStartMs = millis();
+    blePendingAddr = bleLastAddr;
+    blePendingConnId = bleAwaitingTokenConnId;
+    sendFeedback(String(F("BLE_PAIR_PENDING|")) + blePendingAddr, true);
+    if (feedbackAllowed())
+      sendFeedback(String(F("[BLE] Pair request ")) + blePendingAddr + F(" – confirm via switch or poti"));
+#else
     if (feedbackAllowed())
       Serial.println(F("[BLE] Token-Auth Timeout"));
     if (bleServer)
       bleServer->disconnect(bleAwaitingTokenConnId);
-    bleAwaitingToken = false;
+#endif
+  }
+#endif
+#if ENABLE_BT_PAIRING
+  if (blePairPending && blePairStartMs > 0 && (millis() - blePairStartMs) > BLE_PAIR_TIMEOUT_MS)
+  {
+    if (feedbackAllowed())
+      sendFeedback(F("[BLE] Pair request timed out"));
+    if (bleServer)
+      bleServer->disconnect(blePendingConnId);
+    blePairPending = false;
+    blePendingAddr = "";
   }
 #endif
   if (bleRxMutex && bleRxPending.length() && xSemaphoreTake(bleRxMutex, 0) == pdTRUE)
@@ -1007,6 +1110,15 @@ void pollCommunications()
     {
       for (size_t i = 0; i < chunk.length(); i++)
         feedBleAuthChar(chunk[i]);
+    }
+    else
+#endif
+#if ENABLE_BT_PAIRING
+    if (blePairPending)
+    {
+      // Commands are gated until pairing is confirmed - matches
+      // BT-Classic's equivalent "if (btPairPending) continue;" above: the
+      // bytes are simply dropped rather than buffered for later.
     }
     else
 #endif

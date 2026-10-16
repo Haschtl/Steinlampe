@@ -86,6 +86,15 @@ export function useBle(): BleApi {
   const statusEndWaiterRef = useRef<(() => void) | null>(null);
   const statusSnapshotPagesRef = useRef(0);
   const statusEndSeenRef = useRef(false);
+  // Set when the firmware reports BLE_PAIR_PENDING| - it's deliberately
+  // holding this connection open, waiting for a physical switch/poti gesture
+  // to confirm a first-time pairing outside the trust grace window (see
+  // confirmPendingPairing in src/comms.cpp). Without this, refreshStatus()'s
+  // normal ~1.8s status-snapshot timeout would fire long before a human can
+  // react, reporting "Incomplete status snapshot" and disconnecting - which
+  // would just restart the firmware's own 20s pending window from zero on
+  // the next reconnect attempt, so the gesture could never actually catch up.
+  const blePairPendingRef = useRef(false);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
@@ -186,6 +195,10 @@ export function useBle(): BleApi {
     if (line.startsWith('TRUST_TOKEN|') && deviceRef.current?.id) {
       setStoredBleToken(deviceRef.current.id, line.slice('TRUST_TOKEN|'.length).trim());
     }
+    if (line.startsWith('BLE_PAIR_PENDING|') && !blePairPendingRef.current) {
+      blePairPendingRef.current = true;
+      toast.info('Lamp needs physical confirmation - toggle the switch or poti to pair');
+    }
   }, [parseStatus, pushLog]);
 
   const lastToast = useRef<string>('');
@@ -221,17 +234,31 @@ export function useBle(): BleApi {
         for (let attempt = 0; attempt < 2; attempt += 1) {
           statusSnapshotPagesRef.current = 0;
           statusEndSeenRef.current = false;
+          blePairPendingRef.current = false;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const completed = new Promise<boolean>((resolve) => {
+            const normalDeadline = Date.now() + 1800;
+            // Matches the firmware's own worst case (an 8s token-auth
+            // window, then a further 20s physical-gesture window - see
+            // BLE_TOKEN_AUTH_TIMEOUT_MS/BLE_PAIR_TIMEOUT_MS in comms.cpp),
+            // plus slack. Only applies once BLE_PAIR_PENDING| is actually
+            // seen - an ordinary connection still gets the short deadline.
+            const pendingDeadline = Date.now() + 32000;
+            const check = () => {
+              const deadline = blePairPendingRef.current ? pendingDeadline : normalDeadline;
+              if (Date.now() >= deadline) {
+                statusEndWaiterRef.current = null;
+                resolve(false);
+                return;
+              }
+              timer = setTimeout(check, 200);
+            };
             statusEndWaiterRef.current = () => {
               if (timer) clearTimeout(timer);
               statusEndWaiterRef.current = null;
               resolve(true);
             };
-            timer = setTimeout(() => {
-              statusEndWaiterRef.current = null;
-              resolve(false);
-            }, 1800);
+            timer = setTimeout(check, 200);
           });
 
           await sendCmd('status raw');

@@ -16,9 +16,17 @@
 //! If none of this completes in time, the firmware is almost certainly
 //! holding the connection open pending a valid token (unrecognized address,
 //! outside the ~60s post-boot grace window - see `BT_TRUST_GRACE_MS` in
-//! `include/settings.h`) and will disconnect on its own ~8s timeout
-//! (`BLE_TOKEN_AUTH_TIMEOUT_MS` in `src/comms.cpp`). That's a normal,
-//! expected outcome for an untrusted lamp, not an error to panic over - see
+//! `include/settings.h`). It might instead send `BLE_PAIR_PENDING|<addr>`,
+//! meaning it's waiting on a physical switch/poti gesture at the lamp
+//! itself instead (`confirmPendingPairing` in `src/comms.cpp`, the BLE
+//! counterpart of the BT-Classic pairing confirmation that already
+//! existed). That case gets a much longer deadline (`PENDING_PAIR_WAIT`)
+//! than the plain token wait (`STATUS_WAIT`), since it requires a human to
+//! actually walk over and touch the lamp rather than just an app replaying
+//! a cached token. Either way, the firmware will disconnect on its own if
+//! nothing arrives in time (`BLE_TOKEN_AUTH_TIMEOUT_MS`/
+//! `BLE_PAIR_TIMEOUT_MS` in `src/comms.cpp`), a normal, expected outcome
+//! for an untrusted lamp, not an error to panic over - see
 //! `HandshakeOutcome::PendingToken`.
 
 use std::time::Duration;
@@ -30,6 +38,13 @@ use tokio::time::timeout;
 /// How long to wait for `STATUS_END|` after sending `status raw`, matching
 /// the web client's `useBle.ts` timeout.
 pub const STATUS_WAIT: Duration = Duration::from_millis(1800);
+
+/// Extended deadline once `BLE_PAIR_PENDING|` is seen - matches the
+/// firmware's own worst case (an 8s token-auth window, then a further 20s
+/// physical-gesture window: `BLE_TOKEN_AUTH_TIMEOUT_MS`/
+/// `BLE_PAIR_TIMEOUT_MS` in `src/comms.cpp`), plus slack. Same value chosen
+/// in `useBle.ts` for the same reason - keep the two in sync.
+pub const PENDING_PAIR_WAIT: Duration = Duration::from_millis(32000);
 
 #[derive(Debug)]
 pub enum HandshakeOutcome {
@@ -68,7 +83,7 @@ pub async fn perform_handshake<P: Peripheral>(
 
     send_line(peripheral, cmd_char, "status raw").await?;
 
-    let deadline = tokio::time::Instant::now() + STATUS_WAIT;
+    let mut deadline = tokio::time::Instant::now() + STATUS_WAIT;
     let got_status_end = loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
@@ -76,6 +91,14 @@ pub async fn perform_handshake<P: Peripheral>(
         }
         match timeout(remaining, line_rx.recv()).await {
             Ok(Some(line)) if line.starts_with("STATUS_END|") => break true,
+            Ok(Some(line)) if line.starts_with("BLE_PAIR_PENDING|") => {
+                // Deliberately held pending a physical gesture, not a
+                // generic timeout - give it the longer budget instead of
+                // giving up and reconnecting, which would just restart the
+                // firmware's own pending window from zero.
+                deadline = tokio::time::Instant::now() + PENDING_PAIR_WAIT;
+                continue;
+            }
             Ok(Some(_)) => continue, // some other status/state line - keep waiting
             _ => break false,        // timed out or channel closed
         }

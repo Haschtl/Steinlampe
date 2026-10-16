@@ -55,9 +55,9 @@ void trustIssueBleToken();
 #endif
 
 /**
- * @brief Confirm a pending BT-Serial pairing via a hardware gesture (switch/poti).
+ * @brief Confirm a pending BT-Classic and/or BLE pairing via a hardware gesture (switch/poti).
  */
-void confirmBtPairing(const char *reason);
+void confirmPendingPairing(const char *reason);
 
 // Device names
 String getBleName();

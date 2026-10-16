@@ -92,15 +92,18 @@ pub async fn run_lamp_actor(
             }
             Err(ConnectError::PendingToken) => {
                 // Not a bug - the lamp just didn't trust this connection
-                // (outside its boot grace window, no valid stored token).
-                // Still counts toward the give-up threshold below - a
-                // lamp that's never going to trust us without a reboot
+                // (outside its boot grace window, no valid stored token,
+                // and nobody confirmed the BLE_PAIR_PENDING physical-gesture
+                // prompt in time either - see handshake.rs's doc comment).
+                // Still counts toward the give-up threshold below - a lamp
+                // that's never going to trust us without one of those
                 // shouldn't retry forever either.
                 state_tx.send_modify(|s| {
                     s.connection = ConnectionState::Reconnecting;
                     s.last_error = Some(
                         "lamp did not trust this connection - reboot it and reconnect within ~60s, \
-                         or wait for a stored token to work next time"
+                         toggle its switch/poti to confirm pairing, or wait for a stored token to \
+                         work next time"
                             .to_string(),
                     );
                 });
