@@ -101,6 +101,7 @@ mod tests {
             targets: vec!["lamp-1".to_string()],
             action: Action::On,
             quick_rule: None,
+            recheck_secs: Some(15),
         }];
         let text = toml::to_string_pretty(&RulesFile { rules: rules.clone() }).unwrap();
         let parsed: RulesFile = toml::from_str(&text).unwrap();

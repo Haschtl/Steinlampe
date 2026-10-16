@@ -546,12 +546,16 @@ fn handle_lamp_menu_event(id: &str, state: &Arc<Mutex<DaemonState>>, index: &Lam
 /// never built elsewhere and moved in. On each observed `Inactive` ->
 /// `Active` edge, fires every enabled `MicActive` rule exactly once (see
 /// PLAN.md's "Evaluation loop" note on why that's a *rising edge*, not a
-/// level check - a still-active mic must not keep re-firing every ~300ms).
+/// level check - a still-active mic must not keep re-firing every ~300ms),
+/// except for a rule with `recheck_secs` set, which also gets periodically
+/// re-fired for as long as the mic stays active; see
+/// `fire_active_rules`/`Rule::recheck_secs`.
 fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
     std::thread::spawn(move || {
         let mut provider = mic::default_provider();
         let mut last = MicActivity::Inactive;
         let mut was_erroring = false;
+        let mut last_fired: HashMap<Uuid, std::time::Instant> = HashMap::new();
         loop {
             match provider.poll() {
                 Ok(activity) => {
@@ -560,9 +564,12 @@ fn spawn_mic_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
                         was_erroring = false;
                     }
                     if last == MicActivity::Inactive && activity == MicActivity::Active {
-                        fire_rules_where(&state, |t| *t == Trigger::MicActive);
+                        fire_active_rules(&state, |t| *t == Trigger::MicActive, &mut last_fired, true);
                     } else if last == MicActivity::Active && activity == MicActivity::Inactive {
+                        last_fired.clear();
                         fire_rules_where(&state, |t| *t == Trigger::MicInactive);
+                    } else if activity == MicActivity::Active {
+                        fire_active_rules(&state, |t| *t == Trigger::MicActive, &mut last_fired, false);
                     }
                     last = activity;
                 }
@@ -588,6 +595,7 @@ fn spawn_camera_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
         let mut provider = quarzlampe_core::camera::default_provider();
         let mut last = quarzlampe_core::camera::CameraActivity::Inactive;
         let mut was_erroring = false;
+        let mut last_fired: HashMap<Uuid, std::time::Instant> = HashMap::new();
         loop {
             match provider.poll() {
                 Ok(activity) => {
@@ -597,9 +605,12 @@ fn spawn_camera_evaluation_loop(state: Arc<Mutex<DaemonState>>) {
                     }
                     use quarzlampe_core::camera::CameraActivity;
                     if last == CameraActivity::Inactive && activity == CameraActivity::Active {
-                        fire_rules_where(&state, |t| *t == Trigger::CameraActive);
+                        fire_active_rules(&state, |t| *t == Trigger::CameraActive, &mut last_fired, true);
                     } else if last == CameraActivity::Active && activity == CameraActivity::Inactive {
+                        last_fired.clear();
                         fire_rules_where(&state, |t| *t == Trigger::CameraInactive);
+                    } else if activity == CameraActivity::Active {
+                        fire_active_rules(&state, |t| *t == Trigger::CameraActive, &mut last_fired, false);
                     }
                     last = activity;
                 }
@@ -786,6 +797,55 @@ fn fire_rules_where(state: &Arc<Mutex<DaemonState>>, matches: impl Fn(&Trigger) 
     }
     for rule in matched {
         println!("[rules] firing \"{}\"", rule.name);
+        let line = action_to_command(&rule.action);
+        for lamp_key in &rule.targets {
+            guard.manager.send(lamp_key, LampCommand::SendLine(line.clone()));
+        }
+    }
+}
+
+/// Variant of `fire_rules_where` for a trigger that's held, not just
+/// edge-fired - `spawn_mic_evaluation_loop`/`spawn_camera_evaluation_loop`
+/// call this on every tick a level's condition is still true (not only on
+/// the rising edge), passing `force = true` for the edge tick itself and
+/// `false` on every subsequent one. With `force`, every enabled matching
+/// rule fires (same as `fire_rules_where`) and, if it has `recheck_secs`
+/// set, `last_fired` is seeded so its first periodic re-fire is a full
+/// interval away rather than immediate. Without `force`, only rules with
+/// `recheck_secs` set and whose interval has elapsed since `last_fired`
+/// fire - see `Rule::recheck_secs`'s doc comment for why this exists.
+/// `last_fired` is caller-owned (one `HashMap` per evaluation loop) so a
+/// falling edge can simply drop it and start clean on the next rise.
+fn fire_active_rules(
+    state: &Arc<Mutex<DaemonState>>,
+    matches: impl Fn(&Trigger) -> bool,
+    last_fired: &mut HashMap<Uuid, std::time::Instant>,
+    force: bool,
+) {
+    let guard = state.blocking_lock();
+    if guard.automations_paused {
+        return;
+    }
+    let now = std::time::Instant::now();
+    let due: Vec<_> = guard
+        .rules
+        .iter()
+        .filter(|r| r.enabled && r.triggers.iter().any(&matches))
+        .filter(|r| {
+            if force {
+                return true;
+            }
+            let Some(secs) = r.recheck_secs else { return false };
+            last_fired
+                .get(&r.id)
+                .map(|t| now.duration_since(*t) >= Duration::from_secs(secs as u64))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+    for rule in &due {
+        last_fired.insert(rule.id, now);
+        println!("[rules] firing \"{}\"{}", rule.name, if force { "" } else { " (recheck)" });
         let line = action_to_command(&rule.action);
         for lamp_key in &rule.targets {
             guard.manager.send(lamp_key, LampCommand::SendLine(line.clone()));

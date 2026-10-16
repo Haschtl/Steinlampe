@@ -114,6 +114,27 @@ pub struct Rule {
     /// a `rules.toml` saved before this field existed still loads fine.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quick_rule: Option<QuickRuleKind>,
+    /// If set, this rule's action is re-sent every `recheck_secs` seconds
+    /// for as long as the triggering condition stays true, not just once
+    /// on the rising edge. Only consulted for level-ish triggers evaluated
+    /// by a polling loop (currently `MicActive`/`CameraActive` - see
+    /// `app`'s `spawn_mic_evaluation_loop`/`spawn_camera_evaluation_loop`);
+    /// ignored for anything edge/event-only (`OnNotification`, `AtTime`,
+    /// ...), where "re-checking" wouldn't mean anything.
+    ///
+    /// Exists for the on-air multi-device case: several independent
+    /// machines each drive the same lamp off their own mic state, so one
+    /// machine's mic going inactive sends an unconditional "off" even
+    /// while another machine's mic is still active. A plain rising-edge
+    /// `MicActive` can't undo that by itself; periodically re-sending "on"
+    /// nudges the lamp back within one recheck interval. Not instant and
+    /// not flicker-free, but far simpler than giving the firmware actual
+    /// cross-device reference counting for one specific automation
+    /// pattern. `#[serde(default)]` so a `rules.toml` saved before this
+    /// field existed still loads, with no periodic re-fire (today's
+    /// behavior).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recheck_secs: Option<u32>,
 }
 
 fn deserialize_triggers<'de, D>(deserializer: D) -> Result<Vec<Trigger>, D::Error>
@@ -157,18 +178,30 @@ pub enum QuickRuleKind {
     TeamsNotification,
 }
 
+/// How often the on-air quick rule's `MicActive` side re-sends "on" while
+/// the mic stays active - see `Rule::recheck_secs`'s doc comment for why
+/// this exists at all. Short enough that another device's "off" gets
+/// corrected quickly, long enough not to spam the lamp with redundant
+/// writes every tick.
+const ON_AIR_RECHECK_SECS: u32 = 15;
+
 impl QuickRuleKind {
     pub const ALL: [QuickRuleKind; 2] = [Self::OnAir, Self::TeamsNotification];
 
-    /// `(Trigger, Action)` pairs this quick rule expands into for one
-    /// lamp - each becomes its own persisted `Rule` targeting just that
-    /// lamp.
-    pub fn rule_specs(&self) -> Vec<(Trigger, Action)> {
+    /// `(Trigger, Action, recheck_secs)` triples this quick rule expands
+    /// into for one lamp - each becomes its own persisted `Rule` targeting
+    /// just that lamp, with its `recheck_secs` field set from the third
+    /// element.
+    pub fn rule_specs(&self) -> Vec<(Trigger, Action, Option<u32>)> {
         match self {
-            Self::OnAir => vec![(Trigger::MicActive, Action::On), (Trigger::MicInactive, Action::Off)],
+            Self::OnAir => vec![
+                (Trigger::MicActive, Action::On, Some(ON_AIR_RECHECK_SECS)),
+                (Trigger::MicInactive, Action::Off, None),
+            ],
             Self::TeamsNotification => vec![(
                 Trigger::OnNotification { app_name_filter: Some("teams".to_string()) },
                 Action::Notify { pattern_ms: None, fade_ms: None },
+                None,
             )],
         }
     }

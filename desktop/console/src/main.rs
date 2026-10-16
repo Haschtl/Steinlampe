@@ -431,6 +431,11 @@ struct ConsoleApp {
     /// switches) just because the user happened to use the pencil-edit
     /// form instead of the switch itself.
     editing_rule_quick_rule: Option<QuickRuleKind>,
+    /// Same preservation story as `editing_rule_quick_rule` - there's no
+    /// form field for `Rule::recheck_secs` (only quick rules set it today,
+    /// see `build_quick_rule`), so Save must carry whatever the rule being
+    /// edited already had instead of silently zeroing it out.
+    editing_rule_recheck_secs: Option<u32>,
     // Music visualizer panel state.
     visualizer_enabled: bool,
     visualizer_targets: HashSet<String>,
@@ -572,6 +577,7 @@ impl ConsoleApp {
         self.editing_rule_id = Some(rule.id);
         self.editing_rule_enabled = rule.enabled;
         self.editing_rule_quick_rule = rule.quick_rule;
+        self.editing_rule_recheck_secs = rule.recheck_secs;
         self.new_rule_name = rule.name.clone();
         self.new_rule_targets = rule.targets.iter().cloned().collect();
         // Already-built `Trigger` values, not form fields - unlike the
@@ -731,6 +737,7 @@ impl ConsoleApp {
                     self.editing_rule_id = None;
                     self.editing_rule_enabled = true;
                     self.editing_rule_quick_rule = None;
+                    self.editing_rule_recheck_secs = None;
                     self.new_rule_name.clear();
                     self.new_rule_targets.clear();
                     self.new_rule_triggers.clear();
@@ -929,6 +936,7 @@ impl ConsoleApp {
                             self.show_new_rule = false;
                             self.editing_rule_id = None;
                             self.editing_rule_quick_rule = None;
+                            self.editing_rule_recheck_secs = None;
                         }
                         if ui.add_enabled(self.new_rule_valid(), egui::Button::new(t(lang, "rules.saveRule"))).clicked() {
                             let rule = Rule {
@@ -939,11 +947,13 @@ impl ConsoleApp {
                                 targets: self.new_rule_targets.iter().cloned().collect(),
                                 action: self.new_rule_action(),
                                 quick_rule: self.editing_rule_quick_rule,
+                                recheck_secs: self.editing_rule_recheck_secs,
                             };
                             self.new_rule_targets.clear();
                             self.show_new_rule = false;
                             self.editing_rule_id = None;
                             self.editing_rule_quick_rule = None;
+                            self.editing_rule_recheck_secs = None;
                             let _ = self.to_core.send(UiToCore::SaveRule(rule));
                         }
                     });
@@ -1187,7 +1197,7 @@ fn quick_rule_ids(rules: &[Rule], kind: QuickRuleKind, lamp_key: &str) -> Vec<Uu
 fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule> {
     kind.rule_specs()
         .into_iter()
-        .map(|(trigger, action)| {
+        .map(|(trigger, action, recheck_secs)| {
             let name_key = match (kind, &trigger) {
                 (QuickRuleKind::OnAir, Trigger::MicActive) => "quickRule.onAirRuleNameOn",
                 (QuickRuleKind::OnAir, Trigger::MicInactive) => "quickRule.onAirRuleNameOff",
@@ -1202,6 +1212,7 @@ fn build_quick_rule(lang: Lang, kind: QuickRuleKind, lamp_key: &str) -> Vec<Rule
                 targets: vec![lamp_key.to_string()],
                 action,
                 quick_rule: Some(kind),
+                recheck_secs,
             }
         })
         .collect()
@@ -1659,6 +1670,7 @@ fn main() -> eframe::Result<()> {
                 editing_rule_id: None,
                 editing_rule_enabled: true,
                 editing_rule_quick_rule: None,
+                editing_rule_recheck_secs: None,
                 visualizer_enabled: false,
                 visualizer_targets: HashSet::new(),
                 visualizer_gain: 4.0,
