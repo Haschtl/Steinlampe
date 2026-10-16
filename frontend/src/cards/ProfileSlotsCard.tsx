@@ -47,7 +47,7 @@ function previewText(p: ProfilePreview | undefined, t: (k: string, fb: string) =
 }
 
 export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmd, log, status } = useConnection();
+  const { sendCmd, log, status, refreshStatus } = useConnection();
   const { t } = useI18n();
   const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
@@ -84,7 +84,21 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   const handleLoad = (slot: number) => {
     setProfileSlot(String(slot));
     sendCmd(`profile load ${slot}`)
-      .then(() => setTimeout(refreshPreviews, 200))
+      .then(() => {
+        setTimeout(refreshPreviews, 200);
+        // The firmware does push an unsolicited status snapshot right
+        // after applying a profile (loadProfileSlot's announce path), so
+        // this is normally redundant - but that push has no delivery
+        // guarantee (one BLE notification among several dropping is not
+        // implausible) and nothing here was otherwise verifying it
+        // actually arrived. Explicitly re-requesting status is the same
+        // mechanism already used on connect, with its own retry/fallback -
+        // the one place this matters most is ramp settings (duration +
+        // ease type), since those only ever reach the UI through this
+        // kind of status push, never through live user interaction with
+        // this card.
+        refreshStatus().catch((e) => console.warn(e));
+      })
       .catch((e) => console.warn(e));
   };
 

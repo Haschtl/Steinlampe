@@ -85,6 +85,7 @@ export function useBle(): BleApi {
   const unsubRef = useRef<(() => void)[]>([]);
   const statusEndWaiterRef = useRef<(() => void) | null>(null);
   const statusSnapshotPagesRef = useRef(0);
+  const statusEndSeenRef = useRef(false);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
@@ -171,7 +172,15 @@ export function useBle(): BleApi {
     if (line.startsWith('STATUS|')) statusSnapshotPagesRef.current |= 1;
     else if (line.startsWith('STATUS1|')) statusSnapshotPagesRef.current |= 2;
     else if (line.startsWith('STATUS2|')) statusSnapshotPagesRef.current |= 4;
-    if (line.startsWith('STATUS_END|')) {
+    if (line.startsWith('STATUS_END|')) statusEndSeenRef.current = true;
+    // Only resolve once the END marker AND all three data pages have been
+    // seen - this used to fire on the END marker alone, so if STATUS| (the
+    // page carrying ramp_on_ms/ramp_off_ms/ramp_on_ease/ramp_off_ease among
+    // other fields) was still in flight behind it or got dropped, the
+    // refresh was reported "complete" without that page ever having
+    // arrived. Checked on every line (not just STATUS_END) since the two
+    // conditions can become true in either order.
+    if (statusEndSeenRef.current && statusSnapshotPagesRef.current === 7) {
       statusEndWaiterRef.current?.();
     }
     if (line.startsWith('TRUST_TOKEN|') && deviceRef.current?.id) {
@@ -211,6 +220,7 @@ export function useBle(): BleApi {
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
           statusSnapshotPagesRef.current = 0;
+          statusEndSeenRef.current = false;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const completed = new Promise<boolean>((resolve) => {
             statusEndWaiterRef.current = () => {
