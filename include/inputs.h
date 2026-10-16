@@ -5,10 +5,19 @@
 #include "settings.h"
 
 
-// Mirrors the first ROLE_POWER+BTN_TOGGLE button's debounced level (false if
-// none configured). Kept as an unconditional global since other subsystems
-// (idle-off gating in main.cpp, music auto-lamp in microphone.cpp, status in
-// print.cpp) read it regardless of which boards compile in a toggle switch.
+// Mirrors the debounced level of whichever ROLE_POWER+BTN_TOGGLE button
+// toggled most recently (false if none configured/none has toggled yet) -
+// deliberately last-acted-wins, not pinned to one particular button, so
+// multiple power-toggle switches on the same board (the multi-button slot
+// mechanism in pinout.h allows this) can coexist: whichever one the user
+// touched last decides this value. Kept as an unconditional global since
+// other subsystems (idle-off gating in main.cpp, music auto-lamp in
+// microphone.cpp, status in print.cpp) read it regardless of which boards
+// compile in a toggle switch. Contrast with firstPowerToggleButton()/
+// firstPowerToggleIndex() in inputs.cpp, which intentionally always mean
+// "the first configured one" for the handful of call sites (hardwareWantsOn,
+// syncLampToSwitch, the boot-time sync, the light-sleep wake pin) that need
+// one canonical button rather than "whichever was touched last".
 extern bool switchDebouncedState;
 
 #if ENABLE_BUTTONS

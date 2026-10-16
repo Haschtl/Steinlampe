@@ -492,6 +492,16 @@ void processStartupSwitch()
             if ((now - st.lastDebounceMs) >= SWITCH_DEBOUNCE_MS && st.debounced != st.raw)
             {
                 st.debounced = st.raw;
+                // Keep the switchDebouncedState mirror current even during
+                // the boot window - updateButtons() (where it's normally
+                // kept in sync) never runs while startupHoldActive, so a
+                // toggle in here - including the secure-boot reset gesture
+                // itself, which needs several - would otherwise leave the
+                // mirror stuck at its initButtons()-time value even after
+                // the window closes and the button's own debounced state
+                // has long since moved on.
+                if (BUTTONS[i].role == ROLE_POWER)
+                    switchDebouncedState = st.debounced;
                 if (!secureBootLatched && !secureBootWindowClosed)
                 {
                     secureBootToggleCount++;

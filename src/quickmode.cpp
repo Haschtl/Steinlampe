@@ -63,15 +63,20 @@ size_t nthEnabledQuickMode(size_t n)
 {
     size_t total = quickModeCount();
     size_t seen = 0;
+    size_t last = 0; // last enabled index seen so far; 0 if none (nothing enabled)
     for (size_t i = 0; i < total; ++i)
     {
         if (!isQuickEnabled(i))
             continue;
         if (seen == n)
             return i;
+        last = i;
         ++seen;
     }
-    return 0;
+    // n was out of range (>= enabledQuickModeCount()) - clamp to the last
+    // enabled entry rather than falling back to mode 0, which may not even
+    // be enabled.
+    return last;
 }
 
 size_t nextQuickMode(size_t from)
