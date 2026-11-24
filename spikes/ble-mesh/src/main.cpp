@@ -3,14 +3,30 @@
 //
 // Minimal Mesh Node: Config Server (mandatory on the primary element - the
 // Mesh spec requires it for AppKey binding during setup, see
-// esp_ble_mesh_config_model_api.h) + a Generic OnOff Server. "Just Works"
-// provisioning (no OOB, matching the firmware's own BLE pairing posture -
-// see src/comms.cpp's NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT)
-// choice there, same reasoning: neither side has a display or keypad).
+// esp_ble_mesh_config_model_api.h) + a Generic OnOff Server + a Vendor
+// Model. "Just Works" provisioning (no OOB, matching the firmware's own
+// BLE pairing posture - see src/comms.cpp's
+// NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT) choice there,
+// same reasoning: neither side has a display or keypad).
+//
+// The Generic OnOff Server proves standard Mesh models work at all (any
+// Mesh app/controller can bind to it with zero custom code on either
+// side). The Vendor Model is the other half of the real question: can a
+// lamp receive our *own* existing text command syntax ("mode 3", "bri
+// 50", ...) over Mesh, the same way it already does over the custom
+// BLE/BT/USB GATT protocol in comms.cpp? That's the piece that would let
+// one lamp's switch/poti input - via Mesh group publish, configured once
+// per lamp through a provisioner app - drive other lamps using our own
+// command language, not just generic on/off, without needing a
+// from-scratch Mesh Configuration Client in our own app (see the plan
+// discussion - that's a separate, bigger effort, deliberately not started
+// here).
 //
 // Success looks like: a provisioner app (e.g. nRF Mesh) finds this device
-// advertising unprovisioned, provisions it, binds an AppKey to the OnOff
-// model, and a Generic OnOff Set from the app prints a line here.
+// advertising unprovisioned, provisions it, binds an AppKey to both
+// models, and either a Generic OnOff Set or a raw write to the vendor
+// opcode (nRF Mesh's "Generic vendor model" raw-message feature) prints a
+// line here.
 //
 // Written against the real esp_ble_mesh/NimBLE headers (API shapes
 // verified by reading framework-arduinoespressif32-libs@5.5.0's headers
@@ -26,6 +42,7 @@ extern "C" {
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_defs.h"
 #include "esp_ble_mesh_generic_model_api.h"
+#include "esp_ble_mesh_networking_api.h"
 #include "esp_ble_mesh_provisioning_api.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -74,8 +91,27 @@ esp_ble_mesh_model_t rootModels[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoffPub, &onoffServer),
 };
 
+// Vendor Model: one receive-only opcode carrying a raw text command, same
+// syntax as every other transport in comms.cpp. Borrows Espressif's own
+// company ID (0x02E5, same one the composition below uses) - a real
+// product needs its own assigned company ID, fine for a spike. No publish
+// needed (this spike only receives), so no ESP_BLE_MESH_MODEL_PUB_DEFINE
+// for it - nullptr for pub/user_data is fine for a model that never
+// publishes and keeps no state of its own.
+constexpr uint16_t VENDOR_COMPANY_ID = 0x02E5;
+constexpr uint32_t VENDOR_OP_CMD = ESP_BLE_MESH_MODEL_OP_3(0x01, VENDOR_COMPANY_ID);
+
+esp_ble_mesh_model_op_t vendorOps[] = {
+    ESP_BLE_MESH_MODEL_OP(VENDOR_OP_CMD, 0),
+    ESP_BLE_MESH_MODEL_OP_END,
+};
+
+esp_ble_mesh_model_t vendorModels[] = {
+    ESP_BLE_MESH_VENDOR_MODEL(VENDOR_COMPANY_ID, 0x0001, vendorOps, NULL, NULL),
+};
+
 esp_ble_mesh_elem_t elements[] = {
-    ESP_BLE_MESH_ELEMENT(0, rootModels, ESP_BLE_MESH_MODEL_NONE),
+    ESP_BLE_MESH_ELEMENT(0, rootModels, vendorModels),
 };
 
 esp_ble_mesh_comp_t composition = {
@@ -111,6 +147,27 @@ void genericServerCallback(esp_ble_mesh_generic_server_cb_event_t event, esp_ble
     }
 }
 
+// Vendor models don't get their own typed callback like the Generic
+// Server models do - esp_ble_mesh_register_custom_model_callback() is the
+// one entry point for every vendor model's traffic, dispatched by opcode.
+void customModelCallback(esp_ble_mesh_model_cb_event_t event, esp_ble_mesh_model_cb_param_t *param) {
+    if (event != ESP_BLE_MESH_MODEL_OPERATION_EVT) {
+        ESP_LOGI(TAG, "custom model event %d", event);
+        return;
+    }
+    if (param->model_operation.opcode != VENDOR_OP_CMD) {
+        return;
+    }
+    String cmd;
+    for (uint16_t i = 0; i < param->model_operation.length; ++i) {
+        cmd += (char)param->model_operation.msg[i];
+    }
+    // Real integration would hand this to comms.cpp's shared
+    // handleCommand() dispatcher, same as every other transport - this
+    // spike only proves the message makes it here intact.
+    ESP_LOGI(TAG, "Vendor CMD -> \"%s\"", cmd.c_str());
+}
+
 void bleMeshStart() {
     ESP_LOGI(TAG, "initializing mesh (NimBLE host)...");
     esp_err_t err = esp_ble_mesh_init(&provision, &composition);
@@ -120,6 +177,7 @@ void bleMeshStart() {
     }
     ESP_ERROR_CHECK(esp_ble_mesh_register_prov_callback(provisioningCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_server_callback(genericServerCallback));
+    ESP_ERROR_CHECK(esp_ble_mesh_register_custom_model_callback(customModelCallback));
     err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ble_mesh_node_prov_enable failed: %d", err);

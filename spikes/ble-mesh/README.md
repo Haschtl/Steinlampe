@@ -1,10 +1,21 @@
 # BLE Mesh feasibility spike
 
-Throwaway, not part of the real quarzlampe firmware. Answers one question:
-does NimBLE (not Bluedroid) + a BLE Mesh Node with a Generic OnOff Server
-model actually provision and respond on real hardware - both chips the
-main firmware targets (`upesy_wroom`/classic ESP32, same as
-`quarzlampe`/`quarzlampe_rd03(d)`/`desk_lamp`; and `on_air`'s ESP32-S3)?
+Throwaway, not part of the real quarzlampe firmware. Answers two questions:
+
+1. Does NimBLE (not Bluedroid) + a BLE Mesh Node with a Generic OnOff
+   Server model actually provision and respond on real hardware - both
+   chips the main firmware targets (`upesy_wroom`/classic ESP32, same as
+   `quarzlampe`/`quarzlampe_rd03(d)`/`desk_lamp`; and `on_air`'s ESP32-S3)?
+2. Can a lamp receive its own existing text command syntax ("mode 3",
+   "bri 50", ...) over Mesh too, via a Vendor Model, the same way it
+   already does over the custom BLE/BT/USB GATT protocol in
+   `comms.cpp`? That's what would let one lamp's switch/poti input - via
+   Mesh group publish, configured once per lamp through a provisioner
+   app - drive other lamps using our own command language, not just
+   generic on/off, without building a from-scratch Mesh Configuration
+   Client into our own app (a separate, bigger effort if we ever want
+   the group/publish wiring itself done from our own GUI instead of a
+   generic provisioner app's).
 
 Background/why this exists at all: see the ble-mesh plan this was scaffolded
 from. Short version - the official precompiled `framework = arduino`-only
@@ -52,7 +63,8 @@ Fixed along the way, in order:
    `loop()`; both are in `sdkconfig.defaults` now, with comments).
 
 With all of that: **`pio run -e upesy_wroom` and `-e on_air` both
-succeed** - `main.cpp` compiled cleanly against the real
+succeed** - `main.cpp` (Config Server + Generic OnOff Server + a Vendor
+Model carrying raw text commands) compiled cleanly against the real
 `esp_ble_mesh`/NimBLE API (not just checked by hand against headers
 anymore) for both chips, linked, and produced `firmware.bin`.
 `upesy_wroom`: RAM 12% (40KB/320KB), Flash 67% (700KB/1MB app partition).
@@ -107,15 +119,29 @@ take a while the first time.
    initialized"` and `"provisioning enabled"`.
 2. Open a BLE Mesh provisioner app (e.g. nRF Mesh on Android/iOS), scan for
    unprovisioned devices, and provision this one.
-3. In the app, bind an AppKey to the node's Generic OnOff Server model
-   (standard nRF Mesh flow: add the node to a group/network, create an
-   AppKey if one doesn't exist, bind it to the model).
+3. In the app, bind an AppKey to the node's two models (standard nRF Mesh
+   flow: add the node to a group/network, create an AppKey if one doesn't
+   exist, bind it to each model that should use it - the Generic OnOff
+   Server, and the unnamed/unknown "Vendor Model" the app will likely show
+   without a friendly name since it doesn't recognize our company
+   ID/opcode).
 4. Send a Generic OnOff Set (toggle) from the app - the serial monitor
    should print `"Generic OnOff Set -> 1"` / `"-> 0"`.
+5. Exercising the Vendor Model specifically is the part most likely to
+   need a different tool than nRF Mesh's own GUI - that app is built
+   around model types it recognizes, and may not expose a "send this raw
+   opcode/payload" control for an unknown vendor model. If it doesn't,
+   either a second ESP32 running a small Vendor Model *client* sketch
+   (sends `VENDOR_OP_CMD` with a test string to this node's address) or a
+   lower-level tool (e.g. a Python mesh library, or nRF Mesh's "proxy
+   filter"/raw-PDU features if your version has them) would be needed -
+   untried, flag what you find.
 
-If step 2-4 work: the core premise holds, and it's worth moving to the real
-decision gate (see the plan - does `comms.cpp` need porting off
-NimBLE-Arduino onto the native API this spike uses, project restructuring,
-which models to wire to the pattern engine). If provisioning or the OnOff
-roundtrip never works even after fixing compile errors, that's the answer
-too - report back what specifically failed and where.
+If steps 2-4 (and ideally 5) work: the core premise holds, and it's worth
+moving to the real decision gate (see the plan - does `comms.cpp` need
+porting off NimBLE-Arduino onto the native API this spike uses, project
+restructuring, which models to wire to the pattern engine, and whether the
+Vendor Model route is the right one for lamp-to-lamp relaying vs. sticking
+to generic models). If provisioning or either roundtrip never works even
+after fixing compile errors, that's the answer too - report back what
+specifically failed and where.
