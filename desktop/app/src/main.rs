@@ -38,7 +38,7 @@ use chrono::Timelike;
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
-use quarzlampe_core::ble::{FileTokenStore, LampCommand, LampManager};
+use quarzlampe_core::ble::{LampCommand, LampManager};
 use quarzlampe_core::i18n::{t, Lang};
 use quarzlampe_core::ipc::{DaemonState, IpcServer};
 use quarzlampe_core::self_update;
@@ -60,16 +60,6 @@ use platform::SystemEvent;
 mod autostart;
 mod install;
 
-/// Where lamp pairing tokens are cached between runs. Separate from the
-/// IPC discovery file (`ipc::discovery_file_path`) - this one needs to
-/// survive across daemon restarts, that one is republished fresh every
-/// time the daemon starts.
-fn token_store_dir() -> anyhow::Result<std::path::PathBuf> {
-    let dirs = directories::ProjectDirs::from("dev", "quarzlampe", "quarzlampe")
-        .ok_or_else(|| anyhow::anyhow!("could not determine a config directory on this platform"))?;
-    Ok(dirs.data_dir().join("lamp-tokens"))
-}
-
 /// Starts the async core (BLE manager + IPC server) on its own tokio
 /// runtime, on a background OS thread - the main thread stays free to run
 /// the tray's synchronous event-polling loop below. Hands the constructed
@@ -87,14 +77,7 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
             }
         };
         rt.block_on(async {
-            let tokens = match token_store_dir().and_then(|dir| FileTokenStore::new(dir).map_err(Into::into)) {
-                Ok(t) => Arc::new(t),
-                Err(e) => {
-                    eprintln!("[daemon] failed to open token store: {e}");
-                    return;
-                }
-            };
-            let manager = match LampManager::new(tokens).await {
+            let manager = match LampManager::new().await {
                 Ok(m) => m,
                 Err(e) => {
                     eprintln!("[daemon] failed to initialize BLE manager: {e}");
@@ -446,7 +429,7 @@ fn status_text(lang: Lang, connection: &ConnectionState, on: Option<bool>, brigh
             }
         }
         ConnectionState::Connecting => t(lang, "status.connecting").to_string(),
-        ConnectionState::AwaitingTrustToken => t(lang, "status.awaitingTrust").to_string(),
+        ConnectionState::AwaitingPairing => t(lang, "status.awaitingTrust").to_string(),
         ConnectionState::Reconnecting => t(lang, "status.reconnecting").to_string(),
         ConnectionState::ReconnectFailed => t(lang, "status.reconnectFailed").to_string(),
         ConnectionState::Disconnected => t(lang, "status.disconnected").to_string(),

@@ -1,12 +1,11 @@
 //! One tokio task per connected lamp. Owns the `btleplug` peripheral handle,
-//! (re)connects with capped exponential backoff, runs the trust/token
+//! (re)connects with capped exponential backoff, runs the trust-check
 //! handshake (`handshake.rs`), forwards `STATE|` updates into a
 //! `watch::Sender<LampState>`, and relays outgoing commands from an
 //! `mpsc` channel. This is the piece the M1 probe deliberately didn't
 //! build (it proved the handshake logic standalone) - the actor/channel
 //! wiring a real daemon needs.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use btleplug::api::{Characteristic, Peripheral as _, WriteType};
@@ -16,7 +15,6 @@ use tokio::sync::{mpsc, watch};
 
 use crate::ble::handshake::{self, HandshakeOutcome};
 use crate::ble::line_codec::LineCodec;
-use crate::ble::trust::FileTokenStore;
 use crate::ble::uuids;
 use crate::state::{parse_state_line, ConnectionState, LampState};
 
@@ -58,11 +56,9 @@ fn set_disconnected_with_error(state_tx: &watch::Sender<LampState>, err: impl To
 /// rejection, GATT error, notification stream ending) triggers a
 /// reconnect-with-backoff instead of returning.
 pub async fn run_lamp_actor(
-    lamp_key: String,
     peripheral: Peripheral,
     mut cmd_rx: mpsc::UnboundedReceiver<LampCommand>,
     state_tx: watch::Sender<LampState>,
-    tokens: Arc<FileTokenStore>,
 ) {
     let mut backoff = INITIAL_BACKOFF;
     let mut consecutive_failures: u32 = 0;
@@ -75,7 +71,7 @@ pub async fn run_lamp_actor(
         // instead of falling through here. Kept as a `match` purely for
         // the per-cause state/error reporting, not because any arm skips
         // the `consecutive_failures` bump that follows.
-        match connect_once(&peripheral, &lamp_key, &tokens).await {
+        match connect_once(&peripheral).await {
             Ok((cmd_char, mut line_rx)) => {
                 backoff = INITIAL_BACKOFF; // reset after a successful connect
                 consecutive_failures = 0;
@@ -90,20 +86,19 @@ pub async fn run_lamp_actor(
                     }
                 }
             }
-            Err(ConnectError::PendingToken) => {
+            Err(ConnectError::NotTrusted) => {
                 // Not a bug - the lamp just didn't trust this connection
-                // (outside its boot grace window, no valid stored token,
-                // and nobody confirmed the BLE_PAIR_PENDING physical-gesture
-                // prompt in time either - see handshake.rs's doc comment).
-                // Still counts toward the give-up threshold below - a lamp
-                // that's never going to trust us without one of those
-                // shouldn't retry forever either.
+                // (outside its boot grace window and nobody confirmed the
+                // BLE_PAIR_PENDING physical-gesture prompt in time either -
+                // see handshake.rs's doc comment). Still counts toward the
+                // give-up threshold below - a lamp that's never going to
+                // trust us without a gesture confirmation shouldn't retry
+                // forever either.
                 state_tx.send_modify(|s| {
-                    s.connection = ConnectionState::Reconnecting;
+                    s.connection = ConnectionState::AwaitingPairing;
                     s.last_error = Some(
                         "lamp did not trust this connection - reboot it and reconnect within ~60s, \
-                         toggle its switch/poti to confirm pairing, or wait for a stored token to \
-                         work next time"
+                         or toggle its switch/poti to confirm pairing"
                             .to_string(),
                     );
                 });
@@ -168,7 +163,7 @@ pub async fn run_lamp_actor(
 enum ConnectError {
     /// The handshake completed but the lamp didn't trust us - not a
     /// transport-level failure, so kept distinct from `Other`.
-    PendingToken,
+    NotTrusted,
     Other(anyhow::Error),
 }
 
@@ -183,11 +178,7 @@ impl From<btleplug::Error> for ConnectError {
     }
 }
 
-async fn connect_once(
-    peripheral: &Peripheral,
-    lamp_key: &str,
-    tokens: &FileTokenStore,
-) -> Result<(Characteristic, mpsc::UnboundedReceiver<String>), ConnectError> {
+async fn connect_once(peripheral: &Peripheral) -> Result<(Characteristic, mpsc::UnboundedReceiver<String>), ConnectError> {
     peripheral.connect().await?;
     peripheral.discover_services().await?;
 
@@ -227,16 +218,10 @@ async fn connect_once(
         });
     }
 
-    let stored_token = tokens.load(lamp_key);
     let mut line_rx = line_rx;
-    match handshake::perform_handshake(peripheral, &cmd_char, &mut line_rx, stored_token.as_deref()).await {
-        Ok(HandshakeOutcome::Trusted { fresh_token }) => {
-            if let Some(tok) = fresh_token {
-                let _ = tokens.save(lamp_key, &tok);
-            }
-            Ok((cmd_char, line_rx))
-        }
-        Ok(HandshakeOutcome::PendingToken) => Err(ConnectError::PendingToken),
+    match handshake::perform_handshake(peripheral, &cmd_char, &mut line_rx).await {
+        Ok(HandshakeOutcome::Trusted) => Ok((cmd_char, line_rx)),
+        Ok(HandshakeOutcome::NotTrusted) => Err(ConnectError::NotTrusted),
         Err(e) => Err(ConnectError::Other(e)),
     }
 }

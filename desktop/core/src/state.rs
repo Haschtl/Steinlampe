@@ -15,11 +15,14 @@ pub enum ConnectionState {
     #[default]
     Disconnected,
     Connecting,
-    /// Connection is up at the GATT level, but the lamp hasn't trusted it
-    /// yet - see `handshake::HandshakeOutcome::PendingToken`. The firmware
-    /// will likely disconnect on its own ~8s timeout if no valid token
-    /// arrives.
-    AwaitingTrustToken,
+    /// Connection is up at the GATT level and bonded/encrypted, but the
+    /// lamp hasn't trusted this identity yet - see
+    /// `handshake::HandshakeOutcome::NotTrusted`. Outside its ~60s
+    /// post-boot grace window, the lamp holds the link open for up to 20s
+    /// waiting for someone to confirm via its switch/poti
+    /// (`confirmPendingPairing` in `src/comms.cpp`), then disconnects on
+    /// its own if nobody does.
+    AwaitingPairing,
     Connected,
     Reconnecting,
     /// Gave up after `lamp_actor::MAX_CONSECUTIVE_FAILURES` connection

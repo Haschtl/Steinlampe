@@ -1144,7 +1144,7 @@ fn status_visual(lang: Lang, connection: &str) -> (egui::Color32, &'static str) 
         "connecting" => (WARNING, t(lang, "status.connecting")),
         "reconnecting" => (WARNING, t(lang, "status.reconnecting")),
         "reconnect_failed" => (egui::Color32::from_rgb(0xF2, 0x55, 0x5A), t(lang, "status.reconnectFailed")),
-        "awaiting_trust_token" => (WARNING, t(lang, "status.awaitingTrust")),
+        "awaiting_pairing" => (WARNING, t(lang, "status.awaitingTrust")),
         "not_in_range" => (MUTED, t(lang, "status.notInRange")),
         _ => (MUTED, t(lang, "status.disconnected")),
     }

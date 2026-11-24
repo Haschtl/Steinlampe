@@ -4,7 +4,6 @@
 //! console.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -14,7 +13,6 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::ble::lamp_actor::{run_lamp_actor, LampCommand};
-use crate::ble::trust::FileTokenStore;
 use crate::ble::uuids;
 use crate::config::{self, KnownLamp};
 use crate::state::LampState;
@@ -39,7 +37,6 @@ pub struct LampHandle {
 
 pub struct LampManager {
     adapter: Adapter,
-    tokens: Arc<FileTokenStore>,
     lamps: HashMap<String, LampHandle>,
     /// Peripherals seen by the most recent `scan()`, keyed by lamp_key, so
     /// `connect_by_key` (driven by an IPC request that only carries the
@@ -58,7 +55,7 @@ pub struct LampManager {
 }
 
 impl LampManager {
-    pub async fn new(tokens: Arc<FileTokenStore>) -> anyhow::Result<Self> {
+    pub async fn new() -> anyhow::Result<Self> {
         let manager = Manager::new().await?;
         let adapter = manager
             .adapters()
@@ -74,7 +71,7 @@ impl LampManager {
             .into_iter()
             .map(|k| (k.lamp_key, k.name))
             .collect();
-        Ok(Self { adapter, tokens, lamps: HashMap::new(), scanned: HashMap::new(), known })
+        Ok(Self { adapter, lamps: HashMap::new(), scanned: HashMap::new(), known })
     }
 
     /// Records a lamp as known (if it isn't already, under this exact
@@ -146,8 +143,7 @@ impl LampManager {
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (state_tx, state_rx) = watch::channel(LampState::default());
-        let tokens = Arc::clone(&self.tokens);
-        let join = tokio::spawn(run_lamp_actor(lamp_key.to_string(), peripheral, cmd_rx, state_tx, tokens));
+        let join = tokio::spawn(run_lamp_actor(peripheral, cmd_rx, state_tx));
 
         self.lamps.insert(
             lamp_key.to_string(),

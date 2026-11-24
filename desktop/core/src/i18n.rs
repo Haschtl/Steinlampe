@@ -61,7 +61,7 @@ dict! {
     "status.connecting" => ["Connecting\u{2026}", "Verbindet\u{2026}"],
     "status.reconnecting" => ["Reconnecting\u{2026}", "Verbindet erneut\u{2026}"],
     "status.reconnectFailed" => ["Couldn't reconnect", "Verbindung fehlgeschlagen"],
-    "status.awaitingTrust" => ["Awaiting trust token\u{2026}", "Warte auf Trust-Token\u{2026}"],
+    "status.awaitingTrust" => ["Awaiting pairing confirmation\u{2026}", "Warte auf Pairing-Bestätigung\u{2026}"],
     "status.disconnected" => ["Disconnected", "Getrennt"],
     "status.notInRange" => ["Not in range", "Nicht in Reichweite"],
     "status.on" => ["On", "An"],

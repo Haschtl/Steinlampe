@@ -1,16 +1,13 @@
 //! M1 terminal probe: exercise the BLE core against a real lamp without any
 //! GUI. Scans for the lamp's service UUID, connects, replicates the
-//! trust/token reconnect dance (`quarzlampe_core::ble::handshake`), then
-//! drops into an interactive command prompt.
+//! trust-check dance (`quarzlampe_core::ble::handshake`), then drops into
+//! an interactive command prompt.
 //!
 //! Usage:
 //!   cargo run -p quarzlampe-core --example probe
 //!
 //! Commands once connected:
 //!   <any text>   -> sent as a raw command line to the lamp (e.g. "on", "off")
-//!   cleartoken   -> deletes the cached token for this lamp, so a later run
-//!                   can be used to verify the "untrusted outside the boot
-//!                   grace window" rejection path
 //!   quit         -> disconnect and exit
 
 use std::io::Write as _;
@@ -20,14 +17,12 @@ use anyhow::Context;
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::Manager;
 use futures::StreamExt;
-use quarzlampe_core::ble::{perform_handshake, send_line, uuids, FileTokenStore, HandshakeOutcome, LineCodec};
+use quarzlampe_core::ble::{perform_handshake, send_line, uuids, HandshakeOutcome, LineCodec};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let tokens = FileTokenStore::new(std::env::temp_dir().join("quarzlampe-probe-tokens"))?;
-
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
     let adapter = adapters.into_iter().next().context("no Bluetooth adapter found")?;
@@ -75,8 +70,6 @@ async fn main() -> anyhow::Result<()> {
     let (peripheral, name) = candidates.into_iter().nth(chosen).unwrap();
     println!("[probe] connecting to {name}...");
 
-    let lamp_key = format!("{:?}", peripheral.id());
-
     peripheral.connect().await.context("GATT connect failed")?;
     peripheral.discover_services().await.context("service discovery failed")?;
 
@@ -93,6 +86,9 @@ async fn main() -> anyhow::Result<()> {
         .clone();
 
     // Subscribe BEFORE any write, matching useBle.ts's connect ordering.
+    // Both characteristics require encryption now (NimBLE bonding, forced
+    // by the firmware's onConnect) - this is where the OS Bluetooth stack
+    // transparently pairs if this adapter/lamp pair hasn't bonded before.
     peripheral.subscribe(&status_char).await.context("subscribe failed")?;
     println!("[probe] connected, subscribed to status notifications.");
 
@@ -116,35 +112,22 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    let stored_token = tokens.load(&lamp_key);
-    println!(
-        "[probe] {}",
-        if stored_token.is_some() {
-            "replaying cached token as first write"
-        } else {
-            "no cached token for this lamp - relying on the boot trust window"
-        }
-    );
-
-    match perform_handshake(&peripheral, &cmd_char, &mut line_rx, stored_token.as_deref()).await? {
-        HandshakeOutcome::Trusted { fresh_token } => {
+    match perform_handshake(&peripheral, &cmd_char, &mut line_rx).await? {
+        HandshakeOutcome::Trusted => {
             println!("[probe] status snapshot complete - connection trusted.");
-            if let Some(tok) = fresh_token {
-                tokens.save(&lamp_key, &tok)?;
-                println!("[probe] cached a fresh token for next run.");
-            }
         }
-        HandshakeOutcome::PendingToken => {
+        HandshakeOutcome::NotTrusted => {
             println!(
                 "[probe] no STATUS_END| within the timeout - the lamp is probably holding \
-                 the connection pending a valid token (outside its ~60s boot window) and will \
-                 disconnect shortly. Re-pair by rebooting the lamp and re-running this probe \
-                 within 60s."
+                 the connection pending trust (outside its ~60s boot window, and nobody \
+                 confirmed a physical-gesture prompt in time either) and will disconnect \
+                 shortly. Re-pair by rebooting the lamp and re-running this probe within 60s, \
+                 or by toggling its switch/poti within ~20s of connecting."
             );
         }
     }
 
-    println!("\n[probe] interactive mode - type a command (e.g. \"on\", \"off\"), \"cleartoken\", or \"quit\".");
+    println!("\n[probe] interactive mode - type a command (e.g. \"on\", \"off\"), or \"quit\".");
     let mut stdin_lines = BufReader::new(tokio::io::stdin()).lines();
     loop {
         print!("> ");
@@ -159,11 +142,6 @@ async fn main() -> anyhow::Result<()> {
                         }
                         if cmd == "quit" {
                             break;
-                        }
-                        if cmd == "cleartoken" {
-                            tokens.clear(&lamp_key);
-                            println!("[probe] cleared cached token for {lamp_key}");
-                            continue;
                         }
                         if let Err(e) = send_line(&peripheral, &cmd_char, cmd).await {
                             eprintln!("[probe] write failed: {e}");

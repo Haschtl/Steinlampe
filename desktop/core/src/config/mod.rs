@@ -47,10 +47,10 @@ pub fn save_rules(rules: &[Rule]) -> anyhow::Result<()> {
 /// One lamp `LampManager` has ever successfully connected to - just enough
 /// to show it in the console as a known device while it's out of range,
 /// the same way a phone's Bluetooth settings list a paired device whether
-/// or not it's currently nearby. Deliberately separate from
-/// `FileTokenStore` (which only keeps the pairing token, under an opaque
-/// per-lamp filename, with no name attached) - see its own doc comment for
-/// why that one stayed minimal.
+/// or not it's currently nearby. There's no separate app-level pairing
+/// token to track anymore (the firmware does real BLE bonding now, which
+/// `btleplug`/the OS Bluetooth stack handles on its own) - this is purely
+/// a friendly-name cache.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct KnownLamp {
     pub lamp_key: String,

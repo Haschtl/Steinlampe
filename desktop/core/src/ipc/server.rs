@@ -130,7 +130,7 @@ fn connection_state_label(state: &ConnectionState) -> String {
     match state {
         ConnectionState::Disconnected => "disconnected",
         ConnectionState::Connecting => "connecting",
-        ConnectionState::AwaitingTrustToken => "awaiting_trust_token",
+        ConnectionState::AwaitingPairing => "awaiting_pairing",
         ConnectionState::Connected => "connected",
         ConnectionState::Reconnecting => "reconnecting",
         ConnectionState::ReconnectFailed => "reconnect_failed",
