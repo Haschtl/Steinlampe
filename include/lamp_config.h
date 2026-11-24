@@ -13,6 +13,18 @@
 #define ENABLE_BT_SERIAL 1
 #endif
 
+// NimBLE (ENABLE_BLE's implementation since the migration off the Bluedroid
+// BLE stack) frees the Classic-BT (BR/EDR) controller memory on init
+// (NimBLEDevice::init() -> esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT)
+// on the original ESP32) and brings the controller up BLE-only. That makes it
+// mutually exclusive with BluetoothSerial/SPP on the same chip - there's no
+// partial/degraded combination, one of the two just never starts. Fail the
+// build instead of leaving that to a silent runtime surprise; pick one via
+// build_flags (-DENABLE_BLE=0 or -DENABLE_BT_SERIAL=0).
+#if ENABLE_BLE && ENABLE_BT_SERIAL
+#error "ENABLE_BLE and ENABLE_BT_SERIAL cannot both be 1: NimBLE frees the Classic-BT controller memory on init. Set one of them to 0."
+#endif
+
 // Opt-in: lets a BLE client re-authenticate outside the post-boot trust grace
 // window using a token issued during an earlier grace-window connection,
 // instead of only trusting a remembered MAC address. Needed because unbonded

@@ -6,7 +6,7 @@
 #include "presence_ble.h"
 
 #if ENABLE_BLE
-#include <BLEDevice.h>
+#include <NimBLEDevice.h>
 #endif
 
 // PresenceBLE tracking
@@ -106,20 +106,24 @@ bool presenceBleScanOnce()
 #if ENABLE_BLE
     if (!presenceBleHasDevices())
         return false;
-    BLEScan *scan = BLEDevice::getScan();
+    NimBLEScan *scan = NimBLEDevice::getScan();
     if (!scan)
         return false;
-    const uint32_t SCAN_TIME_S = 3;
+    // NimBLE scan durations are in milliseconds (the classic Bluedroid BLEScan
+    // lib this used to call took seconds for the same start()/duration param).
+    const uint32_t SCAN_TIME_MS = 3000;
     scan->setActiveScan(true);
     scan->setInterval(320);
     scan->setWindow(80);
-    BLEScanResults res = scan->start(SCAN_TIME_S, false);
+    NimBLEScanResults res = scan->getResults(SCAN_TIME_MS, false);
     bool found = false;
     for (int i = 0; i < res.getCount(); ++i)
     {
-        BLEAdvertisedDevice d = res.getDevice(i);
-        String addr = d.getAddress().toString().c_str();
-        int rssi = d.getRSSI();
+        const NimBLEAdvertisedDevice *d = res.getDevice(i);
+        if (!d)
+            continue;
+        String addr = d->getAddress().toString().c_str();
+        int rssi = d->getRSSI();
         if (presenceBleIsTarget(addr) && rssi >= presenceBleRssiThreshold)
         {
             found = true;

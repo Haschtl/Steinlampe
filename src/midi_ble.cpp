@@ -4,9 +4,7 @@
 
 #include "comms.h"
 
-#include <BLEAdvertising.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
+#include <NimBLEDevice.h>
 
 void handleCommand(String line);
 
@@ -22,7 +20,7 @@ namespace
   constexpr uint8_t CC_BRIGHTNESS = 7;    // Channel volume maps to brightness
   constexpr uint8_t CC_MODE = 20;         // Maps to mode 1..8
 
-  BLECharacteristic *midiChar = nullptr;
+  NimBLECharacteristic *midiChar = nullptr;
 
   void dispatchCommand(const String &cmd)
   {
@@ -126,25 +124,26 @@ namespace
     }
   }
 
-  class MidiCallbacks : public BLECharacteristicCallbacks
+  class MidiCallbacks : public NimBLECharacteristicCallbacks
   {
-    void onWrite(BLECharacteristic *c) override
+    void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &connInfo) override
     {
-      std::string val = c->getValue();
-      if (val.empty())
+      (void)connInfo;
+      NimBLEAttValue val = c->getValue();
+      if (val.length() == 0)
         return;
-      handleMidiMessage(reinterpret_cast<const uint8_t *>(val.data()), val.size());
+      handleMidiMessage(val.data(), val.length());
     }
   };
 } // namespace
 
-void setupBleMidi(BLEServer *server, BLEAdvertising *advertising)
+void setupBleMidi(NimBLEServer *server, NimBLEAdvertising *advertising)
 {
   if (!server)
     return;
-  BLEService *svc = server->createService(MIDI_SERVICE_UUID);
+  NimBLEService *svc = server->createService(MIDI_SERVICE_UUID);
   midiChar = svc->createCharacteristic(MIDI_CHAR_UUID,
-                                       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+                                       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   midiChar->setCallbacks(new MidiCallbacks());
   svc->start();
   if (advertising)

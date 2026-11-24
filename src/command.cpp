@@ -28,7 +28,7 @@
 #include "demo.h"
 
 #if ENABLE_BLE
-#include <BLEDevice.h>
+#include <NimBLEDevice.h>
 #endif
 
 // SOS shortcut snapshot

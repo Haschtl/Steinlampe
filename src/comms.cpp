@@ -20,11 +20,7 @@
 #endif
 
 #if ENABLE_BLE
-#include <BLEAdvertising.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #if ENABLE_BLE_TRUST_TOKEN
@@ -235,9 +231,9 @@ void setBleName(const String &name)
   {
     bleName = name;
     // Live rename of advertisement can be flaky; store for next restart.
-    if (BLEDevice::getInitialized())
+    if (NimBLEDevice::isInitialized())
     {
-      auto *adv = BLEDevice::getAdvertising();
+      auto *adv = NimBLEDevice::getAdvertising();
       if (adv)
       {
         adv->stop();
@@ -382,9 +378,9 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 #endif
 
 #if ENABLE_BLE
-BLEServer *bleServer = nullptr;
-BLECharacteristic *bleCommandCharacteristic = nullptr;
-BLECharacteristic *bleStatusCharacteristic = nullptr;
+NimBLEServer *bleServer = nullptr;
+NimBLECharacteristic *bleCommandCharacteristic = nullptr;
+NimBLECharacteristic *bleStatusCharacteristic = nullptr;
 bool bleClientConnected = false;
 // Most recent BLE client address
 String bleLastAddr;
@@ -395,9 +391,9 @@ static uint32_t bleLastNotifyMs = 0;
 static SemaphoreHandle_t bleNotifyMutex = nullptr;
 static constexpr size_t BLE_NOTIFY_QUEUE_MAX = 64;
 static constexpr uint32_t BLE_NOTIFY_INTERVAL_MS = 8;
-// Matches the Bluedroid controller's default CONFIG_BTDM_CTRL_BLE_MAX_CONN (not
-// overridden in this project's sdkconfig). Keeps us from re-arming advertising
-// once the controller can't accept another BLE link anyway.
+// Matches NimBLE's default CONFIG_BT_NIMBLE_MAX_CONNECTIONS (not overridden in
+// this project's sdkconfig). Keeps us from re-arming advertising once the
+// controller can't accept another BLE link anyway.
 static constexpr uint8_t BLE_MAX_CONCURRENT_CLIENTS = 3;
 
 static void queueBleNotification(const String &line)
@@ -460,13 +456,14 @@ static void flushBleNotification()
   }
 
   size_t chunkSize = 20;
-  const auto peers = bleServer->getPeerDevices(false);
+  const auto peers = bleServer->getPeerDevices();
   if (!peers.empty())
   {
     chunkSize = 514;
-    for (const auto &peer : peers)
+    for (uint16_t connHandle : peers)
     {
-      size_t peerChunkSize = peer.second.mtu > 3 ? peer.second.mtu - 3 : 20;
+      uint16_t mtu = bleServer->getPeerMTU(connHandle);
+      size_t peerChunkSize = mtu > 3 ? (size_t)mtu - 3 : 20;
       if (peerChunkSize < chunkSize)
         chunkSize = peerChunkSize;
     }
@@ -475,10 +472,18 @@ static void flushBleNotification()
   size_t remaining = bleNotifyCurrent.length() - bleNotifyOffset;
   size_t length = remaining < chunkSize ? remaining : chunkSize;
   const uint8_t *data = reinterpret_cast<const uint8_t *>(bleNotifyCurrent.c_str() + bleNotifyOffset);
-  bleStatusCharacteristic->setValue(const_cast<uint8_t *>(data), length);
-  bleStatusCharacteristic->notify();
-  bleNotifyOffset += length;
+  // NimBLECharacteristic::notify() returns whether the stack actually accepted
+  // the chunk. Only advance past it on success - on a congested link (this
+  // drains every 8ms, faster than most negotiated connection intervals), the
+  // old Bluedroid BLECharacteristic::notify() had no way to report that back,
+  // so a dropped chunk here used to be silently skipped instead of retried,
+  // corrupting the line downstream. Leaving bleNotifyCurrent/Offset untouched
+  // on failure just retries the same chunk on the next tick.
+  bool sent = bleStatusCharacteristic->notify(data, length);
   bleLastNotifyMs = now;
+  if (!sent)
+    return;
+  bleNotifyOffset += length;
 
   if (bleNotifyOffset >= bleNotifyCurrent.length())
   {
@@ -578,32 +583,12 @@ static void feedBleAuthChar(char c)
 /**
  * @brief Handles BLE server connection events.
  */
-class LampBleServerCallbacks : public BLEServerCallbacks
+class LampBleServerCallbacks : public NimBLEServerCallbacks
 {
-  String formatAddr(const uint8_t bda[6])
+  void onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) override
   {
-    char buf[18];
-    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
-    return String(buf);
-  }
-
-  // void onConnect(BLEServer *server) override
-  // {
-  //   bleClientConnected = true;
-  //   // Serial.println(F("[BLE] Verbunden."));
-  // }
-
-  void onConnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
-  {
-    if (!param)
-    {
-      bleClientConnected = server->getConnectedCount() > 0;
-      lastBtActivityMs = millis();
-      if (feedbackAllowed())
-        Serial.println(F("[BLE] Verbunden"));
-      return;
-    }
-    String addr = formatAddr(param->connect.remote_bda);
+    String addr = String(connInfo.getAddress().toString().c_str());
+    uint16_t connHandle = connInfo.getConnHandle();
     bleLastAddr = addr;
     if (!allowBleAddr(addr))
     {
@@ -617,7 +602,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       // instead of handleCommand while bleAwaitingToken is set.
       bleClientConnected = true;
       bleAwaitingToken = true;
-      bleAwaitingTokenConnId = param->connect.conn_id;
+      bleAwaitingTokenConnId = connHandle;
       bleAwaitingTokenSinceMs = millis();
       bufferBleAuth = "";
       lastBtActivityMs = millis();
@@ -635,7 +620,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
       blePairPending = true;
       blePairStartMs = millis();
       blePendingAddr = addr;
-      blePendingConnId = param->connect.conn_id;
+      blePendingConnId = connHandle;
       lastBtActivityMs = millis();
       // Structured marker (force=true, like TRUST_TOKEN|) so a connected
       // client can tell "deliberately holding you pending a physical
@@ -653,7 +638,7 @@ class LampBleServerCallbacks : public BLEServerCallbacks
         Serial.println(addr);
       }
       if (server)
-        server->disconnect(param->connect.conn_id);
+        server->disconnect(connHandle);
       // Don't force this to false: another, already-trusted client may still
       // be connected (getConnectedCount() still includes this rejected one
       // until its own disconnect event lands, but that's fine - onDisconnect
@@ -673,53 +658,42 @@ class LampBleServerCallbacks : public BLEServerCallbacks
     }
     // The controller stops connectable advertising once a central connects;
     // re-arm it here (bounded by the controller's max BLE connection count,
-    // CONFIG_BTDM_CTRL_BLE_MAX_CONN, default 3) so additional trusted devices
-    // can still find and connect to the lamp while this one stays connected.
+    // CONFIG_BT_NIMBLE_MAX_CONNECTIONS, default 3) so additional trusted
+    // devices can still find and connect to the lamp while this one stays
+    // connected.
     if (server->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
       server->startAdvertising();
   }
 
-  // void onDisconnect(BLEServer *server) override
-  // {
-  //   bleClientConnected = false;
-  //   // Serial.println(F("[BLE] Getrennt."));
-  //   BLEDevice::startAdvertising();
-  // }
-
-  void onDisconnect(BLEServer *server, esp_ble_gatts_cb_param_t *param) override
+  void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override
   {
+    (void)reason;
     bleClientConnected = server->getConnectedCount() > 0;
-    if (!param)
-    {
-      if (feedbackAllowed())
-        Serial.println(F("[BLE] Getrennt"));
-      BLEDevice::startAdvertising();
-      return;
-    }
-    String addr = formatAddr(param->disconnect.remote_bda);
+    String addr = String(connInfo.getAddress().toString().c_str());
     if (feedbackAllowed())
     {
       Serial.print(F("[BLE] Getrennt: "));
       Serial.println(addr);
     }
     bleLastAddr = addr;
+    uint16_t connHandle = connInfo.getConnHandle();
 #if ENABLE_BLE_TRUST_TOKEN
     // The device that was mid token-auth went away on its own - drop the
     // pending state instead of leaving it to time out (and don't let the
-    // timeout check later disconnect a since-reused conn_id).
-    if (bleAwaitingToken && param->disconnect.conn_id == bleAwaitingTokenConnId)
+    // timeout check later disconnect a since-reused conn handle).
+    if (bleAwaitingToken && connHandle == bleAwaitingTokenConnId)
       bleAwaitingToken = false;
 #endif
 #if ENABLE_BT_PAIRING
     // Same idea for a device that disconnected while waiting on the
     // physical-gesture confirmation.
-    if (blePairPending && param->disconnect.conn_id == blePendingConnId)
+    if (blePairPending && connHandle == blePendingConnId)
     {
       blePairPending = false;
       blePendingAddr = "";
     }
 #endif
-    BLEDevice::startAdvertising();
+    NimBLEDevice::startAdvertising();
   }
 };
 
@@ -740,12 +714,13 @@ static SemaphoreHandle_t bleRxMutex = nullptr;
 /**
  * @brief Receives BLE writes and hands the raw bytes off to the main loop (see bleRxPending).
  */
-class LampBleCommandCallbacks : public BLECharacteristicCallbacks
+class LampBleCommandCallbacks : public NimBLECharacteristicCallbacks
 {
-  void onWrite(BLECharacteristic *characteristic) override
+  void onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) override
   {
-    std::string value = characteristic->getValue();
-    if (value.empty())
+    (void)connInfo;
+    NimBLEAttValue value = characteristic->getValue();
+    if (value.length() == 0)
       return;
     lastBtActivityMs = millis();
     if (!bleRxMutex || xSemaphoreTake(bleRxMutex, pdMS_TO_TICKS(20)) != pdTRUE)
@@ -753,9 +728,10 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
     if (bleRxPending.length() < LINE_BUFFER_MAX)
     {
       size_t room = LINE_BUFFER_MAX - bleRxPending.length();
-      size_t n = value.size() < room ? value.size() : room;
+      size_t n = value.length() < room ? value.length() : room;
+      const uint8_t *data = value.data();
       for (size_t i = 0; i < n; i++)
-        bleRxPending += value[i];
+        bleRxPending += (char)data[i];
     }
     xSemaphoreGive(bleRxMutex);
   }
@@ -766,49 +742,32 @@ class LampBleCommandCallbacks : public BLECharacteristicCallbacks
  */
 void startBle()
 {
-  BLEDevice::init(bleName.c_str());
-  BLEDevice::setMTU(517);
-  bleServer = BLEDevice::createServer();
+  NimBLEDevice::init(bleName.c_str());
+  NimBLEDevice::setMTU(517);
+  bleServer = NimBLEDevice::createServer();
   bleServer->setCallbacks(new LampBleServerCallbacks());
-  BLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
+  NimBLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
   bleCommandCharacteristic = service->createCharacteristic(
       Settings::BLE_COMMAND_CHAR_UUID,
-      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
+  // NOTIFY only (no INDICATE) - the firmware only ever calls notify(), and
+  // NimBLE manages the 0x2902 CCCD automatically from the characteristic's
+  // properties, so there's no separate descriptor to create/configure here
+  // (unlike the old Bluedroid BLE2902).
   bleStatusCharacteristic = service->createCharacteristic(
       Settings::BLE_STATUS_CHAR_UUID,
-      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_INDICATE);
-  auto *cccStat = new BLE2902();
-  cccStat->setNotifications(true);
-  cccStat->setIndications(true);
-  bleStatusCharacteristic->addDescriptor(cccStat);
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   service->start();
-  BLEAdvertising *advertising = BLEDevice::getAdvertising();
+  NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
   advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
   advertising->setAppearance(0);
-  advertising->setScanResponse(true);
-  advertising->start();
-
-  // Keep lamp service in the primary advertisement (for WebBLE filters).
-//   BLEAdvertisementData advData;
-//   advData.setName(Settings::BLE_DEVICE_NAME);
-//   advData.addServiceUUID(BLEUUID(Settings::BLE_SERVICE_UUID));
-//   advertising->setAdvertisementData(advData);
-
-//   // Put optional/extra services into the scan response to avoid overflowing the adv payload.
-//   BLEAdvertisementData scanData;
-// #if ENABLE_BLE_MIDI
-  // scanData.addServiceUUID(BLEUUID(BLE_MIDI_SERVICE_UUID));
-//   setupBleMidi(bleServer, advertising);
-// #endif
-//   advertising->setScanResponseData(scanData);
-  advertising->setScanResponse(true);
-  advertising->setMinPreferred(0x06);
-  advertising->setMinPreferred(0x12);
+  advertising->enableScanResponse(true);
+  advertising->setPreferredParams(0x06, 0x12);
 #if ENABLE_BLE_MIDI
   setupBleMidi(bleServer, advertising);
 #endif
-  BLEDevice::startAdvertising();
+  NimBLEDevice::startAdvertising();
   Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
 }
 #endif
@@ -1213,8 +1172,8 @@ String getLastBleAddr()
 
 String getBLEAddress(){
 #if ENABLE_BLE
-  if (BLEDevice::getInitialized())
-    return BLEDevice::getAddress().toString().c_str();
+  if (NimBLEDevice::isInitialized())
+    return NimBLEDevice::getAddress().toString().c_str();
   else
     return F("N/A");
 #else
