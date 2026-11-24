@@ -39,6 +39,7 @@
 extern "C" {
 #include "esp_ble_mesh_common_api.h"
 #include "esp_ble_mesh_config_model_api.h"
+#include "esp_ble_mesh_health_model_api.h"
 #include "esp_ble_mesh_defs.h"
 #include "esp_ble_mesh_generic_model_api.h"
 #include "esp_ble_mesh_networking_api.h"
@@ -76,6 +77,13 @@ esp_ble_mesh_cfg_srv_t configServer = {
     .relay = ESP_BLE_MESH_RELAY_DISABLED,
     .relay_retransmit = ESP_BLE_MESH_TRANSMIT(2, 20),
     .beacon = ESP_BLE_MESH_BEACON_ENABLED,
+    // Left unset in the first pass, which defaulted it to disabled (0) -
+    // that only mattered once the ~60s post-provisioning Node Identity
+    // advertising window expired (confirmed on real hardware: the node
+    // logged "No subnets to advertise on" and stopped appearing in the
+    // app's Proxy scan entirely once that window passed). Without this,
+    // the node is only reachable for about a minute after provisioning.
+    .gatt_proxy = ESP_BLE_MESH_GATT_PROXY_ENABLED,
     .default_ttl = 7,
 };
 
@@ -87,8 +95,32 @@ esp_ble_mesh_gen_onoff_srv_t onoffServer = {
     },
 };
 
+// Health Server is mandatory on the primary element per the Mesh spec
+// (every node needs one, same as Config Server) - missed in the first
+// pass, which was surfacing as repeated "No Health Server context
+// provided" warnings (internal mesh code - e.g. the attention timer -
+// unconditionally expects one to exist).
+//
+// Fully zero-initializing it (as a first attempt) turned out to be a real
+// regression, not just a cosmetic gap: health_srv_init() hard-requires at
+// least one self-test ID (checked on real hardware - "No Health Test ID
+// provided", "Model init failed (err -22)", which then cascaded into
+// *every* other model failing to init too, breaking provisioning
+// entirely, err=22 instead of err=0). One dummy test ID is enough to be
+// spec-valid without actually implementing a real self-test.
+constexpr uint8_t healthTestIds[] = {0x00};
+esp_ble_mesh_health_srv_t healthServer = {
+    .health_test = {
+        .id_count = 1,
+        .test_ids = healthTestIds,
+        .company_id = 0x02E5, // same borrowed Espressif CID as composition.cid below
+    },
+};
+ESP_BLE_MESH_MODEL_PUB_DEFINE(healthPub, 2 + 1, ROLE_NODE);
+
 esp_ble_mesh_model_t rootModels[] = {
     ESP_BLE_MESH_MODEL_CFG_SRV(&configServer),
+    ESP_BLE_MESH_MODEL_HEALTH_SRV(&healthServer, &healthPub),
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoffPub, &onoffServer),
 };
 

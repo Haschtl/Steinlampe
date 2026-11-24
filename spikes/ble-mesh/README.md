@@ -26,7 +26,7 @@ instead, which builds the real ESP-IDF from source against the
 ESP32 target is a combination `esp_ble_mesh`'s own source code supports -
 just not one Espressif also ships precompiled for the fast path.
 
-## Status: boots clean and advertises on real hardware
+## Status: provisioning, Proxy and Composition Data Get all confirmed on real hardware
 
 A real build was run (on the actual dev machine this project lives on).
 Fixed along the way, in order:
@@ -111,9 +111,56 @@ exactly the expected sequence - `"initializing mesh (NimBLE host)..."` ->
 beacon, PB-ADV) advertising, i.e. correctly advertising as an
 unprovisioned Mesh device on both bearers.
 
-Not yet verified: the actual provisioning/OnOff/Vendor-Model roundtrip
-from a phone (see Testing below) - next step, needs a provisioner app in
-hand.
+**Full provisioning + Proxy + Composition Data Get roundtrip confirmed with
+nRF Mesh (Android) against the real hardware.** Two more real bugs found and
+fixed along the way, both only visible once an actual phone app was involved
+(hand-checking against the headers never would have caught either):
+
+1. **Missing Health Server self-test ID.** The Mesh spec requires a Health
+   Server on the primary element (same as Config Server) - missed in the
+   first pass, surfacing as repeated "No Health Server context provided"
+   warnings. Fully zero-initializing `esp_ble_mesh_health_srv_t` (the
+   obvious first fix) was itself a regression: `health_srv_init()`
+   hard-requires at least one self-test ID, so that produced "No Health
+   Test ID provided" / "Model init failed (err -22)", which cascaded into
+   *every* model failing to init and broke provisioning outright (`err=22`
+   instead of `err=0`). Fixed by giving it one dummy test ID - spec-valid
+   without actually implementing a real self-test (see `main.cpp`'s
+   `healthTestIds`).
+2. **`gatt_proxy` left unset in the Config Server struct**, which defaults
+   to disabled. This one only showed up *after* the Health Server fix, once
+   provisioning itself started succeeding: the node would provision fine
+   and respond to the very next request, but go permanently unreachable
+   over Proxy maybe a minute later with `"No subnets to advertise on"` in
+   the log, and simply stop appearing in nRF Mesh's "connect to proxy"
+   scanner entirely. Root cause: Proxy advertising only runs unconditionally
+   during the ~60s post-provisioning "Node Identity" window; after that it
+   depends on the Config Server's `gatt_proxy` state, which Espressif's own
+   example sets to `ESP_BLE_MESH_GATT_PROXY_ENABLED` and this spike had
+   simply never set. Fixed by setting it explicitly.
+
+One more thing worth documenting because it looks like a bug but isn't one:
+right after provisioning completes, nRF Mesh's "Reading composition data"
+step can fail with *"Not GATT Proxy Node is connected..."* even though
+provisioning itself just succeeded over that same connection. Cause: Mesh
+PB-GATT provisioning never does a standard BLE bond/pairing (the encryption
+is inside the Mesh PDUs themselves, not the link layer), and our node
+transitions from the Provisioning GATT service to the Proxy GATT service on
+the *same* connection rather than disconnecting (confirmed in
+`esp_ble_mesh`'s own `nimble_host/adapter.c`, which does send a standard
+GATT "Service Changed" indication for this) - but without a bonded link,
+phone BLE stacks often aren't subscribed to that indication and never
+notice the service table changed. The fix is entirely app-side: manually
+disconnect and reconnect to the node in nRF Mesh once it's provisioned: a
+fresh connection does a clean GATT discovery from scratch and finds the
+Proxy service correctly. Confirmed this resolves it and Composition Data
+Get then succeeds, listing the Config Server, Health Server, Generic OnOff
+Server and the Vendor Model exactly as composed in `main.cpp`.
+
+One spike-only limitation worth knowing before testing: `CONFIG_BLE_MESH_SETTINGS`
+(persisting provisioning state to flash) is deliberately left off, so the
+node forgets it's provisioned on every reboot/reflash - re-provision each
+time. A real product would turn this on.
 
 ## Building
 
@@ -139,13 +186,18 @@ take a while the first time.
 1. Watch the serial monitor for `"BLE Mesh spike booting"` then `"mesh stack
    initialized"` and `"provisioning enabled"`.
 2. Open a BLE Mesh provisioner app (e.g. nRF Mesh on Android/iOS), scan for
-   unprovisioned devices, and provision this one.
-3. In the app, bind an AppKey to the node's two models (standard nRF Mesh
-   flow: add the node to a group/network, create an AppKey if one doesn't
-   exist, bind it to each model that should use it - the Generic OnOff
-   Server, and the unnamed/unknown "Vendor Model" the app will likely show
-   without a friendly name since it doesn't recognize our company
-   ID/opcode).
+   unprovisioned devices, and provision this one. **Confirmed working** -
+   see Status above.
+3. If "Reading composition data" fails right after provisioning, disconnect
+   and reconnect to the node once more (see Status above for why) - then
+   bind an AppKey to the node's models (standard nRF Mesh flow: add the
+   node to a group/network, create an AppKey if one doesn't exist, bind it
+   to each model that should use it - the Generic OnOff Server, and the
+   unnamed/unknown "Vendor Model" the app will likely show without a
+   friendly name since it doesn't recognize our company ID/opcode).
+   **Composition Data Get confirmed working** - all four models (Config
+   Server, Health Server, Generic OnOff Server, Vendor Model) show up
+   correctly. AppKey binding not yet tried.
 4. Send a Generic OnOff Set (toggle) from the app - the serial monitor
    should print `"Generic OnOff Set -> 1"` / `"-> 0"`.
 5. Exercising the Vendor Model specifically is the part most likely to

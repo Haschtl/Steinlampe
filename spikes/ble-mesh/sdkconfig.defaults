@@ -35,6 +35,9 @@ CONFIG_BLE_MESH_PB_ADV=y
 CONFIG_BLE_MESH_PB_GATT=y
 CONFIG_BLE_MESH_PROXY=y
 CONFIG_BLE_MESH_GENERIC_SERVER=y
+# Health Server is its own separate Kconfig toggle, not folded into
+# GENERIC_SERVER above - see main.cpp's comment on why it's needed at all.
+CONFIG_BLE_MESH_HEALTH_SRV=y
 
 # Arduino core itself requires this (CMakeLists.txt hard-checks it).
 CONFIG_FREERTOS_HZ=1000
@@ -53,3 +56,4 @@ CONFIG_AUTOSTART_ARDUINO=y
 # 4MB, found 2MB!" at build time) - both real boards this targets
 # (upesy_wroom and on_air's ESP32-S3 Super Mini) have 4MB flash.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
