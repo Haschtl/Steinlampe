@@ -38,16 +38,23 @@ hardware). Progress, in order:
    `sdkconfig.defaults` (now there, with a comment).
 4. With that, **CMake configuration completes successfully** - every
    dependency (including `CONFIG_BT_NIMBLE_ENABLED` + BLE Mesh) resolved
-   and built the build graph. It reaches the actual SCons build invocation
-   and fails there with `ModuleNotFoundError: No module named
-   'SCons.Tool.FortranCommon'` - a broken/incomplete `scons` install
-   specific to that sandboxed environment's PlatformIO cache (its
-   ESP-IDF-specific Python venv had no working `pip`/`scons` at all;
-   `ensurepip` + `pip install scons` got further but the actual `pio run`
-   subprocess still picked up a different, still-broken `tool-scons`
-   install rather than the one just fixed - looks like a
-   sandbox/permissions quirk of that specific machine, not something
-   fixable from where this was run).
+   and the build graph is built. It then reaches the actual SCons build
+   invocation and fails there with `ModuleNotFoundError: No module named
+   'SCons.Tool.FortranCommon'`. Dug further: this is a genuine upstream
+   packaging bug, not a local environment problem in the usual sense -
+   `pio run` always re-fetches its own pinned `tool-scons@4.40801.0`/
+   `@4.41101.0` from the `pioarduino` registry
+   (`github.com/pioarduino/registry`) for the actual build step,
+   regardless of what's otherwise installed; that specific distributed
+   package is missing `SCons/Tool/FortranCommon.py`. Confirmed a *correct*
+   SCons install exists and works fine (manually `pip install scons` into
+   PlatformIO's ESP-IDF-specific Python venv, `FortranCommon` imports
+   there without issue) - `pio run` just doesn't use it for this step, it
+   keeps reaching for its own broken copy. Not fixable by installing
+   things locally; would need either a different/patched `tool-scons`
+   release from that registry, or forcing PlatformIO to use a system
+   SCons instead (untried - out of scope for a spike instead of the
+   actual question this was meant to answer).
 
 **`src/main.cpp` itself was never actually reached by the compiler** - the
 failure above happens before compiling any `.cpp` file. Its API usage was
