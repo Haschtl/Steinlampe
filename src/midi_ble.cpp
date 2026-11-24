@@ -7,7 +7,7 @@
 
 #include <NimBLEDevice.h>
 
-void handleCommand(String line);
+void handleCommand(const String &line);
 
 namespace
 {

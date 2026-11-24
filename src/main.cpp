@@ -500,6 +500,19 @@ void setup()
   announcePattern(true);
   printHelp(true);
   printStatus(true);
+  // Force printSensorsStructured()/queueLiveState()'s own one-time internal
+  // buffer reservations to happen here too, in this safe, early,
+  // single-threaded setup context - same reasoning as the updateBleStatus()
+  // prewarm call in startBle(). Neither of these runs anywhere else during
+  // boot (printSensorsStructured only from the "sensors" command;
+  // queueLiveState only from loop()), so without this their one-time
+  // reserve() would otherwise land on whatever live command/poti-update
+  // happens to trigger them first post-boot - exactly the deferred-timing
+  // pattern that reproduced the TLSF heap corruption on real hardware.
+  // force=false on both: feedbackArmed is still false this early, so
+  // sendFeedback() no-ops and nothing is actually printed/sent.
+  printSensorsStructured(false);
+  queueLiveState(false);
   setupCommunications();
   updatePatternEngine();
 

@@ -42,15 +42,33 @@ bool sosPrevLampOn = false;
 /**
  * @brief Parse and execute a command string from any input channel.
  */
-void handleCommand(String line)
+void handleCommand(const String &line)
 {
-    line.trim();
+    // Trimming is the caller's job now (processInputChar() already does
+    // this on `buffer` before calling; the MIDI dispatch paths construct
+    // already-clean strings) - `line` used to be a by-value parameter, and
+    // that copy, plus the `lower` copy just below, were part of the
+    // allocation pattern that reproduced a TLSF heap corruption on real
+    // hardware (see the other fixes alongside this one). Taking `line` by
+    // reference removes one of those two copies entirely.
     if (line.isEmpty())
         return;
 
     lastActivityMs = millis();
 
-    String lower = line;
+    // `lower` is function-static and reserved once rather than a fresh
+    // local copy every call, same reasoning. 64 bytes comfortably covers
+    // every normal command; the rare long "ota chunk <base64>" command (up
+    // to ~5600 bytes, see LINE_BUFFER_MAX) still works, it just triggers one
+    // real reallocation on that uncommon, non-hot path.
+    static String lower;
+    static bool lowerReserved = false;
+    if (!lowerReserved)
+    {
+        lower.reserve(64);
+        lowerReserved = true;
+    }
+    lower = line;
     lower.toLowerCase();
 
     if (lower == "help")

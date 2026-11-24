@@ -31,7 +31,7 @@
  */
 
 // Provided by main.cpp to route parsed command strings.
-void handleCommand(String line);
+void handleCommand(const String &line);
 void saveSettings();
 
 // Trusted device storage (shared across helpers)
@@ -731,6 +731,16 @@ void startBle()
   bleStatusCharacteristic = service->createCharacteristic(
       Settings::BLE_STATUS_CHAR_UUID,
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::NOTIFY);
+  // Force updateBleStatus()'s own one-time internal buffer reservation to
+  // happen right here, in this safe, early, single-threaded setup context -
+  // not lazily deferred to whenever the first real status print happens to
+  // run post-boot. That deferred-until-first-real-use timing is exactly what
+  // reproduced the TLSF heap corruption on real hardware: this characteristic
+  // doesn't exist yet during the one boot-time printStatus(true) call (it
+  // runs before setupCommunications()), so updateBleStatus() always no-ops
+  // at boot and its lazy reserve() would otherwise happen for the first time
+  // during a live command instead.
+  updateBleStatus("");
   // NimBLEService::start() is a deprecated no-op in this NimBLE-Arduino
   // version - services start automatically with the server.
   NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
@@ -1068,7 +1078,25 @@ void updateBleStatus(const String &statusPayload)
   // Only refresh the readable characteristic value (with newline terminator).
   // Notification is handled by the preceding sendFeedback() of the same line,
   // so we avoid sending each status line twice.
-  String payload = statusPayload + "\n";
+  //
+  // `payload` is function-static and reserved once, not a fresh local String
+  // built via `statusPayload + "\n"` every call - that `operator+` always
+  // allocates a brand-new temporary (StringSumHelper), which bypassed the
+  // same fix applied to the STATUS/STATUS1/STATUS2 builders in print.cpp and
+  // reproduced the exact same TLSF heap corruption on real hardware.
+  // 600: comfortably above the largest of print.cpp's own reserved sizes
+  // (STATUS1/lineIO's 500 is the biggest) plus the appended '\n' - this is
+  // called for every STATUS/STATUS1/STATUS2/STATUS_END line in turn, so it
+  // must cover whichever one of them is longest, not just one of them.
+  static String payload;
+  static bool payloadReserved = false;
+  if (!payloadReserved)
+  {
+    payload.reserve(600);
+    payloadReserved = true;
+  }
+  payload = statusPayload;
+  payload += '\n';
   bleStatusCharacteristic->setValue(payload.c_str());
 #else
   (void)statusPayload;

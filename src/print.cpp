@@ -30,48 +30,91 @@ static bool liveStatePending = false;
 
 static String liveStateLastKey;
 
+// Root cause of a real-hardware heap corruption (TLSF asserts/LoadProhibited,
+// confirmed via core dumps - see git history around this comment): Arduino's
+// own String(float, decimalPlaces) constructor does a raw malloc()/free() of
+// a short-lived scratch buffer internally (WString.cpp - its int/long
+// sibling overloads correctly use a stack array instead). Called dozens of
+// times per printStatusStructured()/emitLiveState() invocation, this repeats
+// the same few nearly-identical small malloc/free sizes rapidly enough to
+// trip a TLSF edge case. This helper does the float->string conversion into
+// a stack buffer directly, then appends it (`String(const char*)` uses
+// small-string-optimization for anything this short - no heap allocation at
+// all for typical field values).
+static inline String fmtF(float value, unsigned int decimalPlaces)
+{
+    char buf[40];
+    dtostrf(value, decimalPlaces + 2, decimalPlaces, buf);
+    return String(buf);
+}
+
 static void emitLiveState(const bool &force)
 {
     const bool lampOn = (lampEnabled && !lampOffPending);
     // Noise-tolerant change key: drops the raw ADC value and rounds the
     // normalized poti to 1%, so jittery sensor reads don't spam identical
     // STATE events. Only a meaningful change (or a forced emit) goes out.
-    String key = lampOn ? F("1|") : F("0|");
-    // Reserve upfront - this (and `line` below, and the persistent
-    // liveStateLastKey it gets assigned into) rebuilds on every meaningful
-    // poti change, far more often than the on-demand status commands. Same
-    // fragmentation/TLSF-crash rationale as printStatusStructured()'s
-    // reserve() calls.
-    key.reserve(40);
-    key += String(masterBrightness * 100.0f, 1);
+    //
+    // `key`/`line` are function-static and reserved once, not local/rebuilt
+    // every call: this runs on every meaningful poti change (far more often
+    // than an on-demand status command), and repeatedly growing a fresh
+    // local String via many small += calls - even with an upfront reserve()
+    // on each new instance - still means a malloc()+free() pair per call.
+    // Confirmed on real hardware that *that* allocation churn (not a leak,
+    // not static corruption - heap_caps_check_integrity_all() found nothing
+    // wrong at any single checkpoint) is what eventually corrupts the TLSF
+    // heap once ENABLE_POTI's extra fields are in the mix; keeping these
+    // buffers alive across calls means the one-time reserve() below is the
+    // only allocation that ever happens for them, for the device's entire
+    // uptime.
+    static String key;
+    static bool keyReserved = false;
+    if (!keyReserved)
+    {
+        key.reserve(40);
+        keyReserved = true;
+    }
+    key = lampOn ? F("1|") : F("0|");
+    key += fmtF(masterBrightness * 100.0f, 1);
     key += '|';
     key += String(currentPattern + 1);
     key += '|';
-    key += String(lastAppliedLevel * 100.0f, 1);
+    key += fmtF(lastAppliedLevel * 100.0f, 1);
 #if ENABLE_POTI
     key += '|';
-    key += String(potiFiltered, 2);
+    key += fmtF(potiFiltered, 2);
 #endif
     if (!force && key == liveStateLastKey)
     {
         liveStatePending = false;
         return;
     }
-    liveStateLastKey.reserve(40);
+    static bool liveStateLastKeyReserved = false;
+    if (!liveStateLastKeyReserved)
+    {
+        liveStateLastKey.reserve(40);
+        liveStateLastKeyReserved = true;
+    }
     liveStateLastKey = key;
 
-    String line = F("STATE|lamp=");
-    line.reserve(100);
+    static String line;
+    static bool lineReserved = false;
+    if (!lineReserved)
+    {
+        line.reserve(100);
+        lineReserved = true;
+    }
+    line = F("STATE|lamp=");
     line += lampOn ? F("ON") : F("OFF");
     line += F("|bri=");
-    line += String(masterBrightness * 100.0f, 1);
+    line += fmtF(masterBrightness * 100.0f, 1);
     line += F("|pattern=");
     line += String(currentPattern + 1);
     line += F("|out=");
-    line += String(lastAppliedLevel * 100.0f, 1);
+    line += fmtF(lastAppliedLevel * 100.0f, 1);
 #if ENABLE_POTI
     line += F("|poti=");
-    line += String(potiFiltered, 3);
+    line += fmtF(potiFiltered, 3);
     line += F("|poti_raw=");
     line += String(potiLastRaw);
 #else
@@ -394,7 +437,14 @@ void printStatus(const bool &force)
  */
 void printSensorsStructured(const bool &force)
 {
-    String line = F("SENSORS|");
+    static String line;
+    static bool lineReserved = false;
+    if (!lineReserved)
+    {
+        line.reserve(200);
+        lineReserved = true;
+    }
+    line = F("SENSORS|");
 #if ENABLE_TOUCH_DIM
     line += F("touch_base=");
     line += String(touchBaseline);
@@ -447,17 +497,21 @@ void printSensorsStructured(const bool &force)
  */
 void printStatusStructured(const bool &force)
 {
-    // Core line (keep short for BLE MTU)
-    String line = F("STATUS|");
-    // Reserve the whole line's eventual size upfront instead of letting many
-    // small += calls grow it incrementally - repeated tiny reallocations of
-    // varying sizes fragment the heap over time, which on arduino-esp32 3.x's
-    // TLSF allocator can eventually hit a "no contiguous block found" crash
-    // (confirmed on real hardware: deterministic, uptime-dependent, only with
-    // the longer field set poti=ON adds - total free heap stayed flat the
-    // whole time, ruling out a leak; one upfront allocation avoids the churn
-    // that caused the fragmentation in the first place).
-    line.reserve(420);
+    // Core line (keep short for BLE MTU). Function-static and reserved once
+    // rather than a fresh local String per call - see emitLiveState()'s
+    // comment above for why: the repeated malloc()+free() of a fresh String
+    // each call (even with its own upfront reserve()) is what corrupts the
+    // TLSF heap once ENABLE_POTI's extra fields are in play, confirmed on
+    // real hardware. Keeping the buffer alive means the one-time reserve()
+    // below is the only allocation this ever does.
+    static String line;
+    static bool lineReserved = false;
+    if (!lineReserved)
+    {
+        line.reserve(420);
+        lineReserved = true;
+    }
+    line = F("STATUS|");
     line += F("pattern=");
     line += String(currentPattern + 1);
     line += F("|pattern_total=");
@@ -469,7 +523,7 @@ void printStatusStructured(const bool &force)
     line += F("|auto=");
     line += autoCycle ? F("1") : F("0");
     line += F("|bri=");
-    line += String(masterBrightness * 100.0f, 1);
+    line += fmtF(masterBrightness * 100.0f, 1);
     line += F("|lamp=");
     line += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
 #if ENABLE_BUTTONS
@@ -522,7 +576,7 @@ void printStatusStructured(const bool &force)
     line += F("|touch_dim=");
     line += touchDimEnabled ? F("1") : F("0");
     line += F("|touch_dim_step=");
-    line += String(touchDimStep, 3);
+    line += fmtF(touchDimStep, 3);
 #else
     line += F("|touch=N/A");
 #endif
@@ -535,25 +589,25 @@ void printStatusStructured(const bool &force)
     line += F("|ramp_off_ease=");
     line += easeToString(rampEaseOffType);
     line += F("|ramp_on_pow=");
-    line += String(rampEaseOnPower, 2);
+    line += fmtF(rampEaseOnPower, 2);
     line += F("|ramp_off_pow=");
-    line += String(rampEaseOffPower, 2);
+    line += fmtF(rampEaseOffPower, 2);
 #if ENABLE_LIGHT_SENSOR
     line += F("|ramp_amb=");
-    line += String(rampAmbientFactor, 2);
+    line += fmtF(rampAmbientFactor, 2);
 #endif
     line += F("|idle_min=");
     line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
     line += F("|pat_speed=");
-    line += String(patternSpeedScale, 2);
+    line += fmtF(patternSpeedScale, 2);
     line += F("|pat_fade=");
-    line += patternFadeEnabled ? String(patternFadeStrength, 2) : F("off");
+    line += patternFadeEnabled ? fmtF(patternFadeStrength, 2) : F("off");
     line += F("|pat_inv=");
     line += patternInvert ? F("1") : F("0");
     line += F("|pat_lo=");
-    line += String(patternMarginLow, 3);
+    line += fmtF(patternMarginLow, 3);
     line += F("|pat_hi=");
-    line += String(patternMarginHigh, 3);
+    line += fmtF(patternMarginHigh, 3);
     line += F("|quick=");
     line += quickMaskToCsv();
     line += F("|pat_reactive=");
@@ -580,33 +634,33 @@ void printStatusStructured(const bool &force)
     line += F("|radar_present=");
     line += radarPresent ? F("1") : F("0");
     line += F("|radar_dist=");
-    line += String(radarDistanceCm, 1);
+    line += fmtF(radarDistanceCm, 1);
     line += F("|radar_speed=");
-    line += String(radarSpeedCmS, 1);
+    line += fmtF(radarSpeedCmS, 1);
     line += F("|radar_targets=");
     line += String(radarTargetCount);
     line += F("|radar_dim=");
     line += radarDimEnabled ? F("1") : F("0");
     line += F("|radar_dim_near=");
-    line += String(radarDimNearCm, 1);
+    line += fmtF(radarDimNearCm, 1);
     line += F("|radar_dim_far=");
-    line += String(radarDimFarCm, 1);
+    line += fmtF(radarDimFarCm, 1);
     line += F("|radar_motion=");
     line += radarMotionOnEnabled ? F("1") : F("0");
     line += F("|radar_motion_thr=");
-    line += String(radarMotionSpeedThreshold, 1);
+    line += fmtF(radarMotionSpeedThreshold, 1);
     line += F("|radar_motion_hold=");
     line += radarMotionHoldMs;
     line += F("|radar_offdist=");
     line += radarOffDistanceEnabled ? F("1") : F("0");
     line += F("|radar_off_cm=");
-    line += String(radarOffDistanceCm, 1);
+    line += fmtF(radarOffDistanceCm, 1);
     line += F("|radar_off_grace=");
     line += radarOffGraceMs;
     line += F("|radar_hwoverride=");
     line += radarHwOverride ? F("1") : F("0");
     line += F("|radar_velocity=");
-    line += String(radarVelocityFactor, 2);
+    line += fmtF(radarVelocityFactor, 2);
 #else
     line += F("|radar=N/A");
 #endif
@@ -625,20 +679,27 @@ void printStatusStructured(const bool &force)
     sendFeedback(line,force);
     updateBleStatus(line);
 
-    // Detail line: IO, PWM, light, music, inputs
-    String lineIO = F("STATUS1|");
-    lineIO.reserve(500); // see the matching comment on `line`'s reserve() above
+    // Detail line: IO, PWM, light, music, inputs - static/reserved-once, see
+    // the comment on `line` above.
+    static String lineIO;
+    static bool lineIOReserved = false;
+    if (!lineIOReserved)
+    {
+        lineIO.reserve(500);
+        lineIOReserved = true;
+    }
+    lineIO = F("STATUS1|");
 #if ENABLE_EXT_INPUT
     lineIO += F("ext_in=");
     lineIO += extInputEnabled ? F("ON") : F("OFF");
     lineIO += F("|ext_mode=");
     lineIO += extInputAnalog ? F("ana") : F("dig");
     lineIO += F("|ext_alpha=");
-    lineIO += String(extInputAlpha, 3);
+    lineIO += fmtF(extInputAlpha, 3);
     lineIO += F("|ext_delta=");
-    lineIO += String(extInputDelta, 3);
+    lineIO += fmtF(extInputDelta, 3);
     lineIO += F("|ext_val=");
-    lineIO += extInputFiltered >= 0.0f ? String(extInputFiltered, 3) : F("N/A");
+    lineIO += extInputFiltered >= 0.0f ? fmtF(extInputFiltered, 3) : F("N/A");
 #endif
 #if ENABLE_BT_SERIAL
     lineIO += F("|bt_sleep_boot_ms=");
@@ -661,28 +722,28 @@ void printStatusStructured(const bool &force)
     lineIO += F("pwm");
 #endif
     lineIO += F("|gamma=");
-    lineIO += String(outputGamma, 2);
+    lineIO += fmtF(outputGamma, 2);
     lineIO += F("|pwm_raw=");
     lineIO += String((uint32_t)lastPwmValue);
     lineIO += F("|pwm_max=");
     lineIO += String((uint32_t)PWM_MAX);
     lineIO += F("|bri_min=");
-    lineIO += String(briMinUser * 100.0f, 1);
+    lineIO += fmtF(briMinUser * 100.0f, 1);
     lineIO += F("|bri_max=");
-    lineIO += String(briMaxUser * 100.0f, 1);
+    lineIO += fmtF(briMaxUser * 100.0f, 1);
     lineIO += F("|notif_min=");
-    lineIO += String(notifyMinBrightness * 100.0f, 1);
+    lineIO += fmtF(notifyMinBrightness * 100.0f, 1);
 #if ENABLE_LIGHT_SENSOR
     lineIO += F("|light=");
     lineIO += lightSensorEnabled ? F("ON") : F("OFF");
     lineIO += F("|light_gain=");
-    lineIO += String(lightGain, 2);
+    lineIO += fmtF(lightGain, 2);
     lineIO += F("|light_min=");
-    lineIO += String(lightClampMin, 2);
+    lineIO += fmtF(lightClampMin, 2);
     lineIO += F("|light_max=");
-    lineIO += String(lightClampMax, 2);
+    lineIO += fmtF(lightClampMax, 2);
     lineIO += F("|light_alpha=");
-    lineIO += String(lightAlpha, 3);
+    lineIO += fmtF(lightAlpha, 3);
     lineIO += F("|light_raw=");
     lineIO += String((int)lightFiltered);
     lineIO += F("|light_raw_min=");
@@ -696,27 +757,27 @@ void printStatusStructured(const bool &force)
     lineIO += F("|music=");
     lineIO += musicEnabled ? F("ON") : F("OFF");
     lineIO += F("|music_gain=");
-    lineIO += String(musicGain, 2);
+    lineIO += fmtF(musicGain, 2);
     lineIO += F("|music_auto=");
     lineIO += musicAutoLamp ? F("ON") : F("OFF");
     lineIO += F("|music_thr=");
-    lineIO += String(musicAutoThr, 2);
+    lineIO += fmtF(musicAutoThr, 2);
     lineIO += F("|music_mode=");
     lineIO += (musicMode == 1 ? F("beat") : F("direct"));
     lineIO += F("|music_mod=");
-    lineIO += String(musicModScale, 3);
+    lineIO += fmtF(musicModScale, 3);
     lineIO += F("|music_kick_ms=");
     lineIO += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
     lineIO += F("|music_env=");
-    lineIO += String(musicFiltered, 3);
+    lineIO += fmtF(musicFiltered, 3);
     lineIO += F("|music_level=");
-    lineIO += String(musicRawLevel, 3);
+    lineIO += fmtF(musicRawLevel, 3);
     lineIO += F("|music_smooth=");
-    lineIO += String(musicSmoothing, 2);
+    lineIO += fmtF(musicSmoothing, 2);
     lineIO += F("|clap=");
     lineIO += clapEnabled ? F("ON") : F("OFF");
     lineIO += F("|clap_thr=");
-    lineIO += String(clapThreshold, 2);
+    lineIO += fmtF(clapThreshold, 2);
     lineIO += F("|clap_cool=");
     lineIO += String(clapCooldownMs);
     lineIO += F("|clap_cmd1=");
@@ -732,17 +793,17 @@ void printStatusStructured(const bool &force)
     lineIO += F("|poti=");
     lineIO += potiEnabled ? F("ON") : F("OFF");
     lineIO += F("|poti_alpha=");
-    lineIO += String(potiAlpha, 2);
+    lineIO += fmtF(potiAlpha, 2);
     lineIO += F("|poti_delta=");
-    lineIO += String(potiDeltaMin, 3);
+    lineIO += fmtF(potiDeltaMin, 3);
     lineIO += F("|poti_off=");
-    lineIO += String(potiOffThreshold, 3);
+    lineIO += fmtF(potiOffThreshold, 3);
     lineIO += F("|poti_sample=");
     lineIO += String(potiSampleMs);
     lineIO += F("|poti_min=");
-    lineIO += String(potiCalibMin, 3);
+    lineIO += fmtF(potiCalibMin, 3);
     lineIO += F("|poti_max=");
-    lineIO += String(potiCalibMax, 3);
+    lineIO += fmtF(potiCalibMax, 3);
     lineIO += F("|poti_inv=");
     lineIO += potiInvert ? F("1") : F("0");
     lineIO += F("|poti_mode=");
@@ -750,7 +811,7 @@ void printStatusStructured(const bool &force)
     lineIO += F("|poti_target=");
     lineIO += (potiTarget == CHANNEL_TARGET_ALL) ? F("all") : String(potiTarget);
     lineIO += F("|poti_val=");
-    lineIO += String(potiFiltered, 3);
+    lineIO += fmtF(potiFiltered, 3);
     lineIO += F("|poti_raw=");
     lineIO += String(potiLastRaw);
 #else
@@ -768,51 +829,58 @@ void printStatusStructured(const bool &force)
     lineIO += F("|push_step_ms=");
     lineIO += String(pushStepMs);
     lineIO += F("|push_step=");
-    lineIO += String(pushStep, 3);
+    lineIO += fmtF(pushStep, 3);
 #else
     lineIO += F("|push=N/A");
 #endif
     sendFeedback(lineIO,force);
     updateBleStatus(lineIO);
 
-    // Filters/status chunk (separate to stay under BLE MTU)
-    String line2 = F("STATUS2|");
-    line2.reserve(450); // see the matching comment on `line`'s reserve() above
+    // Filters/status chunk (separate to stay under BLE MTU) - static/reserved
+    // once, see the comment on `line` above.
+    static String line2;
+    static bool line2Reserved = false;
+    if (!line2Reserved)
+    {
+        line2.reserve(450);
+        line2Reserved = true;
+    }
+    line2 = F("STATUS2|");
     {
         FilterState filt;
         filtersGetState(filt);
         line2 += F("filter_iir=");
         line2 += filt.iirEnabled ? F("ON") : F("OFF");
         line2 += F("|filter_alpha=");
-        line2 += String(filt.iirAlpha, 3);
+        line2 += fmtF(filt.iirAlpha, 3);
         line2 += F("|filter_clip=");
         line2 += filt.clipEnabled ? F("ON") : F("OFF");
         line2 += F("|filter_clip_amt=");
-        line2 += String(filt.clipAmount, 2);
+        line2 += fmtF(filt.clipAmount, 2);
         line2 += F("|filter_clip_curve=");
         line2 += filt.clipCurve;
         line2 += F("|filter_trem=");
         line2 += filt.tremEnabled ? F("ON") : F("OFF");
         line2 += F("|filter_trem_rate=");
-        line2 += String(filt.tremRateHz, 2);
+        line2 += fmtF(filt.tremRateHz, 2);
         line2 += F("|filter_trem_depth=");
-        line2 += String(filt.tremDepth, 2);
+        line2 += fmtF(filt.tremDepth, 2);
         line2 += F("|filter_trem_wave=");
         line2 += filt.tremWave;
         line2 += F("|filter_spark=");
         line2 += filt.sparkEnabled ? F("ON") : F("OFF");
         line2 += F("|filter_spark_dens=");
-        line2 += String(filt.sparkDensity, 2);
+        line2 += fmtF(filt.sparkDensity, 2);
         line2 += F("|filter_spark_int=");
-        line2 += String(filt.sparkIntensity, 2);
+        line2 += fmtF(filt.sparkIntensity, 2);
         line2 += F("|filter_spark_decay=");
         line2 += String(filt.sparkDecayMs);
         line2 += F("|filter_comp=");
         line2 += filt.compEnabled ? F("ON") : F("OFF");
         line2 += F("|filter_comp_thr=");
-        line2 += String(filt.compThr, 2);
+        line2 += fmtF(filt.compThr, 2);
         line2 += F("|filter_comp_ratio=");
-        line2 += String(filt.compRatio, 2);
+        line2 += fmtF(filt.compRatio, 2);
         line2 += F("|filter_comp_att=");
         line2 += String(filt.compAttackMs);
         line2 += F("|filter_comp_rel=");
@@ -828,9 +896,9 @@ void printStatusStructured(const bool &force)
         line2 += F("|filter_delay_ms=");
         line2 += String(filt.delayMs);
         line2 += F("|filter_delay_fb=");
-        line2 += String(filt.delayFeedback, 2);
+        line2 += fmtF(filt.delayFeedback, 2);
         line2 += F("|filter_delay_mix=");
-        line2 += String(filt.delayMix, 2);
+        line2 += fmtF(filt.delayMix, 2);
     }
     sendFeedback(line2,force);
     updateBleStatus(line2);
@@ -845,10 +913,17 @@ void printStatusStructured(const bool &force)
     // STATUS_END| to know the snapshot is complete) was guaranteed to time out
     // on every single connect. Unconditional now; the frontend hard-depends on
     // this marker, it was never meant to be optional.
-    String lineEnd = F("STATUS_END|lamp=");
+    static String lineEnd;
+    static bool lineEndReserved = false;
+    if (!lineEndReserved)
+    {
+        lineEnd.reserve(60);
+        lineEndReserved = true;
+    }
+    lineEnd = F("STATUS_END|lamp=");
     lineEnd += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
     lineEnd += F("|bri=");
-    lineEnd += String(masterBrightness * 100.0f, 1);
+    lineEnd += fmtF(masterBrightness * 100.0f, 1);
     lineEnd += F("|pattern=");
     lineEnd += String(currentPattern + 1);
     sendFeedback(lineEnd, force);
