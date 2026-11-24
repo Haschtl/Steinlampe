@@ -327,6 +327,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Characteristic UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.",
+    "help.mscNote":
+      "Also understands MIDI Show Control (MSC) SysEx over the same connection - GO/STOP/RESUME, see the MIDI Mapping table. Any device ID is accepted; command_format must be Lighting (0x01) or All-Types (0x7F).",
     "help.connectLink": "Direct connect link",
     "help.copyConnectLink": "Copy connect link",
     "help.connectLinkDesc":
@@ -362,7 +364,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.secureBootNote":
       "No patterns/filters run until the window closes. Use this gesture if the device is wedged or misconfigured.",
     "help.btPairingHint":
-      "Classic BT-Serial pairing: connect from the host, then confirm within ~20s by toggling the switch or moving the potentiometer. The device will be trusted afterwards.",
+      "First connection outside the ~60s post-boot trust window (BLE or Classic-BT-Serial, whichever this build has): the lamp holds the link open and waits up to 20s for you to confirm by toggling the switch or moving the potentiometer, then trusts the device. BLE additionally pairs/encrypts (bonds) for real at this point - see \"trust ble bonds\"/\"trust ble clearbonds\" to inspect or reset that.",
   },
   de: {
     "nav.home": "Start",
@@ -691,6 +693,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.charUuid": "Char-UUID",
     "help.bleMidiNote":
       "Standard BLE-MIDI UUIDs; per optionalem Flag aktivieren. Write/WriteNR, nur RX.",
+    "help.mscNote":
+      "Versteht über dieselbe Verbindung auch MIDI Show Control (MSC) SysEx - GO/STOP/RESUME, siehe MIDI-Mapping-Tabelle. Jede Geräte-ID wird akzeptiert; command_format muss Lighting (0x01) oder All-Types (0x7F) sein.",
     "help.connectLink": "Direkt-Verbindungslink",
     "help.copyConnectLink": "Verbindungs-Link kopieren",
     "help.connectLinkDesc":
@@ -726,7 +730,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "help.secureBootNote":
       "Keine Patterns/Filter laufen, bis das Fenster zu ist. Nutze dies, wenn das Gerät hängt oder falsch konfiguriert ist.",
     "help.btPairingHint":
-      "Classic BT-Serial-Pairing: Host verbindet, dann innerhalb von ~20s Schalter kippen oder Poti bewegen. Danach wird das Gerät vertraut.",
+      "Erste Verbindung außerhalb des ~60s-Trust-Fensters nach dem Boot (BLE oder Classic-BT-Serial, je nachdem was dieser Build hat): Die Lampe hält die Verbindung offen und wartet bis zu 20s auf Bestätigung per Schalter oder Poti, dann wird das Gerät vertraut. BLE koppelt/verschlüsselt (bondet) dabei zusätzlich echt - siehe \"trust ble bonds\"/\"trust ble clearbonds\" zum Prüfen oder Zurücksetzen.",
   },
 };
 

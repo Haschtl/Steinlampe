@@ -3,6 +3,7 @@
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 
 #include "comms.h"
+#include "midi_show_control.h"
 
 #include <NimBLEDevice.h>
 
@@ -74,6 +75,12 @@ namespace
       // BLE MIDI wraps messages with timestamp bytes; skip a timestamp if two MSB bytes follow
       if ((b & 0x80) && (i + 1 < len) && (data[i + 1] & 0x80))
         continue;
+
+      // MIDI Show Control rides as SysEx (0xF0..0xF7), which the rest of
+      // this function doesn't parse - feed every non-timestamp byte to the
+      // reassembler unconditionally, it self-gates on being inside a SysEx
+      // span and ignores everything else.
+      feedMscByte(b);
 
       if (b & 0x80) // status
       {

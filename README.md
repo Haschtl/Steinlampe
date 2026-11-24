@@ -79,7 +79,7 @@ Partition table: default is `min_spiffs.csv` (two OTA slots, small SPIFFS). If y
 - Ambient-light-driven brightness scaling, music-reactive patterns and clap detection, pattern speed/fade/margins, PWM gamma correction.
 - A DSP filter chain (IIR smoothing, soft-clip, tremolo, sparkle, compressor, envelope follower, delay) layered on top of any pattern.
 - Six save/load profile slots, config export/import, factory reset (also triggerable via 5 switch toggles or poti swings within 1s of boot, without needing a command channel).
-- BLE-MIDI / BT-MIDI receive for brightness/mode control from an external MIDI controller.
+- BLE-MIDI receive for brightness/mode control from an external MIDI controller, plus MIDI Show Control (MSC) GO/STOP/RESUME over the same connection.
 - OTA firmware updates over BLE/BT-Serial/USB (chunked, MD5-verified).
 
 ### Command reference (BLE / BT-Serial / USB)
@@ -101,11 +101,11 @@ Plain newline-terminated text commands, identical over all three transports:
 | Presence | `presence_ble on\|off`, `presence_ble add\|del\|set <MAC>\|clear`, `presence_ble grace <ms>` |
 | Radar (RD-03 variants) | `radar on\|off`, `radar dim\|motion\|offdist <params>`, `radar debug on\|off` |
 | Profiles/quick | `profile save\|load\|show <1-6>`, `quick <csv>\|default` |
-| Trust/pairing | `trust list\|ble\|bt add/del <MAC>` |
+| Trust/pairing | `trust list\|ble\|bt add/del <MAC>`, `trust ble bonds\|clearbonds` |
 | OTA | `ota begin <size> <md5> <version>`, `ota chunk <base64>`, `ota end`, `ota abort`, `ota status` |
 | Config | `cfg export`, `cfg import key=val ...`, `factory`, `status`, `status raw`, `help` |
 
-BT-Serial pairing from an unrecognized device requires a physical confirmation within ~20s (toggle the switch or move the potentiometer) before it's trusted.
+A first connection from an unrecognized device, outside the ~60s post-boot trust window, requires a physical confirmation within ~20s (toggle the switch or move the potentiometer) before it's trusted - for both BLE and BT-Serial. BLE additionally pairs/encrypts (bonds) for real via NimBLE security once trusted; `trust ble bonds` lists the bond store, `trust ble clearbonds` resets it (independent of the `trust ble add/del` MAC list).
 
 BLE UUIDs (default, see `include/settings.h`):
 
@@ -187,7 +187,7 @@ Requires a Rust toolchain. On Linux, the tray icon uses the KSNI (StatusNotifier
 
 ## MIDI input mapping (optional)
 
-Receive-only, over BLE-MIDI or BT-MIDI:
+Receive-only, over BLE-MIDI (`ENABLE_BLE_MIDI`, on by default in every env's `platformio.ini`). BT-MIDI (`ENABLE_BT_MIDI`) exists in the codebase but is currently moot - it requires `ENABLE_BT_SERIAL`, which is `0` on every env that has BLE on, since NimBLE and Classic-BT-Serial can't run together on the same chip (see "Known limitations").
 
 | Message | Action |
 | --- | --- |
@@ -197,10 +197,16 @@ Receive-only, over BLE-MIDI or BT-MIDI:
 | Note 60 (C4) | Previous pattern |
 | Note 62 (D4) | Next pattern |
 | Notes 70–77 (F#4–C5) | Select pattern/mode 1–8 |
+| MSC `GO <cue>` | Select pattern/profile `<cue>` (same as `mode <cue>`) |
+| MSC `GO` (no cue number) | Next pattern |
+| MSC `STOP` | Lamp off |
+| MSC `RESUME` | Lamp on |
+
+MIDI Show Control (MSC) rides as SysEx over the same BLE-MIDI connection (`F0 7F <device_ID> 02 <command_format> <command> [cue_number] ... F7`, see `src/midi_show_control.cpp`). `command_format` must be Lighting/General (`0x01`) or All-Types (`0x7F`); `device_ID` isn't filtered. Only `GO`/`STOP`/`RESUME` are implemented - `SET`/`FIRE`/`TIMED_GO` etc. are valid per the spec but not wired up. `STOP` maps to `off` rather than a true mid-cue freeze (this lamp has no such state) - a deliberate v1 simplification, not a bug.
 
 ## Known limitations
 
-- **BLE has no pairing-confirmation gate.** BT-Serial requires a physical confirmation (switch toggle or poti move) before accepting commands from an unrecognized device (`btPairPending` in `src/comms.cpp`). BLE has no equivalent — an unknown BLE client connecting within the boot grace window can send commands immediately. Most relevant for BLE-only hardware like `on_air` (ESP32-S3, no Classic BT radio).
+- **BLE and Classic-BT-Serial can't run together on the same chip.** The BLE stack is NimBLE (`h2zero/NimBLE-Arduino`, migrated off the classic Bluedroid "ESP32 BLE Arduino" library for stability - see commit history); `NimBLEDevice::init()` frees the Classic-BT controller memory on the original ESP32, so `BluetoothSerial`/SPP can't be used in the same build. `ENABLE_BT_SERIAL` defaults to `0` on every WROOM env now; the Classic-BT-Serial code itself is still in the tree (build with `-DENABLE_BLE=0 -DENABLE_BT_SERIAL=1` to get it back, without BLE). `on_air` (ESP32-S3) was already BLE-only regardless, since that chip has no Classic BT radio at all.
 - **The BLE radio never sleeps.** BT-Serial has a boot/idle timeout (`maybeSleepBtSerial`) that powers down the Classic BT radio after inactivity; BLE has no equivalent and stays advertising/connectable indefinitely. Intentional for now, but worth knowing if power draw matters for your build.
 - **The desktop app's Windows/macOS event-loop integration (tray clicks, hotkeys, sleep/shutdown/screen-lock triggers) is new and compiles in CI but is not yet confirmed working on real hardware** — only Linux has been exercised live. If something doesn't fire as expected on Windows/macOS, please open an issue.
 - **No iOS control path.** The web app needs Web Bluetooth, which no iOS browser supports; Home Assistant or the desktop app are the only current options if your phone is an iPhone.

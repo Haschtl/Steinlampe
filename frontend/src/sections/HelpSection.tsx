@@ -37,6 +37,7 @@ const commands = [
   { cmd: 'profile save/load/show', desc: 'Scene profiles (pattern/brightness/ramp, no calibration)' },
   { cmd: 'cfg export / cfg import ...', desc: 'Backup/restore settings' },
   { cmd: 'status / status json', desc: 'Print status snapshot' },
+  { cmd: 'trust list / trust ble|bt add|del <mac> / trust ble bonds|clearbonds', desc: 'Trusted-device list and BLE pairing/bond management' },
   { cmd: 'factory / help', desc: 'Reset or list commands' },
 ];
 
@@ -47,6 +48,10 @@ const midiMapping = [
   { msg: 'Note 60 (C4)', action: 'Previous pattern' },
   { msg: 'Note 62 (D4)', action: 'Next pattern' },
   { msg: 'Notes 70–77 (F#4..C5)', action: 'Select pattern/mode 1–8' },
+  { msg: 'MSC GO <cue>', action: 'Select pattern/profile <cue> (same as "mode <cue>")' },
+  { msg: 'MSC GO (no cue)', action: 'Next pattern' },
+  { msg: 'MSC STOP', action: 'Lamp off' },
+  { msg: 'MSC RESUME', action: 'Lamp on' },
 ];
 
 export function HelpSection() {
@@ -166,6 +171,13 @@ export function HelpSection() {
             </dl>
             <p className="mt-3 text-xs text-muted">
               <Trans k="help.bleMidiNote">Standard BLE-MIDI UUIDs; enable with the optional BLE-MIDI flag. Write/WriteNR RX-only.</Trans>
+            </p>
+            <p className="mt-2 text-xs text-muted">
+              <Trans k="help.mscNote">
+                Also understands MIDI Show Control (MSC) SysEx over the same connection - GO/STOP/RESUME, see the
+                MIDI Mapping table. Any device ID is accepted; command_format must be Lighting (0x01) or All-Types
+                (0x7F).
+              </Trans>
             </p>
           </div>
           <div className="rounded-xl border border-border/60 bg-panel/70 p-4 text-sm shadow-inner">
@@ -307,7 +319,11 @@ export function HelpSection() {
           </p>
           <p className="text-muted">
             <Trans k="help.btPairingHint">
-              Classic BT-Serial pairing: connect from the host, then confirm within ~20s by toggling the switch or moving the potentiometer. The device will be trusted afterwards.
+              First connection outside the ~60s post-boot trust window (BLE or Classic-BT-Serial, whichever this
+              build has): the lamp holds the link open and waits up to 20s for you to confirm by toggling the
+              switch or moving the potentiometer, then trusts the device. BLE additionally pairs/encrypts
+              (bonds) for real at this point - see "trust ble bonds"/"trust ble clearbonds" to inspect or reset
+              that.
             </Trans>
           </p>
         </CardContent>
