@@ -2,8 +2,9 @@
 
 Throwaway, not part of the real quarzlampe firmware. Answers one question:
 does NimBLE (not Bluedroid) + a BLE Mesh Node with a Generic OnOff Server
-model actually provision and respond on real `upesy_wroom` (classic ESP32)
-hardware - the same chip `quarzlampe`/`desk_lamp` run on?
+model actually provision and respond on real hardware - both chips the
+main firmware targets (`upesy_wroom`/classic ESP32, same as
+`quarzlampe`/`quarzlampe_rd03(d)`/`desk_lamp`; and `on_air`'s ESP32-S3)?
 
 Background/why this exists at all: see the ble-mesh plan this was scaffolded
 from. Short version - the official precompiled `framework = arduino`-only
@@ -50,10 +51,26 @@ Fixed along the way, in order:
    what generates the `app_main()` that calls into Arduino's `setup()`/
    `loop()`; both are in `sdkconfig.defaults` now, with comments).
 
-With all of that: **`pio run -e upesy_wroom` succeeds** - `main.cpp`
-compiled cleanly against the real `esp_ble_mesh`/NimBLE API (not just
-checked by hand against headers anymore), linked, and produced
-`firmware.bin`. RAM 12% (39KB/320KB), Flash 67% (698KB/1MB app partition).
+With all of that: **`pio run -e upesy_wroom` and `-e on_air` both
+succeed** - `main.cpp` compiled cleanly against the real
+`esp_ble_mesh`/NimBLE API (not just checked by hand against headers
+anymore) for both chips, linked, and produced `firmware.bin`.
+`upesy_wroom`: RAM 12% (40KB/320KB), Flash 67% (700KB/1MB app partition).
+`on_air` (ESP32-S3): RAM 10.5% (34KB/320KB), Flash 69% (720KB/1MB app
+partition).
+
+One real config gap caught before it would have wasted a hardware test:
+the first `sdkconfig.defaults` only enabled `CONFIG_BLE_MESH_PB_ADV`
+(advertising-bearer provisioning), reasoning it was "enough for a
+single-node spike". That's wrong for testing with a phone - provisioner
+apps (nRF Mesh et al.) provision over **PB-GATT** almost always, since
+phone OS BLE stacks don't give apps the raw access to mesh advertising
+PDUs PB-ADV provisioning needs on the provisioner's side. Without
+`CONFIG_BLE_MESH_PB_GATT=y` (now added, alongside `CONFIG_BLE_MESH_PROXY=y`
+for the phone's ongoing GATT connection after provisioning - AppKey
+binding, model pub/sub config), this node would have been invisible to
+nRF Mesh's provisioning flow despite advertising correctly. Both envs
+rebuilt clean with the fix.
 
 Not yet verified: flashing to a real board and the actual provisioning/
 OnOff roundtrip (see Testing below) - that needs real hardware in hand.
@@ -69,9 +86,14 @@ build plumbing above.
 
 ```sh
 cd spikes/ble-mesh
-pio run -e upesy_wroom -t upload
+pio run -e upesy_wroom -t upload   # or -e on_air for the ESP32-S3
 pio device monitor
 ```
+
+`board = upesy_wroom` is a generic ESP32-WROOM-32 pin/flash definition,
+not a requirement for that specific manufacturer's board - flashing this
+onto any of the actual lamps (`quarzlampe`, `quarzlampe_rd03(d)`,
+`desk_lamp`) works the same way, not just a bare dev board.
 
 First build downloads the full ESP-IDF toolchain (a separate, multi-GB
 `framework-espidf` package, plus ~27 managed components arduino-esp32
