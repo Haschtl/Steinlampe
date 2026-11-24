@@ -1,0 +1,25 @@
+# Minimal hand-picked set for the spike - deliberately NOT copied from any
+# of Espressif's example sdkconfig.defaults files (several of those turned
+# out to be one shared, huge, mostly-irrelevant template covering WiFi,
+# speech recognition, Insights/Rainmaker, etc. - noise for this question).
+#
+# Host: NimBLE instead of the default Bluedroid - this is the entire point
+# of the spike, see platformio.ini's comment.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# CONFIG_BT_BLUEDROID_ENABLED is not set
+
+# BLE Mesh: Node role (this device joins a mesh, it doesn't provision
+# others), advertising-bearer provisioning (PB-ADV; no PB-GATT, not needed
+# for a single-node spike), and the Generic Server model group for the
+# Generic OnOff Server. CONFIG_BLE_MESH_GENERIC_SERVER is the only Kconfig
+# toggle for the generic *server* models - there's no finer-grained
+# per-model flag on the server side (checked common/include/mesh/config.h;
+# the client side does have per-model _CLI flags, the server side doesn't
+# need them since the app chooses which server models to instantiate in
+# code, not via Kconfig).
+CONFIG_BLE_MESH=y
+CONFIG_BLE_MESH_NODE=y
+CONFIG_BLE_MESH_PROV=y
+CONFIG_BLE_MESH_PB_ADV=y
+CONFIG_BLE_MESH_GENERIC_SERVER=y
