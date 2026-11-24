@@ -851,8 +851,10 @@ void handleCommand(String line)
             }
             if (extInputAnalog)
             {
-                analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
+                // arduino-esp32 3.x: pinMode(INPUT) before analogSetPinAttenuation() -
+                // see the same reordering + rationale in main.cpp's setup().
                 pinMode(Settings::EXT_INPUT_PIN, INPUT);
+                analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
             }
             else
             {

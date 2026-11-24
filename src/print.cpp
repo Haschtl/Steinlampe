@@ -37,6 +37,12 @@ static void emitLiveState(const bool &force)
     // normalized poti to 1%, so jittery sensor reads don't spam identical
     // STATE events. Only a meaningful change (or a forced emit) goes out.
     String key = lampOn ? F("1|") : F("0|");
+    // Reserve upfront - this (and `line` below, and the persistent
+    // liveStateLastKey it gets assigned into) rebuilds on every meaningful
+    // poti change, far more often than the on-demand status commands. Same
+    // fragmentation/TLSF-crash rationale as printStatusStructured()'s
+    // reserve() calls.
+    key.reserve(40);
     key += String(masterBrightness * 100.0f, 1);
     key += '|';
     key += String(currentPattern + 1);
@@ -51,9 +57,11 @@ static void emitLiveState(const bool &force)
         liveStatePending = false;
         return;
     }
+    liveStateLastKey.reserve(40);
     liveStateLastKey = key;
 
     String line = F("STATE|lamp=");
+    line.reserve(100);
     line += lampOn ? F("ON") : F("OFF");
     line += F("|bri=");
     line += String(masterBrightness * 100.0f, 1);
@@ -441,6 +449,15 @@ void printStatusStructured(const bool &force)
 {
     // Core line (keep short for BLE MTU)
     String line = F("STATUS|");
+    // Reserve the whole line's eventual size upfront instead of letting many
+    // small += calls grow it incrementally - repeated tiny reallocations of
+    // varying sizes fragment the heap over time, which on arduino-esp32 3.x's
+    // TLSF allocator can eventually hit a "no contiguous block found" crash
+    // (confirmed on real hardware: deterministic, uptime-dependent, only with
+    // the longer field set poti=ON adds - total free heap stayed flat the
+    // whole time, ruling out a leak; one upfront allocation avoids the churn
+    // that caused the fragmentation in the first place).
+    line.reserve(420);
     line += F("pattern=");
     line += String(currentPattern + 1);
     line += F("|pattern_total=");
@@ -610,6 +627,7 @@ void printStatusStructured(const bool &force)
 
     // Detail line: IO, PWM, light, music, inputs
     String lineIO = F("STATUS1|");
+    lineIO.reserve(500); // see the matching comment on `line`'s reserve() above
 #if ENABLE_EXT_INPUT
     lineIO += F("ext_in=");
     lineIO += extInputEnabled ? F("ON") : F("OFF");
@@ -759,6 +777,7 @@ void printStatusStructured(const bool &force)
 
     // Filters/status chunk (separate to stay under BLE MTU)
     String line2 = F("STATUS2|");
+    line2.reserve(450); // see the matching comment on `line`'s reserve() above
     {
         FilterState filt;
         filtersGetState(filt);

@@ -15,6 +15,7 @@
 #include <vector>
 #include <ctype.h>
 #include <esp_system.h>
+#include <esp_mac.h> // esp_efuse_mac_get_default/esp_base_mac_addr_set - arduino-esp32 3.x no longer pulls this in transitively
 
 #include "comms.h"
 #include "filters.h"
@@ -454,19 +455,23 @@ void setup()
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
   analogReadResolution(12);
 #endif
+// arduino-esp32 3.x: pinMode(INPUT) must come *before* analogSetPinAttenuation() -
+// the reverse order (fine under 2.x) now leaves the pin's ADC channel
+// misconfigured ("Pin is not configured as analog channel" at boot), and a
+// later analogRead() on it crashes (LoadProhibited) instead of just failing.
 #if ENABLE_LIGHT_SENSOR
-  analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
   pinMode(Settings::LIGHT_PIN, INPUT);
+  analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
 #endif
 #if ENABLE_POTI
-  analogSetPinAttenuation(PIN_POTI, ADC_11db);
   pinMode(PIN_POTI, INPUT);
+  analogSetPinAttenuation(PIN_POTI, ADC_11db);
 #endif
 #if ENABLE_EXT_INPUT
   if (extInputAnalog)
   {
-    analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
     pinMode(Settings::EXT_INPUT_PIN, INPUT);
+    analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
   }
   else
   {
@@ -474,8 +479,8 @@ void setup()
   }
 #endif
 #if ENABLE_MUSIC_MODE
-  analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
   pinMode(Settings::MUSIC_PIN, INPUT);
+  analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
 #endif
 #if ENABLE_RD03
   radarSetup();
@@ -485,9 +490,8 @@ void setup()
   trustSetBootMs(millis());
 
 #if !ENABLE_ANALOG_OUTPUT
-  ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
-  ledcAttachPin(PIN_OUTPUT, LEDC_CH);
-  ledcWrite(LEDC_CH, OFF_RAW); // explicit off at startup
+  ledcAttach(PIN_OUTPUT, LEDC_FREQ, LEDC_RES); // arduino-esp32 3.x: replaces ledcSetup()+ledcAttachPin()
+  ledcWrite(PIN_OUTPUT, OFF_RAW);              // explicit off at startup
 #else
   dacWrite(PIN_OUTPUT, OFF_RAW);
 #endif
@@ -520,7 +524,7 @@ void loop()
 #if ENABLE_ANALOG_OUTPUT
       dacWrite(PIN_OUTPUT, OFF_RAW);
 #else
-      ledcWrite(LEDC_CH, OFF_RAW);
+      ledcWrite(PIN_OUTPUT, OFF_RAW);
 #endif
       delay(10);
       return;

@@ -1,0 +1,48 @@
+# Step 1 of the NimBLE-Arduino -> native-API + BLE Mesh migration (see the
+# feat/ble-mesh plan): just enough to get `framework = arduino, espidf` +
+# arduino-esp32 3.3.5 building and running with the EXISTING NimBLE-Arduino
+# BLE code unchanged. Deliberately NOT adding CONFIG_BT_NIMBLE_ENABLED or any
+# CONFIG_BLE_MESH* flags yet - those come with the native-API port in a later
+# step, same reasoning as spikes/ble-mesh/sdkconfig.defaults documents for
+# each of these.
+
+# Needed for NimBLE-Arduino's own controller bring-up to link against the
+# ESP-IDF "bt" component at all in this build mode (Bluedroid stays off -
+# NimBLE-Arduino never uses it; nothing in this firmware does either, per
+# the ENABLE_BLE/ENABLE_BT_SERIAL #error in lamp_config.h).
+CONFIG_BT_ENABLED=y
+
+# Arduino core itself requires this (CMakeLists.txt hard-checks it).
+CONFIG_FREERTOS_HZ=1000
+
+# Without this, no app_main() gets generated to call into Arduino's
+# setup()/loop() - the final link fails with "undefined reference to
+# app_main".
+CONFIG_AUTOSTART_ARDUINO=y
+
+# Both real boards this targets (upesy_wroom and on_air's ESP32-S3 Super
+# Mini) have 4MB flash - without this it silently falls back to a
+# 2MB-sized default partition table.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Known open issue (see README/commit history around this line): desk_lamp's
+# ENABLE_POTI path can hit a heap-corruption crash (TLSF asserts/LoadProhibited,
+# symptom site migrates between runs - genuine corruption, not a simple leak;
+# confirmed via heap_caps_check_integrity_all() and a decoded core dump) under
+# sustained, rapid poti-driven state updates. The real, physically-wired poti
+# on this unit is known to be noisy specifically in its lower range, which
+# retriggers the state-update path far more often than a clean read would -
+# confirmed this is a REAL risk on real hardware, not just a floating-pin test
+# artifact. The controller must not crash from this regardless of how noisy
+# the pot is - not yet fully root-caused. `String::reserve()` calls were added
+# in print.cpp's hot status/state-string builders as a real improvement (less
+# reallocation churn) but didn't fully eliminate it in stress testing. Needs
+# follow-up before Step 1 can be signed off for desk_lamp specifically. The
+# other 4 envs don't use ENABLE_POTI and are unaffected.
+#
+# Core dump kept enabled (cheap - just the existing partition, already in
+# min_spiffs.csv) so any future crash is fully diagnosable via espcoredump.py
+# without needing to re-add this. Heap poisoning was tried as a diagnostic
+# aid and removed again - it didn't change the outcome, just added overhead.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y

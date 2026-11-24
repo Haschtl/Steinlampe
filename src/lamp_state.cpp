@@ -14,7 +14,6 @@
 #include <string.h>
 
 // ---------- Output driver (PWM or DAC) ----------
-const int LEDC_CH = 0;
 // more conservative
 // const int LEDC_FREQ = 2000;
 // const int LEDC_RES = 15; // 15-bit resolution @2 kHz still fits LEDC clock
@@ -25,9 +24,9 @@ const int LEDC_RES = 8; // DAC uses 8-bit values
 const int PWM_MAX = 255;
 #else
 // Lower PWM frequency to gain extra resolution (quieter LEDs). ESP32-S3's LEDC hardware caps
-// duty resolution at 14 bits (vs. up to 20 on the classic ESP32); ledcSetup() silently fails
+// duty resolution at 14 bits (vs. up to 20 on the classic ESP32); ledcAttach() silently fails
 // above that ("No more LEDC channels available! ... or bit width too big (maximum 14)"),
-// which left the channel uninitialized and the output permanently stuck/off on-air.
+// which left the pin unattached and the output permanently stuck/off on-air.
 const int LEDC_FREQ = 1000;
 #if CONFIG_IDF_TARGET_ESP32S3
 const int LEDC_RES = 14; // max duty resolution on ESP32-S3's LEDC
@@ -48,7 +47,7 @@ static inline void writeOutputRaw(uint32_t value)
     value = (uint32_t)PWM_MAX;
   dacWrite(PIN_OUTPUT, (uint8_t)value);
 #else
-  ledcWrite(LEDC_CH, value);
+  ledcWrite(PIN_OUTPUT, value); // arduino-esp32 3.x: ledcWrite() addresses by pin, not channel
 #endif
 }
 
