@@ -26,3 +26,12 @@ CONFIG_BLE_MESH_GENERIC_SERVER=y
 
 # Arduino core itself requires this (CMakeLists.txt hard-checks it).
 CONFIG_FREERTOS_HZ=1000
+
+# Without this, no app_main() gets generated to call into Arduino's
+# setup()/loop() - the final link fails with "undefined reference to
+# app_main" (found by actually building this; the official
+# espidf-arduino-blink example this project started from carries this in
+# its own sdkconfig.defaults, buried in an otherwise mostly-irrelevant
+# kitchen-sink config file, which is why it got left out of the first
+# pass here).
+CONFIG_AUTOSTART_ARDUINO=y

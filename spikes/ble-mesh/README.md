@@ -14,63 +14,56 @@ instead, which builds the real ESP-IDF from source against the
 ESP32 target is a combination `esp_ble_mesh`'s own source code supports -
 just not one Espressif also ships precompiled for the fast path.
 
-## Status: configures clean, blocked on a broken local SCons install
+## Status: builds and links successfully
 
-A real build was attempted (on a sandboxed CI-like machine, not real dev
-hardware). Progress, in order:
+A real build was run (on the actual dev machine this project lives on).
+Fixed along the way, in order:
 
 1. `framework = arduino, espidf` initially failed with "Missing Arduino
-   framework directory" - this platform's manifest wants arduino-esp32
-   3.3.5 specifically, but an unrelated, already-cached dev snapshot
-   (3.20017.241212) got resolved instead. Fixed by pinning the exact
-   3.3.5 tarball via `platform_packages` in `platformio.ini` (see its
-   comment) - that dev snapshot, for reference, turned out separately to
-   require `esp_adc_cal`, an IDF component with no managed-component
-   replacement, so it wouldn't have worked anyway.
-2. The IDF Component Manager then correctly auto-resolved 27 dependencies
+   framework directory", then with a missing `esp_adc_cal` IDF component
+   that has no managed-component replacement - both because unqualified
+   `platform = espressif32` resolved to the third-party "pioarduino" fork
+   on this machine (version string "55.3.35", packages from
+   `github.com/pioarduino/registry`), which had an unrelated, already-cached
+   arduino-esp32 dev snapshot (3.20017.241212) lying around that doesn't
+   match what that platform's own manifest actually wants (3.3.5).
+2. Pinning the exact 3.3.5 tarball got further, but then hit a second,
+   genuinely reproducible bug in that same "pioarduino" fork: its
+   `tool-scons` package would install correctly (confirmed via
+   PlatformIO's own `ToolPackageManager` API - present on disk, correct
+   module included) and then get silently deleted again by something in
+   that fork's own build orchestration before the final SCons-driven link
+   step ran, every single time, regardless of which `pio` binary/venv ran
+   the build. **Fixed by switching to the official `platformio/espressif32`
+   platform instead** (`platform = platformio/espressif32@^8.0.0` in
+   `platformio.ini`) - that whole class of failure disappeared outright.
+3. The IDF Component Manager then correctly auto-resolved 27 dependencies
    (arduino-esp32 3.3.5's own requirements) once `src/idf_component.yml`
    declared `espressif/mdns` - arduino-esp32 requires mDNS unconditionally
-   even though this sketch never touches WiFi; recent ESP-IDF extracted
-   mdns out of the core component set, so it needs explicit declaration
-   here to be fetched from the registry.
-3. CMake configuration then failed on `esp32-arduino requires
-   CONFIG_FREERTOS_HZ=1000 (currently 100)` - added to
-   `sdkconfig.defaults` (now there, with a comment).
-4. With that, **CMake configuration completes successfully** - every
-   dependency (including `CONFIG_BT_NIMBLE_ENABLED` + BLE Mesh) resolved
-   and the build graph is built. It then reaches the actual SCons build
-   invocation and fails there with `ModuleNotFoundError: No module named
-   'SCons.Tool.FortranCommon'`. Dug further: this is a genuine upstream
-   packaging bug, not a local environment problem in the usual sense -
-   `pio run` always re-fetches its own pinned `tool-scons@4.40801.0`/
-   `@4.41101.0` from the `pioarduino` registry
-   (`github.com/pioarduino/registry`) for the actual build step,
-   regardless of what's otherwise installed; that specific distributed
-   package is missing `SCons/Tool/FortranCommon.py`. Confirmed a *correct*
-   SCons install exists and works fine (manually `pip install scons` into
-   PlatformIO's ESP-IDF-specific Python venv, `FortranCommon` imports
-   there without issue) - `pio run` just doesn't use it for this step, it
-   keeps reaching for its own broken copy. Not fixable by installing
-   things locally; would need either a different/patched `tool-scons`
-   release from that registry, or forcing PlatformIO to use a system
-   SCons instead (untried - out of scope for a spike instead of the
-   actual question this was meant to answer).
+   even though this sketch never touches WiFi, and recent ESP-IDF extracted
+   mdns out of the core component set.
+4. CMake configuration then failed on `esp32-arduino requires
+   CONFIG_FREERTOS_HZ=1000 (currently 100)`, then on a linker error
+   (`undefined reference to 'app_main'`) once it got past that - both are
+   `sdkconfig.defaults` entries arduino-esp32 itself requires
+   (`CONFIG_FREERTOS_HZ=1000`, `CONFIG_AUTOSTART_ARDUINO=y` - the latter is
+   what generates the `app_main()` that calls into Arduino's `setup()`/
+   `loop()`; both are in `sdkconfig.defaults` now, with comments).
 
-**`src/main.cpp` itself was never actually reached by the compiler** - the
-failure above happens before compiling any `.cpp` file. Its API usage was
-checked by hand against the real `esp_ble_mesh`/NimBLE headers (every
-struct field, macro and enum value used was verified against
-`framework-arduinoespressif32-libs@5.5.0`), but that's not the same as a
-real compile. The part most likely to need fixing first once it does
-compile: `bluetoothInit()`'s `nimble_port_init()` /
-`nimble_port_freertos_init()` controller/host bring-up sequence - that
-specific API has shifted across ESP-IDF versions historically, more than
-the Mesh/model APIs have.
+With all of that: **`pio run -e upesy_wroom` succeeds** - `main.cpp`
+compiled cleanly against the real `esp_ble_mesh`/NimBLE API (not just
+checked by hand against headers anymore), linked, and produced
+`firmware.bin`. RAM 12% (39KB/320KB), Flash 67% (698KB/1MB app partition).
 
-On a normal development machine (a real PlatformIO install, not this
-sandboxed one) steps 1-4 above should already be baked in via the files in
-this directory - you're most likely starting from "`pio run` actually
-invokes the C++ compiler on `main.cpp`", not from scratch.
+Not yet verified: flashing to a real board and the actual provisioning/
+OnOff roundtrip (see Testing below) - that needs real hardware in hand.
+The part most likely to still need attention if something's off at that
+point: `bluetoothInit()`'s `nimble_port_init()` /
+`nimble_port_freertos_init()` controller/host bring-up sequence, and the
+fixed ~200ms delay before `bleMeshStart()` papering over a real
+init-ordering dependency - both noted in `main.cpp`'s comments as the
+least-tested part of the actual Mesh/NimBLE logic, as opposed to the
+build plumbing above.
 
 ## Building
 
