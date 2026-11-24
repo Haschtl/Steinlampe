@@ -28,12 +28,11 @@
 // opcode (nRF Mesh's "Generic vendor model" raw-message feature) prints a
 // line here.
 //
-// Written against the real esp_ble_mesh/NimBLE headers (API shapes
-// verified by reading framework-arduinoespressif32-libs@5.5.0's headers
-// directly) but never compiled - no ESP-IDF toolchain was available on the
-// machine that wrote this. The controller/NimBLE-host bring-up sequence in
-// bluetoothInit() below is the part most likely to need fixing first - that
-// specific API has shifted across ESP-IDF versions historically.
+// Written against the real esp_ble_mesh/NimBLE headers and confirmed on
+// real hardware (see README.md's Status section): builds, boots clean,
+// and advertises correctly on both provisioning bearers. The
+// provisioning/model-binding roundtrip from an actual phone app is the
+// next untested step.
 
 #include <Arduino.h>
 
@@ -49,6 +48,8 @@ extern "C" {
 
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+
+#include "esp32-hal-bt.h"
 }
 
 namespace {
@@ -197,6 +198,21 @@ void nimbleHostTask(void *param) {
 }
 
 void bluetoothInit() {
+    // Confirmed on real hardware: without this, Arduino's own early startup
+    // releases the Classic-BT controller memory before nimble_port_init()
+    // gets a chance to use it ("esp_bt_controller_rom_mem_release already
+    // released, mode 2", then "BLE_INIT: controller init failed",
+    // ESP_ERR_INVALID_STATE). esp32-hal-bt.c has a strong, non-weak
+    // btInUse() -> true on classic ESP32 that's supposed to prevent exactly
+    // that release - but only if the linker actually pulls that
+    // translation unit in, which nothing here otherwise references.
+    // Calling btStarted() (a plain status check, return value unused) is
+    // just there to force that link - same workaround NimBLE-Arduino's own
+    // NimBLEDevice::init() uses for the same reason (see its own comment
+    // there: "make sure the linker includes esp32-hal-bt.c so Arduino init
+    // doesn't release BLE memory").
+    btStarted();
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

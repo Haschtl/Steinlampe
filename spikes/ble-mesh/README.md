@@ -26,7 +26,7 @@ instead, which builds the real ESP-IDF from source against the
 ESP32 target is a combination `esp_ble_mesh`'s own source code supports -
 just not one Espressif also ships precompiled for the fast path.
 
-## Status: builds and links successfully
+## Status: boots clean and advertises on real hardware
 
 A real build was run (on the actual dev machine this project lives on).
 Fixed along the way, in order:
@@ -84,15 +84,36 @@ binding, model pub/sub config), this node would have been invisible to
 nRF Mesh's provisioning flow despite advertising correctly. Both envs
 rebuilt clean with the fix.
 
-Not yet verified: flashing to a real board and the actual provisioning/
-OnOff roundtrip (see Testing below) - that needs real hardware in hand.
-The part most likely to still need attention if something's off at that
-point: `bluetoothInit()`'s `nimble_port_init()` /
-`nimble_port_freertos_init()` controller/host bring-up sequence, and the
-fixed ~200ms delay before `bleMeshStart()` papering over a real
-init-ordering dependency - both noted in `main.cpp`'s comments as the
-least-tested part of the actual Mesh/NimBLE logic, as opposed to the
-build plumbing above.
+**Flashed to real hardware and confirmed booting clean** (one of the
+project's actual `desk_lamp` units, not a bare dev board). First flash
+crashed exactly where expected - `bluetoothInit()`'s controller bring-up:
+
+```
+W (991) BTDM_INIT: esp_bt_controller_rom_mem_release already released, mode 2
+E (992) BLE_INIT: controller init failed
+ESP_ERROR_CHECK failed: esp_err_t 0x103 (ESP_ERR_INVALID_STATE) ... nimble_port_init()
+```
+
+Root cause: Arduino's own early startup releases the Classic-BT controller
+memory before `nimble_port_init()` gets to use it, unless something forces
+the linker to pull in `esp32-hal-bt.c` first (it has a strong,
+non-weak `btInUse() -> true` on classic ESP32 that's supposed to prevent
+exactly that release, but only takes effect if that translation unit is
+actually linked in). Fixed with the exact same one-line workaround
+NimBLE-Arduino's own `NimBLEDevice::init()` uses for the same reason -
+call `btStarted()` (a plain status check, return value unused) at the top
+of `bluetoothInit()`, purely to force that link.
+
+Reflashed with the fix: **boots clean, no crash**, and the serial log shows
+exactly the expected sequence - `"initializing mesh (NimBLE host)..."` ->
+`"provisioning enabled, err=0"` -> NimBLE actively cycling between
+`disc_mode=0` (connectable, PB-GATT) and `disc_mode=2` (non-connectable
+beacon, PB-ADV) advertising, i.e. correctly advertising as an
+unprovisioned Mesh device on both bearers.
+
+Not yet verified: the actual provisioning/OnOff/Vendor-Model roundtrip
+from a phone (see Testing below) - next step, needs a provisioner app in
+hand.
 
 ## Building
 
