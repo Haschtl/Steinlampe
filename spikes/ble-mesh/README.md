@@ -162,6 +162,61 @@ One spike-only limitation worth knowing before testing: `CONFIG_BLE_MESH_SETTING
 node forgets it's provisioned on every reboot/reflash - re-provision each
 time. A real product would turn this on.
 
+## Decision gate: can NimBLE-Arduino coexist with esp_ble_mesh in one image?
+
+**No - confirmed with a real build+flash test, not just source reading.**
+This was the central open question before committing to any real-firmware
+integration plan (see the plan doc): would `comms.cpp`/`midi_ble.cpp`/
+`presence_ble.cpp`, which use NimBLE-Arduino's C++ wrapper, need porting to
+the native ESP-IDF NimBLE API this spike uses, or could they stay as-is
+with Mesh layered on top?
+
+The hopeful theory going in: NimBLE-Arduino's own `NimBLEDevice::init()`
+calls `nimble_port_init()`/`nimble_port_freertos_init()` internally - the
+exact same calls this spike's own `bluetoothInit()` used before this test -
+so maybe both libraries are just two independent sets of GATT services
+sharing one already-running host, with no real conflict.
+
+Tested directly: added `h2zero/NimBLE-Arduino` as a `lib_deps` alongside
+the existing `esp_ble_mesh` setup, had `NimBLEDevice::init()` own host
+bring-up (replacing this spike's manual calls, matching how comms.cpp does
+it for real), added one throwaway `NimBLEServer`/characteristic standing in
+for comms.cpp's real GATT service, and kept `esp_ble_mesh_init()` right
+after. It compiled and linked with zero errors - but **crashed in a boot
+loop on real hardware**, every single boot:
+
+```
+assert failed: ble_svc_gap_init ble_svc_gap.c:370 (rc == 0)
+```
+
+Root cause, confirmed by reading both call sites: `NimBLEServer.cpp:887-888`
+(NimBLE-Arduino, triggered from `createServer()`) and `esp_ble_mesh`'s own
+`core/nimble_host/adapter.c:2595-2596` (triggered from
+`esp_ble_mesh_init()`) **both unconditionally call `ble_svc_gap_init()` and
+`ble_svc_gatt_init()`** - the standard NimBLE helper services every app is
+expected to register exactly once. Neither library checks whether the
+other has already done it, and the second registration of the same
+service fails its own internal assert. This isn't an ordering bug (swapping
+which one runs first just moves the crash to the other caller) - it's a
+hard assumption in both libraries that each is the sole owner of this
+startup step, with no public flag on either side to skip it.
+
+**Conclusion: real integration needs `comms.cpp`/`midi_ble.cpp`/
+`presence_ble.cpp` ported off NimBLE-Arduino's C++ wrapper onto the native
+ESP-IDF NimBLE API** (the same API this spike's Mesh node already uses) -
+there's exactly one path into the shared host that way, so no double
+registration is possible. The alternative (patching the vendored
+NimBLE-Arduino or esp_ble_mesh source to add a guard) would work too but
+means carrying a fork of third-party code across every future library
+update - not worth it for what's otherwise a contained, mechanical port
+(the command dispatch, pattern engine, and MSC logic in those files never
+touch BLE APIs directly, so none of that needs to change).
+
+The coexistence-test code itself was reverted, not kept (see git history on
+this branch around the commit documenting this finding) - it was only ever
+meant to answer this one question, and real hardware is left back on the
+last known-good Mesh-only build.
+
 ## Building
 
 ```sh
