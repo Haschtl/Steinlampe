@@ -23,3 +23,6 @@ CONFIG_BLE_MESH_NODE=y
 CONFIG_BLE_MESH_PROV=y
 CONFIG_BLE_MESH_PB_ADV=y
 CONFIG_BLE_MESH_GENERIC_SERVER=y
+
+# Arduino core itself requires this (CMakeLists.txt hard-checks it).
+CONFIG_FREERTOS_HZ=1000

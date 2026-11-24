@@ -14,19 +14,56 @@ instead, which builds the real ESP-IDF from source against the
 ESP32 target is a combination `esp_ble_mesh`'s own source code supports -
 just not one Espressif also ships precompiled for the fast path.
 
-## Status: unbuilt
+## Status: configures clean, blocked on a broken local SCons install
 
-`src/main.cpp` was written against the real `esp_ble_mesh`/NimBLE headers
-(every struct field, macro and enum value used was checked against
-`framework-arduinoespressif32-libs@5.5.0`'s actual headers) but **never
-compiled** - there was no ESP-IDF toolchain available on the machine that
-wrote this. Expect real compile errors on the first build; fixing those is
-exactly what this spike is for, not a sign something went wrong.
+A real build was attempted (on a sandboxed CI-like machine, not real dev
+hardware). Progress, in order:
 
-The part most likely to need fixing first: `bluetoothInit()`'s
-`nimble_port_init()` / `nimble_port_freertos_init()` controller/host
-bring-up sequence. That specific API has shifted across ESP-IDF versions
-historically, more than the Mesh/model APIs have.
+1. `framework = arduino, espidf` initially failed with "Missing Arduino
+   framework directory" - this platform's manifest wants arduino-esp32
+   3.3.5 specifically, but an unrelated, already-cached dev snapshot
+   (3.20017.241212) got resolved instead. Fixed by pinning the exact
+   3.3.5 tarball via `platform_packages` in `platformio.ini` (see its
+   comment) - that dev snapshot, for reference, turned out separately to
+   require `esp_adc_cal`, an IDF component with no managed-component
+   replacement, so it wouldn't have worked anyway.
+2. The IDF Component Manager then correctly auto-resolved 27 dependencies
+   (arduino-esp32 3.3.5's own requirements) once `src/idf_component.yml`
+   declared `espressif/mdns` - arduino-esp32 requires mDNS unconditionally
+   even though this sketch never touches WiFi; recent ESP-IDF extracted
+   mdns out of the core component set, so it needs explicit declaration
+   here to be fetched from the registry.
+3. CMake configuration then failed on `esp32-arduino requires
+   CONFIG_FREERTOS_HZ=1000 (currently 100)` - added to
+   `sdkconfig.defaults` (now there, with a comment).
+4. With that, **CMake configuration completes successfully** - every
+   dependency (including `CONFIG_BT_NIMBLE_ENABLED` + BLE Mesh) resolved
+   and built the build graph. It reaches the actual SCons build invocation
+   and fails there with `ModuleNotFoundError: No module named
+   'SCons.Tool.FortranCommon'` - a broken/incomplete `scons` install
+   specific to that sandboxed environment's PlatformIO cache (its
+   ESP-IDF-specific Python venv had no working `pip`/`scons` at all;
+   `ensurepip` + `pip install scons` got further but the actual `pio run`
+   subprocess still picked up a different, still-broken `tool-scons`
+   install rather than the one just fixed - looks like a
+   sandbox/permissions quirk of that specific machine, not something
+   fixable from where this was run).
+
+**`src/main.cpp` itself was never actually reached by the compiler** - the
+failure above happens before compiling any `.cpp` file. Its API usage was
+checked by hand against the real `esp_ble_mesh`/NimBLE headers (every
+struct field, macro and enum value used was verified against
+`framework-arduinoespressif32-libs@5.5.0`), but that's not the same as a
+real compile. The part most likely to need fixing first once it does
+compile: `bluetoothInit()`'s `nimble_port_init()` /
+`nimble_port_freertos_init()` controller/host bring-up sequence - that
+specific API has shifted across ESP-IDF versions historically, more than
+the Mesh/model APIs have.
+
+On a normal development machine (a real PlatformIO install, not this
+sandboxed one) steps 1-4 above should already be baked in via the files in
+this directory - you're most likely starting from "`pio run` actually
+invokes the C++ compiler on `main.cpp`", not from scratch.
 
 ## Building
 
@@ -37,9 +74,10 @@ pio device monitor
 ```
 
 First build downloads the full ESP-IDF toolchain (a separate, multi-GB
-`framework-espidf` package - nothing like the lightweight
+`framework-espidf` package, plus ~27 managed components arduino-esp32
+itself needs - nothing like the lightweight
 `framework-arduinoespressif32-libs` the main firmware uses) - expect that to
-take a while.
+take a while the first time.
 
 ## Testing once it builds and flashes
 
