@@ -145,7 +145,8 @@ void setupBleMidi(NimBLEServer *server, NimBLEAdvertising *advertising)
   midiChar = svc->createCharacteristic(MIDI_CHAR_UUID,
                                        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   midiChar->setCallbacks(new MidiCallbacks());
-  svc->start();
+  // NimBLEService::start() is a deprecated no-op in this NimBLE-Arduino
+  // version - services start automatically with the server.
   if (advertising)
     advertising->addServiceUUID(MIDI_SERVICE_UUID);
   Serial.println(F("[BLE-MIDI] Receive-only service aktiv."));

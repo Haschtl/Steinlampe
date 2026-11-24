@@ -25,19 +25,6 @@
 #error "ENABLE_BLE and ENABLE_BT_SERIAL cannot both be 1: NimBLE frees the Classic-BT controller memory on init. Set one of them to 0."
 #endif
 
-// Opt-in: lets a BLE client re-authenticate outside the post-boot trust grace
-// window using a token issued during an earlier grace-window connection,
-// instead of only trusting a remembered MAC address. Needed because unbonded
-// Android/iOS centrals use a rotating random BLE address, so the MAC-based
-// trust list alone makes a previously-paired phone look "unknown" again once
-// its address rotates. This is NOT real pairing/encryption (no BLESecurity) -
-// the token travels in cleartext, so it's no stronger against an on-link
-// eavesdropper than the MAC check it supplements. Off by default; enable via
-// build_flags (-DENABLE_BLE_TRUST_TOKEN=1).
-#ifndef ENABLE_BLE_TRUST_TOKEN
-#define ENABLE_BLE_TRUST_TOKEN 0
-#endif
-
 #ifndef ENABLE_LIGHT_SENSOR
 #define ENABLE_LIGHT_SENSOR 0
 #endif

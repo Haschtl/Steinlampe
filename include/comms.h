@@ -44,14 +44,16 @@ bool trustRemoveBle(const String &addr, bool persist = true);
 bool trustRemoveBt(const String &addr, bool persist = true);
 void trustListFeedback();
 
-#if ENABLE_BLE_TRUST_TOKEN
-// Persisted token-based BLE trust (see ENABLE_BLE_TRUST_TOKEN in lamp_config.h).
-String trustGetBleTokCsv();
-void trustSetBleTokCsv(const String &csv);
-bool trustClearBleTokens(bool persist = true);
-// Generates a fresh token, persists it, and sends it to the connected client
-// as "TRUST_TOKEN|<hex>". Called from the "trust token get" command.
-void trustIssueBleToken();
+#if ENABLE_BLE
+// BLE bond management (real pairing/encryption via NimBLE security - see
+// startBle()/onAuthenticationComplete() in comms.cpp). Separate from the
+// trustedBle list above: a bond is the BLE stack's own crypto keys for a
+// peer, while trustedBle is this firmware's "is this device allowed to talk
+// to us" decision. trustRemoveBle() already deletes a device's bond too, so
+// these two exist for diagnosing/clearing bonds directly (e.g. a "ghost"
+// bond from an aborted pairing, or a full reset via "trust ble bondsclear").
+String trustGetBleBondsCsv();
+bool trustClearBleBonds();
 #endif
 
 /**

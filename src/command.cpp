@@ -53,17 +53,6 @@ void handleCommand(String line)
     String lower = line;
     lower.toLowerCase();
 
-#if ENABLE_BLE_TRUST_TOKEN
-    // The app replays a stored token as its first write on every connect, in
-    // case the firmware is holding this connection pending auth (unrecognized
-    // BLE address, see onConnect in comms.cpp). If we're here at all, this
-    // connection was already trusted via the normal path, so the token is
-    // redundant - swallow it silently instead of queuing an "Unbekanntes
-    // Kommando" reply, which would just add extra traffic ahead of the status
-    // snapshot every single connect for no benefit.
-    if (lower.startsWith("auth "))
-        return;
-#endif
     if (lower == "help")
     {
         printHelp();
@@ -2638,7 +2627,7 @@ void handleCommand(String line)
             trustListFeedback();
             return;
         }
-        // expect: trust <ble|bt> <add|del> <addr>, or trust token clear (no addr)
+        // expect: trust <ble|bt> <add|del> <addr>, or trust ble bonds / trust ble clearbonds (no addr)
         int sp1 = args.indexOf(' ');
         int sp2 = sp1 >= 0 ? args.indexOf(' ', sp1 + 1) : -1;
         String kind = sp1 > 0 ? args.substring(0, sp1) : args;
@@ -2653,7 +2642,26 @@ void handleCommand(String line)
             if (action == "add")
                 ok = trustAddBle(addr);
             else if (action == "del" || action == "rem" || action == "rm")
+                // Also drops the device's BLE bond (crypto keys), not just
+                // the app-level trust entry - see trustRemoveBle() in comms.cpp.
                 ok = trustRemoveBle(addr);
+#if ENABLE_BLE
+            else if (action == "bonds")
+                // NimBLE's own bond store, independent of the trust list
+                // above - useful to spot a "ghost" bond (e.g. one from an
+                // aborted/never-confirmed pairing) that trust list removal
+                // alone wouldn't show. trustListFeedback() below prints it.
+                ok = true;
+            else if (action == "clearbonds")
+                // Full reset of the crypto side only (trust list is
+                // untouched) - use when the lamp and a client's OS Bluetooth
+                // stack disagree about being bonded (e.g. after an
+                // erase-flash re-created the lamp's keys from scratch): wipe
+                // the lamp's bonds here, then forget/unpair the lamp on the
+                // client's OS side too, and reconnect to re-pair both ends
+                // from a clean slate.
+                ok = trustClearBleBonds();
+#endif
         }
         else if (kind == "bt")
         {
@@ -2662,18 +2670,6 @@ void handleCommand(String line)
             else if (action == "del" || action == "rem" || action == "rm")
                 ok = trustRemoveBt(addr);
         }
-#if ENABLE_BLE_TRUST_TOKEN
-        else if (kind == "token")
-        {
-            if (action == "clear")
-                ok = trustClearBleTokens();
-            else if (action == "get")
-            {
-                trustIssueBleToken();
-                ok = true;
-            }
-        }
-#endif
         if (ok)
         {
             trustListFeedback();
@@ -2681,8 +2677,8 @@ void handleCommand(String line)
         else
         {
             sendFeedback(F("Usage: trust list | trust ble add <mac> | trust ble del <mac> | trust bt add <mac> | trust bt del <mac>"
-#if ENABLE_BLE_TRUST_TOKEN
-                           " | trust token get | trust token clear"
+#if ENABLE_BLE
+                           " | trust ble bonds | trust ble clearbonds"
 #endif
                            ));
         }

@@ -5,27 +5,6 @@ import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
 
-// Opt-in firmware feature (ENABLE_BLE_TRUST_TOKEN) that lets a previously-paired
-// device reconnect after the firmware's trust grace window even if its BLE
-// address has since rotated (common on Android/iOS without bonding). The
-// firmware hands out a token while trusted; we replay it as the very first
-// write on a later connect. Harmless no-op against firmware builds without
-// the feature - it's just an unrecognized command there.
-function getStoredBleToken(deviceId: string): string | null {
-  try {
-    return localStorage.getItem('ql-ble-token-' + deviceId);
-  } catch {
-    return null;
-  }
-}
-function setStoredBleToken(deviceId: string, token: string) {
-  try {
-    localStorage.setItem('ql-ble-token-' + deviceId, token);
-  } catch {
-    /* ignore */
-  }
-}
-
 type BleApi = {
   status: DeviceStatus;
   log: LogEntry[];
@@ -95,6 +74,14 @@ export function useBle(): BleApi {
   // would just restart the firmware's own 20s pending window from zero on
   // the next reconnect attempt, so the gesture could never actually catch up.
   const blePairPendingRef = useRef(false);
+  // Timestamp of the last successful connect+service-discovery, and whether a
+  // status snapshot ever came back on it. Together they let onDisc() tell an
+  // unexpected early drop (device/OS pairing keys out of sync - e.g. after
+  // the lamp was reflashed/erased and bonded fresh, but the browser's/OS's
+  // Bluetooth stack still holds the old bond) apart from a normal later
+  // disconnect, where a generic "NetworkError" gives no such hint on its own.
+  const connectedAtRef = useRef<number>(0);
+  const statusEverReadyRef = useRef<boolean>(false);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
@@ -118,7 +105,6 @@ export function useBle(): BleApi {
   const pushLog = useCallback(
     (line: string) => {
       if (!line) return;
-      if (line.startsWith('TRUST_TOKEN|')) return; // secret - never show in the UI log
       console.debug('[BLE]', line);
       // Filter out noisy status-only lines when enabled
       if (
@@ -192,9 +178,6 @@ export function useBle(): BleApi {
     if (statusEndSeenRef.current && statusSnapshotPagesRef.current === 7) {
       statusEndWaiterRef.current?.();
     }
-    if (line.startsWith('TRUST_TOKEN|') && deviceRef.current?.id) {
-      setStoredBleToken(deviceRef.current.id, line.slice('TRUST_TOKEN|'.length).trim());
-    }
     if (line.startsWith('BLE_PAIR_PENDING|') && !blePairPendingRef.current) {
       blePairPendingRef.current = true;
       toast.info('Lamp needs physical confirmation - toggle the switch or poti to pair');
@@ -238,12 +221,12 @@ export function useBle(): BleApi {
           let timer: ReturnType<typeof setTimeout> | undefined;
           const completed = new Promise<boolean>((resolve) => {
             const normalDeadline = Date.now() + 1800;
-            // Matches the firmware's own worst case (an 8s token-auth
-            // window, then a further 20s physical-gesture window - see
-            // BLE_TOKEN_AUTH_TIMEOUT_MS/BLE_PAIR_TIMEOUT_MS in comms.cpp),
-            // plus slack. Only applies once BLE_PAIR_PENDING| is actually
-            // seen - an ordinary connection still gets the short deadline.
-            const pendingDeadline = Date.now() + 32000;
+            // Matches the firmware's own worst case (the 20s physical-gesture
+            // window a brand-new device's bonding gets held in - see
+            // BLE_PAIR_TIMEOUT_MS in comms.cpp), plus slack. Only applies
+            // once BLE_PAIR_PENDING| is actually seen - an ordinary
+            // connection still gets the short deadline.
+            const pendingDeadline = Date.now() + 24000;
             const check = () => {
               const deadline = blePairPendingRef.current ? pendingDeadline : normalDeadline;
               if (Date.now() >= deadline) {
@@ -325,6 +308,8 @@ export function useBle(): BleApi {
       disconnectDevice(deviceRef.current);
     }
     deviceRef.current = null;
+    connectedAtRef.current = 0;
+    statusEverReadyRef.current = false;
     cmdCharRef.current = null;
     statusCharRef.current = null;
     setStatus((s) => ({
@@ -354,8 +339,25 @@ export function useBle(): BleApi {
       unsubRef.current = [unsubStat];
 
       const onDisc = () => {
+        // See connectedAtRef/statusEverReadyRef above: dropped this fast
+        // after a successful connect, without ever getting a status
+        // snapshot, smells like a pairing/bond mismatch rather than a
+        // generic link loss (the latter usually happens well into a working
+        // session, not in the first few seconds).
+        const suspiciouslyEarly =
+          !statusEverReadyRef.current &&
+          connectedAtRef.current > 0 &&
+          Date.now() - connectedAtRef.current < 6000;
         pushLog('Disconnected');
         cleanup();
+        if (suspiciouslyEarly) {
+          toast.error(
+            'Verbindung kurz nach dem Verbinden wieder abgebrochen, ohne dass Daten ankamen - ' +
+              'möglicherweise ein veralteter Bluetooth-Pairing-Eintrag (z.B. nach einem Reflash der Lampe). ' +
+              'Gerät in den System-Bluetooth-Einstellungen "vergessen"/entkoppeln und hier erneut verbinden.',
+            { autoClose: false },
+          );
+        }
         if (autoReconnectRef.current) {
           setTimeout(() => {
             if (dev.gatt && !dev.gatt.connected) {
@@ -386,23 +388,8 @@ export function useBle(): BleApi {
         const { cmdChar, statusChar } = await connectDevice(dev);
         cmdCharRef.current = cmdChar;
         statusCharRef.current = statusChar;
+        connectedAtRef.current = Date.now();
         await attachListeners(dev, cmdChar, statusChar);
-        // Must be the very first write after connecting: a firmware with
-        // ENABLE_BLE_TRUST_TOKEN may be holding this connection open pending
-        // exactly this line, if our address isn't (or no longer) on its MAC
-        // allowlist. Written directly (not via sendCmd) so the secret never
-        // hits the visible log.
-        if (dev.id) {
-          const storedToken = getStoredBleToken(dev.id);
-          if (storedToken) {
-            try {
-              await writeLine(cmdCharRef.current, 'auth ' + storedToken);
-              pushLog('> auth ***');
-            } catch (e) {
-              pushLog('Token auth write failed: ' + (e instanceof Error ? e.message : String(e)));
-            }
-          }
-        }
         const friendlyName = (dev.id && knownDevicesRef.current[dev.id]) || dev.name || 'Quarzlampe';
         if (dev.id && !knownDevicesRef.current[dev.id]) {
           knownDevicesRef.current[dev.id] = friendlyName;
@@ -435,11 +422,8 @@ export function useBle(): BleApi {
         // fetches) to fire their own BLE traffic - any earlier and it races the
         // status snapshot above for the shared BLE notify queue/characteristic.
         setStatus((s) => ({ ...s, statusReady: true }));
+        statusEverReadyRef.current = true;
         await sendCmd('custom export');
-        // Opportunistically (re)mint a token for next time, now that we know
-        // this connection is trusted. No-op/harmless against firmware
-        // without ENABLE_BLE_TRUST_TOKEN.
-        await sendCmd('trust token get').catch(() => undefined);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const lower = msg.toLowerCase();

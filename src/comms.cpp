@@ -23,9 +23,6 @@
 #include <NimBLEDevice.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#if ENABLE_BLE_TRUST_TOKEN
-#include <esp_random.h>
-#endif
 #endif
 
 /**
@@ -43,12 +40,6 @@ static std::vector<String> trustedBt;
 static uint32_t trustBootMs = 0;
 static const uint32_t TRUST_GRACE_MS = Settings::BT_TRUST_GRACE_MS;
 static const size_t TRUST_MAX = 12;
-#if ENABLE_BLE_TRUST_TOKEN
-// Tokens issued to BLE clients during the grace window, so they can
-// re-authenticate later even if their BLE address has since rotated (see
-// ENABLE_BLE_TRUST_TOKEN in lamp_config.h).
-static std::vector<String> trustedBleTokens;
-#endif
 
 static bool feedbackArmed = !Settings::FEEDBACK_NEEDS_HANDSHAKE;
 static String bleName = Settings::BLE_NAME_DEFAULT;
@@ -62,14 +53,14 @@ static String btPendingAddr;
 static const uint32_t BT_PAIR_TIMEOUT_MS = 20000;
 #if ENABLE_BLE
 // BLE's equivalent of the above: a physical-gesture fallback for a genuinely
-// new device outside the trust grace window, so first-time pairing doesn't
-// require rebooting the lamp to reopen that window. Reached once
-// ENABLE_BLE_TRUST_TOKEN's own token-auth window (if compiled in) has
-// already failed to find a matching token - see onConnect/pollCommunications
-// in the ENABLE_BLE block below. Same 20s budget as BT-Classic's gesture
-// window, same confirmation mechanism (confirmPendingPairing, called from
-// the switch/poti handlers), same "commands are gated until confirmed"
-// posture - deliberately no light/blink feedback, only text.
+// new (now bonded, but not yet trusted) device outside the trust grace
+// window, so first-time pairing doesn't require rebooting the lamp to reopen
+// that window. Reached from onAuthenticationComplete() once a connection has
+// bonded but its identity address isn't on the trust list - see comms.cpp.
+// Same 20s budget as BT-Classic's gesture window, same confirmation
+// mechanism (confirmPendingPairing, called from the switch/poti handlers),
+// same "commands are gated until confirmed" posture - deliberately no
+// light/blink feedback, only text.
 static bool blePairPending = false;
 static uint32_t blePairStartMs = 0;
 static String blePendingAddr;
@@ -492,168 +483,136 @@ static void flushBleNotification()
   }
 }
 
-#if ENABLE_BLE_TRUST_TOKEN
-// Grace period for a client to present a valid token after we've let its
-// connection through pending authentication (see allowBleAddr fallback in
-// onConnect below). Generous because the UI may need a moment after connect
-// to read a remembered token out of browser storage and write it back.
-static const uint32_t BLE_TOKEN_AUTH_TIMEOUT_MS = 8000;
-static bool bleAwaitingToken = false;
-static uint16_t bleAwaitingTokenConnId = 0;
-static uint32_t bleAwaitingTokenSinceMs = 0;
-// Separate from bufferBle: lines received while awaiting token auth are
-// never handed to handleCommand().
-static String bufferBleAuth;
-
-static String generateBleToken()
+// Finds the bond matching addr (if any) among NimBLE's own bond store and
+// deletes it. Separate from the trustedBle list: that's our app-level "is
+// this device allowed to talk to us" decision, while a bond is the BLE
+// stack's own encryption keys for a peer. Used so revoking a device (forget,
+// a never-confirmed pairing timing out, or an outright rejection) also drops
+// its crypto keys instead of leaving a "ghost" bond the stack would happily
+// re-encrypt against later despite the device no longer being trusted.
+// NimBLEAddress has no plain "parse this MAC string" constructor (the ctor
+// that takes a string also wants an explicit address type, which we don't
+// know from a bare trust-list entry) - so match by comparing toString()
+// against the stack's own bond list instead of constructing one by hand.
+static bool deleteBleBondByAddr(const String &addr)
 {
-  uint8_t raw[16];
-  esp_fill_random(raw, sizeof(raw));
-  char hex[sizeof(raw) * 2 + 1];
-  for (size_t i = 0; i < sizeof(raw); i++)
-    snprintf(hex + i * 2, 3, "%02X", raw[i]);
-  return String(hex);
+  int count = NimBLEDevice::getNumBonds();
+  for (int i = 0; i < count; ++i)
+  {
+    NimBLEAddress bonded = NimBLEDevice::getBondedAddress(i);
+    if (addrEqual(String(bonded.toString().c_str()), addr))
+      return NimBLEDevice::deleteBond(bonded);
+  }
+  return false;
 }
 
-// Issues a fresh token to the currently-connected client and sends it as a
-// status line (TRUST_TOKEN|<hex>) for the app to remember and replay later,
-// outside the grace window, when its BLE address may have rotated. Only
-// reachable via the "trust token get" command, which - by construction - a
-// connection can only ever send once it's past onConnect's trust gate (while
-// bleAwaitingToken is set for a connection, its bytes are diverted to
-// feedBleAuthChar instead of the normal command dispatcher). So there's no
-// separate check needed here: being able to call this at all already proves
-// the connection is trusted.
-void trustIssueBleToken()
+String trustGetBleBondsCsv()
 {
-  String tok = generateBleToken();
-  if (addToList(trustedBleTokens, tok))
-    saveSettings();
-  sendFeedback(String(F("TRUST_TOKEN|")) + tok, true);
+  String csv;
+  int count = NimBLEDevice::getNumBonds();
+  for (int i = 0; i < count; ++i)
+  {
+    if (csv.length() > 0)
+      csv += ",";
+    csv += NimBLEDevice::getBondedAddress(i).toString().c_str();
+  }
+  return csv;
 }
 
-static void handleBleTokenAuthLine(const String &rawLine)
+bool trustClearBleBonds()
 {
-  String tok = rawLine;
-  tok.trim();
-  if (tok.startsWith(F("auth ")))
-    tok = tok.substring(5);
-  tok.trim();
-  bool ok = !tok.isEmpty() && listContains(trustedBleTokens, tok);
-  if (ok)
-  {
-    bleAwaitingToken = false;
-    lastBtActivityMs = millis();
-    if (addToList(trustedBle, bleLastAddr))
-      saveSettings();
-    if (feedbackAllowed())
-      sendFeedback(F("[BLE] Token-Auth OK"), true);
-    // onConnect() skipped its usual re-arm-advertising step for this
-    // connection while it was pending auth; do it now that it's trusted.
-    if (bleServer && bleServer->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
-      bleServer->startAdvertising();
-  }
-  else
-  {
-    if (feedbackAllowed())
-      Serial.println(F("[BLE] Token-Auth fehlgeschlagen"));
-    if (bleServer)
-      bleServer->disconnect(bleAwaitingTokenConnId);
-    bleAwaitingToken = false;
-  }
+  if (NimBLEDevice::getNumBonds() == 0)
+    return false;
+  return NimBLEDevice::deleteAllBonds();
 }
-
-static void feedBleAuthChar(char c)
-{
-  if (c == '\r')
-    return;
-  if (c == '\n')
-  {
-    if (bufferBleAuth.length())
-      handleBleTokenAuthLine(bufferBleAuth);
-    bufferBleAuth = "";
-  }
-  else if (bufferBleAuth.length() < 80)
-  {
-    bufferBleAuth += c;
-  }
-}
-#endif
 
 /**
- * @brief Handles BLE server connection events.
+ * @brief Handles BLE server connection and pairing/bonding events.
+ *
+ * The trust decision used to be made in onConnect(), keyed off the central's
+ * over-the-air address. That address rotates on unbonded Android/iOS centrals
+ * (BLE privacy), which is exactly what the old ENABLE_BLE_TRUST_TOKEN hack
+ * existed to work around. Real bonding (see startBle()) replaces that: every
+ * connection is pushed through pairing via NimBLEDevice::startSecurity(), and
+ * the trust decision moves to onAuthenticationComplete(), keyed off the
+ * resolved, stable identity address (NimBLEConnInfo::getIdAddress()) instead.
  */
 class LampBleServerCallbacks : public NimBLEServerCallbacks
 {
   void onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) override
   {
     String addr = String(connInfo.getAddress().toString().c_str());
+    bleLastAddr = addr;
+    bleClientConnected = true;
+    lastBtActivityMs = millis();
+    if (feedbackAllowed())
+    {
+      Serial.print(F("[BLE] Verbindung (ungesichert): "));
+      Serial.println(addr);
+    }
+    if (!NimBLEDevice::startSecurity(connInfo.getConnHandle()))
+    {
+      if (feedbackAllowed())
+        Serial.println(F("[BLE] Security-Request fehlgeschlagen"));
+      server->disconnect(connInfo.getConnHandle());
+    }
+  }
+
+  // Fires once pairing/encryption (triggered by our own startSecurity() call
+  // above) has run its course, success or failure - this is where trust is
+  // actually decided now.
+  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override
+  {
     uint16_t connHandle = connInfo.getConnHandle();
+    if (!connInfo.isEncrypted())
+    {
+      if (feedbackAllowed())
+        Serial.println(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen"));
+      if (bleServer)
+        bleServer->disconnect(connHandle);
+      return;
+    }
+    // Stable across the central's over-the-air address rotating on later
+    // reconnects, now that it's bonded and resolvable.
+    String addr = String(connInfo.getIdAddress().toString().c_str());
     bleLastAddr = addr;
     if (!allowBleAddr(addr))
     {
-#if ENABLE_BLE_TRUST_TOKEN
-      // Outside grace with an unrecognized address: this may just be a
-      // previously-trusted phone whose BLE address has rotated (see
-      // ENABLE_BLE_TRUST_TOKEN). Instead of rejecting outright, keep the link
-      // up and give it a short window to prove itself with a token issued
-      // during an earlier grace-window connection. pollCommunications()
-      // enforces the timeout and routes input through handleBleTokenAuthLine
-      // instead of handleCommand while bleAwaitingToken is set.
-      bleClientConnected = true;
-      bleAwaitingToken = true;
-      bleAwaitingTokenConnId = connHandle;
-      bleAwaitingTokenSinceMs = millis();
-      bufferBleAuth = "";
-      lastBtActivityMs = millis();
-      if (feedbackAllowed())
-      {
-        Serial.print(F("[BLE] Unbekannt, erwarte Token: "));
-        Serial.println(addr);
-      }
-      return;
-#elif ENABLE_BT_PAIRING
-      // No token mechanism compiled in, so there's nothing to wait for
-      // first - go straight to the physical-gesture fallback (same one
-      // ENABLE_BLE_TRUST_TOKEN's timeout path falls through to below).
-      bleClientConnected = true;
+#if ENABLE_BT_PAIRING
       blePairPending = true;
       blePairStartMs = millis();
       blePendingAddr = addr;
       blePendingConnId = connHandle;
       lastBtActivityMs = millis();
-      // Structured marker (force=true, like TRUST_TOKEN|) so a connected
-      // client can tell "deliberately holding you pending a physical
-      // gesture" apart from a generic status-snapshot timeout and wait
-      // this out instead of giving up and reconnecting (which would just
-      // restart this same 20s window from zero on the firmware side).
+      // Structured marker (force=true) so a connected client can tell
+      // "deliberately holding you pending a physical gesture" apart from a
+      // generic status-snapshot timeout and wait this out instead of giving
+      // up and reconnecting (which would just restart this same 20s window
+      // from zero on the firmware side).
       sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
       if (feedbackAllowed())
         sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
-      return;
 #else
       if (feedbackAllowed())
       {
         Serial.print(F("[BLE] Rejecting unknown "));
         Serial.println(addr);
       }
-      if (server)
-        server->disconnect(connHandle);
-      // Don't force this to false: another, already-trusted client may still
-      // be connected (getConnectedCount() still includes this rejected one
-      // until its own disconnect event lands, but that's fine - onDisconnect
-      // recomputes once it does).
-      bleClientConnected = server->getConnectedCount() > 0;
-      return;
+      // A real (encrypted) bond now exists for this address even though
+      // we're not authorizing it - drop the keys too, not just the
+      // connection, so it can't silently re-encrypt against them later.
+      deleteBleBondByAddr(addr);
+      if (bleServer)
+        bleServer->disconnect(connHandle);
 #endif
+      return;
     }
     lastBtActivityMs = millis();
     if (addToList(trustedBle, addr))
       saveSettings();
-    bleClientConnected = true;
     if (feedbackAllowed())
     {
-      Serial.print(F("[BLE] Verbunden: "));
+      Serial.print(F("[BLE] Verbunden (gesichert): "));
       Serial.println(addr);
     }
     // The controller stops connectable advertising once a central connects;
@@ -661,34 +620,30 @@ class LampBleServerCallbacks : public NimBLEServerCallbacks
     // CONFIG_BT_NIMBLE_MAX_CONNECTIONS, default 3) so additional trusted
     // devices can still find and connect to the lamp while this one stays
     // connected.
-    if (server->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
-      server->startAdvertising();
+    if (bleServer && bleServer->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
+      bleServer->startAdvertising();
   }
 
   void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override
   {
     (void)reason;
     bleClientConnected = server->getConnectedCount() > 0;
-    String addr = String(connInfo.getAddress().toString().c_str());
+    String addr = String(connInfo.getIdAddress().toString().c_str());
     if (feedbackAllowed())
     {
       Serial.print(F("[BLE] Getrennt: "));
       Serial.println(addr);
     }
     bleLastAddr = addr;
-    uint16_t connHandle = connInfo.getConnHandle();
-#if ENABLE_BLE_TRUST_TOKEN
-    // The device that was mid token-auth went away on its own - drop the
-    // pending state instead of leaving it to time out (and don't let the
-    // timeout check later disconnect a since-reused conn handle).
-    if (bleAwaitingToken && connHandle == bleAwaitingTokenConnId)
-      bleAwaitingToken = false;
-#endif
 #if ENABLE_BT_PAIRING
-    // Same idea for a device that disconnected while waiting on the
-    // physical-gesture confirmation.
+    uint16_t connHandle = connInfo.getConnHandle();
+    // A device that disconnected (or was dropped - see the pairing-timeout
+    // check in pollCommunications()) while waiting on the physical-gesture
+    // confirmation never got to prove itself - forget it on both counts
+    // instead of leaving a confirmed-nowhere bond sitting in the store.
     if (blePairPending && connHandle == blePendingConnId)
     {
+      deleteBleBondByAddr(addr);
       blePairPending = false;
       blePendingAddr = "";
     }
@@ -744,12 +699,30 @@ void startBle()
 {
   NimBLEDevice::init(bleName.c_str());
   NimBLEDevice::setMTU(517);
+  // Real pairing/bonding: bonding+LE-Secure-Connections, no MITM protection,
+  // "Just Works" (no PIN/passkey - neither side has a display or keypad).
+  // This only gets encryption and a stable, resolvable identity address for
+  // the trust decision in onAuthenticationComplete() below - it does NOT by
+  // itself decide whether a device is *authorized*. Just Works pairing can
+  // be initiated by any nearby device with zero human-visible confirmation,
+  // so the actual authorization gate (trust grace window / physical
+  // switch-or-poti gesture, same as before) still happens after bonding
+  // completes, not instead of it.
+  NimBLEDevice::setSecurityAuth(true, false, true);
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
   bleServer = NimBLEDevice::createServer();
   bleServer->setCallbacks(new LampBleServerCallbacks());
   NimBLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
+  // _ENC on both characteristics: belt-and-suspenders alongside onConnect()'s
+  // explicit startSecurity() call. That call forces pairing the instant a
+  // link comes up, but it's still an async handshake - without _ENC here, a
+  // write arriving in the (normally brief) window before it completes would
+  // reach bleRxPending, and from there handleCommand(), over a still-
+  // unencrypted link. With _ENC, the stack itself refuses GATT access until
+  // the link is actually encrypted, regardless of that timing.
   bleCommandCharacteristic = service->createCharacteristic(
       Settings::BLE_COMMAND_CHAR_UUID,
-      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC);
   bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
   // NOTIFY only (no INDICATE) - the firmware only ever calls notify(), and
   // NimBLE manages the 0x2902 CCCD automatically from the characteristic's
@@ -757,8 +730,9 @@ void startBle()
   // (unlike the old Bluedroid BLE2902).
   bleStatusCharacteristic = service->createCharacteristic(
       Settings::BLE_STATUS_CHAR_UUID,
-      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  service->start();
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::NOTIFY);
+  // NimBLEService::start() is a deprecated no-op in this NimBLE-Arduino
+  // version - services start automatically with the server.
   NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
   advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
   advertising->setAppearance(0);
@@ -835,6 +809,12 @@ bool trustAddBt(const String &addr, bool persist)
 
 bool trustRemoveBle(const String &addr, bool persist)
 {
+#if ENABLE_BLE
+  // "Forget" should mean forget - drop the crypto bond along with the
+  // app-level trust entry, so the device can't silently re-encrypt against
+  // keys we otherwise no longer consider it trusted with.
+  deleteBleBondByAddr(addr);
+#endif
   if (removeFromList(trustedBle, addr))
   {
     if (persist)
@@ -854,19 +834,6 @@ bool trustRemoveBt(const String &addr, bool persist)
   return false;
 }
 
-#if ENABLE_BLE_TRUST_TOKEN
-String trustGetBleTokCsv() { return joinList(trustedBleTokens); }
-void trustSetBleTokCsv(const String &csv) { parseList(csv, trustedBleTokens); }
-bool trustClearBleTokens(bool persist)
-{
-  if (trustedBleTokens.empty())
-    return false;
-  trustedBleTokens.clear();
-  if (persist)
-    saveSettings();
-  return true;
-}
-#endif
 
 /**
  * @brief Confirms whichever pending pairing (BT-Classic and/or BLE) is
@@ -944,6 +911,9 @@ void trustListFeedback()
 {
   sendFeedback(String(F("[Trust] BLE: ")) + trustGetBleCsv());
   sendFeedback(String(F("[Trust] BT : ")) + trustGetBtCsv());
+#if ENABLE_BLE
+  sendFeedback(String(F("[Trust] BLE bonds: ")) + trustGetBleBondsCsv());
+#endif
 }
 
 
@@ -1024,35 +994,14 @@ void pollCommunications()
   }
 #endif
 #if ENABLE_BLE
-#if ENABLE_BLE_TRUST_TOKEN
-  if (bleAwaitingToken && (millis() - bleAwaitingTokenSinceMs) > BLE_TOKEN_AUTH_TIMEOUT_MS)
-  {
-    bleAwaitingToken = false;
-#if ENABLE_BT_PAIRING
-    // No valid token showed up - this isn't necessarily a previously-
-    // trusted device with a rotated address after all. Give it a further,
-    // separate window to be confirmed by a human at the lamp instead of
-    // disconnecting outright, same as a brand-new BT-Classic device gets.
-    blePairPending = true;
-    blePairStartMs = millis();
-    blePendingAddr = bleLastAddr;
-    blePendingConnId = bleAwaitingTokenConnId;
-    sendFeedback(String(F("BLE_PAIR_PENDING|")) + blePendingAddr, true);
-    if (feedbackAllowed())
-      sendFeedback(String(F("[BLE] Pair request ")) + blePendingAddr + F(" – confirm via switch or poti"));
-#else
-    if (feedbackAllowed())
-      Serial.println(F("[BLE] Token-Auth Timeout"));
-    if (bleServer)
-      bleServer->disconnect(bleAwaitingTokenConnId);
-#endif
-  }
-#endif
 #if ENABLE_BT_PAIRING
   if (blePairPending && blePairStartMs > 0 && (millis() - blePairStartMs) > BLE_PAIR_TIMEOUT_MS)
   {
     if (feedbackAllowed())
       sendFeedback(F("[BLE] Pair request timed out"));
+    // Never confirmed - forget the bond NimBLE's security handshake already
+    // created for it, same as the onDisconnect() path for this case.
+    deleteBleBondByAddr(blePendingAddr);
     if (bleServer)
       bleServer->disconnect(blePendingConnId);
     blePairPending = false;
@@ -1064,14 +1013,6 @@ void pollCommunications()
     String chunk = bleRxPending;
     bleRxPending = "";
     xSemaphoreGive(bleRxMutex);
-#if ENABLE_BLE_TRUST_TOKEN
-    if (bleAwaitingToken)
-    {
-      for (size_t i = 0; i < chunk.length(); i++)
-        feedBleAuthChar(chunk[i]);
-    }
-    else
-#endif
 #if ENABLE_BT_PAIRING
     if (blePairPending)
     {
