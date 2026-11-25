@@ -505,10 +505,17 @@ bool scanSessionActive = false;
 uint32_t scanSessionDueMs = 0;
 
 constexpr uint8_t MAX_KNOWN_NODES = 16;
+constexpr uint8_t MAX_NODE_NAME_LEN = 16;
 struct KnownNode
 {
     uint16_t addr;
     uint32_t uuidShort; // first 4 bytes of the device UUID, display only
+    // User-facing label (frontend's device list) - empty until the user
+    // renames it via `mesh rename`/the UI; falls back to the raw address
+    // client-side. Aggregate-initializing a KnownNode with just {addr,
+    // uuidShort} (as addKnownNode() does) zero-fills this per C++ rules, so
+    // it's always a valid empty C-string by default.
+    char name[MAX_NODE_NAME_LEN + 1];
 };
 KnownNode knownNodes[MAX_KNOWN_NODES];
 uint8_t knownNodeCount = 0;
@@ -539,6 +546,27 @@ bool removeKnownNodeByAddr(uint16_t addr)
             knownNodeCount--;
             return true;
         }
+    }
+    return false;
+}
+
+bool renameKnownNodeByAddr(uint16_t addr, const String &rawName)
+{
+    // Strip the CSV/log delimiters a name could otherwise break (same
+    // sanitize-at-the-boundary approach as gestureBindingsToCsv() rather
+    // than escaping them later in every consumer).
+    String name = rawName;
+    name.replace(';', ' ');
+    name.replace(':', ' ');
+    name.replace('\n', ' ');
+    name.trim();
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+    {
+        if (knownNodes[i].addr != addr)
+            continue;
+        strncpy(knownNodes[i].name, name.c_str(), MAX_NODE_NAME_LEN);
+        knownNodes[i].name[MAX_NODE_NAME_LEN] = '\0';
+        return true;
     }
     return false;
 }
@@ -843,16 +871,21 @@ void meshProvisionTick()
         meshProvisionScanStop();
 }
 
+// Count-in-header + one fixed-shape "DEV ..."/"NODE ..." line per item -
+// deliberately the same shape whether the list is empty or not (no separate
+// "No devices found" text), so the frontend (frontend/src/lib/meshProtocol.ts)
+// can parse this with one regex instead of two, by waiting for the header
+// line on the shared log/notify stream and then reading exactly as many
+// follow-on lines as the header's count says. Still perfectly readable as a
+// plain log line by a human in the Log tab.
 String meshProvisionListText()
 {
-    if (discoveredCount == 0)
-        return String(F("[Mesh] No devices found"));
-    String out = F("[Mesh] Discovered:");
+    String out = String(F("[Mesh] Discovered (")) + String(discoveredCount) + F("):");
     for (uint8_t i = 0; i < discoveredCount; ++i)
     {
-        out += F("\n  ");
+        out += F("\n  DEV idx=");
         out += String(i + 1);
-        out += F(") uuid=");
+        out += F(" uuid=");
         out += String(uuidShortOf(discovered[i].uuid), HEX);
         out += F(" rssi=");
         out += String(discovered[i].rssi);
@@ -911,24 +944,50 @@ bool meshProvisionRemove(uint16_t addr)
     return removed;
 }
 
+bool meshRenameNode(uint16_t addr, const String &name)
+{
+    bool ok = renameKnownNodeByAddr(addr, name);
+    if (ok)
+    {
+        saveSettings();
+        sendFeedback(String(F("[Mesh] Renamed 0x")) + String(addr, HEX) + F(" to ") + name);
+    }
+    else
+    {
+        sendFeedback(String(F("[Mesh] 0x")) + String(addr, HEX) + F(" not known"));
+    }
+    return ok;
+}
+
+uint8_t meshKnownNodeCount()
+{
+    return knownNodeCount;
+}
+
+// Same count-in-header shape as meshProvisionListText() above, for the same
+// reason - one line per node, "NODE addr=0x.. uuid=.. name=.." (name= is
+// just empty, not omitted, when unset, so the field is always in the same
+// position for the frontend's regex).
 String meshKnownNodesText()
 {
-    if (knownNodeCount == 0)
-        return String(F("[Mesh] No known nodes"));
-    String out = F("[Mesh] Known nodes:");
+    String out = String(F("[Mesh] Known nodes (")) + String(knownNodeCount) + F("):");
     for (uint8_t i = 0; i < knownNodeCount; ++i)
     {
-        out += F("\n  0x");
+        out += F("\n  NODE addr=0x");
         out += String(knownNodes[i].addr, HEX);
         out += F(" uuid=");
         out += String(knownNodes[i].uuidShort, HEX);
+        out += F(" name=");
+        out += knownNodes[i].name;
     }
     return out;
 }
 
-// <addr>:<uuidShort>;<addr>:<uuidShort>;... - same semicolon-separated,
-// no-spaces convention as gestureBindingsToCsv(), for the same reason
-// (drops into importConfig()'s space-tokenizer unmodified).
+// <addr>:<uuidShort>:<name>;... - same semicolon-separated, no-spaces
+// convention as gestureBindingsToCsv(), for the same reason (drops into
+// importConfig()'s space-tokenizer unmodified). `name` can't itself contain
+// ';'/':'/newline - renameKnownNodeByAddr() strips those at the point a name
+// is set, not here, so this never has to re-sanitize or escape anything.
 String meshKnownNodesCsv()
 {
     String out;
@@ -939,6 +998,8 @@ String meshKnownNodesCsv()
         out += String(knownNodes[i].addr, HEX);
         out += ':';
         out += String(knownNodes[i].uuidShort, HEX);
+        out += ':';
+        out += knownNodes[i].name;
     }
     return out;
 }
@@ -957,12 +1018,24 @@ void meshSetKnownNodesFromCsv(const String &csv)
             end = len;
         String entry = csv.substring(start, end);
         start = end + 1;
-        int colon = entry.indexOf(':');
-        if (colon > 0)
+        int c1 = entry.indexOf(':');
+        if (c1 > 0)
         {
-            uint16_t addr = (uint16_t)strtoul(entry.substring(0, colon).c_str(), nullptr, 16);
-            uint32_t uuidShort = (uint32_t)strtoul(entry.substring(colon + 1).c_str(), nullptr, 16);
-            knownNodes[knownNodeCount++] = {addr, uuidShort};
+            // Tolerates both the current 3-field format and the pre-naming
+            // 2-field one (addr:uuidShort, no trailing :name) already
+            // persisted in NVS on real hardware from before this change -
+            // those entries just come back with an empty name.
+            int c2 = entry.indexOf(':', c1 + 1);
+            KnownNode &n = knownNodes[knownNodeCount++];
+            n.addr = (uint16_t)strtoul(entry.substring(0, c1).c_str(), nullptr, 16);
+            n.uuidShort = (uint32_t)strtoul(entry.substring(c1 + 1, c2 > 0 ? c2 : entry.length()).c_str(), nullptr, 16);
+            n.name[0] = '\0';
+            if (c2 > 0)
+            {
+                String name = entry.substring(c2 + 1);
+                strncpy(n.name, name.c_str(), MAX_NODE_NAME_LEN);
+                n.name[MAX_NODE_NAME_LEN] = '\0';
+            }
         }
     }
 }

@@ -65,8 +65,11 @@ void meshProvisionScanStop();
 /// duration elapses.
 void meshProvisionTick();
 
-/// Human-readable listing of discovered-but-not-yet-added devices, one per
-/// line, numbered for meshProvisionAdd()'s index argument.
+/// Listing of discovered-but-not-yet-added devices: a "[Mesh] Discovered
+/// (<n>):" header line followed by exactly <n> "  DEV idx=.. uuid=.. rssi=.."
+/// lines (idx is 1-based, for meshProvisionAdd()'s index argument) - this
+/// exact shape (count header + fixed-field lines) is relied on by the
+/// frontend's meshProtocol.ts to parse it off the shared log/notify stream.
 String meshProvisionListText();
 
 /// Provisions discovered-list entry `index` (as listed by
@@ -79,8 +82,20 @@ bool meshProvisionAdd(uint8_t index, uint16_t group);
 /// itself stays fully provisioned, this doesn't send it a Node Reset).
 bool meshProvisionRemove(uint16_t addr);
 
-/// Human-readable listing of this lamp's persisted known-nodes list.
+/// Sets (or clears, with an empty string) a known node's user-facing label.
+/// Sanitizes out ';'/':'/newline (the CSV/log delimiters) before storing.
+/// Returns false if `addr` isn't in the known-nodes list.
+bool meshRenameNode(uint16_t addr, const String &name);
+
+/// Listing of this lamp's persisted known nodes: a "[Mesh] Known nodes
+/// (<n>):" header line followed by exactly <n> "  NODE addr=0x.. uuid=..
+/// name=.." lines - same count-header shape as meshProvisionListText(), for
+/// the same frontend-parsing reason.
 String meshKnownNodesText();
+
+/// Number of persisted known nodes - cheap enough for the periodic status
+/// line (print.cpp's |mesh_nodes=), unlike the full meshKnownNodesText().
+uint8_t meshKnownNodeCount();
 
 // ---------- persistence.cpp's own load/save hooks ----------
 // Raw storage + CSV (de)serialization, same split as gestures.h/gestures.cpp:

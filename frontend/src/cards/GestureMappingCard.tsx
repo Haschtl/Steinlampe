@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PlusCircle, MinusCircle, RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
+import { fallbackNodeLabel, fetchKnownNodes, MeshNode } from '@/lib/meshProtocol';
 import { Trans, useI18n } from '@/i18n';
+
+const CUSTOM_MESH_ADDR = '__custom__';
 
 // Mirrors gestures.cpp's grammar exactly - see that file's own header comment
 // for the authoritative spec. Kept here as the single source of truth for
@@ -25,6 +28,15 @@ type GestureRow = {
   param1: string; // brightness pct, or mesh address (decimal or 0x-hex)
   param2: string; // mesh brightness pct
 };
+
+// row.param1 is stored as whatever text the user typed/picked (decimal or
+// 0x-hex, matching gestures.cpp's own strtoul(..., 0) parsing) - compare by
+// parsed numeric value so "0xc001", "0xC001" and "49153" all match the same
+// known node's address.
+function matchesMeshAddr(param1: string, addr: number): boolean {
+  const n = parseInt(param1, param1.trim().toLowerCase().startsWith('0x') ? 16 : 10);
+  return Number.isFinite(n) && n === addr;
+}
 
 let rowIdCounter = 0;
 function newRowId() {
@@ -135,12 +147,27 @@ function defaultRow(): GestureRow {
 
 export function GestureMappingCard() {
   const { t } = useI18n();
-  const { status, refreshStatus, sendCmd } = useConnection();
+  const { status, refreshStatus, sendCmd, log } = useConnection();
   const [rows, setRows] = useState<GestureRow[]>([]);
+  const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
+  const logRef = useRef(log);
+  logRef.current = log;
 
   useEffect(() => {
     if (status.gestCsv !== undefined) setRows(parseGestureCsv(status.gestCsv));
   }, [status.gestCsv]);
+
+  // Lets the mesh-action rows below pick a lamp by name instead of typing a
+  // raw address - best-effort only: if this build has no provisioner (no
+  // `mesh_nodes` status field at all) or the fetch times out, the rows just
+  // fall back to the free-text address input they always had.
+  useEffect(() => {
+    if (status.meshNodeCount === undefined) return;
+    fetchKnownNodes(sendCmd, () => logRef.current)
+      .then(setMeshNodes)
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.meshNodeCount]);
 
   // (type, slot index) options for the "Input" picker - only roles the
   // firmware's gesture detectors actually track (ROLE_POWER/ROLE_MODE_NEXT -
@@ -222,8 +249,8 @@ export function GestureMappingCard() {
         </CardTitle>
         <p className="text-sm text-muted">
           <Trans k="desc.gestures">
-            Map a repeated/held input gesture to an action, including Mesh commands to other lamps. Mesh addresses are
-            raw group/unicast addresses configured by hand via nRF Mesh - there's no device picker yet.
+            Map a repeated/held input gesture to an action, including Mesh commands to other lamps in the mesh set up
+            below.
           </Trans>
         </p>
       </CardHeader>
@@ -325,13 +352,40 @@ export function GestureMappingCard() {
 
               {isMesh ? (
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted"><Trans k="label.gestMeshAddr">Mesh address</Trans></span>
-                  <Input
-                    placeholder="0xC001"
-                    className="w-24"
-                    value={row.param1}
-                    onChange={(e) => updateRow(row.id, { param1: e.target.value })}
-                  />
+                  <span className="text-muted"><Trans k="label.gestMeshAddr">Lamp</Trans></span>
+                  {meshNodes.length > 0 ? (
+                    <>
+                      <Select
+                        value={meshNodes.some((n) => matchesMeshAddr(row.param1, n.addr)) ? row.param1 : CUSTOM_MESH_ADDR}
+                        onValueChange={(v) => updateRow(row.id, { param1: v === CUSTOM_MESH_ADDR ? '' : v })}
+                      >
+                        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {meshNodes.map((n) => (
+                            <SelectItem key={n.addr} value={`0x${n.addr.toString(16)}`}>
+                              {n.name || fallbackNodeLabel(n.addr)}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={CUSTOM_MESH_ADDR}>{t('label.gestMeshCustom', 'Custom address…')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!meshNodes.some((n) => matchesMeshAddr(row.param1, n.addr)) ? (
+                        <Input
+                          placeholder="0xC001"
+                          className="w-24"
+                          value={row.param1}
+                          onChange={(e) => updateRow(row.id, { param1: e.target.value })}
+                        />
+                      ) : null}
+                    </>
+                  ) : (
+                    <Input
+                      placeholder="0xC001"
+                      className="w-24"
+                      value={row.param1}
+                      onChange={(e) => updateRow(row.id, { param1: e.target.value })}
+                    />
+                  )}
                 </label>
               ) : null}
 

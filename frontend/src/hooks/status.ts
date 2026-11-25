@@ -145,6 +145,8 @@ export type DeviceStatus = {
   radarVelocityFactor?: number;
   quickCsv?: string;
   gestCsv?: string;
+  meshNet?: boolean;
+  meshNodeCount?: number;
   rampOnMs?: number;
   rampOffMs?: number;
   rampOnEase?: string;
@@ -377,6 +379,8 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,
         gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
+        meshNet: Object.prototype.hasOwnProperty.call(kv, 'mesh_net') ? kv.mesh_net === '1' : s.meshNet,
+        meshNodeCount: asInt('mesh_nodes') ?? s.meshNodeCount,
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,

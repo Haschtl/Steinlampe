@@ -19,6 +19,7 @@
 #include "presence_radar.h"
 #include "quickmode.h"
 #include "gestures.h"
+#include "lamp_mesh.h"
 #include "version.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -238,8 +239,12 @@ void printStatusStructured(const bool &force)
         // worst case (e.g. "bt255t255off=mesh_bri:0xffff:6553.5;") - real
         // configs are far shorter (button slots are 0-3 in practice), but
         // size for the worst case to avoid the exact "undersized reserve()"
-        // heap-corruption class fixed earlier on this branch.
-        line.reserve(1200);
+        // heap-corruption class fixed earlier on this branch. Bumped again,
+        // 1200 -> 1260, for the two small |mesh_net=0/1|mesh_nodes=<n> fields
+        // added alongside it - cheap fields, but this reserve() has already
+        // bitten us once for being measured too tight, so round up generously
+        // rather than compute the exact new total.
+        line.reserve(1260);
         lineReserved = true;
     }
     line = F("STATUS|");
@@ -343,6 +348,17 @@ void printStatusStructured(const bool &force)
     line += quickMaskToCsv();
     line += F("|gest=");
     line += gestureBindingsToCsv();
+#if ENABLE_BLE_MESH_PROVISIONER
+    // Cheap glance state for the frontend's Mesh card (has a network been
+    // set up yet, roughly how many lamps are in it) - the full node list
+    // (names, addresses) is deliberately NOT in this high-frequency status
+    // line, same reasoning as |presence_ble_count= vs. the actual device
+    // list: fetched on demand via `mesh nodes` instead (see meshProtocol.ts).
+    line += F("|mesh_net=");
+    line += meshHasNetworkIdentity() ? F("1") : F("0");
+    line += F("|mesh_nodes=");
+    line += String(meshKnownNodeCount());
+#endif
     line += F("|pat_reactive=");
     line += isPatternReactive(currentPattern) ? F("1") : F("0");
     line += F("|presence_ble=");

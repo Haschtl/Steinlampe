@@ -234,12 +234,35 @@ void handleCommand(const String &line)
         {
             sendFeedback(meshKnownNodesText());
         }
+        else if (args.startsWith("rename "))
+        {
+            String rest = args.substring(7);
+            // Left-trim only (not rest.trim()) - a full trim would eat the
+            // one separating space when the name is deliberately empty
+            // (clearing a node back to its fallback "Lamp 0x.." label),
+            // leaving no space for indexOf(' ') to find at all. The name
+            // itself still gets trimmed, just inside meshRenameNode() via
+            // renameKnownNodeByAddr()'s own sanitization, not here.
+            while (rest.length() > 0 && rest[0] == ' ')
+                rest.remove(0, 1);
+            int sp = rest.indexOf(' ');
+            if (sp > 0)
+            {
+                uint16_t addr = (uint16_t)strtoul(rest.substring(0, sp).c_str(), nullptr, 0);
+                meshRenameNode(addr, rest.substring(sp + 1));
+            }
+            else
+            {
+                sendFeedback(F("Usage: mesh rename <addr> <name>"));
+            }
+        }
 #endif
         else
         {
             sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"
 #if ENABLE_BLE_MESH_PROVISIONER
-                           " | mesh network create [<net> <app>] | mesh provision scan|stop|list|add|remove | mesh nodes"
+                           " | mesh network create [<net> <app>] | mesh provision scan|stop|list|add|remove"
+                           " | mesh nodes | mesh rename <addr> <name>"
 #endif
                            ));
         }
