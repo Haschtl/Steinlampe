@@ -15,6 +15,7 @@
 #include "presence_ble.h"
 #include "presence_radar.h"
 #include "print.h"
+#include "gestures.h"
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -64,6 +65,7 @@ static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
+static const char *PREF_KEY_GESTURES = "gest_map";
 static const char *PREF_KEY_PAT_REACT = "pat_react";
 static const char *PREF_KEY_PAT_REACT_HI = "pat_react_hi";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
@@ -394,6 +396,8 @@ void exportConfig()
     cfg += String(rampEaseOffPower, 2);
     cfg += F(" quick=");
     cfg += quickMaskToCsv();
+    cfg += F(" gest=");
+    cfg += gestureBindingsToCsv();
     cfg += F(" pat_reactive=");
     cfg += patternReactiveMaskToCsv();
 #if ENABLE_MUSIC_MODE
@@ -582,6 +586,7 @@ static void saveSettingsNow()
     prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
     prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
+    prefs.putString(PREF_KEY_GESTURES, gestureBindingsToCsv());
     prefs.putUInt(PREF_KEY_PAT_REACT, (uint32_t)(patternReactiveMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_PAT_REACT_HI, (uint32_t)(patternReactiveMask >> 32));
     prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
@@ -634,6 +639,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
 #endif
     quickMask = computeDefaultQuickMask();
+    resetGestureBindingsToDefault();
     patternReactiveMask = 0;
     presenceBleEnabled = Settings::PRESENCE_BLE_DEFAULT_ENABLED;
     presenceBleGraceMs = Settings::PRESENCE_BLE_GRACE_MS_DEFAULT;
@@ -795,6 +801,11 @@ void loadSettings()
         quickMask = (hi << 32) | lo;
     }
     sanitizeQuickMask();
+    {
+        String gestCsv = prefs.getString(PREF_KEY_GESTURES, "");
+        if (gestCsv.isEmpty() || !parseGestureCsv(gestCsv))
+            resetGestureBindingsToDefault();
+    }
     {
         uint64_t lo = prefs.getUInt(PREF_KEY_PAT_REACT, 0);
         uint64_t hi = prefs.getUInt(PREF_KEY_PAT_REACT_HI, 0);
@@ -1776,6 +1787,10 @@ void importConfig(const String &args)
                 quickMask = mask;
                 sanitizeQuickMask();
             }
+        }
+        else if (key == "gest")
+        {
+            parseGestureCsv(val);
         }
         else if (key == "pat_reactive")
         {

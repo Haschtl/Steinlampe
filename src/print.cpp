@@ -18,6 +18,7 @@
 #include "ota.h"
 #include "presence_radar.h"
 #include "quickmode.h"
+#include "gestures.h"
 #include "version.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -232,7 +233,13 @@ void printStatusStructured(const bool &force)
     static bool lineReserved = false;
     if (!lineReserved)
     {
-        line.reserve(700);
+        // Bumped from 700 to make room for |gest=<csv> - up to
+        // MAX_GESTURE_BINDINGS (24) entries, each up to ~35 bytes in the
+        // worst case (e.g. "bt255t255off=mesh_bri:0xffff:6553.5;") - real
+        // configs are far shorter (button slots are 0-3 in practice), but
+        // size for the worst case to avoid the exact "undersized reserve()"
+        // heap-corruption class fixed earlier on this branch.
+        line.reserve(1200);
         lineReserved = true;
     }
     line = F("STATUS|");
@@ -334,6 +341,8 @@ void printStatusStructured(const bool &force)
     line += fmtF(patternMarginHigh, 3);
     line += F("|quick=");
     line += quickMaskToCsv();
+    line += F("|gest=");
+    line += gestureBindingsToCsv();
     line += F("|pat_reactive=");
     line += isPatternReactive(currentPattern) ? F("1") : F("0");
     line += F("|presence_ble=");

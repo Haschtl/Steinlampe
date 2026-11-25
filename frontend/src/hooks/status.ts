@@ -144,6 +144,7 @@ export type DeviceStatus = {
   radarHwOverride?: boolean;
   radarVelocityFactor?: number;
   quickCsv?: string;
+  gestCsv?: string;
   rampOnMs?: number;
   rampOffMs?: number;
   rampOnEase?: string;
@@ -375,6 +376,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,
+        gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,

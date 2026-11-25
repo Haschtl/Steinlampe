@@ -31,6 +31,17 @@ CONFIG_BLE_MESH_PROXY=y
 CONFIG_BLE_MESH_GENERIC_SERVER=y
 CONFIG_BLE_MESH_LIGHTING_SERVER=y
 CONFIG_BLE_MESH_HEALTH_SRV=y
+# Generic OnOff Client + Light Lightness Client - lets this node SEND Set
+# messages to other nodes (mesh actions from the input-gesture mapping,
+# gestures.cpp/mesh.cpp's meshSendOnOff()/meshSendLightness()), on top of
+# the Server models above that let it RECEIVE them. Each of these two is its
+# own Kconfig leaf (no umbrella flag like the Server side has) - both are
+# computed into the CONFIG_BLE_MESH_GENERIC_CLIENT/_LIGHTING_CLIENT macros
+# that actually gate models/client/generic_client.c and lighting_client.c's
+# compilation, which is why omitting them links with "undefined reference"
+# even though the client API headers compile fine either way.
+CONFIG_BLE_MESH_GENERIC_ONOFF_CLI=y
+CONFIG_BLE_MESH_LIGHT_LIGHTNESS_CLI=y
 # Persists provisioning state (NetKey/AppKey/node address/model bindings)
 # across reboots - unlike the spike, which deliberately left this off for
 # fast re-provisioning during testing. A real product shouldn't forget its

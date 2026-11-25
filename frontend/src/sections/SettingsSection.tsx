@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
+import { GestureMappingCard } from '@/cards/GestureMappingCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
 import { OtaUpdateCard } from '@/cards/OtaUpdateCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +66,7 @@ export function SettingsSection() {
     <div className="space-y-4">
       <DeviceBTCard />
       <QuickCustomCard />
+      <GestureMappingCard />
       <UISettingsCard />
       <BackupRestoreCard />
       <OtaUpdateCard />

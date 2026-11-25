@@ -175,6 +175,30 @@ esp_ble_mesh_light_lc_setup_srv_t lcSetupServer = {
     .lc = &lightControl,
 };
 
+// ---------- Generic OnOff Client / Light Lightness Client ----------
+// Lets this node send standard Set messages to OTHER nodes (any address the
+// caller chooses - group or unicast, there's no device/group picker in this
+// firmware, addresses are configured by hand via nRF Mesh) - the mesh-action
+// side of the generalized input-gesture mapping (gestures.cpp). Different
+// model IDs than the Server models above (0x1001/0x1301 vs. 0x1000/0x1300),
+// so both coexist fine on the same element. Each needs its own AppKey bound
+// once via nRF Mesh's Model App Bind before meshSendOnOff()/meshSendLightness()
+// below can actually send anything - see their own guard checks.
+esp_ble_mesh_client_t onoffClient{};
+ESP_BLE_MESH_MODEL_PUB_DEFINE(onoffCliPub, 2 + 3, ROLE_NODE);
+esp_ble_mesh_client_t lightnessClient{};
+ESP_BLE_MESH_MODEL_PUB_DEFINE(lightnessCliPub, 2 + 3, ROLE_NODE);
+
+uint16_t lightnessFromPercent(float pct)
+{
+    return (uint16_t)constrain(pct * 65535.0f / 100.0f, 0.0f, 65535.0f);
+}
+
+float percentFromLightness(uint16_t lightness)
+{
+    return (lightness * 100.0f) / 65535.0f;
+}
+
 esp_ble_mesh_model_t rootModels[] = {
     ESP_BLE_MESH_MODEL_CFG_SRV(&configServer),
     ESP_BLE_MESH_MODEL_HEALTH_SRV(&healthServer, &healthPub),
@@ -183,6 +207,8 @@ esp_ble_mesh_model_t rootModels[] = {
     ESP_BLE_MESH_MODEL_LIGHT_LIGHTNESS_SETUP_SRV(&lightnessSetupPub, &lightnessSetupServer),
     ESP_BLE_MESH_MODEL_LIGHT_LC_SRV(&lcPub, &lcServer),
     ESP_BLE_MESH_MODEL_LIGHT_LC_SETUP_SRV(&lcSetupPub, &lcSetupServer),
+    ESP_BLE_MESH_MODEL_GEN_ONOFF_CLI(&onoffCliPub, &onoffClient),
+    ESP_BLE_MESH_MODEL_LIGHT_LIGHTNESS_CLI(&lightnessCliPub, &lightnessClient),
 };
 
 // Vendor Model: one receive-only opcode carrying a raw text command, same
@@ -280,7 +306,7 @@ void lightingServerCallback(esp_ble_mesh_lighting_server_cb_event_t event, esp_b
         // Actual state (0..65535) is the mesh-wide standard range for Light
         // Lightness - map directly onto our own 0..100% brightness scale.
         uint16_t lightness = param->value.state_change.lightness_set.lightness;
-        float pct = (lightness * 100.0f) / 65535.0f;
+        float pct = percentFromLightness(lightness);
         setBrightnessPercent(pct, false, false, false);
         sendFeedback(String(F("[Mesh] Lightness -> ")) + fmtF(pct, 1) + F("%"));
     }
@@ -294,6 +320,22 @@ void lightingServerCallback(esp_ble_mesh_lighting_server_cb_event_t event, esp_b
         setLampEnabled(on, "mesh lc", false);
         sendFeedback(String(F("[Mesh] LC OnOff -> ")) + (on ? F("ON") : F("OFF")));
     }
+}
+
+// meshSendOnOff()/meshSendLightness() send the _UNACK opcode variants
+// (fire-and-forget, no response expected) - these callbacks only exist for
+// diagnostics (e.g. a bad AppKey/address shows up as a timeout here) and
+// future ack-based sends, not required for the UNACK sends to work today.
+void genericClientCallback(esp_ble_mesh_generic_client_cb_event_t event, esp_ble_mesh_generic_client_cb_param_t *param)
+{
+    if (event == ESP_BLE_MESH_GENERIC_CLIENT_TIMEOUT_EVT)
+        ESP_LOGW(TAG, "generic client timeout, opcode=0x%04x", param->params->opcode);
+}
+
+void lightingClientCallback(esp_ble_mesh_light_client_cb_event_t event, esp_ble_mesh_light_client_cb_param_t *param)
+{
+    if (event == ESP_BLE_MESH_LIGHT_CLIENT_TIMEOUT_EVT)
+        ESP_LOGW(TAG, "lighting client timeout, opcode=0x%04x", param->params->opcode);
 }
 
 // Vendor models don't get their own typed callback like the Generic/Lighting
@@ -330,6 +372,8 @@ void meshSetup()
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_server_callback(genericServerCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_lighting_server_callback(lightingServerCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_custom_model_callback(customModelCallback));
+    ESP_ERROR_CHECK(esp_ble_mesh_register_generic_client_callback(genericClientCallback));
+    ESP_ERROR_CHECK(esp_ble_mesh_register_light_client_callback(lightingClientCallback));
     err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
     if (err != ESP_OK)
     {
@@ -337,6 +381,60 @@ void meshSetup()
         return;
     }
     Serial.println(F("[Mesh] Provisioning aktiv."));
+}
+
+void meshSendOnOff(uint16_t addr, bool on)
+{
+    if (!onoffClient.model || onoffClient.model->keys[0] == ESP_BLE_MESH_KEY_UNUSED)
+    {
+        sendFeedback(F("[Mesh] Generic OnOff Client has no AppKey bound - bind it via nRF Mesh first"));
+        return;
+    }
+    static uint8_t tid = 0;
+    esp_ble_mesh_client_common_param_t params{};
+    params.opcode = ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET_UNACK;
+    params.model = onoffClient.model;
+    params.ctx.net_idx = 0; // single-subnet simplification, same as elsewhere in this file
+    params.ctx.app_idx = onoffClient.model->keys[0];
+    params.ctx.addr = addr;
+    params.ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    params.msg_timeout = 0;
+
+    esp_ble_mesh_generic_client_set_state_t set{};
+    set.onoff_set.op_en = false;
+    set.onoff_set.onoff = on ? 1 : 0;
+    set.onoff_set.tid = tid++;
+
+    esp_err_t err = esp_ble_mesh_generic_client_set_state(&params, &set);
+    if (err != ESP_OK)
+        sendFeedback(String(F("[Mesh] OnOff send to 0x")) + String(addr, HEX) + F(" failed: ") + String(err));
+}
+
+void meshSendLightness(uint16_t addr, float percent)
+{
+    if (!lightnessClient.model || lightnessClient.model->keys[0] == ESP_BLE_MESH_KEY_UNUSED)
+    {
+        sendFeedback(F("[Mesh] Light Lightness Client has no AppKey bound - bind it via nRF Mesh first"));
+        return;
+    }
+    static uint8_t tid = 0;
+    esp_ble_mesh_client_common_param_t params{};
+    params.opcode = ESP_BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_SET_UNACK;
+    params.model = lightnessClient.model;
+    params.ctx.net_idx = 0;
+    params.ctx.app_idx = lightnessClient.model->keys[0];
+    params.ctx.addr = addr;
+    params.ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    params.msg_timeout = 0;
+
+    esp_ble_mesh_light_client_set_state_t set{};
+    set.lightness_set.op_en = false;
+    set.lightness_set.lightness = lightnessFromPercent(percent);
+    set.lightness_set.tid = tid++;
+
+    esp_err_t err = esp_ble_mesh_light_client_set_state(&params, &set);
+    if (err != ESP_OK)
+        sendFeedback(String(F("[Mesh] Lightness send to 0x")) + String(addr, HEX) + F(" failed: ") + String(err));
 }
 
 #endif // ENABLE_BLE_MESH

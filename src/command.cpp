@@ -26,6 +26,10 @@
 #include "notifications.h"
 #include "pattern.h"
 #include "demo.h"
+#include "gestures.h"
+#if ENABLE_BLE_MESH
+#include "lamp_mesh.h"
+#endif
 
 // SOS shortcut snapshot
 bool sosModeActive = false;
@@ -101,6 +105,79 @@ void handleCommand(const String &line)
         {
             sendFeedback(F("Usage: quick <idx,...> | quick default"));
         }
+        return;
+    }
+    if (lower == "gest" || lower == "gest list")
+    {
+        sendFeedback(String(F("[Gest] ")) + gestureBindingsToCsv());
+        return;
+    }
+    if (lower == "gest default")
+    {
+        resetGestureBindingsToDefault();
+        saveSettings();
+        sendFeedback(F("[Gest] default (empty)"));
+        return;
+    }
+    if (lower == "gest clear")
+    {
+        gestureBindingCount = 0;
+        saveSettings();
+        sendFeedback(F("[Gest] cleared"));
+        return;
+    }
+    if (lower.startsWith("gest set"))
+    {
+        String args = line.substring(8);
+        args.trim();
+        args.toLowerCase();
+        if (parseGestureCsv(args))
+        {
+            saveSettings();
+            sendFeedback(String(F("[Gest] set -> ")) + gestureBindingsToCsv());
+        }
+        else
+        {
+            sendFeedback(F("[Gest] malformed binding list, nothing changed"));
+        }
+        return;
+    }
+    if (lower.startsWith("mesh "))
+    {
+#if ENABLE_BLE_MESH
+        String args = line.substring(5);
+        args.trim();
+        if (args.startsWith("on ") || args.startsWith("off "))
+        {
+            bool on = args.startsWith("on ");
+            uint16_t addr = (uint16_t)strtoul(args.substring(on ? 3 : 4).c_str(), nullptr, 0);
+            meshSendOnOff(addr, on);
+            sendFeedback(String(F("[Mesh] ")) + (on ? F("on") : F("off")) + F(" -> 0x") + String(addr, HEX));
+        }
+        else if (args.startsWith("bri "))
+        {
+            String rest = args.substring(4);
+            rest.trim();
+            int sp = rest.indexOf(' ');
+            if (sp > 0)
+            {
+                uint16_t addr = (uint16_t)strtoul(rest.substring(0, sp).c_str(), nullptr, 0);
+                float pct = rest.substring(sp + 1).toFloat();
+                meshSendLightness(addr, pct);
+                sendFeedback(String(F("[Mesh] bri -> 0x")) + String(addr, HEX) + F(" ") + fmtF(pct, 1) + F("%"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: mesh bri <addr> <pct>"));
+            }
+        }
+        else
+        {
+            sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"));
+        }
+#else
+        sendFeedback(F("[Mesh] disabled at build"));
+#endif
         return;
     }
     if (lower == "status")

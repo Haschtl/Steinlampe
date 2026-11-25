@@ -11,6 +11,7 @@
 #include "pattern.h"
 #include "utils.h"
 #include "sleepwake.h"
+#include "gestures.h"
 
 bool switchDebouncedState = false;
 
@@ -118,6 +119,10 @@ bool potiWasBelowOff = false;
 PotiRole potiRole = (PotiRole)Settings::POTI_ROLE_DEFAULT;
 uint8_t potiTarget = Settings::POTI_TARGET_DEFAULT;
 static int potiLastQuickIdx = -1; // last mode applied in POTI_ROLE_MODE_SCAN, -1 = force reapply
+
+extern const float POTI_SWING_LOW = 0.15f;
+extern const float POTI_SWING_HIGH = 0.85f;
+extern const uint32_t POTI_SWING_MAX_MS = 900; // potis move slower than finger taps
 #endif
 
 #if ENABLE_PUSH_BUTTON
@@ -223,14 +228,33 @@ void initButtons()
         switchDebouncedState = buttonStates[idx].debounced;
         // Apply switch state via setLampEnabled so ramps/guards are respected.
         setLampEnabled(switchDebouncedState, "init switch");
-        buttonStates[idx].lastOffMs = millis();
-        buttonStates[idx].lastOnMs = lampEnabled ? buttonStates[idx].lastOffMs : 0;
-        buttonStates[idx].modeTapArmed = false;
     }
     else
     {
         switchDebouncedState = false;
     }
+}
+
+/**
+ * @brief Record one edge of a ROLE_POWER toggle's tap burst (see gestures.h)
+ * - continues the current burst if within MODE_TAP_MAX_MS of the previous
+ * edge, else starts a new one. Call must be before st.debounced is read as
+ * the "old" state - i.e. after updateButtons() has already applied the new
+ * debounced value, since the pre-edge state is just its logical opposite.
+ */
+static void trackSwitchTap(ButtonState &st, uint32_t now)
+{
+    if (st.switchTapPending && (now - st.switchTapLastEdgeMs) <= MODE_TAP_MAX_MS)
+    {
+        st.switchTapCount++;
+    }
+    else
+    {
+        st.switchTapCount = 1;
+        st.switchTapStartOn = !st.debounced; // state before this edge
+    }
+    st.switchTapLastEdgeMs = now;
+    st.switchTapPending = true;
 }
 
 /**
@@ -244,11 +268,7 @@ static void onToggleActivated(size_t i)
     switch (cfg.role)
     {
     case ROLE_POWER:
-        // Short off->on within MODE_TAP_MAX_MS: advance pattern
-        if (st.modeTapArmed && (now - st.lastOffMs) <= MODE_TAP_MAX_MS)
-            advanceQuickModeFromButton();
-        st.modeTapArmed = false;
-        st.lastOnMs = now;
+        trackSwitchTap(st, now);
         switchDebouncedState = true;
         setLampEnabled(true, "switch on");
         sendFeedback(String(F("[")) + cfg.label + F("] ON"));
@@ -275,9 +295,7 @@ static void onToggleDeactivated(size_t i)
     uint32_t now = millis();
     if (cfg.role == ROLE_POWER)
     {
-        // Arm mode change if lamp was on before this off edge
-        st.modeTapArmed = lampEnabled;
-        st.lastOffMs = now;
+        trackSwitchTap(st, now);
         switchDebouncedState = false;
         setLampEnabled(false, "switch off");
         sendFeedback(String(F("[")) + cfg.label + F("] OFF"));
@@ -288,15 +306,50 @@ static void onToggleDeactivated(size_t i)
     lastActivityMs = now;
 }
 
-#if ENABLE_PUSH_BUTTON
-static void momentaryPowerPress(size_t i)
+/**
+ * @brief Once a ROLE_POWER toggle's tap burst has gone quiet (no edge for
+ * MODE_TAP_MAX_MS), dispatch the configured gesture binding for its count/
+ * starting state, or fall back to the original behavior (a 2-edge burst -
+ * off then back on - starting from ON) if none is configured.
+ */
+static void finalizeSwitchTapBurst(size_t i)
 {
     ButtonState &st = buttonStates[i];
-    st.pressMs = millis();
-    st.holdActive = false;
+    st.switchTapPending = false;
+    uint8_t startState = st.switchTapStartOn ? GS_ON : GS_OFF;
+    const GestureBinding *b = findGestureBinding(GIN_SWITCH, (uint8_t)i, GK_N_TAP,
+                                                  st.switchTapCount, startState);
+    if (b)
+        dispatchGestureAction(*b);
+    else if (st.switchTapCount == 2 && st.switchTapStartOn)
+        advanceQuickModeFromButton();
 }
 
-static void momentaryPowerRelease(size_t i)
+#if ENABLE_PUSH_BUTTON
+/**
+ * @brief Momentary ROLE_POWER/ROLE_MODE_NEXT press edge - generalizes the
+ * old fixed double-press check into an N-tap burst (see gestures.h), and
+ * remembers whether this press follows a recent release closely enough
+ * that turning into a hold would make it a double-long rather than a
+ * plain long-press.
+ */
+static void momentaryPressBurstPress(size_t i)
+{
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    st.pressMs = now;
+    st.holdActive = false;
+    st.longGestureFired = false;
+    st.holdGestureBound = false;
+    st.doubleArmed = st.awaitDouble && (now - st.lastReleaseMs) <= pushDoubleMs;
+}
+
+/**
+ * @brief Momentary ROLE_POWER/ROLE_MODE_NEXT release edge. A release that
+ * ends a hold isn't a tap (the hold already dispatched its own gesture) -
+ * only a plain press+release counts toward the tap burst.
+ */
+static void momentaryPressBurstRelease(size_t i)
 {
     ButtonState &st = buttonStates[i];
     uint32_t now = millis();
@@ -306,34 +359,86 @@ static void momentaryPowerRelease(size_t i)
         return;
     }
     if (st.awaitDouble && (now - st.lastReleaseMs) <= pushDoubleMs)
+        st.pressBurstCount++;
+    else
+        st.pressBurstCount = 1;
+    st.awaitDouble = true;
+    st.lastReleaseMs = now;
+}
+
+/**
+ * @brief Once a tap burst has gone quiet, dispatch the configured binding
+ * for its count, or fall back to each role's original fixed behavior if
+ * none is configured: ROLE_POWER 1 tap -> toggle, 2 taps -> quick-cycle
+ * (today's exact double-press behavior, now preceded by up to pushDoubleMs
+ * of extra latency to allow for a possible 3rd+ tap - an unavoidable
+ * consequence of generalizing to N); ROLE_MODE_NEXT any tap count -> advance
+ * (today's exact "every release advances" behavior).
+ */
+static void finalizeMomentaryTapBurst(size_t i)
+{
+    const ButtonConfig &cfg = BUTTONS[i];
+    ButtonState &st = buttonStates[i];
+    st.awaitDouble = false;
+    uint8_t count = st.pressBurstCount;
+    st.pressBurstCount = 0;
+    const GestureBinding *b = findGestureBinding(GIN_BUTTON, (uint8_t)i, GK_N_TAP, count, GS_EITHER);
+    if (b)
     {
-        st.awaitDouble = false;
+        dispatchGestureAction(*b);
+        return;
+    }
+    if (cfg.role == ROLE_POWER)
+    {
+        if (count == 1)
+            setLampEnabled(!lampEnabled, cfg.label);
+        else if (count >= 2)
+            advanceQuickModeFromButton();
+    }
+    else if (cfg.role == ROLE_MODE_NEXT)
+    {
         advanceQuickModeFromButton();
     }
-    else
-    {
-        st.awaitDouble = true;
-        st.lastReleaseMs = now;
-    }
+}
+
+/**
+ * @brief Tap-burst timeout check only - shared by momentaryPowerTick() and
+ * ROLE_MODE_NEXT's own tick (which has no hold/ramp behavior of its own).
+ */
+static void momentaryTapBurstTick(size_t i)
+{
+    ButtonState &st = buttonStates[i];
+    uint32_t now = millis();
+    if (st.awaitDouble && (now - st.lastReleaseMs) > pushDoubleMs)
+        finalizeMomentaryTapBurst(i);
 }
 
 static void momentaryPowerTick(size_t i)
 {
-    const ButtonConfig &cfg = BUTTONS[i];
     ButtonState &st = buttonStates[i];
     uint32_t now = millis();
-    if (st.awaitDouble && (now - st.lastReleaseMs) > pushDoubleMs)
-    {
-        st.awaitDouble = false;
-        setLampEnabled(!lampEnabled, cfg.label);
-    }
+    momentaryTapBurstTick(i);
     if (st.debounced && !st.holdActive && (now - st.pressMs) >= pushHoldMs)
     {
         st.holdActive = true;
         st.holdLastStepMs = now;
         st.awaitDouble = false;
+        st.pressBurstCount = 0;
     }
-    if (st.holdActive && st.debounced)
+    if (st.holdActive && st.debounced && !st.longGestureFired)
+    {
+        st.longGestureFired = true;
+        uint8_t gestureKind = st.doubleArmed ? GK_DOUBLE_LONG : GK_LONG_PRESS;
+        const GestureBinding *b = findGestureBinding(GIN_BUTTON, (uint8_t)i, gestureKind, 0, GS_EITHER);
+        if (b)
+        {
+            st.holdGestureBound = true;
+            dispatchGestureAction(*b);
+        }
+    }
+    // No explicit long-press/double-long binding configured for this hold ->
+    // fall back to the original continuous brightness ramp, unchanged.
+    if (st.holdActive && st.debounced && !st.holdGestureBound)
     {
         if (now - st.holdLastStepMs >= pushStepMs)
         {
@@ -417,6 +522,9 @@ void updateButtons()
                 else
                     onToggleDeactivated(i);
             }
+            if (cfg.role == ROLE_POWER && st.switchTapPending &&
+                (now - st.switchTapLastEdgeMs) > MODE_TAP_MAX_MS)
+                finalizeSwitchTapBurst(i);
 #if ENABLE_PUSH_BUTTON
             if ((cfg.role == ROLE_BRIGHTNESS_UP || cfg.role == ROLE_BRIGHTNESS_DOWN) && st.debounced)
             {
@@ -439,8 +547,8 @@ void updateButtons()
             {
                 if (st.debounced)
                 {
-                    if (cfg.role == ROLE_POWER)
-                        momentaryPowerPress(i);
+                    if (cfg.role == ROLE_POWER || cfg.role == ROLE_MODE_NEXT)
+                        momentaryPressBurstPress(i);
                     else if (cfg.role == ROLE_BRIGHTNESS_UP)
                         momentaryBrightnessPress(i, 1.0f);
                     else if (cfg.role == ROLE_BRIGHTNESS_DOWN)
@@ -450,14 +558,14 @@ void updateButtons()
                 }
                 else
                 {
-                    if (cfg.role == ROLE_POWER)
-                        momentaryPowerRelease(i);
-                    else if (cfg.role == ROLE_MODE_NEXT)
-                        advanceQuickModeFromButton();
+                    if (cfg.role == ROLE_POWER || cfg.role == ROLE_MODE_NEXT)
+                        momentaryPressBurstRelease(i);
                 }
             }
             if (cfg.role == ROLE_POWER)
                 momentaryPowerTick(i);
+            else if (cfg.role == ROLE_MODE_NEXT)
+                momentaryTapBurstTick(i);
             else if (cfg.role == ROLE_BRIGHTNESS_UP)
                 momentaryBrightnessTick(i, 1.0f);
             else if (cfg.role == ROLE_BRIGHTNESS_DOWN)
@@ -774,6 +882,52 @@ void updatePoti()
     if (potiInvert)
         level = 1.0f - level;
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
+
+    // N-swing gesture tracking (see gestures.h) - counts low<->high zone
+    // crossings, independent of the on/off threshold logic below. Runs on
+    // every sample, including ones the brightness/scan logic further down
+    // ends up skipping, so the burst-quiet timeout still fires on time.
+    {
+        static int swingZone = -1; // -1 unset, 0 low, 1 high
+        static uint8_t swingCount = 0;
+        static bool swingStartLow = false;
+        static uint32_t swingLastMs = 0;
+        static bool swingPending = false;
+
+        int zone = -1;
+        if (potiFiltered <= POTI_SWING_LOW)
+            zone = 0;
+        else if (potiFiltered >= POTI_SWING_HIGH)
+            zone = 1;
+        if (zone >= 0)
+        {
+            if (swingZone == -1)
+            {
+                swingZone = zone;
+            }
+            else if (zone != swingZone)
+            {
+                if (swingPending && (now - swingLastMs) <= POTI_SWING_MAX_MS)
+                    swingCount++;
+                else
+                {
+                    swingCount = 1;
+                    swingStartLow = (swingZone == 0);
+                }
+                swingZone = zone;
+                swingLastMs = now;
+                swingPending = true;
+            }
+        }
+        if (swingPending && (now - swingLastMs) > POTI_SWING_MAX_MS)
+        {
+            swingPending = false;
+            uint8_t startState = swingStartLow ? GS_OFF : GS_ON;
+            const GestureBinding *b = findGestureBinding(GIN_POTI, 0, GK_N_SWING, swingCount, startState);
+            if (b)
+                dispatchGestureAction(*b);
+        }
+    }
 
     bool nowBelow = (potiFiltered <= potiOffThreshold);
     // The on/off logic below is edge-triggered (crossedOn/crossedOff), by
