@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 #include "lamp_config.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include "comms.h"
 #include "presence_ble.h"
 

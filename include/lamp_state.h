@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 // Shared LEDC configuration
 extern const int LEDC_FREQ;

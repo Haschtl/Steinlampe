@@ -1,7 +1,7 @@
 #include "Arduino.h"
 
 #include "utils.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include "lamp_state.h"
 #include "comms.h"
 

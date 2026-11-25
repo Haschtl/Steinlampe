@@ -10,7 +10,7 @@
 #include "filters.h"
 #include "lamp_state.h"
 #include "patterns.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include "utils.h"
 #include "persistence.h"
 #include "print.h"

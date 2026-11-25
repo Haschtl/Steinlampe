@@ -1,4 +1,4 @@
-#include "settings.h"
+#include "lamp_settings.h"
 #include "filters.h"
 
 #if ENABLE_FILTERS

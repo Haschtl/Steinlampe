@@ -1,7 +1,7 @@
 #include "comms.h"
 
 #include "lamp_config.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include <vector>
 #include <deque>
 #include <algorithm>
@@ -10,6 +10,9 @@
 #endif
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 #include "midi_ble.h"
+#endif
+#if ENABLE_BLE_MESH
+#include "lamp_mesh.h"
 #endif
 
 #if ENABLE_BT_SERIAL
@@ -43,6 +46,13 @@
 // Not actually declared by ble_store_config.h (only read/write/delete are) -
 // Espressif's own bleprph example forward-declares it the same way.
 extern "C" void ble_store_config_init(void);
+#endif
+
+#if ENABLE_BLE_MESH
+// esp_ble_mesh's own coexistence hook (see startBle()'s call site for why) -
+// not declared in any public esp_ble_mesh header, same situation as
+// ble_store_config_init() above.
+extern "C" void bt_mesh_gatts_svcs_add(void);
 #endif
 
 /**
@@ -246,12 +256,17 @@ void setBleName(const String &name)
   if (name.length() >= 2)
   {
     bleName = name;
+#if !ENABLE_BLE_MESH
     // Live rename of advertisement can be flaky; store for next restart.
+    // Skipped entirely once Mesh is active - it permanently owns the
+    // single advertising slot on this chip (see startBleAdvertising()'s
+    // own comment), and its own advertisement doesn't use bleName anyway.
     if (ble_hs_synced())
     {
       ble_gap_adv_stop();
       startBleAdvertising();
     }
+#endif
   }
 #else
   (void)name;
@@ -616,14 +631,90 @@ static ble_uuid128_t bleServiceUuid;
 static ble_uuid128_t bleCommandCharUuid;
 static ble_uuid128_t bleStatusCharUuid;
 
+// Decides whether `connHandle` is currently authorized to issue commands,
+// lazily starting (or keeping alive) the physical-gesture pairing flow for
+// a not-yet-trusted peer if needed. Side-effects global trust state
+// (trustedBle/blePairPending/etc) but never terminates or blocks the
+// connection itself by rejecting a write - `pollCommunications()`'s
+// existing `if (blePairPending) continue;` is what actually discards
+// buffered command bytes while a confirmation is outstanding; this
+// function's job is just to make sure that flag gets set, and the trust
+// list updated once confirmed, regardless of *how* the request got here.
+//
+// Called from two places: (a) BLE_GAP_EVENT_ENC_CHANGE, for a connection
+// that came in through our OWN ble_gap_adv_start() call in
+// startBleAdvertising() - comms.cpp owns that connection's GAP events, so
+// this fires the moment encryption completes; (b) lazily, from this GATT
+// access callback itself, for a connection that came in through someone
+// ELSE's advertising instead (BLE Mesh's own ble_gap_adv_start() call, once
+// Mesh is active - mesh's own gap_event_cb owns that connection's GAP
+// events, ours never fires for it at all, so this is the only place trust
+// ever gets decided for it). Idempotent either way - re-derives the
+// allow/deny outcome from current trust-list/pending state every call
+// rather than caching a verdict, so calling it once per incoming write is
+// safe and cheap.
+static bool authorizeBleConn(uint16_t connHandle)
+{
+  struct ble_gap_conn_desc desc;
+  if (ble_gap_conn_find(connHandle, &desc) != 0)
+    return false;
+  // Belt-and-suspenders: BLE_GATT_CHR_F_WRITE_ENC on the characteristic
+  // itself already makes the ATT server refuse this access callback from
+  // ever running at all on an unencrypted link.
+  if (!desc.sec_state.encrypted)
+    return false;
+
+  String addr = bleAddrToString(desc.peer_id_addr);
+  bleLastAddr = addr;
+
+  if (allowBleAddr(addr))
+  {
+    lastBtActivityMs = millis();
+    if (addToList(trustedBle, addr))
+      saveSettings();
+    return true;
+  }
+
+#if ENABLE_BT_PAIRING
+  if (!(blePairPending && blePendingConnId == connHandle))
+  {
+    blePairPending = true;
+    blePairStartMs = millis();
+    blePendingAddr = addr;
+    blePendingConnId = connHandle;
+    lastBtActivityMs = millis();
+    // Structured marker (force=true) so a connected client can tell
+    // "deliberately holding you pending a physical gesture" apart from a
+    // generic status-snapshot timeout and wait this out instead of giving
+    // up and reconnecting (which would just restart this same 20s window
+    // from zero on the firmware side).
+    sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
+    if (feedbackAllowed())
+      sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
+  }
+#else
+  if (feedbackAllowed())
+  {
+    Serial.print(F("[BLE] Rejecting unknown "));
+    Serial.println(addr);
+  }
+  // A real (encrypted) bond now exists for this address even though we're
+  // not authorizing it - drop the keys too, not just the connection, so it
+  // can't silently re-encrypt against them later.
+  deleteBleBondByAddr(addr);
+  ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
+#endif
+  return false;
+}
+
 static int bleCommandAccessCb(uint16_t conn_handle, uint16_t attr_handle,
                               struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-  (void)conn_handle;
   (void)attr_handle;
   (void)arg;
   if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR)
     return 0;
+  authorizeBleConn(conn_handle);
   uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
   if (len == 0)
     return 0;
@@ -703,6 +794,20 @@ static struct ble_gatt_svc_def bleGattSvcs[] = {
     {0},
 };
 
+// Only ever called when ENABLE_BLE_MESH is off - classic ESP32 NimBLE has
+// exactly one advertising slot (ble_gap_adv_start() while one is already
+// active just errors/no-ops, doesn't queue), and once Mesh is active it
+// permanently owns that slot (its own unprovisioned-beacon/PB-ADV/PB-GATT,
+// then Proxy advertising after provisioning, re-armed by mesh's own GAP
+// event handling - see adapter.c). All of this function's own call sites
+// are `#if !ENABLE_BLE_MESH`-guarded rather than relying on the
+// `ble_gap_adv_active()` check below alone, since there's a real (if
+// narrow) race window between mesh stopping its own advertisement and
+// re-arming it where that check could pass and we'd steal the slot. Our
+// own GATT characteristics stay registered and reachable either way -
+// mesh's advertisement is just what gets a central connected in the first
+// place; see authorizeBleConn()'s comment for how trust/pairing is handled
+// for a connection that arrived that way instead of through this function.
 static void startBleAdvertising()
 {
   if (ble_gap_adv_active())
@@ -777,9 +882,12 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
     }
     else
     {
+#if !ENABLE_BLE_MESH
       // Connection attempt itself failed - the controller stops advertising
-      // regardless, re-arm it.
+      // regardless, re-arm it. (Mesh owns re-arming its own advertisement
+      // once active - see startBleAdvertising()'s comment.)
       startBleAdvertising();
+#endif
     }
     break;
   }
@@ -809,77 +917,54 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
       blePendingAddr = "";
     }
 #endif
+#if !ENABLE_BLE_MESH
     startBleAdvertising();
+#endif
     break;
   }
   case BLE_GAP_EVENT_ENC_CHANGE:
   {
     // Fires once pairing/encryption (triggered by our own
     // ble_gap_security_initiate() call above) has run its course, success
-    // or failure - this is where trust is actually decided now.
+    // or failure. Only relevant for a connection that came in through our
+    // OWN ble_gap_adv_start() call - one that came in through someone
+    // else's advertising (BLE Mesh's, once active) never reaches this
+    // callback at all, since mesh's own gap_event_cb owns it instead; see
+    // authorizeBleConn()'s comment for how that path gets covered.
     uint16_t connHandle = event->enc_change.conn_handle;
-    struct ble_gap_conn_desc desc;
-    if (ble_gap_conn_find(connHandle, &desc) != 0)
-      break;
-    if (event->enc_change.status != 0 || !desc.sec_state.encrypted)
+    if (event->enc_change.status != 0)
     {
       if (feedbackAllowed())
         Serial.println(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen"));
       ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
       break;
     }
-    // Stable across the central's over-the-air address rotating on later
-    // reconnects, now that it's bonded and resolvable.
-    String addr = bleAddrToString(desc.peer_id_addr);
-    bleLastAddr = addr;
-    if (!allowBleAddr(addr))
+    if (authorizeBleConn(connHandle))
     {
-#if ENABLE_BT_PAIRING
-      blePairPending = true;
-      blePairStartMs = millis();
-      blePendingAddr = addr;
-      blePendingConnId = connHandle;
-      lastBtActivityMs = millis();
-      // Structured marker (force=true) so a connected client can tell
-      // "deliberately holding you pending a physical gesture" apart from a
-      // generic status-snapshot timeout and wait this out instead of giving
-      // up and reconnecting (which would just restart this same 20s window
-      // from zero on the firmware side).
-      sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
-      if (feedbackAllowed())
-        sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
-#else
       if (feedbackAllowed())
       {
-        Serial.print(F("[BLE] Rejecting unknown "));
-        Serial.println(addr);
+        Serial.print(F("[BLE] Verbunden (gesichert): "));
+        Serial.println(bleLastAddr);
       }
-      // A real (encrypted) bond now exists for this address even though
-      // we're not authorizing it - drop the keys too, not just the
-      // connection, so it can't silently re-encrypt against them later.
-      deleteBleBondByAddr(addr);
-      ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
+#if !ENABLE_BLE_MESH
+      // The controller stops connectable advertising once a central
+      // connects; re-arm it here (bounded by CONFIG_BT_NIMBLE_MAX_CONNECTIONS,
+      // default 3) so additional trusted devices can still find and connect
+      // to the lamp while this one stays connected.
+      if ((int)bleConnHandles.size() < BLE_MAX_CONCURRENT_CLIENTS)
+        startBleAdvertising();
 #endif
-      break;
     }
-    lastBtActivityMs = millis();
-    if (addToList(trustedBle, addr))
-      saveSettings();
-    if (feedbackAllowed())
-    {
-      Serial.print(F("[BLE] Verbunden (gesichert): "));
-      Serial.println(addr);
-    }
-    // The controller stops connectable advertising once a central connects;
-    // re-arm it here (bounded by CONFIG_BT_NIMBLE_MAX_CONNECTIONS, default
-    // 3) so additional trusted devices can still find and connect to the
-    // lamp while this one stays connected.
-    if ((int)bleConnHandles.size() < BLE_MAX_CONCURRENT_CLIENTS)
-      startBleAdvertising();
+    // Not yet authorized: authorizeBleConn() already started (or kept
+    // alive) the physical-gesture pending-confirm flow, or rejected and
+    // terminated the connection outright if ENABLE_BT_PAIRING is off -
+    // either way, nothing else to do here.
     break;
   }
   case BLE_GAP_EVENT_ADV_COMPLETE:
+#if !ENABLE_BLE_MESH
     startBleAdvertising();
+#endif
     break;
   default:
     break;
@@ -915,8 +1000,18 @@ static void bleOnSync()
   // post-boot. That deferred-until-first-real-use timing was itself part of
   // a real-hardware heap corruption bug fixed earlier (see git history).
   updateBleStatus("");
+#if ENABLE_BLE_MESH
+  // esp_ble_mesh's own GATT services (Provisioning + Proxy) were already
+  // queued via bt_mesh_gatts_svcs_add() in startBle(), before the NimBLE
+  // host's single automatic ble_gatts_start() call fired - see the
+  // QUARZLAMPE_MESH_GATT_COEX patch note in platformio.ini for why
+  // bt_mesh_gatt_init() (called from here, via meshSetup()) no longer
+  // calls ble_gatts_start() a second time. Safe to call synchronously.
+  meshSetup();
+#else
   startBleAdvertising();
   Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
+#endif
 }
 
 /**
@@ -958,8 +1053,27 @@ void startBle()
 
   ble_att_set_preferred_mtu(517);
 
+#if ENABLE_BLE_MESH
+  // esp_ble_mesh's Provisioning + Proxy GATT services must be queued into
+  // NimBLE's pending-services array before the host's single automatic
+  // ble_gatts_start() call fires (triggered the moment the host task below
+  // starts running) - exactly mirroring Espressif's own NimBLE+Mesh
+  // coexistence example (ble_mesh_example_init.c). bt_mesh_gatts_svcs_add()
+  // also calls ble_svc_gap_init()/ble_svc_gatt_init() for us, so we must
+  // not call them a second time here. Normally that function (and the
+  // no-op bt_mesh_gatt_init() it enables) only exists under
+  // CONFIG_BLE_MESH_USE_BLE_50, which needs BLE-5.0-capable hardware we
+  // don't have on classic ESP32 - see the QUARZLAMPE_MESH_GATT_COEX patch
+  // in platformio.ini that widens that guard. Without this, mesh's own
+  // later bt_mesh_gatt_init() (called from meshSetup(), after sync) would
+  // call ble_gatts_start() a second time and corrupt the attribute table
+  // the host's first automatic call already built for our own services
+  // (the exact ble_uuid_cmp/NULL-ha_uuid crash seen on real hardware).
+  bt_mesh_gatts_svcs_add();
+#else
   ble_svc_gap_init();
   ble_svc_gatt_init();
+#endif
   // NVS-backed persistent bond storage - replaces NimBLEDevice's own
   // automatic bond persistence.
   ble_store_config_init();

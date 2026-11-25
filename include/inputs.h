@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 
 // Mirrors the debounced level of whichever ROLE_POWER+BTN_TOGGLE button

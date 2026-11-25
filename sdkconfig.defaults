@@ -2,11 +2,40 @@
 # feat/ble-mesh plan): comms.cpp/midi_ble.cpp/presence_ble.cpp now talk to
 # the native ESP-IDF NimBLE host directly - NimBLE on, Bluedroid stays off
 # (nothing in this firmware uses it, per the ENABLE_BLE/ENABLE_BT_SERIAL
-# #error in lamp_config.h). CONFIG_BLE_MESH* flags still deliberately held
-# back for Step 3, same reasoning as spikes/ble-mesh/sdkconfig.defaults.
+# #error in lamp_config.h).
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 # CONFIG_BT_BLUEDROID_ENABLED is not set
+
+# Step 3: BLE Mesh (NLC Basic Lightness Controller profile). These flags are
+# shared (sdkconfig.defaults is one file for every env), so they're always
+# compiled into the esp_ble_mesh component regardless of which env is being
+# built - mesh.cpp itself is still gated per-env by ENABLE_BLE_MESH
+# (lamp_config.h), so an env that doesn't enable it just never calls any of
+# this, at a small flash cost for the unused component code. Node role (this
+# device joins a mesh, it doesn't provision others), both provisioning
+# bearers (PB-ADV for ESP32-to-ESP32, PB-GATT since phone provisioner apps
+# like nRF Mesh provision over GATT almost exclusively), Proxy (lets an
+# already-provisioned phone's ongoing GATT connection carry Config
+# Client/model messages, not just the provisioning handshake) - all
+# confirmed working together on real hardware in spikes/ble-mesh/. Generic
+# Server + Lighting Server (the single umbrella Kconfig flag that covers
+# BOTH Light Lightness Server and Light LC Server - there's no separate
+# per-model flag) + Health Server round out the NLC BLC model set.
+CONFIG_BLE_MESH=y
+CONFIG_BLE_MESH_NODE=y
+CONFIG_BLE_MESH_PROV=y
+CONFIG_BLE_MESH_PB_ADV=y
+CONFIG_BLE_MESH_PB_GATT=y
+CONFIG_BLE_MESH_PROXY=y
+CONFIG_BLE_MESH_GENERIC_SERVER=y
+CONFIG_BLE_MESH_LIGHTING_SERVER=y
+CONFIG_BLE_MESH_HEALTH_SRV=y
+# Persists provisioning state (NetKey/AppKey/node address/model bindings)
+# across reboots - unlike the spike, which deliberately left this off for
+# fast re-provisioning during testing. A real product shouldn't forget its
+# mesh identity (and need re-provisioning) on every power cycle.
+CONFIG_BLE_MESH_SETTINGS=y
 
 # Default is 3, matching BLE_MAX_CONCURRENT_CLIENTS in comms.cpp - but a
 # *bond* (unlike a live connection) persists for a previously-trusted device
