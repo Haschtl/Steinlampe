@@ -27,10 +27,6 @@
 #include "pattern.h"
 #include "demo.h"
 
-#if ENABLE_BLE
-#include <NimBLEDevice.h>
-#endif
-
 // SOS shortcut snapshot
 bool sosModeActive = false;
 float sosPrevBrightness = Settings::DEFAULT_BRIGHTNESS;

@@ -1,16 +1,21 @@
-# Step 1 of the NimBLE-Arduino -> native-API + BLE Mesh migration (see the
-# feat/ble-mesh plan): just enough to get `framework = arduino, espidf` +
-# arduino-esp32 3.3.5 building and running with the EXISTING NimBLE-Arduino
-# BLE code unchanged. Deliberately NOT adding CONFIG_BT_NIMBLE_ENABLED or any
-# CONFIG_BLE_MESH* flags yet - those come with the native-API port in a later
-# step, same reasoning as spikes/ble-mesh/sdkconfig.defaults documents for
-# each of these.
-
-# Needed for NimBLE-Arduino's own controller bring-up to link against the
-# ESP-IDF "bt" component at all in this build mode (Bluedroid stays off -
-# NimBLE-Arduino never uses it; nothing in this firmware does either, per
-# the ENABLE_BLE/ENABLE_BT_SERIAL #error in lamp_config.h).
+# Step 2 of the NimBLE-Arduino -> native-API + BLE Mesh migration (see the
+# feat/ble-mesh plan): comms.cpp/midi_ble.cpp/presence_ble.cpp now talk to
+# the native ESP-IDF NimBLE host directly - NimBLE on, Bluedroid stays off
+# (nothing in this firmware uses it, per the ENABLE_BLE/ENABLE_BT_SERIAL
+# #error in lamp_config.h). CONFIG_BLE_MESH* flags still deliberately held
+# back for Step 3, same reasoning as spikes/ble-mesh/sdkconfig.defaults.
 CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# CONFIG_BT_BLUEDROID_ENABLED is not set
+
+# Default is 3, matching BLE_MAX_CONCURRENT_CLIENTS in comms.cpp - but a
+# *bond* (unlike a live connection) persists for a previously-trusted device
+# that isn't currently connected, and the app-level trust list in comms.cpp
+# (TRUST_MAX) allows remembering up to 12 devices over time. Bumped so a
+# device bonded earlier doesn't get silently evicted from the crypto bond
+# store (forcing a re-pair) just because newer devices bonded since.
+CONFIG_BT_NIMBLE_MAX_BONDS=8
+CONFIG_BT_NIMBLE_MAX_CCCDS=8
 
 # Arduino core itself requires this (CMakeLists.txt hard-checks it).
 CONFIG_FREERTOS_HZ=1000

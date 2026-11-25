@@ -38,12 +38,7 @@
 #include "pattern.h"
 #include "demo.h"
 
-#if ENABLE_BLE
-#include <NimBLEDevice.h>
-#endif
-
 #include <esp_sleep.h>
-#include <esp_spp_api.h>
 
 bool ensureBaseMac()
 {
