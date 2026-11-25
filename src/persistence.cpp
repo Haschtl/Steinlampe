@@ -16,6 +16,7 @@
 #include "presence_radar.h"
 #include "print.h"
 #include "gestures.h"
+#include "lamp_mesh.h"
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -66,6 +67,10 @@ static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
 static const char *PREF_KEY_GESTURES = "gest_map";
+static const char *PREF_KEY_MESH_HASKEY = "mesh_haskey";
+static const char *PREF_KEY_MESH_NETKEY = "mesh_netkey";
+static const char *PREF_KEY_MESH_APPKEY = "mesh_appkey";
+static const char *PREF_KEY_MESH_NODES = "mesh_nodes";
 static const char *PREF_KEY_PAT_REACT = "pat_react";
 static const char *PREF_KEY_PAT_REACT_HI = "pat_react_hi";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
@@ -587,6 +592,15 @@ static void saveSettingsNow()
     prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
     prefs.putString(PREF_KEY_GESTURES, gestureBindingsToCsv());
+#if ENABLE_BLE_MESH_PROVISIONER
+    prefs.putBool(PREF_KEY_MESH_HASKEY, meshHasLocalKeys);
+    if (meshHasLocalKeys)
+    {
+        prefs.putBytes(PREF_KEY_MESH_NETKEY, meshLocalNetKey, 16);
+        prefs.putBytes(PREF_KEY_MESH_APPKEY, meshLocalAppKey, 16);
+    }
+    prefs.putString(PREF_KEY_MESH_NODES, meshKnownNodesCsv());
+#endif
     prefs.putUInt(PREF_KEY_PAT_REACT, (uint32_t)(patternReactiveMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_PAT_REACT_HI, (uint32_t)(patternReactiveMask >> 32));
     prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
@@ -806,6 +820,15 @@ void loadSettings()
         if (gestCsv.isEmpty() || !parseGestureCsv(gestCsv))
             resetGestureBindingsToDefault();
     }
+#if ENABLE_BLE_MESH_PROVISIONER
+    meshHasLocalKeys = prefs.getBool(PREF_KEY_MESH_HASKEY, false);
+    if (meshHasLocalKeys)
+    {
+        prefs.getBytes(PREF_KEY_MESH_NETKEY, meshLocalNetKey, 16);
+        prefs.getBytes(PREF_KEY_MESH_APPKEY, meshLocalAppKey, 16);
+    }
+    meshSetKnownNodesFromCsv(prefs.getString(PREF_KEY_MESH_NODES, ""));
+#endif
     {
         uint64_t lo = prefs.getUInt(PREF_KEY_PAT_REACT, 0);
         uint64_t hi = prefs.getUInt(PREF_KEY_PAT_REACT_HI, 0);

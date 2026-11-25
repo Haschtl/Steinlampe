@@ -37,6 +37,9 @@
 #include "notifications.h"
 #include "pattern.h"
 #include "demo.h"
+#if ENABLE_BLE_MESH_PROVISIONER
+#include "lamp_mesh.h"
+#endif
 
 #include <esp_sleep.h>
 
@@ -557,6 +560,9 @@ void loop()
     setLampEnabled(hardwareWantsOn(), "secure-boot window closed");
   }
   pollCommunications();
+#if ENABLE_BLE_MESH_PROVISIONER
+  meshProvisionTick();
+#endif
 #if ENABLE_BUTTONS
   updateButtons();
 #endif

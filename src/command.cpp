@@ -171,9 +171,77 @@ void handleCommand(const String &line)
                 sendFeedback(F("Usage: mesh bri <addr> <pct>"));
             }
         }
+#if ENABLE_BLE_MESH_PROVISIONER
+        else if (args.startsWith("network create"))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            uint8_t netKey[16], appKey[16];
+            bool haveNet = false, haveApp = false;
+            if (!rest.isEmpty())
+            {
+                int sp = rest.indexOf(' ');
+                String netHex = sp > 0 ? rest.substring(0, sp) : rest;
+                String appHex = sp > 0 ? rest.substring(sp + 1) : String();
+                appHex.trim();
+                if (netHex.length() == 32 && appHex.length() == 32)
+                {
+                    for (uint8_t i = 0; i < 16; ++i)
+                    {
+                        netKey[i] = (uint8_t)strtoul(netHex.substring(i * 2, i * 2 + 2).c_str(), nullptr, 16);
+                        appKey[i] = (uint8_t)strtoul(appHex.substring(i * 2, i * 2 + 2).c_str(), nullptr, 16);
+                    }
+                    haveNet = haveApp = true;
+                }
+                else
+                {
+                    sendFeedback(F("Usage: mesh network create [<netkey32hex> <appkey32hex>]"));
+                    return;
+                }
+            }
+            meshNetworkCreate(haveNet ? netKey : nullptr, haveApp ? appKey : nullptr);
+        }
+        else if (args.startsWith("provision scan"))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            uint32_t secs = rest.isEmpty() ? 20 : (uint32_t)rest.toInt();
+            meshProvisionScanStart(secs == 0 ? 20 : secs);
+        }
+        else if (args == "provision stop")
+        {
+            meshProvisionScanStop();
+        }
+        else if (args == "provision list")
+        {
+            sendFeedback(meshProvisionListText());
+        }
+        else if (args.startsWith("provision add "))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            int sp = rest.indexOf(' ');
+            uint8_t idx = (uint8_t)(sp > 0 ? rest.substring(0, sp).toInt() : rest.toInt());
+            uint16_t group = sp > 0 ? (uint16_t)strtoul(rest.substring(sp + 1).c_str(), nullptr, 0) : 0;
+            meshProvisionAdd(idx, group);
+        }
+        else if (args.startsWith("provision remove "))
+        {
+            uint16_t addr = (uint16_t)strtoul(args.substring(17).c_str(), nullptr, 0);
+            meshProvisionRemove(addr);
+        }
+        else if (args == "nodes")
+        {
+            sendFeedback(meshKnownNodesText());
+        }
+#endif
         else
         {
-            sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"));
+            sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"
+#if ENABLE_BLE_MESH_PROVISIONER
+                           " | mesh network create [<net> <app>] | mesh provision scan|stop|list|add|remove | mesh nodes"
+#endif
+                           ));
         }
 #else
         sendFeedback(F("[Mesh] disabled at build"));

@@ -48,6 +48,20 @@ CONFIG_BLE_MESH_LIGHT_LIGHTNESS_CLI=y
 # mesh identity (and need re-provisioning) on every power cycle.
 CONFIG_BLE_MESH_SETTINGS=y
 
+# Provisioner role (self-provisioning plan) - lets this node provision OTHER
+# lamps into the mesh itself (scan for unprovisioned beacons, run the
+# handshake, Config AppKey Add/Model App Bind/Subscription Add), so nRF Mesh
+# is never required. CONFIG_BLE_MESH_CFG_CLI is required alongside it per
+# examples/bluetooth/esp_ble_mesh/fast_provisioning/fast_prov_client's own
+# composition (Config Server alone, already on via Node role above, isn't
+# enough to *send* Config messages to other nodes). TX/RX_SEG_MSG_COUNT
+# bumped from their defaults (used by provisioner/sdkconfig.defaults, since
+# Config messages segment more than our simple OnOff/Lightness Sets do).
+CONFIG_BLE_MESH_PROVISIONER=y
+CONFIG_BLE_MESH_CFG_CLI=y
+CONFIG_BLE_MESH_TX_SEG_MSG_COUNT=10
+CONFIG_BLE_MESH_RX_SEG_MSG_COUNT=10
+
 # Default is 3, matching BLE_MAX_CONCURRENT_CLIENTS in comms.cpp - but a
 # *bond* (unlike a live connection) persists for a previously-trusted device
 # that isn't currently connected, and the app-level trust list in comms.cpp

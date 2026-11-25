@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { UISettingsCard } from '@/cards/UISettingsCard';
 import { QuickCustomCard } from '@/cards/QuickCustomCard';
 import { GestureMappingCard } from '@/cards/GestureMappingCard';
+import { MeshProvisioningCard } from '@/cards/MeshProvisioningCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
 import { OtaUpdateCard } from '@/cards/OtaUpdateCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +68,7 @@ export function SettingsSection() {
       <DeviceBTCard />
       <QuickCustomCard />
       <GestureMappingCard />
+      <MeshProvisioningCard />
       <UISettingsCard />
       <BackupRestoreCard />
       <OtaUpdateCard />

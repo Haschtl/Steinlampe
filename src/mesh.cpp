@@ -18,7 +18,9 @@
 #include "comms.h"
 #include "lamp_state.h"
 #include "print.h"
+#include "persistence.h"
 #include <esp_mac.h>
+#include <esp_random.h>
 
 extern "C"
 {
@@ -30,12 +32,27 @@ extern "C"
 #include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_networking_api.h"
 #include "esp_ble_mesh_provisioning_api.h"
+#if ENABLE_BLE_MESH_PROVISIONER
+#include "esp_ble_mesh_local_data_operation_api.h" // esp_ble_mesh_get_primary_element_address()
+#include "host/ble_gap.h"                          // ble_gap_disc_active()
+#endif
 }
 
 // Provided by main.cpp/command.cpp's shared dispatcher - same function
 // every other transport (USB/BT-Serial/BLE custom protocol/BLE-MIDI) feeds
 // text commands into.
 void handleCommand(const String &line);
+
+#if ENABLE_BLE_MESH_PROVISIONER
+// This lamp's own network identity once it can provision others - external
+// linkage so persistence.cpp can load/save them directly (same pattern as
+// quickMask/gestureBindings elsewhere in this codebase). Re-applied to
+// esp_ble_mesh on every boot by meshApplyLocalIdentity() if meshHasLocalKeys
+// is true (loaded from NVS before meshSetup() runs).
+uint8_t meshLocalNetKey[16] = {0};
+uint8_t meshLocalAppKey[16] = {0};
+bool meshHasLocalKeys = false;
+#endif
 
 namespace
 {
@@ -56,6 +73,21 @@ esp_ble_mesh_prov_t provision = {
     .output_actions = 0,
     .input_size = 0,
     .input_actions = 0,
+#if CONFIG_BLE_MESH_PROVISIONER
+    // Required whenever the Provisioner role is compiled into the build
+    // (CONFIG_BLE_MESH_PROVISIONER is set unconditionally in
+    // sdkconfig.defaults, regardless of our own ENABLE_BLE_MESH_PROVISIONER
+    // app flag) - this is the address/identity THIS device uses when IT
+    // acts as a provisioner, not its identity as a node. prov_unicast_addr
+    // here is a placeholder only: meshNetworkCreate() (mesh_provisioner.h)
+    // overrides it at runtime via esp_ble_mesh_provisioner_set_primary_elem_addr()
+    // once this lamp's real address (self-chosen for the first lamp, or its
+    // own already-provisioned node address for every other lamp) is known -
+    // it can't be known yet here, since esp_ble_mesh_init() runs before
+    // this device has necessarily been provisioned as a node at all.
+    .prov_uuid = devUuid,
+    .prov_unicast_addr = 0x0001,
+#endif
 };
 
 esp_ble_mesh_cfg_srv_t configServer = {
@@ -189,6 +221,17 @@ ESP_BLE_MESH_MODEL_PUB_DEFINE(onoffCliPub, 2 + 3, ROLE_NODE);
 esp_ble_mesh_client_t lightnessClient{};
 ESP_BLE_MESH_MODEL_PUB_DEFINE(lightnessCliPub, 2 + 3, ROLE_NODE);
 
+#if ENABLE_BLE_MESH_PROVISIONER
+// ---------- Config Client ----------
+// Lets this node SEND Config messages (AppKey Add/Model App Bind/
+// Subscription Add) to other nodes it provisions itself - required
+// alongside the Provisioner role (self-provisioning plan), confirmed from
+// Espressif's own fast_prov_client example: Config Server alone (already
+// present above for the Node role) only lets this device be *configured*,
+// not configure others. No pub context - Config Client never publishes.
+esp_ble_mesh_client_t configClient{};
+#endif
+
 uint16_t lightnessFromPercent(float pct)
 {
     return (uint16_t)constrain(pct * 65535.0f / 100.0f, 0.0f, 65535.0f);
@@ -209,6 +252,9 @@ esp_ble_mesh_model_t rootModels[] = {
     ESP_BLE_MESH_MODEL_LIGHT_LC_SETUP_SRV(&lcSetupPub, &lcSetupServer),
     ESP_BLE_MESH_MODEL_GEN_ONOFF_CLI(&onoffCliPub, &onoffClient),
     ESP_BLE_MESH_MODEL_LIGHT_LIGHTNESS_CLI(&lightnessCliPub, &lightnessClient),
+#if ENABLE_BLE_MESH_PROVISIONER
+    ESP_BLE_MESH_MODEL_CFG_CLI(&configClient),
+#endif
 };
 
 // Vendor Model: one receive-only opcode carrying a raw text command, same
@@ -238,6 +284,15 @@ esp_ble_mesh_comp_t composition = {
     .elements = elements,
 };
 
+#if ENABLE_BLE_MESH_PROVISIONER
+// Defined further down (with the rest of the self-provisioning logic) -
+// forward-declared here since provisioningCallback() needs them and
+// appears earlier in the file.
+void recordDiscovered(const uint8_t uuid[16], const esp_ble_mesh_bd_addr_t addr,
+                       esp_ble_mesh_addr_type_t addrType, int8_t rssi);
+void beginNodeConfig(uint16_t targetAddr);
+#endif
+
 void provisioningCallback(esp_ble_mesh_prov_cb_event_t event, esp_ble_mesh_prov_cb_param_t *param)
 {
     switch (event)
@@ -256,6 +311,44 @@ void provisioningCallback(esp_ble_mesh_prov_cb_event_t event, esp_ble_mesh_prov_
         ESP_LOGI(TAG, "node reset - unprovisioned again");
         sendFeedback(F("[Mesh] Reset to unprovisioned"));
         break;
+#if ENABLE_BLE_MESH_PROVISIONER
+    case ESP_BLE_MESH_PROVISIONER_PROV_ENABLE_COMP_EVT:
+        ESP_LOGI(TAG, "provisioner enable, err=%d", param->provisioner_prov_enable_comp.err_code);
+        break;
+    case ESP_BLE_MESH_PROVISIONER_PROV_DISABLE_COMP_EVT:
+        ESP_LOGI(TAG, "provisioner disable, err=%d", param->provisioner_prov_disable_comp.err_code);
+        break;
+    case ESP_BLE_MESH_PROVISIONER_RECV_UNPROV_ADV_PKT_EVT:
+        recordDiscovered(param->provisioner_recv_unprov_adv_pkt.dev_uuid,
+                          param->provisioner_recv_unprov_adv_pkt.addr,
+                          param->provisioner_recv_unprov_adv_pkt.addr_type,
+                          param->provisioner_recv_unprov_adv_pkt.rssi);
+        break;
+    case ESP_BLE_MESH_PROVISIONER_PROV_COMPLETE_EVT:
+        ESP_LOGI(TAG, "provisioner: node 0x%04x joined", param->provisioner_prov_complete.unicast_addr);
+        beginNodeConfig(param->provisioner_prov_complete.unicast_addr);
+        break;
+    case ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT:
+        if (param->provisioner_add_app_key_comp.err_code == 0)
+        {
+            uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
+            esp_ble_mesh_provisioner_bind_app_key_to_local_model(
+                myAddr, 0, ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV, ESP_BLE_MESH_CID_NVAL);
+            esp_ble_mesh_provisioner_bind_app_key_to_local_model(
+                myAddr, 0, ESP_BLE_MESH_MODEL_ID_LIGHT_LIGHTNESS_SRV, ESP_BLE_MESH_CID_NVAL);
+            esp_ble_mesh_provisioner_bind_app_key_to_local_model(
+                myAddr, 0, ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_CLI, ESP_BLE_MESH_CID_NVAL);
+            esp_ble_mesh_provisioner_bind_app_key_to_local_model(
+                myAddr, 0, ESP_BLE_MESH_MODEL_ID_LIGHT_LIGHTNESS_CLI, ESP_BLE_MESH_CID_NVAL);
+            sendFeedback(F("[Mesh] Network identity ready"));
+        }
+        else
+        {
+            sendFeedback(String(F("[Mesh] Add local AppKey failed: ")) +
+                         String(param->provisioner_add_app_key_comp.err_code));
+        }
+        break;
+#endif
     default:
         ESP_LOGI(TAG, "prov event %d", event);
         break;
@@ -354,6 +447,211 @@ void customModelCallback(esp_ble_mesh_model_cb_event_t event, esp_ble_mesh_model
     handleCommand(cmd);
 }
 
+#if ENABLE_BLE_MESH_PROVISIONER
+// ---------- Self-provisioning (Provisioner role) ----------
+// This lamp provisioning another one, start to finish, start to finish:
+// mesh provision scan -> RECV_UNPROV_ADV_PKT_EVT (recordDiscovered()) ->
+// mesh provision add <n> -> PROVISIONER_PROV_COMPLETE_EVT
+// (beginNodeConfig()) -> Config AppKey Add -> Model App Bind (OnOff Server)
+// -> Model App Bind (Lightness Server) -> optional Subscription Add ->
+// addKnownNode(). Exactly one node configuration in flight at a time
+// (provStep != PROV_STEP_IDLE guards this), matching the one-active-
+// provisioning-session design that also protects the single NimBLE scan
+// slot (see meshProvisioningSessionIsActive()/presence_ble.cpp).
+
+struct DiscoveredDev
+{
+    uint8_t uuid[16];
+    esp_ble_mesh_bd_addr_t addr;
+    esp_ble_mesh_addr_type_t addrType;
+    int8_t rssi;
+};
+constexpr uint8_t MAX_DISCOVERED = 8;
+DiscoveredDev discovered[MAX_DISCOVERED];
+uint8_t discoveredCount = 0;
+
+void recordDiscovered(const uint8_t uuid[16], const esp_ble_mesh_bd_addr_t addr,
+                       esp_ble_mesh_addr_type_t addrType, int8_t rssi)
+{
+    for (uint8_t i = 0; i < discoveredCount; ++i)
+        if (memcmp(discovered[i].uuid, uuid, 16) == 0)
+        {
+            discovered[i].rssi = rssi; // refresh RSSI on repeat sightings
+            return;
+        }
+    if (discoveredCount >= MAX_DISCOVERED)
+        return;
+    DiscoveredDev &d = discovered[discoveredCount++];
+    memcpy(d.uuid, uuid, 16);
+    memcpy(d.addr, addr, sizeof(d.addr));
+    d.addrType = addrType;
+    d.rssi = rssi;
+}
+
+enum ProvStep : uint8_t
+{
+    PROV_STEP_IDLE = 0,
+    PROV_STEP_APPKEY_ADD,
+    PROV_STEP_BIND_ONOFF,
+    PROV_STEP_BIND_LIGHTNESS,
+    PROV_STEP_SUB_ADD,
+};
+ProvStep provStep = PROV_STEP_IDLE;
+uint16_t provTargetAddr = 0;
+uint16_t provTargetGroup = 0;
+uint8_t provTargetUuid[16] = {0};
+
+bool scanSessionActive = false;
+uint32_t scanSessionDueMs = 0;
+
+constexpr uint8_t MAX_KNOWN_NODES = 16;
+struct KnownNode
+{
+    uint16_t addr;
+    uint32_t uuidShort; // first 4 bytes of the device UUID, display only
+};
+KnownNode knownNodes[MAX_KNOWN_NODES];
+uint8_t knownNodeCount = 0;
+
+uint32_t uuidShortOf(const uint8_t uuid[16])
+{
+    return ((uint32_t)uuid[0] << 24) | ((uint32_t)uuid[1] << 16) | ((uint32_t)uuid[2] << 8) | uuid[3];
+}
+
+void addKnownNode(uint16_t addr, const uint8_t uuid[16])
+{
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+        if (knownNodes[i].addr == addr)
+            return;
+    if (knownNodeCount >= MAX_KNOWN_NODES)
+        return;
+    knownNodes[knownNodeCount++] = {addr, uuidShortOf(uuid)};
+}
+
+bool removeKnownNodeByAddr(uint16_t addr)
+{
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+    {
+        if (knownNodes[i].addr == addr)
+        {
+            for (uint8_t j = i; j + 1 < knownNodeCount; ++j)
+                knownNodes[j] = knownNodes[j + 1];
+            knownNodeCount--;
+            return true;
+        }
+    }
+    return false;
+}
+
+void failProvisioning(const String &reason)
+{
+    sendFeedback(String(F("[Mesh] Provisioning 0x")) + String(provTargetAddr, HEX) + F(" failed: ") + reason);
+    provStep = PROV_STEP_IDLE;
+}
+
+// Config messages (AppKey Add/Model App Bind/Subscription Add) are
+// encrypted with the target's Device Key, not an AppKey - ctx.app_idx here
+// is unused by the stack for Config opcodes specifically, but every
+// official example (e.g. provisioner/main.c's example_ble_mesh_set_msg_common())
+// fills it in anyway, so this mirrors that rather than leaving it
+// meaningfully undefined.
+void sendConfigMessage(uint32_t opcode, esp_ble_mesh_cfg_client_set_state_t &set)
+{
+    esp_ble_mesh_client_common_param_t params{};
+    params.opcode = opcode;
+    params.model = configClient.model;
+    params.ctx.net_idx = 0;
+    params.ctx.app_idx = 0;
+    params.ctx.addr = provTargetAddr;
+    params.ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    params.msg_timeout = 0;
+
+    esp_err_t err = esp_ble_mesh_config_client_set_state(&params, &set);
+    if (err != ESP_OK)
+        failProvisioning(String(F("send rc=")) + String(err));
+}
+
+void beginNodeConfig(uint16_t targetAddr)
+{
+    provStep = PROV_STEP_APPKEY_ADD;
+    provTargetAddr = targetAddr;
+
+    esp_ble_mesh_cfg_client_set_state_t set{};
+    set.app_key_add.net_idx = 0;
+    set.app_key_add.app_idx = 0;
+    memcpy(set.app_key_add.app_key, meshLocalAppKey, 16);
+    sendConfigMessage(ESP_BLE_MESH_MODEL_OP_APP_KEY_ADD, set);
+}
+
+void bindModel(uint16_t modelId)
+{
+    esp_ble_mesh_cfg_client_set_state_t set{};
+    set.model_app_bind.element_addr = provTargetAddr;
+    set.model_app_bind.model_app_idx = 0;
+    set.model_app_bind.model_id = modelId;
+    set.model_app_bind.company_id = ESP_BLE_MESH_CID_NVAL; // not a vendor model
+    sendConfigMessage(ESP_BLE_MESH_MODEL_OP_MODEL_APP_BIND, set);
+}
+
+void subscribeModel(uint16_t modelId, uint16_t group)
+{
+    esp_ble_mesh_cfg_client_set_state_t set{};
+    set.model_sub_add.element_addr = provTargetAddr;
+    set.model_sub_add.sub_addr = group;
+    set.model_sub_add.model_id = modelId;
+    set.model_sub_add.company_id = ESP_BLE_MESH_CID_NVAL;
+    sendConfigMessage(ESP_BLE_MESH_MODEL_OP_MODEL_SUB_ADD, set);
+}
+
+// Advances the node-configuration state machine once the previous step's
+// response/timeout arrives (configClientCallback() below calls this).
+void onConfigStepResult(uint32_t opcode, bool success)
+{
+    if (!success)
+    {
+        failProvisioning(String(F("opcode 0x")) + String(opcode, HEX) + F(" no response"));
+        return;
+    }
+    switch (provStep)
+    {
+    case PROV_STEP_APPKEY_ADD:
+        provStep = PROV_STEP_BIND_ONOFF;
+        bindModel(ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV);
+        break;
+    case PROV_STEP_BIND_ONOFF:
+        provStep = PROV_STEP_BIND_LIGHTNESS;
+        bindModel(ESP_BLE_MESH_MODEL_ID_LIGHT_LIGHTNESS_SRV);
+        break;
+    case PROV_STEP_BIND_LIGHTNESS:
+        if (provTargetGroup != 0)
+        {
+            provStep = PROV_STEP_SUB_ADD;
+            subscribeModel(ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV, provTargetGroup);
+            break;
+        }
+        // fall through - no group requested, done
+    case PROV_STEP_SUB_ADD:
+        addKnownNode(provTargetAddr, provTargetUuid);
+        sendFeedback(String(F("[Mesh] Provisioned + configured 0x")) + String(provTargetAddr, HEX));
+        provStep = PROV_STEP_IDLE;
+        break;
+    default:
+        break;
+    }
+}
+
+void configClientCallback(esp_ble_mesh_cfg_client_cb_event_t event, esp_ble_mesh_cfg_client_cb_param_t *param)
+{
+    if (provStep == PROV_STEP_IDLE)
+        return;
+    uint32_t opcode = param->params->opcode;
+    if (event == ESP_BLE_MESH_CFG_CLIENT_SET_STATE_EVT)
+        onConfigStepResult(opcode, true);
+    else if (event == ESP_BLE_MESH_CFG_CLIENT_TIMEOUT_EVT)
+        onConfigStepResult(opcode, false);
+}
+#endif // ENABLE_BLE_MESH_PROVISIONER
+
 } // namespace
 
 void meshSetup()
@@ -374,6 +672,22 @@ void meshSetup()
     ESP_ERROR_CHECK(esp_ble_mesh_register_custom_model_callback(customModelCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_client_callback(genericClientCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_light_client_callback(lightingClientCallback));
+#if ENABLE_BLE_MESH_PROVISIONER
+    ESP_ERROR_CHECK(esp_ble_mesh_register_config_client_callback(configClientCallback));
+    // Loaded from NVS (persistence.cpp) before meshSetup() runs - re-apply
+    // on every boot, same idempotent path meshNetworkCreate() itself uses.
+    if (meshHasLocalKeys)
+    {
+        uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
+        if (myAddr == 0)
+            myAddr = 1; // not yet a provisioned node - this lamp is the network root
+        esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
+        esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
+        esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
+        // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT (above) does
+        // the Model App Bind to our own models once this completes.
+    }
+#endif
     err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
     if (err != ESP_OK)
     {
@@ -436,5 +750,222 @@ void meshSendLightness(uint16_t addr, float percent)
     if (err != ESP_OK)
         sendFeedback(String(F("[Mesh] Lightness send to 0x")) + String(addr, HEX) + F(" failed: ") + String(err));
 }
+
+#if ENABLE_BLE_MESH_PROVISIONER
+bool meshHasNetworkIdentity()
+{
+    return meshHasLocalKeys;
+}
+
+bool meshProvisioningSessionIsActive()
+{
+    return scanSessionActive;
+}
+
+void meshNetworkCreate(const uint8_t *netKey, const uint8_t *appKey)
+{
+    if (netKey)
+        memcpy(meshLocalNetKey, netKey, 16);
+    else
+        esp_fill_random(meshLocalNetKey, 16);
+    if (appKey)
+        memcpy(meshLocalAppKey, appKey, 16);
+    else
+        esp_fill_random(meshLocalAppKey, 16);
+    meshHasLocalKeys = true;
+    saveSettings();
+
+    uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
+    if (myAddr == 0)
+        myAddr = 1;
+    esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
+    esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
+    esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
+    // The rest (Model App Bind to our own models) happens in
+    // provisioningCallback()'s ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT
+    // handler once this completes - async, not inline here.
+
+    String netHex, appHex;
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        if (meshLocalNetKey[i] < 0x10)
+            netHex += '0';
+        netHex += String(meshLocalNetKey[i], HEX);
+        if (meshLocalAppKey[i] < 0x10)
+            appHex += '0';
+        appHex += String(meshLocalAppKey[i], HEX);
+    }
+    sendFeedback(String(F("[Mesh] Network identity: net=")) + netHex + F(" app=") + appHex +
+                 F(" - run the same 'mesh network create <net> <app>' on another lamp to let it provision too"));
+}
+
+void meshProvisionScanStart(uint32_t seconds)
+{
+    if (!meshHasLocalKeys)
+    {
+        sendFeedback(F("[Mesh] Run 'mesh network create' first"));
+        return;
+    }
+    if (scanSessionActive)
+    {
+        sendFeedback(F("[Mesh] Scan already running"));
+        return;
+    }
+    if (ble_gap_disc_active())
+    {
+        sendFeedback(F("[Mesh] BLE scan busy (presence scan?) - try again shortly"));
+        return;
+    }
+    discoveredCount = 0;
+    esp_err_t err = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
+    if (err != ESP_OK)
+    {
+        sendFeedback(String(F("[Mesh] Provisioner enable failed: ")) + String(err));
+        return;
+    }
+    scanSessionActive = true;
+    scanSessionDueMs = millis() + seconds * 1000UL;
+    sendFeedback(String(F("[Mesh] Scanning for ")) + String(seconds) + F("s - 'mesh provision list' to see results"));
+}
+
+void meshProvisionScanStop()
+{
+    if (!scanSessionActive)
+        return;
+    esp_ble_mesh_provisioner_prov_disable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
+    scanSessionActive = false;
+    sendFeedback(F("[Mesh] Scan stopped"));
+}
+
+void meshProvisionTick()
+{
+    if (scanSessionActive && (int32_t)(millis() - scanSessionDueMs) >= 0)
+        meshProvisionScanStop();
+}
+
+String meshProvisionListText()
+{
+    if (discoveredCount == 0)
+        return String(F("[Mesh] No devices found"));
+    String out = F("[Mesh] Discovered:");
+    for (uint8_t i = 0; i < discoveredCount; ++i)
+    {
+        out += F("\n  ");
+        out += String(i + 1);
+        out += F(") uuid=");
+        out += String(uuidShortOf(discovered[i].uuid), HEX);
+        out += F(" rssi=");
+        out += String(discovered[i].rssi);
+    }
+    return out;
+}
+
+bool meshProvisionAdd(uint8_t index, uint16_t group)
+{
+    if (index == 0 || index > discoveredCount)
+    {
+        sendFeedback(F("[Mesh] No such discovered device"));
+        return false;
+    }
+    if (provStep != PROV_STEP_IDLE)
+    {
+        sendFeedback(F("[Mesh] A provisioning session is already in progress"));
+        return false;
+    }
+    DiscoveredDev &d = discovered[index - 1];
+    memcpy(provTargetUuid, d.uuid, 16);
+    provTargetGroup = group;
+
+    esp_ble_mesh_unprov_dev_add_t add{};
+    memcpy(add.addr, d.addr, sizeof(add.addr));
+    add.addr_type = d.addrType;
+    memcpy(add.uuid, d.uuid, 16);
+    add.oob_info = 0;
+    add.bearer = (esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV;
+    esp_err_t err = esp_ble_mesh_provisioner_add_unprov_dev(
+        &add, (esp_ble_mesh_dev_add_flag_t)(ADD_DEV_START_PROV_NOW_FLAG | ADD_DEV_RM_AFTER_PROV_FLAG));
+    if (err != ESP_OK)
+    {
+        sendFeedback(String(F("[Mesh] Provisioning start failed: ")) + String(err));
+        return false;
+    }
+    sendFeedback(F("[Mesh] Provisioning..."));
+    return true;
+}
+
+bool meshProvisionRemove(uint16_t addr)
+{
+    // esp_ble_mesh_provisioner_delete_dev() (the obvious-looking API) only
+    // covers the pre-provisioning queue/an in-progress provisioning link,
+    // confirmed from its own doc comment ("delete device from queue, and
+    // reset current provisioning link") - not an already-provisioned mesh
+    // member. Actually kicking an already-provisioned node out requires
+    // sending it a Node Reset Config message and handling its response,
+    // which is a real feature on its own, not implemented here - this is
+    // local bookkeeping only ("stop tracking this address in `mesh nodes`"),
+    // the node itself is untouched and still fully provisioned.
+    bool removed = removeKnownNodeByAddr(addr);
+    saveSettings();
+    sendFeedback(removed ? String(F("[Mesh] Forgot 0x")) + String(addr, HEX) + F(" (node itself not reset)")
+                          : String(F("[Mesh] 0x")) + String(addr, HEX) + F(" wasn't in the known-nodes list"));
+    return removed;
+}
+
+String meshKnownNodesText()
+{
+    if (knownNodeCount == 0)
+        return String(F("[Mesh] No known nodes"));
+    String out = F("[Mesh] Known nodes:");
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+    {
+        out += F("\n  0x");
+        out += String(knownNodes[i].addr, HEX);
+        out += F(" uuid=");
+        out += String(knownNodes[i].uuidShort, HEX);
+    }
+    return out;
+}
+
+// <addr>:<uuidShort>;<addr>:<uuidShort>;... - same semicolon-separated,
+// no-spaces convention as gestureBindingsToCsv(), for the same reason
+// (drops into importConfig()'s space-tokenizer unmodified).
+String meshKnownNodesCsv()
+{
+    String out;
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+    {
+        if (!out.isEmpty())
+            out += ';';
+        out += String(knownNodes[i].addr, HEX);
+        out += ':';
+        out += String(knownNodes[i].uuidShort, HEX);
+    }
+    return out;
+}
+
+void meshSetKnownNodesFromCsv(const String &csv)
+{
+    knownNodeCount = 0;
+    if (csv.isEmpty())
+        return;
+    int start = 0;
+    int len = csv.length();
+    while (start < len && knownNodeCount < MAX_KNOWN_NODES)
+    {
+        int end = csv.indexOf(';', start);
+        if (end < 0)
+            end = len;
+        String entry = csv.substring(start, end);
+        start = end + 1;
+        int colon = entry.indexOf(':');
+        if (colon > 0)
+        {
+            uint16_t addr = (uint16_t)strtoul(entry.substring(0, colon).c_str(), nullptr, 16);
+            uint32_t uuidShort = (uint32_t)strtoul(entry.substring(colon + 1).c_str(), nullptr, 16);
+            knownNodes[knownNodeCount++] = {addr, uuidShort};
+        }
+    }
+}
+#endif // ENABLE_BLE_MESH_PROVISIONER
 
 #endif // ENABLE_BLE_MESH

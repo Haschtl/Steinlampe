@@ -4,6 +4,9 @@
 #include "lamp_settings.h"
 #include "comms.h"
 #include "presence_ble.h"
+#if ENABLE_BLE_MESH_PROVISIONER
+#include "lamp_mesh.h"
+#endif
 
 #if ENABLE_BLE
 #include "host/ble_gap.h"
@@ -156,6 +159,16 @@ bool presenceBleScanOnce()
 #if ENABLE_BLE
     if (!presenceBleHasDevices())
         return false;
+#if ENABLE_BLE_MESH_PROVISIONER
+    // NimBLE only allows one active ble_gap_disc() procedure at a time - a
+    // second caller gets silently refused (BLE_HS_EALREADY), confirmed by
+    // reading the host source while designing the Mesh self-provisioning
+    // feature. Skip this cycle rather than racing a provisioner scan/add
+    // session for the single scan slot - this scan is periodic, missing one
+    // cycle is harmless, unlike a half-finished provisioning session.
+    if (meshProvisioningSessionIsActive())
+        return false;
+#endif
     if (!presenceScanDone)
         presenceScanDone = xSemaphoreCreateBinary();
     if (!presenceScanDone)
