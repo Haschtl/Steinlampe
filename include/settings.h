@@ -126,7 +126,10 @@ constexpr uint8_t POTI_MEDIAN_SAMPLES = 5; ///< Odd-sized ADC burst used to reje
 constexpr float POTI_ALPHA = 0.25f;
 constexpr float POTI_DELTA_MIN = 0.025f;
 constexpr float POTI_OFF_THRESHOLD = 0.02f;
-constexpr bool POTI_INVERT_DEFAULT = false;
+#ifndef POTI_INVERT_DEFAULT_VAL
+#define POTI_INVERT_DEFAULT_VAL false
+#endif
+constexpr bool POTI_INVERT_DEFAULT = POTI_INVERT_DEFAULT_VAL;
 constexpr float POTI_MIN_DEFAULT = 0.0f;   ///< normalized min after calibration (0..1)
 constexpr float POTI_MAX_DEFAULT = 1.0f;   ///< normalized max after calibration (0..1)
 constexpr uint8_t POTI_ROLE_DEFAULT = 0;   ///< 0=brightness, 1=mode-scan (see PotiRole in inputs.h)
