@@ -776,6 +776,25 @@ void updatePoti()
     potiFiltered = potiAlpha * level + (1.0f - potiAlpha) * potiFiltered;
 
     bool nowBelow = (potiFiltered <= potiOffThreshold);
+    // The on/off logic below is edge-triggered (crossedOn/crossedOff), by
+    // design - it only acts on a transition, not the poti's absolute
+    // position, so a continuously-held knob doesn't re-trigger every
+    // sample. That's correct once running, but `potiWasBelowOff` defaults
+    // to false (i.e. "assume we start above the threshold") - if the knob
+    // is *genuinely* above the threshold at boot (the common case: nothing
+    // forces it down first), there is never a below->above edge to
+    // trigger "poti" turning the lamp on, ever, for as long as it's held
+    // there - confirmed on real hardware. Sync once, on the very first
+    // sample, to whatever the knob actually reads, instead of waiting for
+    // an edge that boot-time knob state can never produce on its own.
+    static bool potiFirstSample = true;
+    if (potiFirstSample)
+    {
+        potiFirstSample = false;
+        potiWasBelowOff = nowBelow;
+        if (!nowBelow && !lampEnabled)
+            setLampEnabled(true, "poti initial sync", true);
+    }
     bool crossedOff = (!potiWasBelowOff && nowBelow);
     bool crossedOn = (potiWasBelowOff && !nowBelow);
     if (!crossedOn && !crossedOff && potiLastApplied >= 0.0f && fabs(potiFiltered - potiLastApplied) < potiDeltaMin)

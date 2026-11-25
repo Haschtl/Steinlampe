@@ -35,3 +35,16 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 # leave on, costs nothing but a bit of flash that's already reserved.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# Default (8192) measured on real hardware (desk_lamp, via a saved core
+# dump's own per-task "STACK USED/FREE" table) hitting a genuine, repeatable
+# stack overflow in loopTask at ~9040 bytes used while processing a "status"
+# command with BLE active - a real FreeRTOS stack-overflow detection, a
+# different mechanism/bug class from the three TLSF heap-corruption bugs
+# fixed in commit 239bdb5 (those just happened to crash first, every time,
+# masking this one until they were fixed). Root call chain not pinned down
+# exactly (the saved backtrace is corrupted past the panic handler, as
+# expected once the overflow has already happened) - bumped generously
+# rather than trimming to the exact minimum, cheap in RAM terms relative to
+# this chip's ~320KB.
+CONFIG_ARDUINO_LOOP_STACK_SIZE=16384
