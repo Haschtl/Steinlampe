@@ -512,7 +512,7 @@ void processStartupSwitch()
                         startupHoldActive = false;
                         applyDefaultSettings(0.20f, false);
                         sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
-                        printStatus();
+                        printStatusStructured();
                     }
                     else
                     {
@@ -557,7 +557,7 @@ void processStartupSwitch()
                     startupHoldActive = false;
                     applyDefaultSettings(0.20f, false);
                     sendFeedback(F("[SecureBoot] Defaults applied (20% brightness)"));
-                    printStatus();
+                    printStatusStructured();
                 }
                 else
                 {

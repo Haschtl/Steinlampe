@@ -288,7 +288,7 @@ bool loadProfileSlot(uint8_t slot, bool announce)
     if (announce)
     {
         sendFeedback(String(F("[Profile] Loaded slot ")) + String(slot));
-        printStatus();
+        printStatusStructured();
     }
     return true;
 }
@@ -431,11 +431,47 @@ void exportConfig()
     sendFeedback(cfg);
 }
 
-/**
- * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
- */
+// Debounce window for saveSettings() - see persistence.h. Chosen to
+// comfortably coalesce a rapid sequence of toggles/setting changes (a user
+// fat-fingering on/off, or a BLE client applying several settings in a
+// burst) into one NVS write a short, user-imperceptible moment after things
+// settle, rather than one write per call.
+static constexpr uint32_t SAVE_SETTINGS_DEBOUNCE_MS = 2000;
+static bool settingsDirty = false;
+static uint32_t settingsDirtyMs = 0;
+
+static void saveSettingsNow();
+
 void saveSettings()
 {
+    settingsDirty = true;
+    settingsDirtyMs = millis();
+}
+
+void flushSettingsIfDue()
+{
+    if (!settingsDirty)
+        return;
+    if (millis() - settingsDirtyMs < SAVE_SETTINGS_DEBOUNCE_MS)
+        return;
+    saveSettingsNow();
+}
+
+void flushSettingsNow()
+{
+    if (!settingsDirty)
+        return;
+    saveSettingsNow();
+}
+
+/**
+ * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
+ * The actual, immediate NVS write - only ever called from flushSettingsIfDue()/
+ * flushSettingsNow() once the debounce window clears; see saveSettings() above.
+ */
+static void saveSettingsNow()
+{
+    settingsDirty = false;
     uint16_t b = (uint16_t)(clamp01(masterBrightness) * 1000.0f + 0.5f);
     prefs.putUShort(PREF_KEY_B1000, b);
     prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
@@ -1765,5 +1801,5 @@ void importConfig(const String &args)
     sendFeedback(F("[Config] Imported"));
     if (briMaxUser < briMinUser)
         briMaxUser = briMinUser;
-    printStatus();
+    printStatusStructured();
 }

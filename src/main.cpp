@@ -450,22 +450,32 @@ void setup()
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
   analogReadResolution(12);
 #endif
-// arduino-esp32 3.x: pinMode(INPUT) must come *before* analogSetPinAttenuation() -
-// the reverse order (fine under 2.x) now leaves the pin's ADC channel
-// misconfigured ("Pin is not configured as analog channel" at boot), and a
-// later analogRead() on it crashes (LoadProhibited) instead of just failing.
+// arduino-esp32 3.x: analogSetPinAttenuation() only *reconfigures* a pin
+// that's already registered as an ADC channel - that registration itself
+// only happens lazily, inside analogRead()'s own first-call path
+// (esp32-hal-adc.c's __analogRead(), via perimanGetPinBus(...,
+// ESP32_BUS_TYPE_ADC_ONESHOT) == NULL -> __analogInit()). Calling
+// analogSetPinAttenuation() before the pin's very first analogRead() is
+// therefore always a silent no-op ("Pin is not configured as analog
+// channel" at boot, attenuation request dropped) - true under 2.x too, but
+// masked there since analogRead() itself defaulted to 11dB already. A dummy
+// analogRead() forces that lazy registration before the real attenuation
+// override, so it actually takes effect.
 #if ENABLE_LIGHT_SENSOR
   pinMode(Settings::LIGHT_PIN, INPUT);
+  analogRead(Settings::LIGHT_PIN);
   analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
 #endif
 #if ENABLE_POTI
   pinMode(PIN_POTI, INPUT);
+  analogRead(PIN_POTI);
   analogSetPinAttenuation(PIN_POTI, ADC_11db);
 #endif
 #if ENABLE_EXT_INPUT
   if (extInputAnalog)
   {
     pinMode(Settings::EXT_INPUT_PIN, INPUT);
+    analogRead(Settings::EXT_INPUT_PIN);
     analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
   }
   else
@@ -475,6 +485,7 @@ void setup()
 #endif
 #if ENABLE_MUSIC_MODE
   pinMode(Settings::MUSIC_PIN, INPUT);
+  analogRead(Settings::MUSIC_PIN);
   analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
 #endif
 #if ENABLE_RD03
@@ -494,7 +505,7 @@ void setup()
 
   announcePattern(true);
   printHelp(true);
-  printStatus(true);
+  printStatusStructured(true);
   // Force printSensorsStructured()/queueLiveState()'s own one-time internal
   // buffer reservations to happen here too, in this safe, early,
   // single-threaded setup context - same reasoning as the updateBleStatus()
@@ -571,6 +582,7 @@ void loop()
   otaLoop();
 #endif
   flushLiveState();
+  flushSettingsIfDue();
   maybeLightSleep();
   delay(10);
 }

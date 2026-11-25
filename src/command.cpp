@@ -105,7 +105,7 @@ void handleCommand(const String &line)
     }
     if (lower == "status")
     {
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "status raw" || lower == "status json")
@@ -122,28 +122,28 @@ void handleCommand(const String &line)
     {
         setLampEnabled(true, "cmd on");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "off")
     {
         setLampEnabled(false, "cmd off");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "sync")
     {
         syncLampToSwitch();
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "toggle")
     {
         setLampEnabled(!lampEnabled, "cmd toggle");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "touch")
@@ -950,7 +950,7 @@ void handleCommand(const String &line)
         else
             sendFeedback(F("auto on|off"));
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower.startsWith("bt sleep"))

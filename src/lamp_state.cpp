@@ -141,7 +141,7 @@ void logBrightnessChange(const char *reason)
     return;
   lastLoggedBrightness = masterBrightness;
   float perc = clamp01(masterBrightness) * 100.0f;
-  String msg = String(F("[Brightness] ")) + String(perc, 1) + F(" %");
+  String msg = String(F("[Brightness] ")) + fmtF(perc, 1) + F(" %");
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");
@@ -159,7 +159,22 @@ void logBrightnessChange(const char *reason)
 void logLampState(const char *reason)
 {
   bool forceSerial = (reason && (strstr(reason, "init") != nullptr || strstr(reason, "startup") != nullptr));
-  String msg = String(F("[Lamp] ")) + (lampOffPending ? F("OFF-PEND") : (lampEnabled ? F("ON") : F("OFF")));
+  // Function-static and reserved once, not a fresh local String built via
+  // `String(...) + ...` every call - that's exactly the malloc()+free()
+  // churn pattern that corrupts the TLSF heap on real hardware once BLE is
+  // active (see emitLiveState()'s comment in print.cpp for the full
+  // writeup) - this function just never got the same treatment, and
+  // reliably crashed inside String::~String() on every "on"/"off"/"toggle"
+  // once found.
+  static String msg;
+  static bool msgReserved = false;
+  if (!msgReserved)
+  {
+    msg.reserve(80);
+    msgReserved = true;
+  }
+  msg = F("[Lamp] ");
+  msg += lampOffPending ? F("OFF-PEND") : (lampEnabled ? F("ON") : F("OFF"));
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");

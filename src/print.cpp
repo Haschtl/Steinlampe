@@ -30,24 +30,6 @@ static bool liveStatePending = false;
 
 static String liveStateLastKey;
 
-// Root cause of a real-hardware heap corruption (TLSF asserts/LoadProhibited,
-// confirmed via core dumps - see git history around this comment): Arduino's
-// own String(float, decimalPlaces) constructor does a raw malloc()/free() of
-// a short-lived scratch buffer internally (WString.cpp - its int/long
-// sibling overloads correctly use a stack array instead). Called dozens of
-// times per printStatusStructured()/emitLiveState() invocation, this repeats
-// the same few nearly-identical small malloc/free sizes rapidly enough to
-// trip a TLSF edge case. This helper does the float->string conversion into
-// a stack buffer directly, then appends it (`String(const char*)` uses
-// small-string-optimization for anything this short - no heap allocation at
-// all for typical field values).
-static inline String fmtF(float value, unsigned int decimalPlaces)
-{
-    char buf[40];
-    dtostrf(value, decimalPlaces + 2, decimalPlaces, buf);
-    return String(buf);
-}
-
 static void emitLiveState(const bool &force)
 {
     const bool lampOn = (lampEnabled && !lampOffPending);
@@ -71,7 +53,7 @@ static void emitLiveState(const bool &force)
     static bool keyReserved = false;
     if (!keyReserved)
     {
-        key.reserve(40);
+        key.reserve(200);
         keyReserved = true;
     }
     key = lampOn ? F("1|") : F("0|");
@@ -92,7 +74,7 @@ static void emitLiveState(const bool &force)
     static bool liveStateLastKeyReserved = false;
     if (!liveStateLastKeyReserved)
     {
-        liveStateLastKey.reserve(40);
+        liveStateLastKey.reserve(200);
         liveStateLastKeyReserved = true;
     }
     liveStateLastKey = key;
@@ -101,7 +83,7 @@ static void emitLiveState(const bool &force)
     static bool lineReserved = false;
     if (!lineReserved)
     {
-        line.reserve(100);
+        line.reserve(300);
         lineReserved = true;
     }
     line = F("STATE|lamp=");
@@ -165,274 +147,6 @@ void printTouchDebug(const bool &force)
 }
 
 /**
- * @brief Print current mode, brightness and wake/auto state.
- */
-void printStatus(const bool &force)
-{
-#ifdef ENABLE_HUMAN_STATUS
-    String line1 = String(F("Pattern ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" '") +
-                   PATTERNS[currentPattern].name + F("' | AutoCycle=") + (autoCycle ? F("ON") : F("OFF")) +
-                   F(" | Speed=") + String(patternSpeedScale, 2) +
-                   F(" | Invert=") + (patternInvert ? F("ON") : F("OFF"));
-    if (wakeFadeActive)
-        line1 += F(" | Wake");
-    if (sleepFadeActive)
-        line1 += F(" | Sleep");
-    sendFeedback(line1,force);
-
-    String quickLine = String(F("[Quick] ")) + quickMaskToCsv();
-    sendFeedback(quickLine,force);
-
-    String line2 = String(F("Lamp=")) + ((lampEnabled && !lampOffPending) ? F("ON") : F("OFF")) + F(" | Brightness=") +
-                   String(masterBrightness * 100.0f, 1) + F("%");
-#if ENABLE_BUTTONS
-    for (size_t bi = 0; bi < BUTTON_COUNT; ++bi)
-    {
-        line2 += F(" | ");
-        line2 += BUTTONS[bi].label;
-        line2 += F("=");
-        if (BUTTONS[bi].type == BTN_TOGGLE)
-            line2 += (buttonStates[bi].debounced ? F("ON") : F("OFF"));
-        else
-            line2 += (buttonStates[bi].debounced ? F("pressed") : F("released"));
-    }
-#endif
-    sendFeedback(line2,force);
-
-#if ENABLE_MUSIC_MODE
-    String clapLine = String(F("[Clap] ")) + (clapEnabled ? F("ON") : F("OFF")) + F(" thr=") + String(clapThreshold, 2) + F(" cool=") + String(clapCooldownMs);
-    sendFeedback(clapLine,force);
-#endif
-
-    String line3 = F("Ramp=");
-    line3 += String(rampOnDurationMs);
-    line3 += F("ms (on) / ");
-    line3 += String(rampOffDurationMs);
-    line3 += F("ms (off) | IdleOff=");
-    if (idleOffMs == 0)
-        line3 += F("off");
-    else
-    {
-        line3 += String(idleOffMs / 60000);
-        line3 += F("m");
-    }
-#if ENABLE_TOUCH_DIM
-    line3 += F(" | TouchDim=");
-    line3 += touchDimEnabled ? F("ON") : F("OFF");
-    line3 += F(" (step=");
-    line3 += String(touchDimStep, 3);
-    line3 += F(")");
-#endif
-    line3 += F(" | PatFade=");
-    if (patternFadeEnabled)
-    {
-        line3 += String(F("ON(")) + String(patternFadeStrength, 2) + F("x)");
-    }
-    else
-    {
-        line3 += F("OFF");
-    }
-    line3 += F(" | RampOn=");
-    line3 += easeToString(rampEaseOnType);
-    line3 += F("(");
-    line3 += String(rampEaseOnPower, 2);
-    line3 += F(")");
-    line3 += F(" | RampOff=");
-    line3 += easeToString(rampEaseOffType);
-    line3 += F("(");
-    line3 += String(rampEaseOffPower, 2);
-    line3 += F(")");
-    line3 += F(" | PWM=");
-    line3 += String(outputGamma, 2);
-#if ENABLE_EXT_INPUT
-    line3 += F(" | ExtIn=");
-    line3 += extInputEnabled ? F("ON") : F("OFF");
-    line3 += extInputAnalog ? F("(ana)") : F("(dig)");
-#endif
-    sendFeedback(line3,force);
-
-    // Filters
-    FilterState filt;
-    filtersGetState(filt);
-    String filtLine = F("[Filter] ");
-    filtLine += F("iir=");
-    filtLine += filt.iirEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.iirAlpha, 3);
-    filtLine += F(") clip=");
-    filtLine += filt.clipEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.clipAmount, 2);
-    filtLine += F(")");
-    filtLine += F(" trem=");
-    filtLine += filt.tremEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.tremRateHz, 2);
-    filtLine += F("Hz/");
-    filtLine += String(filt.tremDepth, 2);
-    filtLine += F(")");
-    filtLine += F(" spark=");
-    filtLine += filt.sparkEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.sparkDensity, 2);
-    filtLine += F("/");
-    filtLine += String(filt.sparkIntensity, 2);
-    filtLine += F("/");
-    filtLine += String(filt.sparkDecayMs);
-    filtLine += F("ms)");
-    filtLine += F(" comp=");
-    filtLine += filt.compEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.compThr, 2);
-    filtLine += F("/");
-    filtLine += String(filt.compRatio, 2);
-    filtLine += F("/");
-    filtLine += String(filt.compAttackMs);
-    filtLine += F("/");
-    filtLine += String(filt.compReleaseMs);
-    filtLine += F(")");
-    filtLine += F(" env=");
-    filtLine += filt.envEnabled ? F("ON") : F("OFF");
-    filtLine += F("(");
-    filtLine += String(filt.envAttackMs);
-    filtLine += F("/");
-    filtLine += String(filt.envReleaseMs);
-    filtLine += F(")");
-    sendFeedback(filtLine,force);
-
-    String line4 = F("PresenceBLE=");
-    if (presenceBleEnabled)
-    {
-        line4 += F("ON (");
-        String devices = presenceBleListCsv();
-        line4 += (devices.isEmpty() ? F("no device") : devices);
-        line4 += F(" thr=");
-        line4 += presenceBleRssiThreshold;
-        line4 += F("dBm on=");
-        line4 += presenceBleAutoOn ? F("1") : F("0");
-        line4 += F(" off=");
-        line4 += presenceBleAutoOff ? F("1") : F("0");
-        line4 += F(")");
-    }
-    else
-    {
-        line4 += F("OFF");
-    }
-    sendFeedback(line4,force);
-
-#if ENABLE_RD03
-    String line4c = F("Radar=");
-    if (radarEnabled)
-    {
-        line4c += F("ON present=");
-        line4c += radarPresent ? F("1") : F("0");
-        line4c += F(" dist=");
-        line4c += String(radarDistanceCm, 1);
-        line4c += F("cm speed=");
-        line4c += String(radarSpeedCmS, 1);
-        line4c += F("cm/s dim=");
-        line4c += radarDimEnabled ? F("1") : F("0");
-        line4c += F(" motion=");
-        line4c += radarMotionOnEnabled ? F("1") : F("0");
-        line4c += F(" offdist=");
-        line4c += radarOffDistanceEnabled ? F("1") : F("0");
-    }
-    else
-    {
-        line4c += F("OFF");
-    }
-    sendFeedback(line4c,force);
-#endif
-
-    if (demoActive)
-    {
-        String demoLine = String(F("[Demo] dwell=")) + String(demoDwellMs) + F("ms list=") + quickMaskToCsv();
-        sendFeedback(demoLine,force);
-    }
-
-#if ENABLE_BLE
-    String line4b = F("Device=");
-    line4b += getBLEAddress();
-    line4b += F(" | Service=");
-    line4b += Settings::BLE_SERVICE_UUID;
-    line4b += F(" | Cmd=");
-    line4b += Settings::BLE_COMMAND_CHAR_UUID;
-    line4b += F(" | Status=");
-    line4b += Settings::BLE_STATUS_CHAR_UUID;
-    line4b += F(" | BLE=");
-    line4b += bleActive() ? F("UP") : F("DOWN");
-    sendFeedback(line4b,force);
-#endif
-
-    String customLine = String(F("[Custom] len=")) + String(customLen) + F(" stepMs=") + String(customStepMs);
-    sendFeedback(customLine,force);
-
-#if ENABLE_TOUCH_DIM
-    {
-        int raw = touchRead(PIN_TOUCH_DIM);
-        int delta = raw - touchBaseline;
-        int mag = abs(delta);
-        String touchLine = String(F("[Touch] base=")) + String(touchBaseline) + F(" raw=") + String(raw) +
-                           F(" delta=") + String(delta) + F(" |mag=") + String(mag) + F(" thrOn=") + String(touchDeltaOn) +
-                           F(" thrOff=") + String(touchDeltaOff) + F(" active=") + (touchActive ? F("1") : F("0"));
-        sendFeedback(touchLine,force);
-    }
-#else
-    sendFeedback(F("[Touch] N/A"),force);
-#endif
-
-#if ENABLE_LIGHT_SENSOR
-    String lightLine = F("[Light] ");
-    if (lightSensorEnabled)
-    {
-        lightLine += String(F("raw=")) + String((int)lightFiltered) + F(" min=") + String((int)lightMinRaw) +
-                     F(" max=") + String((int)lightMaxRaw) + F(" alpha=") + String(lightAlpha, 3) +
-                     F(" ambx=") + String(rampAmbientMultiplier, 2) + F(" rampAmb=") + String(rampAmbientFactor, 2);
-    }
-    else
-    {
-        lightLine += F("off rampAmb=");
-        lightLine += String(rampAmbientFactor, 2);
-    }
-    sendFeedback(lightLine,force);
-#else
-    String lightLine = F("[Light] N/A");
-    sendFeedback(lightLine,force);
-#endif
-
-#if ENABLE_MUSIC_MODE
-    String musicLine = String(F("[Music] ")) + (musicEnabled ? F("ON") : F("OFF"));
-    sendFeedback(musicLine,force);
-#else
-    String musicLine = F("[Music] N/A");
-    sendFeedback(musicLine,force);
-#endif
-#if ENABLE_POTI
-    String potiLine = String(F("[Poti] ")) + (potiEnabled ? F("ON") : F("OFF")) + F(" a=") + String(potiAlpha, 2) +
-                      F(" d=") + String(potiDeltaMin, 3) + F(" off=") + String(potiOffThreshold, 3) +
-                      F(" smpl=") + String(potiSampleMs) + F("ms") +
-                      F(" min=") + String(potiCalibMin, 3) + F(" max=") + String(potiCalibMax, 3) +
-                      F(" inv=") + (potiInvert ? F("1") : F("0")) +
-                      F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")) +
-                      F(" target=") + (potiTarget == CHANNEL_TARGET_ALL ? F("all") : String(potiTarget));
-#else
-    String potiLine = F("[Poti] N/A");
-#endif
-    sendFeedback(potiLine,force);
-
-#if ENABLE_PUSH_BUTTON
-    String pushLine = String(F("[Push] ")) + (pushEnabled ? F("ON") : F("OFF")) + F(" db=") + String(pushDebounceMs) +
-                      F(" dbl=") + String(pushDoubleMs) + F(" hold=") + String(pushHoldMs) +
-                      F(" step=") + String(pushStep * 100.0f, 1) + F("%/") + String(pushStepMs) + F("ms");
-#else
-    String pushLine = F("[Push] N/A");
-#endif
-    sendFeedback(pushLine,force);
-#endif
-    printStatusStructured(force);
-}
-
-/**
  * @brief Emit structured sensor snapshot for machine parsing.
  */
 void printSensorsStructured(const bool &force)
@@ -441,7 +155,7 @@ void printSensorsStructured(const bool &force)
     static bool lineReserved = false;
     if (!lineReserved)
     {
-        line.reserve(200);
+        line.reserve(400);
         lineReserved = true;
     }
     line = F("SENSORS|");
@@ -502,13 +216,23 @@ void printStatusStructured(const bool &force)
     // comment above for why: the repeated malloc()+free() of a fresh String
     // each call (even with its own upfront reserve()) is what corrupts the
     // TLSF heap once ENABLE_POTI's extra fields are in play, confirmed on
-    // real hardware. Keeping the buffer alive means the one-time reserve()
-    // below is the only allocation this ever does.
+    // real hardware. Keeping the buffer alive is only safe if the one-time
+    // reserve() below actually covers the real content: 420 did not -
+    // desk_lamp's real STATUS line (presence_ble_* fields, "fw_env=desk_lamp",
+    // etc.) runs ~555 bytes, so `line` silently exceeded capacity and
+    // String::concat() reallocated on literally the first "status" call
+    // every time - the exact same TLSF-corruption mechanism as the
+    // malloc()+free() bug above, just reached via realloc() instead. Root-
+    // caused on real hardware via a controlled A/B test (a line that stays
+    // under reserve(), e.g. an unrecognized command, never crashes; one
+    // that exceeds it always does) rather than by inspecting this length
+    // directly - double-check the real byte count again if this field set
+    // grows further, instead of trusting a round number.
     static String line;
     static bool lineReserved = false;
     if (!lineReserved)
     {
-        line.reserve(420);
+        line.reserve(700);
         lineReserved = true;
     }
     line = F("STATUS|");
@@ -680,12 +404,15 @@ void printStatusStructured(const bool &force)
     updateBleStatus(line);
 
     // Detail line: IO, PWM, light, music, inputs - static/reserved-once, see
-    // the comment on `line` above.
+    // the comment on `line` above. desk_lamp's real STATUS1 measured ~455
+    // bytes against this 500 reserve - too close for comfort given how
+    // badly undersizing `line` above went unnoticed; bumped with the same
+    // margin.
     static String lineIO;
     static bool lineIOReserved = false;
     if (!lineIOReserved)
     {
-        lineIO.reserve(500);
+        lineIO.reserve(700);
         lineIOReserved = true;
     }
     lineIO = F("STATUS1|");
@@ -837,12 +564,15 @@ void printStatusStructured(const bool &force)
     updateBleStatus(lineIO);
 
     // Filters/status chunk (separate to stay under BLE MTU) - static/reserved
-    // once, see the comment on `line` above.
+    // once, see the comment on `line` above. Measured real content at 494
+    // bytes against this 450 reserve - the second of two undersized buffers
+    // in this function (the first being `line` above); fixing only one and
+    // retesting is what caught this.
     static String line2;
     static bool line2Reserved = false;
     if (!line2Reserved)
     {
-        line2.reserve(450);
+        line2.reserve(700);
         line2Reserved = true;
     }
     line2 = F("STATUS2|");
@@ -917,7 +647,16 @@ void printStatusStructured(const bool &force)
     static bool lineEndReserved = false;
     if (!lineEndReserved)
     {
-        lineEnd.reserve(60);
+        // Was reserve(60) - plenty for the ~38 bytes this line actually
+        // needs, but root-caused on real hardware (bisecting this exact
+        // function line by line under a repeatable crash) as the specific
+        // allocation whose small size collided with something the BT
+        // controller itself allocates at a similar size, corrupting shared
+        // TLSF heap state - not a true overflow. Bumped to match the other
+        // reserve()s in this function rather than trying to find the
+        // "safe" small size, since that would just move the collision
+        // instead of avoiding the size class deterministically.
+        lineEnd.reserve(700);
         lineEndReserved = true;
     }
     lineEnd = F("STATUS_END|lamp=");

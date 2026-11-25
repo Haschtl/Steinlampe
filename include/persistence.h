@@ -33,9 +33,30 @@ bool loadProfileSlot(uint8_t slot, bool announce = true);
 void exportConfig();
 
 /**
- * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
+ * @brief Request that current settings be persisted to NVS. Debounced - does
+ * NOT write immediately; marks state dirty and lets flushSettingsIfDue()
+ * (called from the main loop) do the actual NVS write a couple of seconds
+ * after the last request, once things have settled. Repeated rapid calls
+ * (e.g. a fast toggle/on/off sequence) coalesce into a single write instead
+ * of one flash write per call - also sidesteps a real-hardware crash where
+ * back-to-back synchronous NVS writes destabilized the BT controller.
  */
 void saveSettings();
+
+/**
+ * @brief Call every loop() iteration: performs the actual deferred NVS write
+ * if saveSettings() was called and the debounce window has elapsed since.
+ * A no-op otherwise.
+ */
+void flushSettingsIfDue();
+
+/**
+ * @brief Forces any pending debounced save to happen immediately - call
+ * before a reboot/OTA/deep-sleep transition so a just-requested save isn't
+ * silently dropped by power loss before its debounce window would have
+ * elapsed.
+ */
+void flushSettingsNow();
 
 void applyDefaultSettings(float brightnessOverride, bool announce);
 
