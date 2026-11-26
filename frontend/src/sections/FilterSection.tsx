@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, Flame, Sparkles, Waves } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,17 +12,26 @@ import { cn } from '@/lib/utils';
 type EffectKey = 'iir' | 'clip' | 'trem' | 'spark' | 'comp' | 'env' | 'delay';
 
 export function FilterSection() {
-  const { status, sendCmd, sendCmdReliable, refreshStatus } = useConnection();
+  const { status, sendCmd, sendCmdReliable } = useConnection();
   const { t } = useI18n();
   const [openEffect, setOpenEffect] = useState<EffectKey | null>(null);
 
-  // write-with-response + explicit refresh for the Enable toggles specifically
-  // (not the knobs below, which fire on every drag tick and would otherwise
-  // flood the link with "status raw" requests) - the firmware only ever
-  // announces a filter change as a plain feedback line, never a fresh full
-  // STATUS snapshot on its own. See memory: firmware-status-fields-added-2026-11
-  // (same gap found for wake/sleep/notify) and WakeSleepCard.tsx's identical fix.
-  const toggleFilter = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+  // Filter params are their own on-demand status group (status protocol
+  // redesign) - fetch them only while this page is actually open, instead of
+  // every filter_* field riding along on every general status broadcast.
+  useEffect(() => {
+    if (status.connected && status.statusReady) sendCmd('status filters').catch((e) => console.warn(e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.connected, status.statusReady]);
+
+  // write-with-response + explicit refetch of just the FILTERS group for the
+  // Enable toggles specifically (not the knobs below, which fire on every
+  // drag tick and would otherwise flood the link) - the firmware only ever
+  // announces a filter change as a plain feedback line, never a structured
+  // one, on its own. See memory: status protocol redesign (and
+  // firmware-status-fields-added-2026-11 for the original gap this follows).
+  const toggleFilter = (cmd: string) =>
+    sendCmdReliable(cmd).then(() => sendCmd('status filters')).catch((e) => console.warn(e));
 
   const waveLabel = useMemo(() => (status.filterTremWave === 1 ? 'triangle' : 'sine'), [status.filterTremWave]);
   const curveLabel = useMemo(() => (status.filterClipCurve === 1 ? 'soft' : 'tanh'), [status.filterClipCurve]);

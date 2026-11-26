@@ -79,8 +79,21 @@ class ReceivedLog:
 def build_sequential_cases() -> List[TestCase]:
     """One command at a time, each awaited to a fixed timeout before the next fires."""
     return [
-        TestCase("status raw - full snapshot", "status raw",
-                 [r"^STATUS\|", r"^STATUS1\|", r"^STATUS2\|", r"^STATUS_END\|"], timeout=30.0),
+        # STATUS1/STATUS2 are retired (status protocol redesign) - the core
+        # snapshot is now just STATUS|/STATUS_END|; the former STATUS1/STATUS2
+        # fields live in their own on-demand groups, tested individually below.
+        TestCase("status raw - core snapshot", "status raw",
+                 [r"^STATUS\|", r"^STATUS_END\|"], timeout=30.0),
+        # New per-page status groups (status protocol redesign, step 1: pure
+        # additions alongside the still-intact STATUS/STATUS1/STATUS2 above).
+        TestCase("status radar", "status radar", [r"^RADAR\|"], timeout=15.0),
+        TestCase("status light", "status light", [r"^LIGHT\|"], timeout=15.0),
+        TestCase("status music", "status music", [r"^MUSIC\|"], timeout=15.0),
+        TestCase("status poti", "status poti", [r"^POTI\|"], timeout=15.0),
+        TestCase("status push", "status push", [r"^PUSH\|"], timeout=15.0),
+        TestCase("status presence", "status presence", [r"^PRESENCE\|"], timeout=15.0),
+        TestCase("status filters", "status filters", [r"^FILTERS\|"], timeout=15.0),
+        TestCase("status io", "status io", [r"^IO\|"], timeout=15.0),
         TestCase("trust list", "trust list", [r"^\[Trust\] BLE:"], timeout=15.0),
         TestCase("trust ble bonds", "trust ble bonds", [r"^\[Trust\] BLE bonds:"], timeout=15.0),
         TestCase("profile show 1", "profile show 1", [r"^\[Profile 1\]"], timeout=15.0),

@@ -63,7 +63,11 @@ export function useBle(): BleApi {
   const pendingLogRef = useRef<LogEntry[]>([]);
   const unsubRef = useRef<(() => void)[]>([]);
   const statusEndWaiterRef = useRef<(() => void) | null>(null);
-  const statusSnapshotPagesRef = useRef(0);
+  // The core snapshot is now just STATUS|/STATUS_END| (status protocol
+  // redesign retired STATUS1/STATUS2 - their fields are their own on-demand
+  // groups now), so completion only needs these two flags instead of the
+  // former 3-bit STATUS/STATUS1/STATUS2 bitmask.
+  const statusCoreSeenRef = useRef(false);
   const statusEndSeenRef = useRef(false);
   // Set when the firmware reports BLE_PAIR_PENDING| - it's deliberately
   // holding this connection open, waiting for a physical switch/poti gesture
@@ -173,18 +177,16 @@ export function useBle(): BleApi {
     const handled = parseStatus(line);
     if (!handled || !filterParsedRef.current) pushLog(line);
     if (handled) setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
-    if (line.startsWith('STATUS|')) statusSnapshotPagesRef.current |= 1;
-    else if (line.startsWith('STATUS1|')) statusSnapshotPagesRef.current |= 2;
-    else if (line.startsWith('STATUS2|')) statusSnapshotPagesRef.current |= 4;
+    if (line.startsWith('STATUS|')) statusCoreSeenRef.current = true;
     if (line.startsWith('STATUS_END|')) statusEndSeenRef.current = true;
-    // Only resolve once the END marker AND all three data pages have been
+    // Only resolve once both the core line and the END marker have been
     // seen - this used to fire on the END marker alone, so if STATUS| (the
     // page carrying ramp_on_ms/ramp_off_ms/ramp_on_ease/ramp_off_ease among
     // other fields) was still in flight behind it or got dropped, the
     // refresh was reported "complete" without that page ever having
     // arrived. Checked on every line (not just STATUS_END) since the two
     // conditions can become true in either order.
-    if (statusEndSeenRef.current && statusSnapshotPagesRef.current === 7) {
+    if (statusEndSeenRef.current && statusCoreSeenRef.current) {
       statusEndWaiterRef.current?.();
     }
     if (line.startsWith('BLE_PAIR_PENDING|') && !blePairPendingRef.current) {
@@ -224,7 +226,7 @@ export function useBle(): BleApi {
     const refresh = (async () => {
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          statusSnapshotPagesRef.current = 0;
+          statusCoreSeenRef.current = false;
           statusEndSeenRef.current = false;
           blePairPendingRef.current = false;
           let timer: ReturnType<typeof setTimeout> | undefined;
@@ -269,17 +271,13 @@ export function useBle(): BleApi {
               // "STATUS|...fw_ver=1" prefix) rather than a complete line. Only trust
               // fragments that start with a recognized line prefix; anything else is
               // noise from that race, not real status data worth parsing or logging.
-              const knownPrefix = /^(STATUS\||STATUS1\||STATUS2\||STATUS_END\||SENSORS\|)/;
+              const knownPrefix = /^(STATUS\||STATUS_END\||SENSORS\|)/;
               lines.filter((line) => knownPrefix.test(line)).forEach(handleLine);
               if (lines.some((line) => line.startsWith('STATUS_END|'))) return;
             } catch (readError) {
               pushLog('Status read fallback failed: ' + (readError instanceof Error ? readError.message : String(readError)));
             }
           }
-
-          // Compatibility with firmware versions predating STATUS_END: all
-          // three legacy status pages still prove that the snapshot arrived.
-          if (statusSnapshotPagesRef.current === 7) return;
         }
         throw new Error('Incomplete status snapshot');
       } catch (e) {

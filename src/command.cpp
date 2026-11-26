@@ -273,12 +273,55 @@ void handleCommand(const String &line)
     }
     if (lower == "status")
     {
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower == "status raw" || lower == "status json")
     {
-        printStatusStructured();
+        printStatusCore();
+        return;
+    }
+    // Per-page status groups, fetched on demand instead of riding along on
+    // every printStatusCore() broadcast - see memory: status protocol
+    // redesign.
+    if (lower == "status radar")
+    {
+        printRadarStructured();
+        return;
+    }
+    if (lower == "status light")
+    {
+        printLightStructured();
+        return;
+    }
+    if (lower == "status music")
+    {
+        printMusicStructured();
+        return;
+    }
+    if (lower == "status poti")
+    {
+        printPotiStructured();
+        return;
+    }
+    if (lower == "status push")
+    {
+        printPushStructured();
+        return;
+    }
+    if (lower == "status presence")
+    {
+        printPresenceStructured();
+        return;
+    }
+    if (lower == "status filters")
+    {
+        printFiltersStructured();
+        return;
+    }
+    if (lower == "status io")
+    {
+        printIoStructured();
         return;
     }
     if (lower == "sensors" || lower == "read sensors")
@@ -290,28 +333,28 @@ void handleCommand(const String &line)
     {
         setLampEnabled(true, "cmd on");
         saveSettings();
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower == "off")
     {
         setLampEnabled(false, "cmd off");
         saveSettings();
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower == "sync")
     {
         syncLampToSwitch();
         saveSettings();
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower == "toggle")
     {
         setLampEnabled(!lampEnabled, "cmd toggle");
         saveSettings();
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower == "touch")
@@ -983,6 +1026,13 @@ void handleCommand(const String &line)
         {
             sendFeedback(F("filter iir <on/off> <alpha> | filter clip <on/off> <amt> [tanh|soft] | filter trem <on/off> <rateHz> <depth> [sin|tri] | filter spark <on/off> <dens> <int> <decayMs> | filter comp <on/off> <thr> <ratio> <att> <rel> | filter env <on/off> <att> <rel> | filter delay <on/off> <ms> <fb> <mix>"));
         }
+        // Deliberately no printFiltersStructured() here, unlike most other
+        // groups' sub-command blocks: every one of these sub-types is also
+        // driven by a Knob on FilterSection.tsx that fires this exact same
+        // command shape on every drag tick, so a structured push-back here
+        // would flood the link during a drag (see memory: status protocol
+        // redesign). FilterSection.tsx's checkbox-driven toggleFilter()
+        // fetches "status filters" explicitly instead.
         return;
     }
     if (lower.startsWith("pwm curve") || lower.startsWith("pwm gamma"))
@@ -1118,7 +1168,7 @@ void handleCommand(const String &line)
         else
             sendFeedback(F("auto on|off"));
         saveSettings();
-        printStatusStructured();
+        printStatusCore();
         return;
     }
     if (lower.startsWith("bt sleep"))
@@ -1629,6 +1679,12 @@ void handleCommand(const String &line)
                     sendFeedback(String(F("[Light] clamp ")) + String(mn, 2) + F("..") + String(mx, 2));
                 }
             }
+            // No printLightStructured() here: clamp is driven by a
+            // RangeSliderRow on LightCard.tsx with no drag throttling at
+            // all, unlike the other light sub-commands - pushing a
+            // structured update on every drag-move event would flood the
+            // link. See memory: status protocol redesign.
+            return;
         }
         else
         {
@@ -1637,6 +1693,9 @@ void handleCommand(const String &line)
 #else
         sendFeedback(F("[Light] Sensor disabled at build (ENABLE_LIGHT_SENSOR=0)"));
 #endif
+        // Real structured update (LIGHT|) for the Licht page - see memory:
+        // status protocol redesign.
+        printLightStructured();
         return;
     }
 #if ENABLE_POTI
@@ -1650,12 +1709,14 @@ void handleCommand(const String &line)
             potiEnabled = true;
             saveSettings();
             sendFeedback(F("[Poti] Enabled"));
+            printPotiStructured();
         }
         else if (arg == "off")
         {
             potiEnabled = false;
             saveSettings();
             sendFeedback(F("[Poti] Disabled"));
+            printPotiStructured();
         }
         else if (arg.startsWith("alpha"))
         {
@@ -1818,6 +1879,11 @@ void handleCommand(const String &line)
                          F(" mode=") + (potiRole == POTI_ROLE_MODE_SCAN ? F("scan") : F("brightness")) +
                          F(" target=") + (potiTarget == CHANNEL_TARGET_ALL ? F("all") : String(potiTarget)));
         }
+        // Deliberately no blanket printPotiStructured() here (only in the
+        // on/off branches above) - alpha/delta/off/sample are driven by
+        // SliderRow/useSyncedValue controls on PotiCard.tsx that fire this
+        // same command shape on every drag tick; a push-back here would
+        // flood the link during a drag. See memory: status protocol redesign.
         return;
     }
 #endif
@@ -1832,12 +1898,14 @@ void handleCommand(const String &line)
             pushEnabled = true;
             saveSettings();
             sendFeedback(F("[Push] Enabled"));
+            printPushStructured();
         }
         else if (arg == "off")
         {
             pushEnabled = false;
             saveSettings();
             sendFeedback(F("[Push] Disabled"));
+            printPushStructured();
         }
         else if (arg.startsWith("debounce"))
         {
@@ -1915,6 +1983,11 @@ void handleCommand(const String &line)
                          F(" dbl=") + String(pushDoubleMs) + F(" hold=") + String(pushHoldMs) +
                          F(" step=") + String(pushStep * 100.0f, 1) + F("%/") + String(pushStepMs) + F("ms"));
         }
+        // Deliberately no blanket printPushStructured() here (only in the
+        // on/off branches above) - debounce/double/hold/step_ms/step are
+        // driven by SliderRow/useSyncedValue controls on PushButtonCard.tsx
+        // that fire this same command shape on every drag tick. See memory:
+        // status protocol redesign.
         return;
     }
 #endif
@@ -2051,6 +2124,9 @@ void handleCommand(const String &line)
             sendFeedback(String(F("[Music] level=")) + String(musicFiltered, 3) + F(" en=") + (musicEnabled ? F("1") : F("0")) +
                          F(" smooth=") + String(musicSmoothing, 2));
         }
+        // Real structured update (MUSIC|) for the Musik page - see memory:
+        // status protocol redesign.
+        printMusicStructured();
         return;
     }
 #endif
@@ -2152,6 +2228,7 @@ void handleCommand(const String &line)
 #else
         sendFeedback(F("[Clap] Audio sensor not built (ENABLE_MUSIC_MODE=0)"));
 #endif
+        printMusicStructured();
         return;
     }
     if (lower.startsWith("wake"))
@@ -2495,6 +2572,9 @@ void handleCommand(const String &line)
         {
             sendStatus();
         }
+        // Real structured update (PRESENCE|) for the Anwesenheit page - see
+        // memory: status protocol redesign.
+        printPresenceStructured();
         return;
     }
 #if ENABLE_RD03
@@ -2686,6 +2766,9 @@ void handleCommand(const String &line)
         {
             sendStatus();
         }
+        // Real structured update (RADAR|) for the Radar page - see memory:
+        // status protocol redesign.
+        printRadarStructured();
         return;
     }
 #endif

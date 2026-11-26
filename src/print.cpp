@@ -212,7 +212,7 @@ void printSensorsStructured(const bool &force)
 /**
  * @brief Emit a single structured status line for easier parsing (key=value pairs).
  */
-void printStatusStructured(const bool &force)
+void printStatusCore(const bool &force)
 {
     // Core line (keep short for BLE MTU). Function-static and reserved once
     // rather than a fresh local String per call - see emitLiveState()'s
@@ -373,57 +373,48 @@ void printStatusStructured(const bool &force)
 #endif
     line += F("|pat_reactive=");
     line += isPatternReactive(currentPattern) ? F("1") : F("0");
+    // Just the Home-chip glance (ON/OFF + how many) - the rest (thresholds,
+    // the actual device list, grace/hwoverride) is now its own on-demand
+    // PRESENCE| group (see printPresenceStructured() above), fetched only by
+    // AnwesenheitPage. Same for radar below, which used to be entirely in
+    // this core line despite being radar-page-only diagnostics.
     line += F("|presence_ble=");
     line += presenceBleEnabled ? F("ON") : F("OFF");
     line += F("|presence_ble_count=");
     line += (int)presenceBleDevices.size();
-    line += F("|presence_ble_thr=");
-    line += presenceBleRssiThreshold;
-    line += F("|presence_ble_on=");
-    line += presenceBleAutoOn ? F("1") : F("0");
-    line += F("|presence_ble_off=");
-    line += presenceBleAutoOff ? F("1") : F("0");
-    line += F("|presence_ble_list=");
-    line += presenceBleListCsv();
-    line += F("|presence_ble_grace=");
-    line += presenceBleGraceMs;
-    line += F("|presence_ble_hwoverride=");
-    line += presenceBleAlwaysOverride ? F("1") : F("0");
 #if ENABLE_RD03
     line += F("|radar=");
     line += radarEnabled ? F("ON") : F("OFF");
-    line += F("|radar_present=");
-    line += radarPresent ? F("1") : F("0");
-    line += F("|radar_dist=");
-    line += fmtF(radarDistanceCm, 1);
-    line += F("|radar_speed=");
-    line += fmtF(radarSpeedCmS, 1);
-    line += F("|radar_targets=");
-    line += String(radarTargetCount);
-    line += F("|radar_dim=");
-    line += radarDimEnabled ? F("1") : F("0");
-    line += F("|radar_dim_near=");
-    line += fmtF(radarDimNearCm, 1);
-    line += F("|radar_dim_far=");
-    line += fmtF(radarDimFarCm, 1);
-    line += F("|radar_motion=");
-    line += radarMotionOnEnabled ? F("1") : F("0");
-    line += F("|radar_motion_thr=");
-    line += fmtF(radarMotionSpeedThreshold, 1);
-    line += F("|radar_motion_hold=");
-    line += radarMotionHoldMs;
-    line += F("|radar_offdist=");
-    line += radarOffDistanceEnabled ? F("1") : F("0");
-    line += F("|radar_off_cm=");
-    line += fmtF(radarOffDistanceCm, 1);
-    line += F("|radar_off_grace=");
-    line += radarOffGraceMs;
-    line += F("|radar_hwoverride=");
-    line += radarHwOverride ? F("1") : F("0");
-    line += F("|radar_velocity=");
-    line += fmtF(radarVelocityFactor, 2);
 #else
     line += F("|radar=N/A");
+#endif
+    // Likewise, just the ON/OFF/N/A glance each feature's Home chip and the
+    // Advanced tile list need to decide whether to show at all - the rest of
+    // each cluster (gain/alpha/clamp/raw/etc, formerly STATUS1, now retired)
+    // is its own on-demand group, fetched only by that feature's own page.
+#if ENABLE_LIGHT_SENSOR
+    line += F("|light=");
+    line += lightSensorEnabled ? F("ON") : F("OFF");
+#else
+    line += F("|light=N/A");
+#endif
+#if ENABLE_MUSIC_MODE
+    line += F("|music=");
+    line += musicEnabled ? F("ON") : F("OFF");
+#else
+    line += F("|music=N/A");
+#endif
+#if ENABLE_POTI
+    line += F("|poti=");
+    line += potiEnabled ? F("ON") : F("OFF");
+#else
+    line += F("|poti=N/A");
+#endif
+#if ENABLE_PUSH_BUTTON
+    line += F("|push=");
+    line += pushEnabled ? F("ON") : F("OFF");
+#else
+    line += F("|push=N/A");
 #endif
 #if ENABLE_BLE
     line += F("|ble=");
@@ -440,235 +431,14 @@ void printStatusStructured(const bool &force)
     sendFeedback(line,force);
     updateBleStatus(line);
 
-    // Detail line: IO, PWM, light, music, inputs - static/reserved-once, see
-    // the comment on `line` above. desk_lamp's real STATUS1 measured ~455
-    // bytes against this 500 reserve - too close for comfort given how
-    // badly undersizing `line` above went unnoticed; bumped with the same
-    // margin.
-    static String lineIO;
-    static bool lineIOReserved = false;
-    if (!lineIOReserved)
-    {
-        lineIO.reserve(700);
-        lineIOReserved = true;
-    }
-    lineIO = F("STATUS1|");
-#if ENABLE_EXT_INPUT
-    lineIO += F("ext_in=");
-    lineIO += extInputEnabled ? F("ON") : F("OFF");
-    lineIO += F("|ext_mode=");
-    lineIO += extInputAnalog ? F("ana") : F("dig");
-    lineIO += F("|ext_alpha=");
-    lineIO += fmtF(extInputAlpha, 3);
-    lineIO += F("|ext_delta=");
-    lineIO += fmtF(extInputDelta, 3);
-    lineIO += F("|ext_val=");
-    lineIO += extInputFiltered >= 0.0f ? fmtF(extInputFiltered, 3) : F("N/A");
-#endif
-#if ENABLE_BT_SERIAL
-    lineIO += F("|bt_sleep_boot_ms=");
-    lineIO += String(getBtSleepAfterBootMs());
-    lineIO += F("|bt_sleep_ble_ms=");
-    lineIO += String(getBtSleepAfterBleMs());
-#else
-    lineIO += F("|bt_sleep_boot_ms=N/A|bt_sleep_ble_ms=N/A");
-#endif
-    lineIO += F("|custom_len=");
-    lineIO += String(customLen);
-    lineIO += F("|custom_step_ms=");
-    lineIO += String(customStepMs);
-    lineIO += F("|demo=");
-    lineIO += demoActive ? F("ON") : F("OFF");
-    lineIO += F("|out=");
-#if ENABLE_ANALOG_OUTPUT
-    lineIO += F("ana");
-#else
-    lineIO += F("pwm");
-#endif
-    lineIO += F("|gamma=");
-    lineIO += fmtF(outputGamma, 2);
-    lineIO += F("|pwm_raw=");
-    lineIO += String((uint32_t)lastPwmValue);
-    lineIO += F("|pwm_max=");
-    lineIO += String((uint32_t)PWM_MAX);
-    lineIO += F("|bri_min=");
-    lineIO += fmtF(briMinUser * 100.0f, 1);
-    lineIO += F("|bri_max=");
-    lineIO += fmtF(briMaxUser * 100.0f, 1);
-    lineIO += F("|notif_min=");
-    lineIO += fmtF(notifyMinBrightness * 100.0f, 1);
-#if ENABLE_LIGHT_SENSOR
-    lineIO += F("|light=");
-    lineIO += lightSensorEnabled ? F("ON") : F("OFF");
-    lineIO += F("|light_gain=");
-    lineIO += fmtF(lightGain, 2);
-    lineIO += F("|light_min=");
-    lineIO += fmtF(lightClampMin, 2);
-    lineIO += F("|light_max=");
-    lineIO += fmtF(lightClampMax, 2);
-    lineIO += F("|light_alpha=");
-    lineIO += fmtF(lightAlpha, 3);
-    lineIO += F("|light_raw=");
-    lineIO += String((int)lightFiltered);
-    lineIO += F("|light_raw_min=");
-    lineIO += String((int)lightMinRaw);
-    lineIO += F("|light_raw_max=");
-    lineIO += String((int)lightMaxRaw);
-#else
-    lineIO += F("|light=N/A");
-#endif
-#if ENABLE_MUSIC_MODE
-    lineIO += F("|music=");
-    lineIO += musicEnabled ? F("ON") : F("OFF");
-    lineIO += F("|music_gain=");
-    lineIO += fmtF(musicGain, 2);
-    lineIO += F("|music_auto=");
-    lineIO += musicAutoLamp ? F("ON") : F("OFF");
-    lineIO += F("|music_thr=");
-    lineIO += fmtF(musicAutoThr, 2);
-    lineIO += F("|music_mode=");
-    lineIO += (musicMode == 1 ? F("beat") : F("direct"));
-    lineIO += F("|music_mod=");
-    lineIO += fmtF(musicModScale, 3);
-    lineIO += F("|music_kick_ms=");
-    lineIO += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
-    lineIO += F("|music_env=");
-    lineIO += fmtF(musicFiltered, 3);
-    lineIO += F("|music_level=");
-    lineIO += fmtF(musicRawLevel, 3);
-    lineIO += F("|music_smooth=");
-    lineIO += fmtF(musicSmoothing, 2);
-    lineIO += F("|clap=");
-    lineIO += clapEnabled ? F("ON") : F("OFF");
-    lineIO += F("|clap_thr=");
-    lineIO += fmtF(clapThreshold, 2);
-    lineIO += F("|clap_cool=");
-    lineIO += String(clapCooldownMs);
-    lineIO += F("|clap_cmd1=");
-    lineIO += clapCmd1;
-    lineIO += F("|clap_cmd2=");
-    lineIO += clapCmd2;
-    lineIO += F("|clap_cmd3=");
-    lineIO += clapCmd3;
-#else
-    lineIO += F("|music=N/A|clap=N/A");
-#endif
-#if ENABLE_POTI
-    lineIO += F("|poti=");
-    lineIO += potiEnabled ? F("ON") : F("OFF");
-    lineIO += F("|poti_alpha=");
-    lineIO += fmtF(potiAlpha, 2);
-    lineIO += F("|poti_delta=");
-    lineIO += fmtF(potiDeltaMin, 3);
-    lineIO += F("|poti_off=");
-    lineIO += fmtF(potiOffThreshold, 3);
-    lineIO += F("|poti_sample=");
-    lineIO += String(potiSampleMs);
-    lineIO += F("|poti_min=");
-    lineIO += fmtF(potiCalibMin, 3);
-    lineIO += F("|poti_max=");
-    lineIO += fmtF(potiCalibMax, 3);
-    lineIO += F("|poti_inv=");
-    lineIO += potiInvert ? F("1") : F("0");
-    lineIO += F("|poti_mode=");
-    lineIO += (potiRole == POTI_ROLE_MODE_SCAN) ? F("scan") : F("brightness");
-    lineIO += F("|poti_target=");
-    lineIO += (potiTarget == CHANNEL_TARGET_ALL) ? F("all") : String(potiTarget);
-    lineIO += F("|poti_val=");
-    lineIO += fmtF(potiFiltered, 3);
-    lineIO += F("|poti_raw=");
-    lineIO += String(potiLastRaw);
-#else
-    lineIO += F("|poti=N/A");
-#endif
-#if ENABLE_PUSH_BUTTON
-    lineIO += F("|push=");
-    lineIO += pushEnabled ? F("ON") : F("OFF");
-    lineIO += F("|push_db=");
-    lineIO += String(pushDebounceMs);
-    lineIO += F("|push_dbl=");
-    lineIO += String(pushDoubleMs);
-    lineIO += F("|push_hold=");
-    lineIO += String(pushHoldMs);
-    lineIO += F("|push_step_ms=");
-    lineIO += String(pushStepMs);
-    lineIO += F("|push_step=");
-    lineIO += fmtF(pushStep, 3);
-#else
-    lineIO += F("|push=N/A");
-#endif
-    sendFeedback(lineIO,force);
-    updateBleStatus(lineIO);
-
-    // Filters/status chunk (separate to stay under BLE MTU) - static/reserved
-    // once, see the comment on `line` above. Measured real content at 494
-    // bytes against this 450 reserve - the second of two undersized buffers
-    // in this function (the first being `line` above); fixing only one and
-    // retesting is what caught this.
-    static String line2;
-    static bool line2Reserved = false;
-    if (!line2Reserved)
-    {
-        line2.reserve(700);
-        line2Reserved = true;
-    }
-    line2 = F("STATUS2|");
-    {
-        FilterState filt;
-        filtersGetState(filt);
-        line2 += F("filter_iir=");
-        line2 += filt.iirEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_alpha=");
-        line2 += fmtF(filt.iirAlpha, 3);
-        line2 += F("|filter_clip=");
-        line2 += filt.clipEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_clip_amt=");
-        line2 += fmtF(filt.clipAmount, 2);
-        line2 += F("|filter_clip_curve=");
-        line2 += filt.clipCurve;
-        line2 += F("|filter_trem=");
-        line2 += filt.tremEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_trem_rate=");
-        line2 += fmtF(filt.tremRateHz, 2);
-        line2 += F("|filter_trem_depth=");
-        line2 += fmtF(filt.tremDepth, 2);
-        line2 += F("|filter_trem_wave=");
-        line2 += filt.tremWave;
-        line2 += F("|filter_spark=");
-        line2 += filt.sparkEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_spark_dens=");
-        line2 += fmtF(filt.sparkDensity, 2);
-        line2 += F("|filter_spark_int=");
-        line2 += fmtF(filt.sparkIntensity, 2);
-        line2 += F("|filter_spark_decay=");
-        line2 += String(filt.sparkDecayMs);
-        line2 += F("|filter_comp=");
-        line2 += filt.compEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_comp_thr=");
-        line2 += fmtF(filt.compThr, 2);
-        line2 += F("|filter_comp_ratio=");
-        line2 += fmtF(filt.compRatio, 2);
-        line2 += F("|filter_comp_att=");
-        line2 += String(filt.compAttackMs);
-        line2 += F("|filter_comp_rel=");
-        line2 += String(filt.compReleaseMs);
-        line2 += F("|filter_env=");
-        line2 += filt.envEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_env_att=");
-        line2 += String(filt.envAttackMs);
-        line2 += F("|filter_env_rel=");
-        line2 += String(filt.envReleaseMs);
-        line2 += F("|filter_delay=");
-        line2 += filt.delayEnabled ? F("ON") : F("OFF");
-        line2 += F("|filter_delay_ms=");
-        line2 += String(filt.delayMs);
-        line2 += F("|filter_delay_fb=");
-        line2 += fmtF(filt.delayFeedback, 2);
-        line2 += F("|filter_delay_mix=");
-        line2 += fmtF(filt.delayMix, 2);
-    }
-    sendFeedback(line2,force);
-    updateBleStatus(line2);
+    // STATUS1 (IO/PWM/light/music/poti/push detail) and STATUS2 (filters) are
+    // retired - every field either moved to its own on-demand group above
+    // (printLightStructured() etc.) or, for ext_in/bt_sleep/custom_len/
+    // custom_step_ms/demo/out/gamma/pwm_raw/pwm_max/bri_min/bri_max/
+    // notif_min, into printIoStructured(); custom_len/custom_step_ms also
+    // already ride along on CUSTOM| (see CustomPatternCard.tsx's "custom
+    // export"), so they were pure duplication here. See memory: status
+    // protocol redesign.
 
     // Marks a complete structured snapshot. Keep the core state in the marker
     // as well so a BLE client can recover it with a characteristic read when
@@ -704,6 +474,382 @@ void printStatusStructured(const bool &force)
     lineEnd += String(currentPattern + 1);
     sendFeedback(lineEnd, force);
     updateBleStatus(lineEnd);
+}
+
+/**
+ * @brief Per-page status groups, fetched on demand ("status radar" etc.)
+ * instead of riding along on every printStatusCore() broadcast - see memory:
+ * status protocol redesign.
+ */
+void printRadarStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(350);
+        reserved = true;
+    }
+    line = F("RADAR|");
+#if ENABLE_RD03
+    line += F("radar=");
+    line += radarEnabled ? F("ON") : F("OFF");
+    line += F("|radar_present=");
+    line += radarPresent ? F("1") : F("0");
+    line += F("|radar_dist=");
+    line += fmtF(radarDistanceCm, 1);
+    line += F("|radar_speed=");
+    line += fmtF(radarSpeedCmS, 1);
+    line += F("|radar_targets=");
+    line += String(radarTargetCount);
+    line += F("|radar_dim=");
+    line += radarDimEnabled ? F("1") : F("0");
+    line += F("|radar_dim_near=");
+    line += fmtF(radarDimNearCm, 1);
+    line += F("|radar_dim_far=");
+    line += fmtF(radarDimFarCm, 1);
+    line += F("|radar_motion=");
+    line += radarMotionOnEnabled ? F("1") : F("0");
+    line += F("|radar_motion_thr=");
+    line += fmtF(radarMotionSpeedThreshold, 1);
+    line += F("|radar_motion_hold=");
+    line += radarMotionHoldMs;
+    line += F("|radar_offdist=");
+    line += radarOffDistanceEnabled ? F("1") : F("0");
+    line += F("|radar_off_cm=");
+    line += fmtF(radarOffDistanceCm, 1);
+    line += F("|radar_off_grace=");
+    line += radarOffGraceMs;
+    line += F("|radar_hwoverride=");
+    line += radarHwOverride ? F("1") : F("0");
+    line += F("|radar_velocity=");
+    line += fmtF(radarVelocityFactor, 2);
+#else
+    line += F("radar=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printLightStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(200);
+        reserved = true;
+    }
+    line = F("LIGHT|");
+#if ENABLE_LIGHT_SENSOR
+    line += F("light=");
+    line += lightSensorEnabled ? F("ON") : F("OFF");
+    line += F("|light_gain=");
+    line += fmtF(lightGain, 2);
+    line += F("|light_min=");
+    line += fmtF(lightClampMin, 2);
+    line += F("|light_max=");
+    line += fmtF(lightClampMax, 2);
+    line += F("|light_alpha=");
+    line += fmtF(lightAlpha, 3);
+    line += F("|light_raw=");
+    line += String((int)lightFiltered);
+    line += F("|light_raw_min=");
+    line += String((int)lightMinRaw);
+    line += F("|light_raw_max=");
+    line += String((int)lightMaxRaw);
+#else
+    line += F("light=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printMusicStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(500);
+        reserved = true;
+    }
+    line = F("MUSIC|");
+#if ENABLE_MUSIC_MODE
+    line += F("music=");
+    line += musicEnabled ? F("ON") : F("OFF");
+    line += F("|music_gain=");
+    line += fmtF(musicGain, 2);
+    line += F("|music_auto=");
+    line += musicAutoLamp ? F("ON") : F("OFF");
+    line += F("|music_thr=");
+    line += fmtF(musicAutoThr, 2);
+    line += F("|music_mode=");
+    line += (musicMode == 1 ? F("beat") : F("direct"));
+    line += F("|music_mod=");
+    line += fmtF(musicModScale, 3);
+    line += F("|music_kick_ms=");
+    line += (musicLastKickMs > 0 ? String(millis() - musicLastKickMs) : F("N/A"));
+    line += F("|music_env=");
+    line += fmtF(musicFiltered, 3);
+    line += F("|music_level=");
+    line += fmtF(musicRawLevel, 3);
+    line += F("|music_smooth=");
+    line += fmtF(musicSmoothing, 2);
+    line += F("|clap=");
+    line += clapEnabled ? F("ON") : F("OFF");
+    line += F("|clap_thr=");
+    line += fmtF(clapThreshold, 2);
+    line += F("|clap_cool=");
+    line += String(clapCooldownMs);
+    line += F("|clap_cmd1=");
+    line += clapCmd1;
+    line += F("|clap_cmd2=");
+    line += clapCmd2;
+    line += F("|clap_cmd3=");
+    line += clapCmd3;
+#else
+    line += F("music=N/A|clap=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printPotiStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(300);
+        reserved = true;
+    }
+    line = F("POTI|");
+#if ENABLE_POTI
+    line += F("poti=");
+    line += potiEnabled ? F("ON") : F("OFF");
+    line += F("|poti_alpha=");
+    line += fmtF(potiAlpha, 2);
+    line += F("|poti_delta=");
+    line += fmtF(potiDeltaMin, 3);
+    line += F("|poti_off=");
+    line += fmtF(potiOffThreshold, 3);
+    line += F("|poti_sample=");
+    line += String(potiSampleMs);
+    line += F("|poti_min=");
+    line += fmtF(potiCalibMin, 3);
+    line += F("|poti_max=");
+    line += fmtF(potiCalibMax, 3);
+    line += F("|poti_inv=");
+    line += potiInvert ? F("1") : F("0");
+    line += F("|poti_mode=");
+    line += (potiRole == POTI_ROLE_MODE_SCAN) ? F("scan") : F("brightness");
+    line += F("|poti_target=");
+    line += (potiTarget == CHANNEL_TARGET_ALL) ? F("all") : String(potiTarget);
+    line += F("|poti_val=");
+    line += fmtF(potiFiltered, 3);
+    line += F("|poti_raw=");
+    line += String(potiLastRaw);
+#else
+    line += F("poti=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printPushStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(150);
+        reserved = true;
+    }
+    line = F("PUSH|");
+#if ENABLE_PUSH_BUTTON
+    line += F("push=");
+    line += pushEnabled ? F("ON") : F("OFF");
+    line += F("|push_db=");
+    line += String(pushDebounceMs);
+    line += F("|push_dbl=");
+    line += String(pushDoubleMs);
+    line += F("|push_hold=");
+    line += String(pushHoldMs);
+    line += F("|push_step_ms=");
+    line += String(pushStepMs);
+    line += F("|push_step=");
+    line += fmtF(pushStep, 3);
+#else
+    line += F("push=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printPresenceStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(700);
+        reserved = true;
+    }
+    line = F("PRESENCE|");
+    line += F("presence_ble=");
+    line += presenceBleEnabled ? F("ON") : F("OFF");
+    line += F("|presence_ble_count=");
+    line += (int)presenceBleDevices.size();
+    line += F("|presence_ble_thr=");
+    line += presenceBleRssiThreshold;
+    line += F("|presence_ble_on=");
+    line += presenceBleAutoOn ? F("1") : F("0");
+    line += F("|presence_ble_off=");
+    line += presenceBleAutoOff ? F("1") : F("0");
+    line += F("|presence_ble_list=");
+    line += presenceBleListCsv();
+    line += F("|presence_ble_grace=");
+    line += presenceBleGraceMs;
+    line += F("|presence_ble_hwoverride=");
+    line += presenceBleAlwaysOverride ? F("1") : F("0");
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printFiltersStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(700);
+        reserved = true;
+    }
+    line = F("FILTERS|");
+    {
+        FilterState filt;
+        filtersGetState(filt);
+        line += F("filter_iir=");
+        line += filt.iirEnabled ? F("ON") : F("OFF");
+        line += F("|filter_alpha=");
+        line += fmtF(filt.iirAlpha, 3);
+        line += F("|filter_clip=");
+        line += filt.clipEnabled ? F("ON") : F("OFF");
+        line += F("|filter_clip_amt=");
+        line += fmtF(filt.clipAmount, 2);
+        line += F("|filter_clip_curve=");
+        line += filt.clipCurve;
+        line += F("|filter_trem=");
+        line += filt.tremEnabled ? F("ON") : F("OFF");
+        line += F("|filter_trem_rate=");
+        line += fmtF(filt.tremRateHz, 2);
+        line += F("|filter_trem_depth=");
+        line += fmtF(filt.tremDepth, 2);
+        line += F("|filter_trem_wave=");
+        line += filt.tremWave;
+        line += F("|filter_spark=");
+        line += filt.sparkEnabled ? F("ON") : F("OFF");
+        line += F("|filter_spark_dens=");
+        line += fmtF(filt.sparkDensity, 2);
+        line += F("|filter_spark_int=");
+        line += fmtF(filt.sparkIntensity, 2);
+        line += F("|filter_spark_decay=");
+        line += String(filt.sparkDecayMs);
+        line += F("|filter_comp=");
+        line += filt.compEnabled ? F("ON") : F("OFF");
+        line += F("|filter_comp_thr=");
+        line += fmtF(filt.compThr, 2);
+        line += F("|filter_comp_ratio=");
+        line += fmtF(filt.compRatio, 2);
+        line += F("|filter_comp_att=");
+        line += String(filt.compAttackMs);
+        line += F("|filter_comp_rel=");
+        line += String(filt.compReleaseMs);
+        line += F("|filter_env=");
+        line += filt.envEnabled ? F("ON") : F("OFF");
+        line += F("|filter_env_att=");
+        line += String(filt.envAttackMs);
+        line += F("|filter_env_rel=");
+        line += String(filt.envReleaseMs);
+        line += F("|filter_delay=");
+        line += filt.delayEnabled ? F("ON") : F("OFF");
+        line += F("|filter_delay_ms=");
+        line += String(filt.delayMs);
+        line += F("|filter_delay_fb=");
+        line += fmtF(filt.delayFeedback, 2);
+        line += F("|filter_delay_mix=");
+        line += fmtF(filt.delayMix, 2);
+    }
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printIoStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(400);
+        reserved = true;
+    }
+    line = F("IO|");
+#if ENABLE_EXT_INPUT
+    line += F("ext_in=");
+    line += extInputEnabled ? F("ON") : F("OFF");
+    line += F("|ext_mode=");
+    line += extInputAnalog ? F("ana") : F("dig");
+    line += F("|ext_alpha=");
+    line += fmtF(extInputAlpha, 3);
+    line += F("|ext_delta=");
+    line += fmtF(extInputDelta, 3);
+    line += F("|ext_val=");
+    line += extInputFiltered >= 0.0f ? fmtF(extInputFiltered, 3) : F("N/A");
+#endif
+#if ENABLE_BT_SERIAL
+    line += F("|bt_sleep_boot_ms=");
+    line += String(getBtSleepAfterBootMs());
+    line += F("|bt_sleep_ble_ms=");
+    line += String(getBtSleepAfterBleMs());
+#else
+    line += F("|bt_sleep_boot_ms=N/A|bt_sleep_ble_ms=N/A");
+#endif
+    line += F("|demo=");
+    line += demoActive ? F("ON") : F("OFF");
+    line += F("|out=");
+#if ENABLE_ANALOG_OUTPUT
+    line += F("ana");
+#else
+    line += F("pwm");
+#endif
+    line += F("|gamma=");
+    line += fmtF(outputGamma, 2);
+    line += F("|pwm_raw=");
+    line += String((uint32_t)lastPwmValue);
+    line += F("|pwm_max=");
+    line += String((uint32_t)PWM_MAX);
+    line += F("|bri_min=");
+    line += fmtF(briMinUser * 100.0f, 1);
+    line += F("|bri_max=");
+    line += fmtF(briMaxUser * 100.0f, 1);
+    line += F("|notif_min=");
+    line += fmtF(notifyMinBrightness * 100.0f, 1);
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printStatusAll(const bool &force)
+{
+    printStatusCore(force);
+    printRadarStructured(force);
+    printLightStructured(force);
+    printMusicStructured(force);
+    printPotiStructured(force);
+    printPushStructured(force);
+    printPresenceStructured(force);
+    printFiltersStructured(force);
+    printIoStructured(force);
 }
 
 /**

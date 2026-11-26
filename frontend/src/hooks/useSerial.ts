@@ -61,6 +61,11 @@ export function useSerial(): SerialApi {
   const portRef = useRef<SerialPort | null>(null);
   const readerCancelRef = useRef<(() => void) | undefined>(undefined);
   const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
+  // Resolved when STATUS_END| arrives after a connect, so statusReady only
+  // flips once a real snapshot has actually landed - this used to be set
+  // true immediately alongside `connected`, unlike useBle.tsx, which could
+  // race consumers that gate extra fetches on it expecting populated fields.
+  const statusEndWaiterRef = useRef<(() => void) | null>(null);
 
   const pushLog = useCallback(
     (line: string) => {
@@ -179,6 +184,7 @@ export function useSerial(): SerialApi {
                 } else {
                   setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
                 }
+                if (trimmed.startsWith('STATUS_END|')) statusEndWaiterRef.current?.();
               });
             }
           }
@@ -187,6 +193,7 @@ export function useSerial(): SerialApi {
             const trimmed = buffer.trim();
             const handled = parseStatusLine(trimmed, setStatus);
             if (!handled || !filterParsedRef.current) pushLog(trimmed);
+            if (trimmed.startsWith('STATUS_END|')) statusEndWaiterRef.current?.();
             buffer = '';
           }
         } catch (err) {
@@ -209,12 +216,24 @@ export function useSerial(): SerialApi {
       setStatus((s) => ({
         ...s,
         connected: true,
-        statusReady: true,
         connecting: false,
         deviceName: label,
       }));
       localStorage.setItem('ql-last-device-name', label);
+      const waitForCoreSnapshot = new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          statusEndWaiterRef.current = null;
+          resolve(false);
+        }, 3000);
+        statusEndWaiterRef.current = () => {
+          clearTimeout(timer);
+          statusEndWaiterRef.current = null;
+          resolve(true);
+        };
+      });
       await refreshStatus();
+      if (!(await waitForCoreSnapshot)) pushLog('Status snapshot did not arrive within 3s after connect');
+      setStatus((s) => ({ ...s, statusReady: true }));
       await sendCmd('custom export');
     } catch (e) {
       pushLog('Serial connect error: ' + e);

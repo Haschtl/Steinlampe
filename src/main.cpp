@@ -519,7 +519,7 @@ void setup()
 
   announcePattern(true);
   printHelp(true);
-  printStatusStructured(true);
+  printStatusAll(true);
   // Force printSensorsStructured()/queueLiveState()'s own one-time internal
   // buffer reservations to happen here too, in this safe, early,
   // single-threaded setup context - same reasoning as the updateBleStatus()

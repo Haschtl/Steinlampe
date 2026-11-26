@@ -1565,13 +1565,14 @@ void updateBleStatus(const String &statusPayload)
   // allocates a brand-new temporary (StringSumHelper), which reproduced a
   // real TLSF heap corruption on real hardware (see git history around this
   // comment) when combined with print.cpp's own status-string builders.
-  // 750: must cover whichever of print.cpp's own STATUS/STATUS1/STATUS2/
-  // STATUS_END lines is longest, plus the appended '\n' - those are each
-  // reserve(700) now (see print.cpp) after discovering their OWN reserve()
-  // sizes had quietly fallen under the real measured content for a while
-  // (420 vs. an actual 555 bytes, 450 vs. 494, etc.) - trust a fresh byte
-  // count over any of these round numbers if the field set grows again,
-  // this one included.
+  // 750: must cover whichever line print.cpp passes to updateBleStatus() is
+  // longest, plus the appended '\n' - that's STATUS|/STATUS_END| (the core
+  // snapshot) or any of the per-page group lines (RADAR|/FILTERS|/etc, see
+  // memory: status protocol redesign), each reserve()'d 200-1260 in print.cpp
+  // after discovering their OWN reserve() sizes had quietly fallen under the
+  // real measured content for a while (420 vs. an actual 555 bytes, 450 vs.
+  // 494, etc.) - trust a fresh byte count over any of these round numbers if
+  // the field set grows again, this one included.
   static bool payloadReserved = false;
   if (!payloadReserved)
   {

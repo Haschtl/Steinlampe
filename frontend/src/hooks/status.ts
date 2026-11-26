@@ -46,6 +46,19 @@ function parseButtonsField(raw: string): ButtonInfo[] {
     .filter((b): b is ButtonInfo => b !== null);
 }
 
+/** Splits a pipe-delimited "PREFIX|key=val|key=val|..." line into a key/value map (prefix excluded). */
+function splitKv(line: string): Record<string, string> {
+  const kv: Record<string, string> = {};
+  line
+    .split('|')
+    .slice(1)
+    .forEach((p) => {
+      const eq = p.indexOf('=');
+      if (eq > 0) kv[p.slice(0, eq)] = p.slice(eq + 1);
+    });
+  return kv;
+}
+
 export type DeviceStatus = {
   connected: boolean;
   // True once the initial post-connect status snapshot (refreshStatus()) has
@@ -499,6 +512,265 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         pushHoldMs: asInt('push_hold') ?? s.pushHoldMs,
         pushStepMs: asInt('push_step_ms') ?? s.pushStepMs,
         pushStep: asNum('push_step') ?? s.pushStep,
+      };
+    });
+    return true;
+  }
+  // Per-page status groups (status protocol redesign) - fetched on demand
+  // via "status radar"/"status light"/etc instead of riding along on every
+  // STATUS/STATUS1/STATUS2 broadcast. Each merges into the exact same
+  // DeviceStatus fields the big STATUS branch above already populates.
+  if (line.startsWith('RADAR|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasRadar = kv.radar ? isAvailable('radar') : s.hasRadar;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        hasRadar,
+        radarEnabled: kv.radar ? kv.radar.toUpperCase() === 'ON' : hasRadar === false ? false : s.radarEnabled,
+        radarPresent: kv.radar_present ? kv.radar_present === '1' : s.radarPresent,
+        radarDistanceCm: asNum('radar_dist') ?? s.radarDistanceCm,
+        radarSpeedCmS: asNum('radar_speed') ?? s.radarSpeedCmS,
+        radarTargetCount: asInt('radar_targets') ?? s.radarTargetCount,
+        radarDimEnabled: kv.radar_dim ? kv.radar_dim === '1' : s.radarDimEnabled,
+        radarDimNearCm: asNum('radar_dim_near') ?? s.radarDimNearCm,
+        radarDimFarCm: asNum('radar_dim_far') ?? s.radarDimFarCm,
+        radarMotionOnEnabled: kv.radar_motion ? kv.radar_motion === '1' : s.radarMotionOnEnabled,
+        radarMotionSpeedThr: asNum('radar_motion_thr') ?? s.radarMotionSpeedThr,
+        radarMotionHoldMs: asInt('radar_motion_hold') ?? s.radarMotionHoldMs,
+        radarOffDistanceEnabled: kv.radar_offdist ? kv.radar_offdist === '1' : s.radarOffDistanceEnabled,
+        radarOffDistanceCm: asNum('radar_off_cm') ?? s.radarOffDistanceCm,
+        radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
+        radarHwOverride: kv.radar_hwoverride ? kv.radar_hwoverride === '1' : s.radarHwOverride,
+        radarVelocityFactor: asNum('radar_velocity') ?? s.radarVelocityFactor,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('LIGHT|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasLight = kv.light ? isAvailable('light') : s.hasLight;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        hasLight,
+        lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
+        lightGain: asNum('light_gain') ?? s.lightGain,
+        lightAlpha: asNum('light_alpha') ?? s.lightAlpha,
+        lightClampMin: asNum('light_min') ?? s.lightClampMin,
+        lightClampMax: asNum('light_max') ?? s.lightClampMax,
+        lightRaw: asNum('light_raw') ?? s.lightRaw,
+        lightRawMin: asNum('light_raw_min') ?? s.lightRawMin,
+        lightRawMax: asNum('light_raw_max') ?? s.lightRawMax,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('MUSIC|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        hasMusic,
+        musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
+        musicGain: asNum('music_gain') ?? s.musicGain,
+        musicSmooth: asNum('music_smooth') ?? s.musicSmooth,
+        musicEnv: asNum('music_env') ?? s.musicEnv,
+        musicLevel: asNum('music_level') ?? s.musicLevel,
+        musicAuto: kv.music_auto ? kv.music_auto.toUpperCase() === 'ON' : s.musicAuto,
+        musicAutoThr: asNum('music_thr') ?? s.musicAutoThr,
+        musicMode: kv.music_mode ?? s.musicMode,
+        musicMod: asNum('music_mod') ?? s.musicMod,
+        musicKickMs: asNum('music_kick_ms') ?? s.musicKickMs,
+        clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
+        clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
+        clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
+        clapCmd1: kv.clap_cmd1 ?? s.clapCmd1,
+        clapCmd2: kv.clap_cmd2 ?? s.clapCmd2,
+        clapCmd3: kv.clap_cmd3 ?? s.clapCmd3,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('POTI|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
+      const potiMode = kv.poti_mode === 'scan' || kv.poti_mode === 'brightness' ? kv.poti_mode : undefined;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        hasPoti,
+        potiEnabled: kv.poti ? kv.poti.toUpperCase() === 'ON' : hasPoti === false ? false : s.potiEnabled,
+        potiAlpha: asNum('poti_alpha') ?? s.potiAlpha,
+        potiDelta: asNum('poti_delta') ?? s.potiDelta,
+        potiOff: asNum('poti_off') ?? s.potiOff,
+        potiSample: asInt('poti_sample') ?? s.potiSample,
+        potiMin: asNum('poti_min') ?? s.potiMin,
+        potiMax: asNum('poti_max') ?? s.potiMax,
+        potiInvert: kv.poti_inv ? kv.poti_inv === '1' : s.potiInvert,
+        potiMode: potiMode ?? s.potiMode,
+        potiTarget: kv.poti_target ?? s.potiTarget,
+        potiVal: asNum('poti_val') ?? s.potiVal,
+        potiRaw: asInt('poti_raw') ?? s.potiRaw,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('PUSH|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasPush = kv.push ? isAvailable('push') : s.hasPush;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        hasPush,
+        pushEnabled: kv.push ? kv.push.toUpperCase() === 'ON' : hasPush === false ? false : s.pushEnabled,
+        pushDebounceMs: asInt('push_db') ?? s.pushDebounceMs,
+        pushDoubleMs: asInt('push_dbl') ?? s.pushDoubleMs,
+        pushHoldMs: asInt('push_hold') ?? s.pushHoldMs,
+        pushStepMs: asInt('push_step_ms') ?? s.pushStepMs,
+        pushStep: asNum('push_step') ?? s.pushStep,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('PRESENCE|')) {
+    const kv = splitKv(line);
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
+    setStatus((s) => {
+      const hasPresenceBle = kv.presence_ble ? isAvailable('presence_ble') : s.hasPresenceBle;
+      const presenceBleList = kv.presence_ble_list
+        ? kv.presence_ble_list.split(',').map((x) => x.trim()).filter(Boolean)
+        : s.presenceBleList;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        presenceBle: kv.presence_ble ?? s.presenceBle,
+        hasPresenceBle,
+        presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,
+        presenceBleThreshold: asInt('presence_ble_thr') ?? s.presenceBleThreshold,
+        presenceBleAutoOn: kv.presence_ble_on ? kv.presence_ble_on === '1' : s.presenceBleAutoOn,
+        presenceBleAutoOff: kv.presence_ble_off ? kv.presence_ble_off === '1' : s.presenceBleAutoOff,
+        presenceBleList,
+        presenceBleGraceMs: asInt('presence_ble_grace') ?? s.presenceBleGraceMs,
+        presenceBleHwOverride: kv.presence_ble_hwoverride ? kv.presence_ble_hwoverride === '1' : s.presenceBleHwOverride,
+      };
+    });
+    return true;
+  }
+  if (line.startsWith('FILTERS|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    setStatus((s) => ({
+      ...s,
+      lastStatusAt: Date.now(),
+      filterIir: kv.filter_iir ? kv.filter_iir.toUpperCase() === 'ON' : s.filterIir,
+      filterIirAlpha: asNum('filter_alpha') ?? s.filterIirAlpha,
+      filterClip: kv.filter_clip ? kv.filter_clip.toUpperCase() === 'ON' : s.filterClip,
+      filterClipAmt: asNum('filter_clip_amt') ?? s.filterClipAmt,
+      filterClipCurve: asInt('filter_clip_curve') ?? s.filterClipCurve,
+      filterTrem: kv.filter_trem ? kv.filter_trem.toUpperCase() === 'ON' : s.filterTrem,
+      filterTremRate: asNum('filter_trem_rate') ?? s.filterTremRate,
+      filterTremDepth: asNum('filter_trem_depth') ?? s.filterTremDepth,
+      filterTremWave: asInt('filter_trem_wave') ?? s.filterTremWave,
+      filterSpark: kv.filter_spark ? kv.filter_spark.toUpperCase() === 'ON' : s.filterSpark,
+      filterSparkDens: asNum('filter_spark_dens') ?? s.filterSparkDens,
+      filterSparkInt: asNum('filter_spark_int') ?? s.filterSparkInt,
+      filterSparkDecay: asInt('filter_spark_decay') ?? s.filterSparkDecay,
+      filterDelay: kv.filter_delay ? kv.filter_delay.toUpperCase() === 'ON' : s.filterDelay,
+      filterDelayMs: asInt('filter_delay_ms') ?? s.filterDelayMs,
+      filterDelayFb: asNum('filter_delay_fb') ?? s.filterDelayFb,
+      filterDelayMix: asNum('filter_delay_mix') ?? s.filterDelayMix,
+      filterComp: kv.filter_comp ? kv.filter_comp.toUpperCase() === 'ON' : s.filterComp,
+      filterCompThr: asNum('filter_comp_thr') ?? s.filterCompThr,
+      filterCompRatio: asNum('filter_comp_ratio') ?? s.filterCompRatio,
+      filterCompAttack: asInt('filter_comp_att') ?? s.filterCompAttack,
+      filterCompRelease: asInt('filter_comp_rel') ?? s.filterCompRelease,
+      filterEnv: kv.filter_env ? kv.filter_env.toUpperCase() === 'ON' : s.filterEnv,
+      filterEnvAttack: asInt('filter_env_att') ?? s.filterEnvAttack,
+      filterEnvRelease: asInt('filter_env_rel') ?? s.filterEnvRelease,
+    }));
+    return true;
+  }
+  if (line.startsWith('IO|')) {
+    const kv = splitKv(line);
+    const asNum = (k: string) => {
+      const v = parseFloat(kv[k]);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    const asInt = (k: string) => {
+      const v = parseInt(kv[k] ?? '', 10);
+      return Number.isFinite(v) ? v : undefined;
+    };
+    setStatus((s) => {
+      const outputMode = kv.out ? (kv.out.toLowerCase().startsWith('ana') ? 'analog' : 'pwm') : undefined;
+      return {
+        ...s,
+        lastStatusAt: Date.now(),
+        outputMode: outputMode ?? s.outputMode,
+        pwmCurve: asNum('gamma') ?? s.pwmCurve,
+        pwmRaw: asInt('pwm_raw') ?? s.pwmRaw,
+        pwmMax: asInt('pwm_max') ?? s.pwmMax,
+        briMin: asNum('bri_min') ?? s.briMin,
+        briMax: asNum('bri_max') ?? s.briMax,
+        notifyMin: asNum('notif_min') ?? s.notifyMin,
       };
     });
     return true;

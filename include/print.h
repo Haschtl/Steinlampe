@@ -9,7 +9,7 @@
 // own String(float, decimalPlaces) constructor does a raw malloc()/free() of
 // a short-lived scratch buffer internally (WString.cpp - its int/long
 // sibling overloads correctly use a stack array instead). Called repeatedly
-// in a hot path (printStatusStructured()/emitLiveState(), or any per-change
+// in a hot path (printStatusCore()/emitLiveState(), or any per-change
 // callback like logBrightnessChange()), this repeats the same few
 // nearly-identical small malloc/free sizes rapidly enough to trip a TLSF edge
 // case. This helper does the float->string conversion into a stack buffer
@@ -38,9 +38,33 @@ void printTouchDebug(const bool &force=false);
 void printSensorsStructured(const bool &force=false);
 
 /**
- * @brief Emit a single structured status line for easier parsing (key=value pairs).
+ * @brief Emit the slimmed, always-on core status line (STATUS|/STATUS_END|) -
+ * lamp/pattern/ramp/switch/buttons and the per-feature ON/OFF glance each
+ * Home chip and the Advanced tile list need to decide whether to show at
+ * all. Formerly printStatusStructured(); STATUS1/STATUS2 are retired, their
+ * fields moved to the on-demand groups below. See memory: status protocol
+ * redesign.
  */
-void printStatusStructured(const bool &force=false);
+void printStatusCore(const bool &force=false);
+
+// Per-page status groups, fetched on demand ("status radar" etc.) instead of
+// riding along on every printStatusCore() broadcast.
+void printRadarStructured(const bool &force=false);
+void printLightStructured(const bool &force=false);
+void printMusicStructured(const bool &force=false);
+void printPotiStructured(const bool &force=false);
+void printPushStructured(const bool &force=false);
+void printPresenceStructured(const bool &force=false);
+void printFiltersStructured(const bool &force=false);
+void printIoStructured(const bool &force=false);
+
+/**
+ * @brief Broadcasts everything: printStatusCore() plus every on-demand group
+ * above. For the genuinely broad-change call sites only (boot, a full
+ * defaults/profile/config load) - everything else should call printStatusCore()
+ * alone, or the one group it actually touched.
+ */
+void printStatusAll(const bool &force=false);
 
 /**
  * @brief Queue a compact state event for connected UIs.

@@ -296,7 +296,7 @@ bool loadProfileSlot(uint8_t slot, bool announce)
     if (announce)
     {
         sendFeedback(String(F("[Profile] Loaded slot ")) + String(slot));
-        printStatusStructured();
+        printStatusAll();
     }
     return true;
 }
@@ -1840,5 +1840,5 @@ void importConfig(const String &args)
     sendFeedback(F("[Config] Imported"));
     if (briMaxUser < briMinUser)
         briMaxUser = briMinUser;
-    printStatusStructured();
+    printStatusAll();
 }
