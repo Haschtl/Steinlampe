@@ -24,7 +24,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.x'
+          # Pinned, not '3.x' - see ci.yml's own comment on this: a brand-new
+          # CPython release can lack a prebuilt pydantic-core wheel, which
+          # breaks installing PlatformIO's esp-idf tooling.
+          python-version: '3.12'
 
       - name: Install PlatformIO
         run: |

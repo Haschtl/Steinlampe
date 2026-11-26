@@ -32,6 +32,7 @@ extern "C"
 #include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_networking_api.h"
 #include "esp_ble_mesh_provisioning_api.h"
+#include "services/gap/ble_svc_gap.h" // ble_svc_gap_device_name_set() - see meshSetup()'s own comment
 #if ENABLE_BLE_MESH_PROVISIONER
 #include "esp_ble_mesh_local_data_operation_api.h" // esp_ble_mesh_get_primary_element_address()
 #include "host/ble_gap.h"                          // ble_gap_disc_active()
@@ -400,6 +401,20 @@ void lightingServerCallback(esp_ble_mesh_lighting_server_cb_event_t event, esp_b
         // Lightness - map directly onto our own 0..100% brightness scale.
         uint16_t lightness = param->value.state_change.lightness_set.lightness;
         float pct = percentFromLightness(lightness);
+        // The Mesh Model spec binds Light Lightness Actual <-> Generic
+        // OnOff (lightness > 0 implies OnOff = on, 0 implies off);
+        // esp_ble_mesh is supposed to re-derive and fire a matching Generic
+        // OnOff state_change for genericServerCallback() to pick up, but
+        // that wasn't observed reaching the real lamp here - confirmed live
+        // via Home Assistant's SIG Mesh plugin: turning off (lightness ->
+        // 0, which also visually dims to black on its own) then back on
+        // (lightness -> nonzero only, no separate Generic OnOff Set seen)
+        // left the lamp dark, because setBrightnessPercent() alone can't
+        // un-gate main.cpp's `lampEnabled ? ... : 0.0f` output gate. Enforce
+        // the binding explicitly instead of depending on the stack for it.
+        bool shouldBeOn = lightness > 0;
+        if (shouldBeOn != lampEnabled)
+            setLampEnabled(shouldBeOn, "mesh lightness", shouldBeOn);
         setBrightnessPercent(pct, false, false, false);
         sendFeedback(String(F("[Mesh] Lightness -> ")) + fmtF(pct, 1) + F("%"));
     }
@@ -693,6 +708,14 @@ void meshSetup()
         ESP_LOGE(TAG, "esp_ble_mesh_init failed: %d", err);
         return;
     }
+    // esp_ble_mesh_init() -> bt_mesh_proxy_server_init() unconditionally
+    // overwrites the NimBLE GAP device name to its own hardcoded
+    // "ESP-BLE-MESH" (esp_ble_mesh/core/proxy_server.c), clobbering the
+    // real name startBle() already set before this ran - confirmed on real
+    // hardware as the lamp showing up as "ESP-BLE-MESH" instead of its own
+    // name in a SIG Mesh provisioner app. Both calls go through the same
+    // ble_svc_gap_device_name_set() in the end, so just re-apply ours.
+    ble_svc_gap_device_name_set(getBleName().c_str());
     ESP_ERROR_CHECK(esp_ble_mesh_register_prov_callback(provisioningCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_config_server_callback(configServerCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_server_callback(genericServerCallback));

@@ -16,7 +16,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.x'
+          # Pinned, not '3.x': a brand-new CPython release often has no
+          # prebuilt pydantic-core wheel yet, which forces a from-source
+          # build (needs a Rust/maturin toolchain this bare runner doesn't
+          # have) and breaks installing PlatformIO's esp-idf tooling
+          # (idf_component_manager depends on pydantic).
+          python-version: '3.12'
 
       - name: Install PlatformIO
         run: |
