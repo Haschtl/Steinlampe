@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Pencil } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Loader2, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
@@ -22,6 +22,26 @@ export function DeviceBTCard() {
   const [editOpen, setEditOpen] = useState(false);
   const [editValue, setEditValue] = useState(bleName);
   const [clearBondsOpen, setClearBondsOpen] = useState(false);
+  const [reloadingTrust, setReloadingTrust] = useState(false);
+
+  // "trust list" alone already returns the trust list AND the bond list in
+  // one go (trustListFeedback() on the firmware prints both) - there was
+  // never a need for the separate "trust ble bonds" command/button, which
+  // is also why the two sections showed what looked like the same data
+  // twice. Merged into one reload + one list below.
+  const reloadTrust = () => {
+    setReloadingTrust(true);
+    sendCmdReliable('trust list').catch(() => undefined).finally(() => setReloadingTrust(false));
+  };
+
+  // Trust (app-level authorization) and bonds (the BLE stack's own crypto
+  // keys) are different things underneath - see desc.bleBonds below - but
+  // in the one list the user actually looks at, showing the union once
+  // with a small per-entry note is simpler than two near-duplicate lists.
+  const allAddrs = useMemo(() => {
+    const set = new Set<string>([...(status.trustedBle || []), ...(status.trustedBleBonds || [])]);
+    return Array.from(set);
+  }, [status.trustedBle, status.trustedBleBonds]);
 
   const handleClearBonds = () => {
     setClearBondsOpen(false);
@@ -69,14 +89,21 @@ export function DeviceBTCard() {
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-medium"><Trans k="title.trustController">Controller trusted devices</Trans></div>
-            <Button size="sm" variant="ghost" onClick={() => sendCmdReliable('trust list').catch(() => undefined)}>
+            <div className="text-sm font-medium"><Trans k="title.trustController">Trusted devices</Trans></div>
+            <Button size="sm" variant="ghost" disabled={reloadingTrust} onClick={reloadTrust}>
+              {reloadingTrust ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               <Trans k="btn.reload">Reload</Trans>
             </Button>
           </div>
+          <p className="text-xs text-muted">
+            <Trans k="desc.bleBonds">
+              Devices allowed to send commands. Clear bonds (below) if the OS keeps showing pairing prompts or a
+              reconnect fails right after a reflash.
+            </Trans>
+          </p>
           <div className="rounded-md border border-border/60 bg-bg/60 p-2 space-y-2">
             <div className="flex flex-wrap gap-2">
-              {(status.trustedBle || []).map((addr) => (
+              {allAddrs.map((addr) => (
                 <div key={addr} className="flex items-center gap-1 rounded-full bg-muted/30 px-2 py-1 text-xs">
                   <span className="max-w-[160px] truncate">{addr}</span>
                   <button
@@ -89,34 +116,8 @@ export function DeviceBTCard() {
                   </button>
                 </div>
               ))}
-              {(!status.trustedBle || status.trustedBle.length === 0) && (
+              {allAddrs.length === 0 && (
                 <span className="text-xs text-muted"><Trans k="label.noDevices">No trusted devices yet</Trans></span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-medium"><Trans k="title.bleBonds">BLE bonds</Trans></div>
-            <Button size="sm" variant="ghost" onClick={() => sendCmdReliable('trust ble bonds').catch(() => undefined)}>
-              <Trans k="btn.reload">Reload</Trans>
-            </Button>
-          </div>
-          <p className="text-xs text-muted">
-            <Trans k="desc.bleBonds">
-              The actual pairing/encryption keys (separate from the trust list above). Clear these if the OS keeps
-              showing pairing prompts or a reconnect fails right after a reflash.
-            </Trans>
-          </p>
-          <div className="rounded-md border border-border/60 bg-bg/60 p-2 space-y-2">
-            <div className="flex flex-wrap gap-2">
-              {(status.trustedBleBonds || []).map((addr) => (
-                <span key={addr} className="rounded-full bg-muted/30 px-2 py-1 text-xs">
-                  {addr}
-                </span>
-              ))}
-              {(!status.trustedBleBonds || status.trustedBleBonds.length === 0) && (
-                <span className="text-xs text-muted"><Trans k="label.noBonds">No bonds stored</Trans></span>
               )}
             </div>
             <Button size="sm" variant="danger" onClick={() => setClearBondsOpen(true)}>

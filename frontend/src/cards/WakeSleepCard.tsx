@@ -17,6 +17,8 @@ export function WakeSleepCard() {
   const [wakeBri, setWakeBri] = useState('');
   const [wakeSoft, setWakeSoft] = useState(false);
   const [sleepMinutes, setSleepMinutes] = useState(15);
+  const [wakePending, setWakePending] = useState(false);
+  const [sleepPending, setSleepPending] = useState(false);
 
   const patternOptions = useMemo(() => {
     const count = status.patternCount || patternLabels.length;
@@ -34,7 +36,13 @@ export function WakeSleepCard() {
   // otherwise just sit stale in the frontend until something else happened
   // to trigger a refresh. Same explicit-refresh pattern already used after
   // profile load/save.
-  const runAndRefresh = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+  const runAndRefresh = (cmd: string, setPending: (v: boolean) => void) => {
+    setPending(true);
+    sendCmdReliable(cmd)
+      .then(() => refreshStatus())
+      .catch((e) => console.warn(e))
+      .finally(() => setPending(false));
+  };
 
   const handleWake = () => {
     const parts = ['wake'];
@@ -42,7 +50,7 @@ export function WakeSleepCard() {
     if (wakeMode.trim()) parts.push(`mode=${wakeMode.trim()}`);
     if (wakeBri.trim()) parts.push(`bri=${wakeBri.trim()}`);
     parts.push(String(Math.max(1, wakeDuration || 1)));
-    runAndRefresh(parts.join(' '));
+    runAndRefresh(parts.join(' '), setWakePending);
   };
 
   const wakeActive = status.wakeActive ?? false;
@@ -68,8 +76,9 @@ export function WakeSleepCard() {
           </div>
           <ActiveToggleButton
             active={wakeActive}
+            pending={wakePending}
             onStart={handleWake}
-            onStop={() => runAndRefresh('wake stop')}
+            onStop={() => runAndRefresh('wake stop', setWakePending)}
             startIcon={Sun}
             stopIcon={Sun}
             startLabel={<Trans k="btn.wake">Wake</Trans>}
@@ -123,8 +132,9 @@ export function WakeSleepCard() {
           </div>
           <ActiveToggleButton
             active={sleepActive}
-            onStart={() => runAndRefresh(`sleep ${Math.max(1, sleepMinutes || 1)}`)}
-            onStop={() => runAndRefresh('sleep stop')}
+            pending={sleepPending}
+            onStart={() => runAndRefresh(`sleep ${Math.max(1, sleepMinutes || 1)}`, setSleepPending)}
+            onStop={() => runAndRefresh('sleep stop', setSleepPending)}
             startIcon={Moon}
             stopIcon={Moon}
             startLabel={<Trans k="btn.sleep">Sleep</Trans>}

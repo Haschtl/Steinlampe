@@ -432,7 +432,6 @@ export function useBle(): BleApi {
         // status snapshot above for the shared BLE notify queue/characteristic.
         setStatus((s) => ({ ...s, statusReady: true }));
         statusEverReadyRef.current = true;
-        await sendCmd('custom export');
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const lower = msg.toLowerCase();

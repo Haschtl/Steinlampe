@@ -414,6 +414,52 @@ static std::deque<String> bleNotifyQueue;
 static String bleNotifyCurrent;
 static size_t bleNotifyOffset = 0;
 static uint32_t bleLastNotifyMs = 0;
+// Set right after a chunk is handed to ble_gatts_indicate_custom(), cleared
+// only once BLE_GAP_EVENT_NOTIFY_TX reports the *final* outcome (status != 0:
+// BLE_HS_EDONE once the peer's confirmation arrives, or BLE_HS_ETIMEOUT/an
+// error if it never does) - see that event's own handler in bleGapEvent()
+// for why this exists: ble_gatts_indicate_custom() does NOT itself refuse or
+// queue a second indicate while a previous one to the same connection is
+// still unconfirmed (verified by reading nimble/.../ble_gattc.c directly -
+// it only has a debug-only assert for that case, a no-op in a release
+// build), so without this flag flushBleNotification() was firing a new
+// indicate every BLE_NOTIFY_INTERVAL_MS regardless of whether the previous
+// one was ever acknowledged - the exact "send and hope" pattern switching to
+// INDICATE was meant to get away from in the first place.
+static volatile bool bleIndicatePending = false;
+static uint32_t bleIndicatePendingSinceMs = 0;
+// Safety net, not the normal path: if a client disconnects (or anything else
+// goes wrong) between an indicate being sent and its confirmation event,
+// nothing would ever clear bleIndicatePending otherwise, permanently
+// stalling every future status update. NimBLE's own indicate confirmation
+// timeout is much longer than this is ever expected to matter in practice.
+static constexpr uint32_t BLE_INDICATE_PENDING_TIMEOUT_MS = 3000;
+
+extern "C" void quarzlampeBleNotifyTxEvent(uint16_t attr_handle, int status, uint8_t indication);
+
+// Called from two places: (a) bleGapEvent() below, for a connection that came
+// in through our OWN ble_gap_adv_start() call; (b) scripts/patch_mesh_notify_tx.py's
+// patch into esp_ble_mesh's own gap_event_cb() (core/nimble_host/adapter.c),
+// for a connection that came in through Mesh's own advertising instead -
+// which is every real phone connection once Mesh is active, since mesh's own
+// gap_event_cb() owns that connection's GAP events entirely and BLE_GAP_EVENT_
+// NOTIFY_TX never reaches ours at all otherwise (same reasoning as
+// authorizeBleConn()'s comment, and the same gap the ENC_CHANGE bond-cleanup
+// patch already had to work around - found the hard way when this exact
+// event turned out to be the one still missing it, after a live device test
+// showed every single indicate chunk falling back to bleIndicatePending's
+// safety timeout instead of ever seeing a real confirmation).
+extern "C" void quarzlampeBleNotifyTxEvent(uint16_t attr_handle, int status, uint8_t indication)
+{
+  // status==0 only means "the ATT PDU was sent", not a confirmation - see
+  // bleIndicatePending's own comment. Only the later, final-outcome event
+  // (BLE_HS_EDONE/BLE_HS_ETIMEOUT/an error, all nonzero) should clear it.
+  if (indication && attr_handle == bleStatusCharHandle && status != 0)
+  {
+    bleIndicatePending = false;
+  }
+}
+
 static SemaphoreHandle_t bleNotifyMutex = nullptr;
 static constexpr size_t BLE_NOTIFY_QUEUE_MAX = 64;
 static constexpr uint32_t BLE_NOTIFY_INTERVAL_MS = 8;
@@ -424,6 +470,25 @@ static constexpr uint8_t BLE_MAX_CONCURRENT_CLIENTS = 3;
 // Tracks connected conn_handles - the native API has no single "list all
 // connected peers" helper the way NimBLEServer::getPeerDevices() did.
 static std::vector<uint16_t> bleConnHandles;
+
+extern "C" void quarzlampeBleDisconnectEvent(uint16_t connHandle);
+
+// Called from scripts/patch_mesh_notify_tx.py's patch into esp_ble_mesh's
+// own gap_event_cb() (core/nimble_host/adapter.c), for a connection that
+// came in through Mesh's own advertising - same reasoning as
+// quarzlampeBleNotifyTxEvent()'s own comment, and the counterpart to
+// authorizeBleConn()'s lazy bleConnHandles registration: that covers a
+// mesh-routed connection becoming notify/indicate-capable (any GATT access
+// triggers it), this is what stops tracking it once it's gone, since there
+// is no equivalent lazy hook for "a client just disconnected" the way there
+// is for "a client just did something".
+extern "C" void quarzlampeBleDisconnectEvent(uint16_t connHandle)
+{
+  auto it = std::find(bleConnHandles.begin(), bleConnHandles.end(), connHandle);
+  if (it != bleConnHandles.end())
+    bleConnHandles.erase(it);
+  bleClientConnected = !bleConnHandles.empty();
+}
 
 // Parses one of our settings.h UUID strings ("d94d86d7-...") into a native
 // ble_uuid128_t at runtime, rather than hand-transcribing reversed byte
@@ -495,6 +560,7 @@ static void flushBleNotification()
   {
     bleNotifyCurrent = "";
     bleNotifyOffset = 0;
+    bleIndicatePending = false;
     if (bleNotifyMutex && xSemaphoreTake(bleNotifyMutex, 0) == pdTRUE)
     {
       bleNotifyQueue.clear();
@@ -504,6 +570,15 @@ static void flushBleNotification()
   }
 
   uint32_t now = millis();
+  if (bleIndicatePending)
+  {
+    if ((now - bleIndicatePendingSinceMs) < BLE_INDICATE_PENDING_TIMEOUT_MS)
+      return;
+    // Timed out waiting for a confirmation that's never coming (see the
+    // flag's own comment) - give up on it and let the next chunk go out
+    // rather than stay stuck forever.
+    bleIndicatePending = false;
+  }
   if ((now - bleLastNotifyMs) < BLE_NOTIFY_INTERVAL_MS)
     return;
 
@@ -538,20 +613,28 @@ static void flushBleNotification()
   size_t remaining = bleNotifyCurrent.length() - bleNotifyOffset;
   size_t length = remaining < chunkSize ? remaining : chunkSize;
   const uint8_t *data = reinterpret_cast<const uint8_t *>(bleNotifyCurrent.c_str() + bleNotifyOffset);
-  // ble_gatts_notify_custom() consumes the mbuf regardless of outcome and
+  // ble_gatts_indicate_custom() consumes the mbuf regardless of outcome and
   // returns a status - only advance past this chunk on success, same
   // retry-on-congestion reasoning as the old NimBLECharacteristic::notify()
-  // return-value check this replaces.
+  // return-value check this replaces. Unlike that old comment used to claim,
+  // this call does NOT itself refuse (or queue) a second indicate while a
+  // previous one to the same connection is still unconfirmed - verified by
+  // reading nimble/.../ble_gattc.c directly, it only has a debug-only
+  // assert for that case. bleIndicatePending (set below, cleared by
+  // BLE_GAP_EVENT_NOTIFY_TX in bleGapEvent()) is what actually waits for the
+  // peer's confirmation before this function is even called again.
   bool sent = false;
   for (uint16_t connHandle : bleConnHandles)
   {
     struct os_mbuf *om = ble_hs_mbuf_from_flat(data, length);
-    if (om && ble_gatts_notify_custom(connHandle, bleStatusCharHandle, om) == 0)
+    if (om && ble_gatts_indicate_custom(connHandle, bleStatusCharHandle, om) == 0)
       sent = true;
   }
   bleLastNotifyMs = now;
   if (!sent)
     return;
+  bleIndicatePending = true;
+  bleIndicatePendingSinceMs = now;
   bleNotifyOffset += length;
 
   if (bleNotifyOffset >= bleNotifyCurrent.length())
@@ -658,6 +741,29 @@ static bool authorizeBleConn(uint16_t connHandle)
   struct ble_gap_conn_desc desc;
   if (ble_gap_conn_find(connHandle, &desc) != 0)
     return false;
+  // bleConnHandles/bleClientConnected are read by sendFeedback()/
+  // flushBleNotification() to decide whether there's anyone to notify/
+  // indicate at all - but they're ONLY ever written from comms.cpp's own
+  // BLE_GAP_EVENT_CONNECT/DISCONNECT, which (like ENC_CHANGE and
+  // NOTIFY_TX above) never fires for a connection that came in through
+  // Mesh's own advertising. Found live (2026-11-26) after the NOTIFY_TX
+  // forwarding fix alone still left BLE delivery completely dead for a
+  // real phone: bleClientConnected was permanently false for every
+  // mesh-routed connection, so sendFeedback() never even queued anything
+  // in the first place - every earlier "it partially works" observation
+  // this session was actually the frontend's separate plain-GATT-read
+  // fallback in refreshStatus(), which doesn't depend on this at all, not
+  // genuine notify/indicate delivery. Registering it here means any live,
+  // encrypted GATT access (which every command write triggers) is enough
+  // to mark the connection as notify/indicate-capable, regardless of which
+  // advertiser brought it in. The disconnect side still needs the mesh
+  // adapter.c patch (see quarzlampeBleDisconnectEvent()) since there's no
+  // equivalent lazy hook for "a client just went away".
+  if (std::find(bleConnHandles.begin(), bleConnHandles.end(), connHandle) == bleConnHandles.end())
+  {
+    bleConnHandles.push_back(connHandle);
+    bleClientConnected = true;
+  }
   // Belt-and-suspenders: BLE_GATT_CHR_F_WRITE_ENC on the characteristic
   // itself already makes the ATT server refuse this access callback from
   // ever running at all on an unencrypted link.
@@ -776,10 +882,28 @@ static struct ble_gatt_chr_def bleSvcChars[] = {
     {
         .uuid = &bleStatusCharUuid.u,
         .access_cb = bleStatusAccessCb,
-        // NOTIFY only (no INDICATE) - the firmware only ever calls
-        // ble_gatts_notify_custom(), and the host manages the 0x2902 CCCD
-        // automatically from the characteristic's flags.
-        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY,
+        // INDICATE, not NOTIFY: a plain GATT notification has zero delivery
+        // guarantee at the ATT layer - the host only confirms it handed the
+        // packet to the link layer, never that the peer actually received
+        // it. That's survivable for a single short packet, but a long
+        // multi-page status snapshot at the default (and, per observed
+        // real-world behavior, often never renegotiated-larger) 23-byte ATT
+        // MTU needs ~20-35 fragments per STATUS/STATUS1/STATUS2 line -
+        // confirmed on a real device (2026-11-26) that those long lines
+        // never arrive at all while the much shorter STATUS_END line
+        // reliably does, exactly the pattern you'd expect if any single
+        // fragment among many gets silently dropped over the air. INDICATE
+        // requires the peer to ack each packet before the next one goes
+        // out, which both paces transmission and gives the link layer an
+        // actual chance to retry a dropped packet instead of silently
+        // moving on. flushBleNotification() already only advances past a
+        // chunk when the send call itself reports success, so the natural
+        // "ack not back yet -> retry the same chunk" behavior this needs is
+        // already in place; this project has already hit the same
+        // "unacknowledged BLE operation silently drops data" failure mode
+        // once before, on the command-write side (writeValueWithoutResponse
+        // on Android - see ProfileSlotsCard.tsx's sendCmdReliable usage).
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_INDICATE,
         .val_handle = &bleStatusCharHandle,
     },
     {0},
@@ -961,6 +1085,14 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
     // either way, nothing else to do here.
     break;
   }
+  case BLE_GAP_EVENT_NOTIFY_TX:
+    // Only reaches here for a connection that came in through our OWN
+    // startBleAdvertising() - see quarzlampeBleNotifyTxEvent()'s own comment
+    // for the mesh-routed case (every real phone connection, once Mesh is
+    // active) and why that one needs a patch into the vendored mesh adapter
+    // instead of just this handler.
+    quarzlampeBleNotifyTxEvent(event->notify_tx.attr_handle, event->notify_tx.status, event->notify_tx.indication);
+    break;
   case BLE_GAP_EVENT_ADV_COMPLETE:
 #if !ENABLE_BLE_MESH
     startBleAdvertising();

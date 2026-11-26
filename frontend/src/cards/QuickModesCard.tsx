@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
-import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { useConnection } from '@/context/connection';
-import { patternLabel, patternLabels } from '@/data/patterns';
+import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
 import { PROFILE_SLOTS } from '@/data/profiles';
 import { Trans, useI18n } from '@/i18n';
 
 export function QuickModesCard() {
   const { t } = useI18n();
-  const { status, refreshStatus, sendCmd } = useConnection();
+  const { status, sendCmd } = useConnection();
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSelection, setQuickSelection] = useState<number[]>([]);
 
@@ -40,6 +40,21 @@ export function QuickModesCard() {
     return [...base, ...profileOpts].filter((p) => p.idx <= quickMax);
   }, [status.patternCount, t, quickMax]);
 
+  const searching = quickSearch.trim().length > 0;
+  const filteredFlat = useMemo(
+    () => patternOptions.filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase())),
+    [patternOptions, quickSearch],
+  );
+  const groupedOptions = useMemo(() => {
+    const patternCount = status.patternCount || patternLabels.length;
+    const groups = patternGroups
+      .map((g) => ({ title: g.title, items: patternOptions.filter((p) => g.indices.includes(p.idx)) }))
+      .filter((g) => g.items.length > 0);
+    const profileItems = patternOptions.filter((p) => p.idx > patternCount);
+    if (profileItems.length > 0) groups.push({ title: t('title.profiles', 'Profiles'), items: profileItems });
+    return groups;
+  }, [patternOptions, status.patternCount, t]);
+
   const toggleQuickSelection = (idx: number) => {
     setQuickSelection((prev) => (prev.includes(idx) ? prev.filter((n) => n !== idx) : [...prev, idx].sort((a, b) => a - b)));
   };
@@ -65,21 +80,32 @@ export function QuickModesCard() {
         <Input placeholder={t('search.pattern', 'Search pattern')} value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} className="w-40" />
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
-          {patternOptions
-            .filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase()))
-            .map((p) => (
+        {searching ? (
+          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+            {filteredFlat.map((p) => (
               <label key={p.idx} className="pill cursor-pointer whitespace-nowrap">
                 <input type="checkbox" className="accent-accent" checked={quickSelection.includes(p.idx)} onChange={() => toggleQuickSelection(p.idx)} /> {p.label}
               </label>
             ))}
-        </div>
+          </div>
+        ) : (
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {groupedOptions.map((g) => (
+              <Collapsible key={g.title} title={g.title}>
+                <div className="flex flex-wrap gap-2">
+                  {g.items.map((p) => (
+                    <label key={p.idx} className="pill cursor-pointer whitespace-nowrap">
+                      <input type="checkbox" className="accent-accent" checked={quickSelection.includes(p.idx)} onChange={() => toggleQuickSelection(p.idx)} /> {p.label}
+                    </label>
+                  ))}
+                </div>
+              </Collapsible>
+            ))}
+          </div>
+        )}
         <div className="text-sm text-muted">Current: {status.quickCsv || '—'}</div>
         <div className="flex gap-2">
           <Button onClick={saveQuickSelection}><Trans k="btn.saveQuick">Save quick list</Trans></Button>
-          <Button onClick={refreshStatus}>
-            <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.reload">Reload</Trans>
-          </Button>
         </div>
         <p className="text-sm text-muted"><Trans k="desc.tapSwitch">Tap the physical switch to cycle through selected quick modes.</Trans></p>
       </CardContent>

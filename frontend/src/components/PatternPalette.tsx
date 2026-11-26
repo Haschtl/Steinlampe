@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Palette } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Collapsible } from '@/components/ui/collapsible';
 import { useConnection } from '@/context/connection';
 import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
 import { getPatternBrightness } from '@/lib/patternSim';
@@ -69,14 +68,13 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
         <DialogHeader>
           <DialogTitle>Pattern Palette</DialogTitle>
         </DialogHeader>
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+        <div className="max-h-[70vh] space-y-2 overflow-y-auto">
           {patternGroups.map((group) => {
             const items = patternOptions.filter((p) => group.indices.includes(p.idx));
             if (items.length === 0) return null;
             return (
-              <div key={group.title} className="space-y-2">
-                <div className="text-xs uppercase tracking-wide text-muted">{group.title}</div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Collapsible key={group.title} title={group.title}>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((p) => {
                     const bg = patternPreview(p.idx);
                     const speed = status.patternSpeed ?? 1;
@@ -96,11 +94,11 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                           sendCmd(`mode ${p.idx}`);
                           setOpen(false);
                         }}
-                    className="relative overflow-hidden rounded-2xl border border-border/70 p-4 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    <motion.div
-                      className="absolute inset-0"
-                      style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
+                        className="relative min-h-[84px] overflow-hidden rounded-xl border border-border/70 p-2.5 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
+                      >
+                        <motion.div
+                          className="absolute inset-0"
+                          style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
                         />
                         <motion.div
                           className="absolute inset-0"
@@ -108,17 +106,17 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
                         />
                         <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
                         <div className="relative flex items-center justify-between">
-                          <div className="h-10 w-10 rounded-full bg-white/10 shadow-inner" />
+                          <div className="h-7 w-7 rounded-full bg-white/10 shadow-inner" />
                         </div>
-                        <div className="absolute inset-x-0 bottom-0 bg-black/40 px-3 py-2 backdrop-blur-sm">
-                          <div className="text-xs uppercase tracking-wide text-muted">Mode {p.idx}</div>
-                          <div className="text-base font-semibold text-text drop-shadow-sm">{p.label}</div>
+                        <div className="absolute inset-x-0 bottom-0 bg-black/40 px-2 py-1.5 backdrop-blur-sm">
+                          <div className="text-[10px] uppercase tracking-wide text-muted">Mode {p.idx}</div>
+                          <div className="truncate text-sm font-semibold text-text drop-shadow-sm">{p.label}</div>
                         </div>
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              </Collapsible>
             );
           })}
         </div>

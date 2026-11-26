@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import { Loader2, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,14 @@ type Props = {
   startIcon: LucideIcon;
   stopIcon: LucideIcon;
   disabled?: boolean;
+  // True while a write triggered by this button is in flight (write confirmed
+  // sent is as precise as this can get without the protocol carrying request/
+  // response correlation - see memory: a full status round-trip to confirm
+  // the *result* can itself take seconds under the current protocol). Shows a
+  // spinner in place of the icon and disables the button, so a slow
+  // round-trip at least gets immediate feedback instead of looking like
+  // nothing happened - and can't be double-fired by an impatient second tap.
+  pending?: boolean;
   className?: string;
 };
 
@@ -28,13 +36,14 @@ export function ActiveToggleButton({
   startIcon: StartIcon,
   stopIcon: StopIcon,
   disabled,
+  pending,
   className,
 }: Props) {
   const Icon = active ? StopIcon : StartIcon;
   return (
     <button
       type="button"
-      disabled={disabled}
+      disabled={disabled || pending}
       onClick={active ? onStop : onStart}
       className={cn(
         'flex w-full items-center justify-center gap-2 rounded-2xl border px-5 py-4 text-base font-semibold shadow-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:cursor-not-allowed disabled:opacity-50',
@@ -44,7 +53,7 @@ export function ActiveToggleButton({
         className,
       )}
     >
-      <Icon className="h-5 w-5" />
+      {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Icon className="h-5 w-5" />}
       {active ? stopLabel : startLabel}
     </button>
   );

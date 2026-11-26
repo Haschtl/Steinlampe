@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -59,6 +58,17 @@ export function CustomPatternCard() {
   const [customCsv, setCustomCsv] = useState('');
   const [customStep, setCustomStep] = useState(400);
   const [loadedFromStatus, setLoadedFromStatus] = useState(false);
+
+  // "custom export" (the only thing that populates status.customCsv - the
+  // plain "status raw" snapshot already covers customLen/customStepMs on
+  // their own) used to be fetched eagerly on every BLE connect regardless of
+  // whether this card was even shown - it no longer lives on Home, so fetch
+  // it lazily here instead, the same way ProfileSlotsCard fetches its own
+  // previews only once mounted and connected.
+  useEffect(() => {
+    if (status.connected && status.statusReady) sendCmd('custom export').catch((e) => console.warn(e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.connected, status.statusReady]);
 
   useEffect(() => {
     if (status.customCsv && !loadedFromStatus) {
@@ -129,7 +139,6 @@ export function CustomPatternCard() {
             <Trans k="btn.apply">Apply</Trans>
           </Button>
           <Button onClick={() => setCustomCsv('')}><Trans k="btn.clear">Clear</Trans></Button>
-          <Button onClick={() => sendCmd('custom export')}><RefreshCw className="mr-1 h-4 w-4" /><Trans k="btn.reload">Reload</Trans></Button>
         </div>
         <p className="text-sm text-muted">
           Current: len={status.customLen ?? '--'} step={status.customStepMs ?? '--'}ms

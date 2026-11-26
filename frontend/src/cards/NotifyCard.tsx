@@ -24,6 +24,7 @@ export function NotifyCard() {
   const [notifyFade, setNotifyFade] = useState(0);
   const [notifyRepeat, setNotifyRepeat] = useState(1);
   const [notifyMin, setNotifyMin] = useState(10);
+  const [pending, setPending] = useState(false);
   const active = status.notifyActive ?? false;
 
   useEffect(() => {
@@ -47,7 +48,13 @@ export function NotifyCard() {
 
   // write-with-response + explicit refresh - see the identical comment in
   // WakeSleepCard.tsx (memory: firmware-status-fields-added-2026-11).
-  const runAndRefresh = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+  const runAndRefresh = (cmd: string) => {
+    setPending(true);
+    sendCmdReliable(cmd)
+      .then(() => refreshStatus())
+      .catch((e) => console.warn(e))
+      .finally(() => setPending(false));
+  };
 
   const handleNotify = (seq: string, fade?: number, repeat = 1) => {
     const cmd = buildNotifyCmd(seq, fade, repeat);
@@ -71,7 +78,7 @@ export function NotifyCard() {
               <Bell className="h-4 w-4 animate-pulse" />
               <Trans k="label.notifyRunning">Benachrichtigung läuft…</Trans>
             </div>
-            <Button size="sm" variant="danger" onClick={stop}>
+            <Button size="sm" variant="danger" disabled={pending} onClick={stop}>
               <StopCircle className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
             </Button>
           </div>
@@ -80,13 +87,14 @@ export function NotifyCard() {
             {PRESETS.map((p) => (
               <Button
                 key={p.seq}
+                disabled={pending}
                 className="h-auto min-h-[2.5rem] whitespace-normal py-2 text-center leading-snug"
                 onClick={() => handleNotify(p.seq, p.fade, 1)}
               >
                 <Trans k={p.key}>{p.fallback}</Trans>
               </Button>
             ))}
-            <Button className="h-auto min-h-[2.5rem] py-2" onClick={() => runAndRefresh('sos')}>
+            <Button disabled={pending} className="h-auto min-h-[2.5rem] py-2" onClick={() => runAndRefresh('sos')}>
               <Trans k="notify.preset.sos">SOS</Trans>
             </Button>
           </div>
@@ -162,6 +170,7 @@ export function NotifyCard() {
             <div className="flex items-end">
               <ActiveToggleButton
                 active={active}
+                pending={pending}
                 onStart={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}
                 onStop={stop}
                 startIcon={Send}

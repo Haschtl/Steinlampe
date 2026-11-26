@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PlusCircle, MinusCircle, RefreshCw, Send } from 'lucide-react';
+import { PlusCircle, MinusCircle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ const CUSTOM_MESH_ADDR = '__custom__';
 
 export function GestureMappingCard() {
   const { t } = useI18n();
-  const { status, refreshStatus, sendCmd, log } = useConnection();
+  const { status, sendCmd, log } = useConnection();
   const [rows, setRows] = useState<GestureRow[]>([]);
   const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
   const logRef = useRef(log);
@@ -301,9 +301,6 @@ export function GestureMappingCard() {
           </Button>
           <Button variant="primary" onClick={save}>
             <Trans k="btn.save">Save</Trans>
-          </Button>
-          <Button onClick={refreshStatus}>
-            <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.reload">Reload</Trans>
           </Button>
         </div>
       </CardContent>

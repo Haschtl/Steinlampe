@@ -387,9 +387,11 @@ export function RootLayout() {
               <div className="flex items-center gap-2 text-xs text-muted">
                 <span>
                   {status.connected
-                    ? isStale
-                      ? `${t("status.connected", "Connected")} (no status)`
-                      : t("status.connected", "Connected")
+                    ? !status.statusReady
+                      ? t("status.loadingData", "Verbinde…")
+                      : isStale
+                        ? `${t("status.connected", "Connected")} (no status)`
+                        : t("status.connected", "Connected")
                     : t("status.disconnected", "Not connected")}
                 </span>
                 <span>•</span>
@@ -407,9 +409,11 @@ export function RootLayout() {
                   <span
                     className={`absolute inset-[6px] rounded-full ${
                       status.connected
-                        ? isStale
-                          ? "bg-amber-500/40"
-                          : "bg-green-500/40"
+                        ? !status.statusReady
+                          ? "bg-yellow-500/40 animate-pulse"
+                          : isStale
+                            ? "bg-amber-500/40"
+                            : "bg-green-500/40"
                         : status.connecting
                         ? "bg-yellow-500/30"
                         : "bg-red-500/30"

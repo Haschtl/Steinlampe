@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Gauge, Hand, Lightbulb, Music, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +10,16 @@ import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
 
 export function AdvancedOverview() {
-  const { status } = useConnection();
+  const { status, refreshStatus } = useConnection();
   const { t } = useI18n();
+
+  // Gesture mappings and quick modes live in the general status payload (gestCsv/
+  // quickCsv) - rather than a manual "Reload" button on each card, refresh once on
+  // arrival here so they're current without the user having to ask.
+  useEffect(() => {
+    if (status.connected && status.statusReady) refreshStatus().catch((e) => console.warn(e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.connected, status.statusReady]);
 
   const tiles = [
     { to: '/advanced/led' as const, icon: Lightbulb, labelKey: 'nav.led', labelFallback: 'LED', descKey: 'desc.tile.led', descFallback: 'Gamma curve, min/max brightness', show: true },

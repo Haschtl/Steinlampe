@@ -213,52 +213,49 @@ export function RampCard() {
             <DialogHeader>
               <DialogTitle><Trans k="label.rampOn">Ramp On</Trans></DialogTitle>
             </DialogHeader>
-            <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
-              <RampGraph duration={rampOn} pow={onPow} ease={rampOnEase as EaseType} />
-            </div>
-            <div className="flex items-center gap-2">
-              <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
-              <Button
-                variant="ghost"
-                className="flex-1 min-w-0 justify-between px-3 py-2"
-                onClick={() => setOnPaletteOpen(true)}
-                title="Open ramp mode palette"
-              >
-                <span className="truncate text-sm font-semibold">{rampOnEase}</span>
-                <Palette className="h-4 w-4 text-muted" />
-              </Button>
-            </div>
-            <RampEaseDialog
-              open={onPaletteOpen}
-              setOpen={setOnPaletteOpen}
-              value={rampOnEase}
-              pow={onPow}
-              title="Ramp On - Mode"
-              onSelect={(ease) => handleRampEase('on', ease)}
-            />
-            <div className="flex items-center gap-2">
-              <Label className="m-0"><Trans k="label.pow">Power</Trans></Label>
-              <Input
-                type="number"
-                min={0.1}
-                max={10}
-                step={0.1}
-                value={onPow}
-                onChange={(e) => handleRampPow('on', Number(e.target.value))}
-                className="w-24"
-                suffix="γ"
+            <div className="space-y-3">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
+                <RampGraph duration={rampOn} pow={onPow} ease={rampOnEase as EaseType} />
+              </div>
+              <SliderRow
+                label={<Trans k="label.pow">Power</Trans>}
+                valueLabel={`γ=${onPow.toFixed(1)}`}
+                inputProps={{ min: 0.1, max: 10, step: 0.1, value: onPow }}
+                onInputChange={(val) => handleRampPow('on', val)}
               />
-              <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
-              <Input
-                type="number"
-                min={50}
-                max={10000}
-                step={10}
-                value={rampOn ?? ''}
-                onChange={(e) => handleRampOn(Number(e.target.value))}
-                className="w-28"
-                suffix="ms"
+              <div className="flex items-center gap-2">
+                <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
+                <Button
+                  variant="ghost"
+                  className="flex-1 min-w-0 justify-between px-3 py-2"
+                  onClick={() => setOnPaletteOpen(true)}
+                  title="Open ramp mode palette"
+                >
+                  <span className="truncate text-sm font-semibold">{rampOnEase}</span>
+                  <Palette className="h-4 w-4 text-muted" />
+                </Button>
+              </div>
+              <RampEaseDialog
+                open={onPaletteOpen}
+                setOpen={setOnPaletteOpen}
+                value={rampOnEase}
+                pow={onPow}
+                title="Ramp On - Mode"
+                onSelect={(ease) => handleRampEase('on', ease)}
               />
+              <div className="flex items-center gap-2">
+                <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
+                <Input
+                  type="number"
+                  min={50}
+                  max={10000}
+                  step={10}
+                  value={rampOn ?? ''}
+                  onChange={(e) => handleRampOn(Number(e.target.value))}
+                  className="w-28"
+                  suffix="ms"
+                />
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -268,53 +265,50 @@ export function RampCard() {
             <DialogHeader>
               <DialogTitle><Trans k="label.rampOff">Ramp Off</Trans></DialogTitle>
             </DialogHeader>
-            <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
-              <RampGraph duration={rampOff} reverse pow={offPow} ease={rampOffEase as EaseType} />
-            </div>
-            <div className="flex items-center gap-2">
-              <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
-              <Button
-                variant="ghost"
-                className="flex-1 min-w-0 justify-between px-3 py-2"
-                onClick={() => setOffPaletteOpen(true)}
-                title="Open ramp mode palette"
-              >
-                <span className="truncate text-sm font-semibold">{rampOffEase}</span>
-                <Palette className="h-4 w-4 text-muted" />
-              </Button>
-            </div>
-            <RampEaseDialog
-              open={offPaletteOpen}
-              setOpen={setOffPaletteOpen}
-              value={rampOffEase}
-              pow={offPow}
-              reverse
-              title="Ramp Off - Mode"
-              onSelect={(ease) => handleRampEase('off', ease)}
-            />
-            <div className="flex items-center gap-2">
-              <Label className="m-0"><Trans k="label.pow">Power</Trans></Label>
-              <Input
-                type="number"
-                min={0.1}
-                max={10}
-                step={0.1}
-                value={offPow}
-                onChange={(e) => handleRampPow('off', Number(e.target.value))}
-                className="w-24"
-                suffix="γ"
+            <div className="space-y-3">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
+                <RampGraph duration={rampOff} reverse pow={offPow} ease={rampOffEase as EaseType} />
+              </div>
+              <SliderRow
+                label={<Trans k="label.pow">Power</Trans>}
+                valueLabel={`γ=${offPow.toFixed(1)}`}
+                inputProps={{ min: 0.1, max: 10, step: 0.1, value: offPow }}
+                onInputChange={(val) => handleRampPow('off', val)}
               />
-              <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
-              <Input
-                type="number"
-                min={50}
-                max={10000}
-                step={10}
-                value={rampOff ?? ''}
-                onChange={(e) => handleRampOff(Number(e.target.value))}
-                className="w-28"
-                suffix="ms"
+              <div className="flex items-center gap-2">
+                <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
+                <Button
+                  variant="ghost"
+                  className="flex-1 min-w-0 justify-between px-3 py-2"
+                  onClick={() => setOffPaletteOpen(true)}
+                  title="Open ramp mode palette"
+                >
+                  <span className="truncate text-sm font-semibold">{rampOffEase}</span>
+                  <Palette className="h-4 w-4 text-muted" />
+                </Button>
+              </div>
+              <RampEaseDialog
+                open={offPaletteOpen}
+                setOpen={setOffPaletteOpen}
+                value={rampOffEase}
+                pow={offPow}
+                reverse
+                title="Ramp Off - Mode"
+                onSelect={(ease) => handleRampEase('off', ease)}
               />
+              <div className="flex items-center gap-2">
+                <Label className="m-0"><Trans k="label.duration">Duration</Trans></Label>
+                <Input
+                  type="number"
+                  min={50}
+                  max={10000}
+                  step={10}
+                  value={rampOff ?? ''}
+                  onChange={(e) => handleRampOff(Number(e.target.value))}
+                  className="w-28"
+                  suffix="ms"
+                />
+              </div>
             </div>
           </DialogContent>
         </Dialog>

@@ -238,7 +238,18 @@ void updatePatternEngine()
     if (progress >= 1.0f)
     {
       sleepFadeActive = false;
-      setLampEnabled(false, "sleep done");
+      // skipRamp=true: the fade to 0 already happened above, manually, via
+      // applyPwmLevel() - it never touched outputScale/masterBrightness at
+      // all. Without skipRamp, setLampEnabled() starts a *second*, fully
+      // redundant ramp-to-0 using whatever outputScale was before the sleep
+      // fade even started (likely ~1.0, i.e. "fully on") as its start
+      // point, so lampEnabled wouldn't actually become false until that
+      // whole extra ramp finishes too - and poti/"on" both gate on
+      // `!lampEnabled` (see inputs.cpp's updatePoti() and the plain "on"
+      // command in command.cpp), so anything that left lampEnabled stuck
+      // true in that window would make the lamp unrecoverable without a
+      // reboot. skipRamp finalizes the off state immediately instead.
+      setLampEnabled(false, "sleep done", true);
       sendFeedback(F("[Sleep] Fade abgeschlossen."));
     }
     return;
