@@ -802,6 +802,33 @@ void meshSendLightness(uint16_t addr, float percent)
         sendFeedback(String(F("[Mesh] Lightness send to 0x")) + String(addr, HEX) + F(" failed: ") + String(err));
 }
 
+// Our Generic OnOff/Light Lightness Servers are otherwise receive-only (see
+// this file's own top-of-file comment): they drive the real lamp from
+// incoming mesh Set messages, but never the other way - a poti/switch-driven
+// local change never reaches their own state, so a provisioner's Get reads
+// stale data and no Status is published even if a Publish Address is
+// configured. Call this right after such a local change (not from every
+// setLampEnabled()/setBrightnessPercent() call site - pattern/ramp ticks
+// would otherwise spam the mesh with a Status on every frame) to push the
+// real state in, which also publishes it if a Publish Address is set.
+// lightness 0 for "off" rather than the stale last brightness, matching the
+// same Lightness<->OnOff binding enforced on the receive side above.
+void meshPublishLocalState()
+{
+    if (onoffServer.model)
+    {
+        esp_ble_mesh_server_state_value_t value{};
+        value.gen_onoff.onoff = lampEnabled ? 1 : 0;
+        esp_ble_mesh_server_model_update_state(onoffServer.model, ESP_BLE_MESH_GENERIC_ONOFF_STATE, &value);
+    }
+    if (lightnessServer.model)
+    {
+        esp_ble_mesh_server_state_value_t value{};
+        value.light_lightness_actual.lightness = lampEnabled ? lightnessFromPercent(masterBrightness * 100.0f) : 0;
+        esp_ble_mesh_server_model_update_state(lightnessServer.model, ESP_BLE_MESH_LIGHT_LIGHTNESS_ACTUAL_STATE, &value);
+    }
+}
+
 #if ENABLE_BLE_MESH_PROVISIONER
 bool meshHasNetworkIdentity()
 {

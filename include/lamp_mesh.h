@@ -29,6 +29,19 @@ void meshSendOnOff(uint16_t addr, bool on);
  */
 void meshSendLightness(uint16_t addr, float percent);
 
+/**
+ * @brief Pushes this lamp's current lampEnabled/masterBrightness into the
+ * Generic OnOff Server's and Light Lightness Server's own state, publishing
+ * a Status to whatever Publish Address a provisioner configured (if any).
+ * Call after a poti/switch-driven local change - NOT from every
+ * setLampEnabled()/setBrightnessPercent() call site, which would spam the
+ * mesh with a Status on every pattern/ramp tick. Without this, those two
+ * server models only ever reflect the last Set they received over the
+ * mesh, never the lamp's real hardware-driven state - a provisioner's Get
+ * reads stale data and no Status goes out even with Publish configured.
+ */
+void meshPublishLocalState();
+
 #if ENABLE_BLE_MESH_PROVISIONER
 /**
  * @brief Whether a provisioner scan/add session is currently running - other

@@ -12,6 +12,7 @@
 #include "utils.h"
 #include "sleepwake.h"
 #include "gestures.h"
+#include "lamp_mesh.h"
 
 bool switchDebouncedState = false;
 
@@ -149,6 +150,9 @@ void syncLampToSwitch()
         bool on = buttonStates[idx].debounced;
         switchDebouncedState = on;
         setLampEnabled(on, "sync switch");
+#if ENABLE_BLE_MESH
+        meshPublishLocalState();
+#endif
         sendFeedback(String(F("[Sync] Lamp -> Switch ")) + (on ? F("ON") : F("OFF")));
         return;
     }
@@ -271,6 +275,9 @@ static void onToggleActivated(size_t i)
         trackSwitchTap(st, now);
         switchDebouncedState = true;
         setLampEnabled(true, "switch on");
+#if ENABLE_BLE_MESH
+        meshPublishLocalState();
+#endif
         sendFeedback(String(F("[")) + cfg.label + F("] ON"));
         confirmPendingPairing(cfg.label);
         break;
@@ -298,6 +305,9 @@ static void onToggleDeactivated(size_t i)
         trackSwitchTap(st, now);
         switchDebouncedState = false;
         setLampEnabled(false, "switch off");
+#if ENABLE_BLE_MESH
+        meshPublishLocalState();
+#endif
         sendFeedback(String(F("[")) + cfg.label + F("] OFF"));
         confirmPendingPairing(cfg.label);
     }
@@ -958,7 +968,12 @@ void updatePoti()
     if (nowBelow)
     {
         if (crossedOff && lampEnabled)
+        {
             setLampEnabled(false, "poti", false);
+#if ENABLE_BLE_MESH
+            meshPublishLocalState();
+#endif
+        }
         // Force next sample to be applied once we rise above the threshold.
         potiLastApplied = -1.0f;
         potiWasBelowOff = true;
@@ -970,7 +985,12 @@ void updatePoti()
     target = clamp01(target);
 
     if (crossedOn && !lampEnabled)
+    {
         setLampEnabled(true, "poti", true);
+#if ENABLE_BLE_MESH
+        meshPublishLocalState();
+#endif
+    }
     potiWasBelowOff = nowBelow;
     potiLastApplied = potiFiltered;
     queueLiveState();
@@ -995,6 +1015,9 @@ void updatePoti()
     {
         // Fast, non-persisted updates for smooth knob response (no flash wear).
         setBrightnessPercent(target * 100.0f, false, false, true);
+#if ENABLE_BLE_MESH
+        meshPublishLocalState();
+#endif
     }
 }
 #endif
