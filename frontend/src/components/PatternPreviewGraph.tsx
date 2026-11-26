@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { applyPatternAdjustments, getPatternBrightness } from '@/lib/patternSim';
-import { Trans } from '@/i18n';
 
 const WINDOW_MS = 6000;
 const STEP_MS = 40;
@@ -58,7 +57,7 @@ export function PatternPreviewGraph({ pattern, speed, marginLow, marginHigh, inv
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner">
-      <div className="relative w-full" style={{ paddingTop: '37.5%' }}>
+      <div className="relative w-full" style={{ paddingTop: '52%' }}>
         <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 h-full w-full">
           <defs>
             <linearGradient id="patPreviewGrad" x1="0%" x2="100%" y1="0%" y2="0%">
@@ -88,12 +87,6 @@ export function PatternPreviewGraph({ pattern, speed, marginLow, marginHigh, inv
           <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
           <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
         </svg>
-      </div>
-      <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted">
-        <span>
-          <Trans k="label.patternPreview">Signal preview</Trans>
-        </span>
-        <span>{WINDOW_MS / 1000}s</span>
       </div>
     </div>
   );

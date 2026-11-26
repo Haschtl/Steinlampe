@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { UISettingsCard } from '@/cards/UISettingsCard';
-import { GestureMappingCard } from '@/cards/GestureMappingCard';
 import { MeshProvisioningCard } from '@/cards/MeshProvisioningCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
 import { OtaUpdateCard } from '@/cards/OtaUpdateCard';
@@ -65,7 +64,6 @@ export function SettingsSection() {
   return (
     <div className="space-y-4">
       <DeviceBTCard />
-      <GestureMappingCard />
       <MeshProvisioningCard />
       <UISettingsCard />
       <BackupRestoreCard />

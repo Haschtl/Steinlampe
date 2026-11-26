@@ -295,7 +295,7 @@ export function GestureMappingCard() {
           );
         })}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={addRow}>
             <PlusCircle className="mr-1 h-4 w-4" /> <Trans k="btn.gestAdd">Add binding</Trans>
           </Button>

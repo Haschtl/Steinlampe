@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { Gauge, Hand, Lightbulb, ListMusic, Music, Palette, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IdleOffCard } from '@/cards/IdleOffCard';
+import { GestureMappingCard } from '@/cards/GestureMappingCard';
 import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
 
@@ -65,6 +66,7 @@ export function AdvancedOverview() {
           </CardContent>
         </Card>
       )}
+      <GestureMappingCard />
     </div>
   );
 }

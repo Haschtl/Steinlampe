@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Flashlight, Pause, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Knob } from '@/components/ui/knob';
 import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
@@ -106,6 +105,42 @@ export function LampPowerCard() {
     sendCmd(next ? 'on' : 'off').catch((e) => console.warn(e));
   };
 
+  // The power switch and the brightness slider are the same control: a horizontal
+  // fill that tracks brightness, tapped to toggle power and dragged to set the level.
+  // Pointer handlers (not onClick) so a drag can be told apart from a tap - a plain
+  // click handler can't see the movement in between down and up.
+  const sliderRef = useRef<HTMLButtonElement | null>(null);
+  const dragRef = useRef<{ moved: boolean; startX: number } | null>(null);
+  const DRAG_THRESHOLD_PX = 4;
+
+  const brightnessFromClientX = (clientX: number) => {
+    const el = sliderRef.current;
+    if (!el) return brightness ?? 70;
+    const rect = el.getBoundingClientRect();
+    const pct = (clientX - rect.left) / rect.width;
+    return Math.min(100, Math.max(1, Math.round(pct * 100)));
+  };
+
+  const handleSliderPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    sliderRef.current?.setPointerCapture(e.pointerId);
+    dragRef.current = { moved: false, startX: e.clientX };
+  };
+
+  const handleSliderPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (!drag.moved && Math.abs(e.clientX - drag.startX) > DRAG_THRESHOLD_PX) drag.moved = true;
+    if (drag.moved) handleBrightness(brightnessFromClientX(e.clientX));
+  };
+
+  const endSliderDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag && !drag.moved) handleLampToggle(!lampOn);
+  };
+
+  const brightnessPct = Math.round(brightness ?? 70);
+
   return (
     <Card>
       <CardHeader className="flex-wrap">
@@ -146,8 +181,13 @@ export function LampPowerCard() {
       <CardContent className="space-y-4">
         <motion.button
           type="button"
-          onClick={() => handleLampToggle(!lampOn)}
-          className="relative flex w-full items-center justify-between overflow-hidden rounded-2xl border border-accent/50 px-6 py-6 text-left text-lg font-semibold shadow-[0_15px_40px_rgba(0,0,0,0.35)] transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+          ref={sliderRef}
+          onPointerDown={handleSliderPointerDown}
+          onPointerMove={handleSliderPointerMove}
+          onPointerUp={endSliderDrag}
+          onPointerCancel={endSliderDrag}
+          className="relative flex w-full items-center justify-between overflow-hidden rounded-2xl border border-accent/50 px-6 py-6 text-left text-lg font-semibold shadow-[0_15px_40px_rgba(0,0,0,0.35)] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+          style={{ touchAction: 'none' }}
           animate={{
             scale: lampOn ? 1.01 : 1,
             boxShadow: lampOn
@@ -155,14 +195,19 @@ export function LampPowerCard() {
               : "0 10px 25px rgba(0,0,0,0.3)",
           }}
         >
+          {/* Dark track - the "unfilled" rest of the brightness range. */}
+          <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(40,50,70,0.7),rgba(20,24,36,0.8))]" />
+          {/* Brightness fill: grows left-to-right with the level, dim while off so the
+              level stays visible (tapping turns the lamp back on at this same level). */}
           <motion.div
-            className="absolute inset-0 opacity-80"
+            className="absolute inset-y-0 left-0"
             initial={false}
+            animate={{ width: `${brightnessPct}%` }}
+            transition={dragRef.current ? { duration: 0 } : { type: 'spring', stiffness: 260, damping: 30 }}
             style={{
               background: lampOn
-                ? "linear-gradient(135deg, rgba(255,214,134,0.4), rgba(255,140,90,0.3))"
-                : "linear-gradient(120deg, rgba(40,50,70,0.7), rgba(20,24,36,0.8))",
-              opacity: lampOn ? energy : 0.9,
+                ? "linear-gradient(135deg, rgba(255,214,134,0.9), rgba(255,140,90,0.75))"
+                : "rgba(255,255,255,0.08)",
             }}
           />
           <motion.div
@@ -200,12 +245,13 @@ export function LampPowerCard() {
           </div>
           <div className="relative z-10 flex items-center gap-3">
             <span className="rounded-full bg-black/30 px-3 py-1 text-sm text-amber-100 shadow-inner">
-              {lampOn ? <Trans k="btn.on">On</Trans> : <Trans k="btn.off">Off</Trans>}
+              {brightnessPct}%
             </span>
             {lampOn && status.currentPattern && (
               <button
                 type="button"
-                onClick={(e) => {e.stopPropagation();setPaletteOpen(true)}}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); setPaletteOpen(true); }}
                 className="rounded-full bg-amber-300/25 px-3 py-1 text-sm text-amber-50 shadow-inner underline decoration-amber-100/70 decoration-dotted"
               >
                 {patternText ? patternText : `Mode ${status.currentPattern}`}
@@ -213,17 +259,6 @@ export function LampPowerCard() {
             )}
           </div>
         </motion.button>
-        <div className="flex flex-col items-center gap-1">
-          <Knob
-            label={<Trans k="label.brightness">Brightness</Trans>}
-            min={1}
-            max={100}
-            step={1}
-            size={150}
-            value={Math.round(brightness ?? 70)}
-            onChange={(val) => handleBrightness(val)}
-          />
-        </div>
         <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </CardContent>
     </Card>
