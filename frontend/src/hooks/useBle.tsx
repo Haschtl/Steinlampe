@@ -93,6 +93,15 @@ export function useBle(): BleApi {
       localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
       setKnownDevices({ ...knownDevicesRef.current });
     }
+    // ql-last-device-id is a separate key tryReconnectLast() reads on its own -
+    // forgetting a device left it untouched, so the app kept auto-reconnecting
+    // to that exact device right after the user removed it (even after
+    // forgetting every known device).
+    if (lastDeviceIdRef.current === id) {
+      lastDeviceIdRef.current = null;
+      localStorage.removeItem('ql-last-device-id');
+      localStorage.removeItem('ql-last-device-name');
+    }
   }, []);
   const renameDevice = useCallback((id: string, name: string) => {
     if (!id) return;
@@ -480,7 +489,7 @@ export function useBle(): BleApi {
           toast.info(
             <span>
               Kein Gerät ausgewählt oder keins passt zum Filter - Gerät evtl. nicht in der
-              gefilterten Liste (z.B. neue BLE-Mesh-Firmware).{' '}
+              gefilterten Liste.{' '}
               <button
                 type="button"
                 className="font-semibold underline"

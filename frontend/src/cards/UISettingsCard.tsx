@@ -83,12 +83,6 @@ export function UISettingsCard() {
         </div>
         <div className="space-y-2">
           <div className="text-sm font-medium"><Trans k="title.devices">Manage Devices</Trans></div>
-          <p className="text-xs text-muted">
-            <Trans k="desc.devicesDuplicates">
-              Duplicates can show up here when switching between a dev build and the deployed app - the browser
-              hands each origin its own device id, so the same lamp can appear twice.
-            </Trans>
-          </p>
           <div className="rounded-md border border-border/60 bg-bg/60 p-2">
             <div className="mb-1 flex items-center justify-between">
               <div className="text-xs text-muted"><Trans k="label.bleDevices">BLE</Trans></div>

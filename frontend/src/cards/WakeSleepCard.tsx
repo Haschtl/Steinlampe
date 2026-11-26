@@ -11,7 +11,7 @@ import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
 export function WakeSleepCard() {
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmdReliable, refreshStatus } = useConnection();
   const [wakeDuration, setWakeDuration] = useState(180);
   const [wakeMode, setWakeMode] = useState('');
   const [wakeBri, setWakeBri] = useState('');
@@ -26,13 +26,23 @@ export function WakeSleepCard() {
     }));
   }, [status.patternCount]);
 
+  // write-with-response, then an explicit status refresh: starting/stopping a
+  // wake or sleep fade only ever announces itself as a plain feedback line
+  // ("[Wake] Starte Fade...") - the firmware never pushes a fresh full STATUS
+  // snapshot on its own afterward, so wake_active/sleep_active (added
+  // 2026-11-26, see memory: firmware-status-fields-added-2026-11) would
+  // otherwise just sit stale in the frontend until something else happened
+  // to trigger a refresh. Same explicit-refresh pattern already used after
+  // profile load/save.
+  const runAndRefresh = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+
   const handleWake = () => {
     const parts = ['wake'];
     if (wakeSoft) parts.push('soft');
     if (wakeMode.trim()) parts.push(`mode=${wakeMode.trim()}`);
     if (wakeBri.trim()) parts.push(`bri=${wakeBri.trim()}`);
     parts.push(String(Math.max(1, wakeDuration || 1)));
-    sendCmd(parts.join(' ')).catch((e) => console.warn(e));
+    runAndRefresh(parts.join(' '));
   };
 
   const wakeActive = status.wakeActive ?? false;
@@ -59,7 +69,7 @@ export function WakeSleepCard() {
           <ActiveToggleButton
             active={wakeActive}
             onStart={handleWake}
-            onStop={() => sendCmd('wake stop').catch((e) => console.warn(e))}
+            onStop={() => runAndRefresh('wake stop')}
             startIcon={Sun}
             stopIcon={Sun}
             startLabel={<Trans k="btn.wake">Wake</Trans>}
@@ -113,8 +123,8 @@ export function WakeSleepCard() {
           </div>
           <ActiveToggleButton
             active={sleepActive}
-            onStart={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`).catch((e) => console.warn(e))}
-            onStop={() => sendCmd('sleep stop').catch((e) => console.warn(e))}
+            onStart={() => runAndRefresh(`sleep ${Math.max(1, sleepMinutes || 1)}`)}
+            onStop={() => runAndRefresh('sleep stop')}
             startIcon={Moon}
             stopIcon={Moon}
             startLabel={<Trans k="btn.sleep">Sleep</Trans>}

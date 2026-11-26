@@ -84,7 +84,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.gestRemove": "Remove binding",
     "btn.gestSendTest": "Send test",
     "title.meshProv": "Mesh Network",
-    "desc.meshProv": "Lets this lamp bring other lamps into the same mesh itself - no extra app needed.",
+    "desc.meshProv": "Join multiple lamps into one network so they can relay to each other and be controlled together.",
     "label.meshNetwork": "Network identity",
     "label.meshNetKey": "NetKey (32 hex, blank = generate)",
     "label.meshAppKey": "AppKey (32 hex, blank = generate)",
@@ -249,8 +249,6 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.clearBondsConfirm": "Clear all BLE bonds?",
     "desc.clearBondsConfirm":
       "Every paired device (this browser included) will need to pair again - on Linux, also remove the lamp from bluetoothctl/the system Bluetooth settings first, or the OS will keep retrying its now stale pairing keys.",
-    "desc.devicesDuplicates":
-      "Duplicates can show up here when switching between a dev build and the deployed app - the browser hands each origin its own device id, so the same lamp can appear twice.",
     "btn.clearAll": "Clear all",
     "label.bleName": "BLE Name",
     "desc.patternSpeed": "Pattern speed multiplier",
@@ -313,7 +311,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.otaChecking": "Checking for updates…",
     "label.otaUnknownVariant": "Can't determine which firmware variant this device is running - update unavailable.",
     "label.otaNoBundle": "No bundled firmware found for this variant.",
-    "label.otaNoManifest": "No firmware bundle found. Run \"npm run ota:prepare\" to generate one.",
+    "label.otaNoManifest": "No firmware update available right now.",
     "label.otaUpToDate": "Up to date",
     "btn.otaUpdate": "Update available - install",
     "label.otaUploading": "Uploading",
@@ -534,7 +532,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "btn.gestRemove": "Zuordnung entfernen",
     "btn.gestSendTest": "Test senden",
     "title.meshProv": "Mesh-Netzwerk",
-    "desc.meshProv": "Lässt diese Lampe andere Lampen selbst ins gleiche Mesh aufnehmen - keine extra App nötig.",
+    "desc.meshProv": "Verbindet mehrere Lampen zu einem Netzwerk, sodass sie sich gegenseitig erreichen und gemeinsam gesteuert werden können.",
     "label.meshNetwork": "Netzwerk-Identität",
     "label.meshNetKey": "NetKey (32 Hex, leer = generieren)",
     "label.meshAppKey": "AppKey (32 Hex, leer = generieren)",
@@ -699,8 +697,6 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.clearBondsConfirm": "Alle BLE-Bonds löschen?",
     "desc.clearBondsConfirm":
       "Jedes gekoppelte Gerät (auch dieser Browser) muss sich neu koppeln - unter Linux vorher auch die Lampe aus bluetoothctl/den System-Bluetooth-Einstellungen entfernen, sonst versucht das Betriebssystem weiter mit den jetzt veralteten Schlüsseln zu verbinden.",
-    "desc.devicesDuplicates":
-      "Doppelte Einträge können auftreten, wenn zwischen einem Dev-Build und der deployten App gewechselt wird - der Browser vergibt pro Origin eine eigene Geräte-ID, dadurch kann dieselbe Lampe doppelt auftauchen.",
     "btn.clearAll": "Alle entfernen",
     "label.bleName": "BLE-Name",
     "desc.patternSpeed": "Geschwindigkeits-Multiplikator",
@@ -764,7 +760,7 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.otaChecking": "Suche nach Updates…",
     "label.otaUnknownVariant": "Firmware-Variante des Geräts unbekannt - Update nicht verfügbar.",
     "label.otaNoBundle": "Keine gebündelte Firmware für diese Variante gefunden.",
-    "label.otaNoManifest": "Kein Firmware-Bundle gefunden. \"npm run ota:prepare\" ausführen, um eins zu erzeugen.",
+    "label.otaNoManifest": "Aktuell ist kein Firmware-Update verfügbar.",
     "label.otaUpToDate": "Aktuell",
     "btn.otaUpdate": "Update verfügbar - installieren",
     "label.otaUploading": "Übertrage",

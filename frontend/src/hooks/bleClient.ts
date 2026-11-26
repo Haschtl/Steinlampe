@@ -1,6 +1,12 @@
 const SERVICE = 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b';
 const CMD_CHAR = '4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7';
 const STATUS_CHAR = 'c5ad78b6-9b77-4a96-9a42-8e6e9a40c123';
+// Standard BLE Mesh SIG service UUIDs - present in a mesh-enabled lamp's scan response
+// regardless of its (user-customizable, so not reliably name-filterable) device name.
+// Provisioning (0x1827) covers an unprovisioned node; Proxy (0x1828) covers one that's
+// already joined a network - a lamp can show up under either depending on its state.
+const MESH_PROVISIONING_SERVICE = '00001827-0000-1000-8000-00805f9b34fb';
+const MESH_PROXY_SERVICE = '00001828-0000-1000-8000-00805f9b34fb';
 
 export const BLE_UUIDS = { service: SERVICE, cmd: CMD_CHAR, status: STATUS_CHAR };
 
@@ -37,9 +43,13 @@ export async function requestDevice(opts: { unfiltered?: boolean } = {}): Promis
       { services: [SERVICE] },
       // esp_ble_mesh's own PB-GATT/Proxy advertising (active once ENABLE_BLE_MESH is on) goes
       // through a different adv path than our startBleAdvertising() in comms.cpp and never
-      // carries our custom service UUID in its scan response - only the device name. Match it by
-      // name too so a mesh-enabled lamp still shows up here instead of only via `unfiltered`.
-      { namePrefix: 'ESP-BLE-MESH' },
+      // carries our custom service UUID in its scan response - match the standard mesh
+      // service UUIDs instead, which are present regardless of the lamp's (user-customizable)
+      // name. The literal "ESP-BLE-MESH" namePrefix match this replaced only ever worked
+      // before a now-fixed firmware bug (see mesh.cpp's meshSetup()) that left every
+      // mesh-enabled lamp stuck advertising that placeholder name instead of its real one.
+      { services: [MESH_PROVISIONING_SERVICE] },
+      { services: [MESH_PROXY_SERVICE] },
     ],
     optionalServices: [SERVICE],
   });

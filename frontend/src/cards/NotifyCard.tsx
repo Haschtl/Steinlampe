@@ -19,7 +19,7 @@ const PRESETS = [
 ];
 
 export function NotifyCard() {
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmd, sendCmdReliable, refreshStatus } = useConnection();
   const [notifySeq, setNotifySeq] = useState('80 40 80 120');
   const [notifyFade, setNotifyFade] = useState(0);
   const [notifyRepeat, setNotifyRepeat] = useState(1);
@@ -45,13 +45,17 @@ export function NotifyCard() {
     return cmd;
   };
 
+  // write-with-response + explicit refresh - see the identical comment in
+  // WakeSleepCard.tsx (memory: firmware-status-fields-added-2026-11).
+  const runAndRefresh = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+
   const handleNotify = (seq: string, fade?: number, repeat = 1) => {
     const cmd = buildNotifyCmd(seq, fade, repeat);
     if (!cmd) return;
-    sendCmd(cmd).catch((e) => console.warn(e));
+    runAndRefresh(cmd);
   };
 
-  const stop = () => sendCmd('notify stop').catch((e) => console.warn(e));
+  const stop = () => runAndRefresh('notify stop');
 
   return (
     <Card>
@@ -82,7 +86,7 @@ export function NotifyCard() {
                 <Trans k={p.key}>{p.fallback}</Trans>
               </Button>
             ))}
-            <Button className="h-auto min-h-[2.5rem] py-2" onClick={() => sendCmd('sos').catch((e) => console.warn(e))}>
+            <Button className="h-auto min-h-[2.5rem] py-2" onClick={() => runAndRefresh('sos')}>
               <Trans k="notify.preset.sos">SOS</Trans>
             </Button>
           </div>

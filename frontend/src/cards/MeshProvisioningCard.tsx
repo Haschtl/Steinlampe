@@ -172,7 +172,7 @@ export function MeshProvisioningCard() {
         <CardTitle><Trans k="title.meshProv">Mesh Network</Trans></CardTitle>
         <p className="text-sm text-muted">
           <Trans k="desc.meshProv">
-            Lets this lamp bring other lamps into the same mesh itself - no extra app needed.
+            Join multiple lamps into one network so they can relay to each other and be controlled together.
           </Trans>
         </p>
       </CardHeader>

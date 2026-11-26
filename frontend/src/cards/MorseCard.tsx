@@ -11,13 +11,17 @@ import { Trans } from '@/i18n';
 const EXAMPLES = ['SOS', 'HELLO', 'QUARZ'];
 
 export function MorseCard() {
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmdReliable, refreshStatus } = useConnection();
   const [text, setText] = useState('SOS');
   const active = status.notifyActive ?? false;
 
+  // write-with-response + explicit refresh - see the identical comment in
+  // WakeSleepCard.tsx (memory: firmware-status-fields-added-2026-11).
+  const runAndRefresh = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
+
   const handleSend = () => {
     if (!text.trim()) return;
-    sendCmd(`morse ${text.trim()}`).catch((e) => console.warn(e));
+    runAndRefresh(`morse ${text.trim()}`);
   };
 
   return (
@@ -51,7 +55,7 @@ export function MorseCard() {
         <ActiveToggleButton
           active={active}
           onStart={handleSend}
-          onStop={() => sendCmd('notify stop').catch((e) => console.warn(e))}
+          onStop={() => runAndRefresh('notify stop')}
           startIcon={Send}
           stopIcon={StopCircle}
           startLabel={<Trans k="btn.send">Send</Trans>}

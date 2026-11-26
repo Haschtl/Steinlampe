@@ -12,9 +12,17 @@ import { cn } from '@/lib/utils';
 type EffectKey = 'iir' | 'clip' | 'trem' | 'spark' | 'comp' | 'env' | 'delay';
 
 export function FilterSection() {
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmd, sendCmdReliable, refreshStatus } = useConnection();
   const { t } = useI18n();
   const [openEffect, setOpenEffect] = useState<EffectKey | null>(null);
+
+  // write-with-response + explicit refresh for the Enable toggles specifically
+  // (not the knobs below, which fire on every drag tick and would otherwise
+  // flood the link with "status raw" requests) - the firmware only ever
+  // announces a filter change as a plain feedback line, never a fresh full
+  // STATUS snapshot on its own. See memory: firmware-status-fields-added-2026-11
+  // (same gap found for wake/sleep/notify) and WakeSleepCard.tsx's identical fix.
+  const toggleFilter = (cmd: string) => sendCmdReliable(cmd).then(() => refreshStatus()).catch((e) => console.warn(e));
 
   const waveLabel = useMemo(() => (status.filterTremWave === 1 ? 'triangle' : 'sine'), [status.filterTremWave]);
   const curveLabel = useMemo(() => (status.filterClipCurve === 1 ? 'soft' : 'tanh'), [status.filterClipCurve]);
@@ -129,7 +137,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterIir}
-              onChange={(e) => sendCmd(`filter iir ${e.target.checked ? 'on' : 'off'} ${status.filterIirAlpha ?? 0.2}`)}
+              onChange={(e) => toggleFilter(`filter iir ${e.target.checked ? 'on' : 'off'} ${status.filterIirAlpha ?? 0.2}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -159,7 +167,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterClip}
-              onChange={(e) => sendCmd(`filter clip ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter clip ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -204,7 +212,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterTrem}
-              onChange={(e) => sendCmd(`filter trem ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter trem ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -264,7 +272,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterSpark}
-              onChange={(e) => sendCmd(`filter spark ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter spark ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -330,7 +338,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterComp}
-              onChange={(e) => sendCmd(`filter comp ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter comp ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -411,7 +419,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterEnv}
-              onChange={(e) => sendCmd(`filter env ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter env ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
@@ -454,7 +462,7 @@ export function FilterSection() {
             <input
               type="checkbox"
               checked={!!status.filterDelay}
-              onChange={(e) => sendCmd(`filter delay ${e.target.checked ? 'on' : 'off'}`)}
+              onChange={(e) => toggleFilter(`filter delay ${e.target.checked ? 'on' : 'off'}`)}
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>

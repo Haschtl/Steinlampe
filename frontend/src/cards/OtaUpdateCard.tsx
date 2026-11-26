@@ -108,7 +108,7 @@ export function OtaUpdateCard() {
         {phase === 'idle' && !manifest && (
           <p className="text-xs text-muted">
             <Trans k="label.otaNoManifest">
-              No firmware bundle found. Run "npm run ota:prepare" to generate one.
+              No firmware update available right now.
             </Trans>
           </p>
         )}
