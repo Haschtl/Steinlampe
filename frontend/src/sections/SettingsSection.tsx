@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { UISettingsCard } from '@/cards/UISettingsCard';
-import { QuickCustomCard } from '@/cards/QuickCustomCard';
 import { GestureMappingCard } from '@/cards/GestureMappingCard';
 import { MeshProvisioningCard } from '@/cards/MeshProvisioningCard';
 import { BackupRestoreCard } from '@/cards/BackupRestoreCard';
@@ -66,7 +65,6 @@ export function SettingsSection() {
   return (
     <div className="space-y-4">
       <DeviceBTCard />
-      <QuickCustomCard />
       <GestureMappingCard />
       <MeshProvisioningCard />
       <UISettingsCard />

@@ -3,13 +3,13 @@ import { motion } from 'framer-motion';
 import { Flashlight, Pause, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SliderRow } from '@/components/ui/slider-row';
+import { Knob } from '@/components/ui/knob';
 import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { patternLabel } from '@/data/patterns';
 import { Trans } from '@/i18n';
-import { getPatternBrightness } from '@/lib/patternSim';
+import { applyPatternAdjustments, getPatternBrightness } from '@/lib/patternSim';
 
 const UPDATE_INTERVAL = 5;
 export function LampPowerCard() {
@@ -82,9 +82,7 @@ export function LampPowerCard() {
   const invert = status.patternInvert ?? false;
   const marginLow = typeof status.patternMarginLow === 'number' ? status.patternMarginLow : 0;
   const marginHigh = typeof status.patternMarginHigh === 'number' ? status.patternMarginHigh : 1;
-  const span = Math.max(0, marginHigh - marginLow);
-  const rawClamped = Math.min(1, Math.max(0, rawEnergy));
-  const adjustedEnergy = marginLow + (invert ? 1 - rawClamped : rawClamped) * span;
+  const adjustedEnergy = applyPatternAdjustments(rawEnergy, { invert, marginLow, marginHigh });
   const [energy, setEnergy] = useState(0);
 
   useEffect(() => {
@@ -110,45 +108,42 @@ export function LampPowerCard() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex-wrap">
         <CardTitle>
           <Trans k="title.lamp">Lamp</Trans>
         </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-1.5">
           {hasSwitch && (
-            <span className="chip-muted inline-flex items-center gap-2">
+            <span className="chip-muted inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5">
               Switch: {status.switchState ?? "--"}
-              <Button size="sm" variant="ghost" onClick={() => sendCmd("sync")} disabled={!canSync} className="h-6 px-2 text-xs">
-                <RefreshCw className="mr-1 h-3 w-3" />
-                <span className="hidden sm:inline">Sync</span>
+              <Button size="sm" variant="ghost" onClick={() => sendCmd("sync")} disabled={!canSync} className="h-5 px-1 text-[11px]">
+                <RefreshCw className="h-3 w-3" />
               </Button>
             </span>
           )}
           {hasPoti && (
-            <span className="chip-muted inline-flex items-center gap-2">
+            <span className="chip-muted inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5">
               Poti: {potiPct !== null ? `${potiPct}%` : "--"}
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 px-2 text-xs"
+                className="h-5 px-1 text-[11px]"
                 onClick={() => sendCmd(`bri ${Math.max(1, Math.min(100, potiPct ?? 0))}`)}
               >
-                <RefreshCw className="mr-1 h-3 w-3" />
-                <span className="hidden sm:inline">Sync</span>
+                <RefreshCw className="h-3 w-3" />
               </Button>
             </span>
           )}
-          {hasTouch && <span className="chip-muted">Touch: {status.touchState ?? "--"}</span>}
-          {hasPush && <span className="chip-muted">Push: {status.pushEnabled ? "ON" : "OFF"}</span>}
-          {lightActive && <span className="chip-muted"><Trans k="title.light">Light</Trans></span>}
-          {typeof ambientPct === 'number' && <span className="chip-muted">Ambient: {ambientPct}%</span>}
-          {hasMusic && <span className="chip-muted"><Trans k="title.music">Music</Trans></span>}
-          {touchDimActive && <span className="chip-muted">Touch-Dim</span>}
-          {presenceActive && <span className="chip-muted"><Trans k="title.presenceBle">Presence (BLE)</Trans></span>}
+          {hasTouch && <span className="chip-muted text-[11px] px-1.5 py-0.5">Touch: {status.touchState ?? "--"}</span>}
+          {hasPush && <span className="chip-muted text-[11px] px-1.5 py-0.5">Push: {status.pushEnabled ? "ON" : "OFF"}</span>}
+          {lightActive && <span className="chip-muted text-[11px] px-1.5 py-0.5"><Trans k="title.light">Light</Trans></span>}
+          {typeof ambientPct === 'number' && <span className="chip-muted text-[11px] px-1.5 py-0.5">Ambient: {ambientPct}%</span>}
+          {hasMusic && <span className="chip-muted text-[11px] px-1.5 py-0.5"><Trans k="title.music">Music</Trans></span>}
+          {touchDimActive && <span className="chip-muted text-[11px] px-1.5 py-0.5">Touch-Dim</span>}
+          {presenceActive && <span className="chip-muted text-[11px] px-1.5 py-0.5"><Trans k="title.presenceBle">Presence (BLE)</Trans></span>}
         </div>
-
+      </CardHeader>
+      <CardContent className="space-y-4">
         <motion.button
           type="button"
           onClick={() => handleLampToggle(!lampOn)}
@@ -218,16 +213,17 @@ export function LampPowerCard() {
             )}
           </div>
         </motion.button>
-        <SliderRow
-          label={<Trans k="label.brightness">Brightness</Trans>}
-          description={<Trans k="desc.brightness">Set output level</Trans>}
-          inputProps={{
-            min: 1,
-            max: 100,
-            value: Math.round(brightness ?? 70),
-          }}
-          onInputChange={(val) => handleBrightness(val)}
-        />
+        <div className="flex flex-col items-center gap-1">
+          <Knob
+            label={<Trans k="label.brightness">Brightness</Trans>}
+            min={1}
+            max={100}
+            step={1}
+            size={150}
+            value={Math.round(brightness ?? 70)}
+            onChange={(val) => handleBrightness(val)}
+          />
+        </div>
         <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </CardContent>
     </Card>

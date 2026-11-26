@@ -2,16 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowLeftCircle, ArrowRightCircle, ArrowUpDown, Palette, Radar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { SliderRow } from '@/components/ui/slider-row';
 import { RangeSliderRow } from '@/components/ui/range-slider-row';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible } from '@/components/ui/collapsible';
 import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
 import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 import { PatternPalette } from '@/components/PatternPalette';
+import { PatternPreviewGraph } from '@/components/PatternPreviewGraph';
 
 export function ModesCard() {
   const { status, sendCmd } = useConnection();
@@ -98,9 +97,10 @@ export function ModesCard() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-nowrap items-center gap-2">
+        <div className="flex overflow-hidden rounded-xl border border-border divide-x divide-border">
           <Button
-            size="sm"
+            variant="ghost"
+            className="rounded-none border-none"
             onClick={() => {
               const prevIdx = pattern > 1 ? pattern - 1 : patternOptions.length;
               handlePatternChange(prevIdx);
@@ -110,7 +110,7 @@ export function ModesCard() {
           </Button>
           <Button
             variant="ghost"
-            className="flex-1 min-w-0 justify-between px-3 py-2"
+            className="flex-1 min-w-0 justify-between rounded-none border-none px-3 py-2"
             onClick={() => setPaletteOpen(true)}
             title="Open pattern palette"
           >
@@ -123,7 +123,8 @@ export function ModesCard() {
             <Palette className="h-4 w-4 text-muted" />
           </Button>
           <Button
-            size="sm"
+            variant="ghost"
+            className="rounded-none border-none"
             onClick={() => {
               const nextIdx = pattern < patternOptions.length ? pattern + 1 : 1;
               handlePatternChange(nextIdx);
@@ -132,6 +133,14 @@ export function ModesCard() {
             <ArrowRightCircle className="h-4 w-4" />
           </Button>
         </div>
+        <PatternPreviewGraph
+          pattern={pattern}
+          speed={patternSpeed ?? 1}
+          marginLow={margin[0]}
+          marginHigh={margin[1]}
+          invert={invert}
+          fade={patternFade ?? 0}
+        />
         <div className="space-y-3">
           <SliderRow
             label={<Trans k="label.speed">Speed</Trans>}
@@ -175,20 +184,6 @@ export function ModesCard() {
             }}
             onInputChange={(val) => editPatternFade(Math.max(0, val))}
           />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <label className="pill cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              onChange={(e) =>
-                sendCmd(`auto ${e.target.checked ? "on" : "off"}`)
-              }
-            />{" "}
-            <span className="inline-flex items-center gap-1">
-              <Activity className="h-4 w-4" /> AutoCycle
-            </span>
-          </label>
           <label className="pill cursor-pointer">
             <input
               type="checkbox"
@@ -201,19 +196,35 @@ export function ModesCard() {
               <Trans k="label.patternInvert">Invert Pattern</Trans>
             </span>
           </label>
-          <label className="pill cursor-pointer">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={reactive}
-              onChange={(e) => handleReactive(e.target.checked)}
-            />{" "}
-            <span className="inline-flex items-center gap-1">
-              <Radar className="h-4 w-4" />{" "}
-              <Trans k="label.patternReactive">Sensor-reactive</Trans>
-            </span>
-          </label>
         </div>
+        <Collapsible title={<Trans k="label.moreOptions">More options</Trans>}>
+          <div className="flex flex-wrap gap-2">
+            <label className="pill cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                onChange={(e) =>
+                  sendCmd(`auto ${e.target.checked ? "on" : "off"}`)
+                }
+              />{" "}
+              <span className="inline-flex items-center gap-1">
+                <Activity className="h-4 w-4" /> AutoCycle
+              </span>
+            </label>
+            <label className="pill cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={reactive}
+                onChange={(e) => handleReactive(e.target.checked)}
+              />{" "}
+              <span className="inline-flex items-center gap-1">
+                <Radar className="h-4 w-4" />{" "}
+                <Trans k="label.patternReactive">Sensor-reactive</Trans>
+              </span>
+            </label>
+          </div>
+        </Collapsible>
         <PatternPalette open={paletteOpen} setOpen={setPaletteOpen} />
       </CardContent>
     </Card>

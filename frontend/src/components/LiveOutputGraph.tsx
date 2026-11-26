@@ -57,6 +57,7 @@ export function LiveOutputGraph() {
   const samples = status.outputSamples ?? [];
   const { path, area, w, h, pad, usableW, usableH, last } = buildPath(samples, now);
   const live = status.connected && samples.length > 0;
+  const lastY = typeof last === 'number' ? h - pad - clamp01(last / 100) * usableH : null;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner">
@@ -94,9 +95,29 @@ export function LiveOutputGraph() {
           <text x={pad} y={h - pad + 10} className="text-muted" fill="currentColor" fontSize="9">
             0%
           </text>
-          <text x={pad + usableW - 70} y={pad - 3} className="text-muted" fill="currentColor" fontSize="9">
-            {live ? `${(last ?? 0).toFixed(0)}%` : '--'}
-          </text>
+          {live && typeof lastY === 'number' && (
+            <g>
+              <rect
+                x={pad + usableW - 34}
+                y={Math.min(Math.max(lastY - 7, 1), h - 15)}
+                width="30"
+                height="12"
+                rx="6"
+                fill="rgba(11,15,26,0.85)"
+                stroke="#5be6ff"
+                strokeOpacity="0.4"
+              />
+              <text
+                x={pad + usableW - 19}
+                y={Math.min(Math.max(lastY - 7, 1), h - 15) + 9}
+                textAnchor="middle"
+                fill="#5be6ff"
+                fontSize="9"
+              >
+                {(last ?? 0).toFixed(0)}%
+              </text>
+            </g>
+          )}
         </svg>
       </div>
       <div className="flex items-center justify-between px-3 py-1.5 text-xs text-muted">

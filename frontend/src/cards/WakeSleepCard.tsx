@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible } from '@/components/ui/collapsible';
 import { Trans } from '@/i18n';
 
 type PatternOption = { idx: number; label: string };
@@ -46,47 +47,45 @@ export function WakeSleepCard({
           <CardTitle><Trans k="title.wake">Wake</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
               <Label><Trans k="label.duration">Duration</Trans> (s)</Label>
               <Input type="number" min={1} value={wakeDuration} onChange={(e) => setWakeDuration(Number(e.target.value))} suffix="s" />
             </div>
-            <div>
-              <Label><Trans k="label.mode">Mode</Trans></Label>
-              <Select value={wakeMode || 'none'} onValueChange={(v) => setWakeMode(v === 'none' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Unverändert" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unverändert</SelectItem>
-                  {patternOptions.slice(0, 10).map((p) => (
-                    <SelectItem key={p.idx} value={String(p.idx)}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Button variant="primary" onClick={handleWake}>
+              <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.wake">Wake</Trans>
+            </Button>
+            <Button variant="ghost" onClick={() => sendCmd('wake stop')}>
+              <ZapOff className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <Label><Trans k="label.briPct">Brightness (%)</Trans></Label>
-              <Input type="number" placeholder="Bri %" value={wakeBri} onChange={(e) => setWakeBri(e.target.value)} suffix="%" />
-            </div>
-            <div className="space-y-2">
-              <label className="pill cursor-pointer inline-flex items-center gap-2">
-                <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> <Trans k="label.soft">Soft</Trans>
-              </label>
-              <div className="flex items-center gap-2">
-                <Button variant="primary" onClick={handleWake}>
-                  <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.wake">Wake</Trans>
-                </Button>
-                <Button variant="danger" onClick={() => sendCmd('wake stop')}>
-                  <ZapOff className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
-                </Button>
+          <Collapsible title={<Trans k="label.moreOptions">More options</Trans>}>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label><Trans k="label.mode">Mode</Trans></Label>
+                <Select value={wakeMode || 'none'} onValueChange={(v) => setWakeMode(v === 'none' ? '' : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Unverändert" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unverändert</SelectItem>
+                    {patternOptions.slice(0, 10).map((p) => (
+                      <SelectItem key={p.idx} value={String(p.idx)}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label><Trans k="label.briPct">Brightness (%)</Trans></Label>
+                <Input type="number" placeholder="Bri %" value={wakeBri} onChange={(e) => setWakeBri(e.target.value)} suffix="%" />
               </div>
             </div>
-          </div>
+            <label className="pill cursor-pointer inline-flex items-center gap-2">
+              <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> <Trans k="label.soft">Soft</Trans>
+            </label>
+          </Collapsible>
         </CardContent>
       </Card>
 

@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import { Gauge, Hand, Music, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
+import { Gauge, Hand, Lightbulb, ListMusic, Music, Palette, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IdleOffCard } from '@/cards/IdleOffCard';
-import { LedConfigCard } from '@/cards/LedConfigCard';
 import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
 
@@ -11,30 +10,36 @@ export function AdvancedOverview() {
   const { t } = useI18n();
 
   const tiles = [
-    { to: '/advanced/poti' as const, icon: Gauge, labelKey: 'nav.poti', labelFallback: 'Poti', show: status.hasPoti !== false },
+    { to: '/advanced/led' as const, icon: Lightbulb, labelKey: 'nav.led', labelFallback: 'LED', descKey: 'desc.tile.led', descFallback: 'Gamma curve, min/max brightness', show: true },
+    { to: '/advanced/poti' as const, icon: Gauge, labelKey: 'nav.poti', labelFallback: 'Poti', descKey: 'desc.tile.poti', descFallback: 'Knob calibration & gestures', show: status.hasPoti !== false },
     {
       to: '/advanced/taster' as const,
       icon: ToggleLeft,
       labelKey: 'nav.taster',
       labelFallback: 'Taster',
+      descKey: 'desc.tile.taster',
+      descFallback: 'Buttons & switches',
       show: status.hasPush !== false || (status.buttons?.length ?? 0) > 0,
     },
-    { to: '/advanced/anwesenheit' as const, icon: Users, labelKey: 'nav.anwesenheit', labelFallback: 'Anwesenheit', show: status.hasPresenceBle !== false },
-    { to: '/advanced/musik' as const, icon: Music, labelKey: 'nav.musik', labelFallback: 'Musik', show: status.hasMusic !== false },
-    { to: '/advanced/radar' as const, icon: Radar, labelKey: 'nav.radar', labelFallback: 'Radar', show: status.hasRadar !== false },
-    { to: '/advanced/licht' as const, icon: Sun, labelKey: 'nav.licht', labelFallback: 'Licht', show: status.hasLight !== false },
+    { to: '/advanced/anwesenheit' as const, icon: Users, labelKey: 'nav.anwesenheit', labelFallback: 'Anwesenheit', descKey: 'desc.tile.anwesenheit', descFallback: 'BLE presence detection', show: status.hasPresenceBle !== false },
+    { to: '/advanced/musik' as const, icon: Music, labelKey: 'nav.musik', labelFallback: 'Musik', descKey: 'desc.tile.musik', descFallback: 'Sound-reactive brightness', show: status.hasMusic !== false },
+    { to: '/advanced/radar' as const, icon: Radar, labelKey: 'nav.radar', labelFallback: 'Radar', descKey: 'desc.tile.radar', descFallback: 'Presence & distance sensing', show: status.hasRadar !== false },
+    { to: '/advanced/licht' as const, icon: Sun, labelKey: 'nav.licht', labelFallback: 'Licht', descKey: 'desc.tile.licht', descFallback: 'Ambient light sensor', show: status.hasLight !== false },
     {
       to: '/advanced/touch' as const,
       icon: Hand,
       labelKey: 'nav.touch',
       labelFallback: 'Touch',
+      descKey: 'desc.tile.touch',
+      descFallback: 'Touch surface input',
       show: status.hasTouch !== false && status.touchState !== undefined && status.touchState !== 'N/A',
     },
+    { to: '/advanced/quick' as const, icon: ListMusic, labelKey: 'nav.quick', labelFallback: 'Quick', descKey: 'desc.tile.quick', descFallback: 'Quick-tap mode list', show: true },
+    { to: '/advanced/custom' as const, icon: Palette, labelKey: 'nav.custom', labelFallback: 'Custom', descKey: 'desc.tile.custom', descFallback: 'Custom brightness pattern', show: true },
   ].filter((tile) => tile.show);
 
   return (
     <div className="space-y-4">
-      <LedConfigCard />
       <IdleOffCard />
       {tiles.length > 0 && (
         <Card>
@@ -49,10 +54,11 @@ export function AdvancedOverview() {
                 <Link
                   key={tile.to}
                   to={tile.to}
-                  className="card flex flex-col items-center gap-2 p-4 text-center transition hover:border-accent hover:text-accent"
+                  className="card flex flex-col items-center gap-1.5 p-4 text-center transition hover:border-accent hover:text-accent"
                 >
                   <tile.icon className="h-6 w-6" />
                   <span className="text-sm font-medium">{t(tile.labelKey, tile.labelFallback)}</span>
+                  <span className="text-xs text-muted">{t(tile.descKey, tile.descFallback)}</span>
                 </Link>
               ))}
             </div>

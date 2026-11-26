@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Download, Save } from 'lucide-react';
+import { AlertTriangle, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { patternLabel } from '@/data/patterns';
 import { Trans, useI18n } from '@/i18n';
@@ -109,47 +110,43 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
       .catch((e) => console.warn(e));
   };
 
+  const activeSlot = Number(profileSlot) || 1;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle><Trans k="title.profiles">Profile</Trans></CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {SLOT_INDICES.map((slot) => (
-          <div
-            key={slot}
-            className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${
-              profileSlot === String(slot) ? 'border-accent bg-accent/10' : 'border-border bg-panel/10'
-            }`}
-          >
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-muted">
-                <Trans k="label.profile">Profile</Trans> {slot}
-              </div>
-              <div className="truncate text-sm font-medium">{previewText(previews[slot], t)}</div>
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-accent bg-accent/10 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-muted">
+              <Trans k="label.profile">Profile</Trans> {activeSlot}
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                title={t('btn.load', 'Load')}
-                aria-label={t('btn.load', 'Load')}
-                onClick={() => handleLoad(slot)}
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                title={t('btn.save', 'Save')}
-                aria-label={t('btn.save', 'Save')}
-                onClick={() => setConfirmSlot(slot)}
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-            </div>
+            <div className="truncate text-sm font-medium">{previewText(previews[activeSlot], t)}</div>
           </div>
-        ))}
+          <Button
+            size="sm"
+            variant="ghost"
+            title={t('btn.save', 'Save')}
+            aria-label={t('btn.save', 'Save')}
+            onClick={() => setConfirmSlot(activeSlot)}
+          >
+            <Save className="h-4 w-4" />
+          </Button>
+        </div>
+        <Select value={profileSlot} onValueChange={(v) => handleLoad(Number(v))}>
+          <SelectTrigger>
+            <SelectValue placeholder={t('btn.load', 'Load')} />
+          </SelectTrigger>
+          <SelectContent>
+            {SLOT_INDICES.map((slot) => (
+              <SelectItem key={slot} value={String(slot)}>
+                {t('label.profile', 'Profile')} {slot} - {previewText(previews[slot], t)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </CardContent>
       <Dialog open={confirmSlot !== null} onOpenChange={(o) => !o && setConfirmSlot(null)}>
         <DialogContent>
