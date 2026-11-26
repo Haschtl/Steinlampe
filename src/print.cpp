@@ -20,6 +20,7 @@
 #include "quickmode.h"
 #include "gestures.h"
 #include "lamp_mesh.h"
+#include "sleepwake.h"
 #include "version.h"
 #include "sleepwake.h"
 #include "notifications.h"
@@ -334,6 +335,17 @@ void printStatusStructured(const bool &force)
 #endif
     line += F("|idle_min=");
     line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
+    // Never exposed before this - the frontend had no way to show "wake/sleep
+    // fade is currently running" (e.g. to swap a Start button for Stop) and
+    // had to guess from its own local click history instead.
+    line += F("|wake_active=");
+    line += wakeFadeActive ? F("1") : F("0");
+    line += F("|sleep_active=");
+    line += sleepFadeActive ? F("1") : F("0");
+    // Shared by both Notify and Morse (morse reuses the same notify blink engine -
+    // see command.cpp's "morse" branch), same reasoning as wake/sleep above.
+    line += F("|notify_active=");
+    line += notifyActive ? F("1") : F("0");
     line += F("|pat_speed=");
     line += fmtF(patternSpeedScale, 2);
     line += F("|pat_fade=");

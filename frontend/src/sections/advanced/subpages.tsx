@@ -7,8 +7,6 @@ import { RadarCard } from '@/cards/RadarCard';
 import { LightCard } from '@/cards/LightCard';
 import { TouchCard } from '@/cards/TouchCard';
 import { LedConfigCard } from '@/cards/LedConfigCard';
-import { QuickModesCard } from '@/cards/QuickModesCard';
-import { CustomPatternCard } from '@/cards/CustomPatternCard';
 import { useConnection } from '@/context/connection';
 import { HardwareSubpage } from './HardwareSubpage';
 
@@ -87,18 +85,3 @@ export function LedPage() {
   );
 }
 
-export function QuickPage() {
-  return (
-    <HardwareSubpage available>
-      <QuickModesCard />
-    </HardwareSubpage>
-  );
-}
-
-export function CustomPage() {
-  return (
-    <HardwareSubpage available>
-      <CustomPatternCard />
-    </HardwareSubpage>
-  );
-}

@@ -1,45 +1,43 @@
-import { RefreshCw, Zap, ZapOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useMemo, useState } from 'react';
+import { Moon, Sun } from 'lucide-react';
+import { ActiveToggleButton } from '@/components/ui/active-toggle-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible } from '@/components/ui/collapsible';
+import { useConnection } from '@/context/connection';
+import { patternLabel, patternLabels } from '@/data/patterns';
 import { Trans } from '@/i18n';
 
-type PatternOption = { idx: number; label: string };
+export function WakeSleepCard() {
+  const { status, sendCmd } = useConnection();
+  const [wakeDuration, setWakeDuration] = useState(180);
+  const [wakeMode, setWakeMode] = useState('');
+  const [wakeBri, setWakeBri] = useState('');
+  const [wakeSoft, setWakeSoft] = useState(false);
+  const [sleepMinutes, setSleepMinutes] = useState(15);
 
-type Props = {
-  wakeDuration: number;
-  setWakeDuration: (v: number) => void;
-  wakeMode: string;
-  setWakeMode: (v: string) => void;
-  wakeBri: string;
-  setWakeBri: (v: string) => void;
-  wakeSoft: boolean;
-  setWakeSoft: (v: boolean) => void;
-  handleWake: () => void;
-  sleepMinutes: number;
-  setSleepMinutes: (v: number) => void;
-  patternOptions: PatternOption[];
-  sendCmd: (cmd: string) => void;
-};
+  const patternOptions = useMemo(() => {
+    const count = status.patternCount || patternLabels.length;
+    return Array.from({ length: count }, (_, i) => ({
+      idx: i + 1,
+      label: `${i + 1} - ${patternLabel(i + 1)}`,
+    }));
+  }, [status.patternCount]);
 
-export function WakeSleepCard({
-  wakeDuration,
-  setWakeDuration,
-  wakeMode,
-  setWakeMode,
-  wakeBri,
-  setWakeBri,
-  wakeSoft,
-  setWakeSoft,
-  handleWake,
-  sleepMinutes,
-  setSleepMinutes,
-  patternOptions,
-  sendCmd,
-}: Props) {
+  const handleWake = () => {
+    const parts = ['wake'];
+    if (wakeSoft) parts.push('soft');
+    if (wakeMode.trim()) parts.push(`mode=${wakeMode.trim()}`);
+    if (wakeBri.trim()) parts.push(`bri=${wakeBri.trim()}`);
+    parts.push(String(Math.max(1, wakeDuration || 1)));
+    sendCmd(parts.join(' ')).catch((e) => console.warn(e));
+  };
+
+  const wakeActive = status.wakeActive ?? false;
+  const sleepActive = status.sleepActive ?? false;
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Card>
@@ -47,18 +45,26 @@ export function WakeSleepCard({
           <CardTitle><Trans k="title.wake">Wake</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <Label><Trans k="label.duration">Duration</Trans> (s)</Label>
-              <Input type="number" min={1} value={wakeDuration} onChange={(e) => setWakeDuration(Number(e.target.value))} suffix="s" />
-            </div>
-            <Button variant="primary" onClick={handleWake}>
-              <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.wake">Wake</Trans>
-            </Button>
-            <Button variant="ghost" onClick={() => sendCmd('wake stop')}>
-              <ZapOff className="h-4 w-4" />
-            </Button>
+          <div>
+            <Label><Trans k="label.duration">Duration</Trans> (s)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={wakeDuration}
+              onChange={(e) => setWakeDuration(Number(e.target.value))}
+              suffix="s"
+              disabled={wakeActive}
+            />
           </div>
+          <ActiveToggleButton
+            active={wakeActive}
+            onStart={handleWake}
+            onStop={() => sendCmd('wake stop').catch((e) => console.warn(e))}
+            startIcon={Sun}
+            stopIcon={Sun}
+            startLabel={<Trans k="btn.wake">Wake</Trans>}
+            stopLabel={<Trans k="btn.stop">Stop</Trans>}
+          />
           <Collapsible title={<Trans k="label.moreOptions">More options</Trans>}>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
@@ -83,7 +89,7 @@ export function WakeSleepCard({
               </div>
             </div>
             <label className="pill cursor-pointer inline-flex items-center gap-2">
-              <input type="checkbox" className="accent-accent" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> <Trans k="label.soft">Soft</Trans>
+              <input type="checkbox" checked={wakeSoft} onChange={(e) => setWakeSoft(e.target.checked)} /> <Trans k="label.soft">Soft</Trans>
             </label>
           </Collapsible>
         </CardContent>
@@ -94,18 +100,26 @@ export function WakeSleepCard({
           <CardTitle><Trans k="title.sleep">Sleep</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-            <div>
-              <Label><Trans k="label.duration">Duration</Trans> (min)</Label>
-              <Input type="number" min={1} value={sleepMinutes} onChange={(e) => setSleepMinutes(Number(e.target.value))} suffix="min" />
-            </div>
-            <Button variant="primary" onClick={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`)}>
-              <Zap className="mr-1 h-4 w-4" /> <Trans k="btn.sleep">Sleep</Trans>
-            </Button>
-            <Button variant="danger" onClick={() => sendCmd('sleep stop')}>
-              <ZapOff className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
-            </Button>
+          <div>
+            <Label><Trans k="label.duration">Duration</Trans> (min)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={sleepMinutes}
+              onChange={(e) => setSleepMinutes(Number(e.target.value))}
+              suffix="min"
+              disabled={sleepActive}
+            />
           </div>
+          <ActiveToggleButton
+            active={sleepActive}
+            onStart={() => sendCmd(`sleep ${Math.max(1, sleepMinutes || 1)}`).catch((e) => console.warn(e))}
+            onStop={() => sendCmd('sleep stop').catch((e) => console.warn(e))}
+            startIcon={Moon}
+            stopIcon={Moon}
+            startLabel={<Trans k="btn.sleep">Sleep</Trans>}
+            stopLabel={<Trans k="btn.stop">Stop</Trans>}
+          />
         </CardContent>
       </Card>
     </div>

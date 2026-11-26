@@ -33,13 +33,49 @@ html, body, #root {
 
 .form-checkbox,
 input[type='checkbox'] {
+  /* Without appearance:none, none of the box styling below actually applies - the
+     browser keeps rendering its own native checkbox shape regardless (accent-color
+     is the only property a native checkbox honors), which is why these were
+     showing up as plain OS checkboxes everywhere despite this rule existing. */
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-block;
+  position: relative;
+  flex-shrink: 0;
   height: 16px;
   width: 16px;
   border-radius: 4px;
   border: 1px solid theme('colors.border');
   background: #0a1020;
-  accent-color: var(--accent-color);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+input[type='checkbox']:checked,
+input[type='checkbox']:indeterminate {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+/* Classic two-border-rotated checkmark, drawn in the page's own dark bg color so
+   it reads clearly against the bright default-theme accent fill. */
+input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #0b0f1a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input[type='checkbox']:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6.5px;
+  width: 8px;
+  height: 2px;
+  background: #0b0f1a;
 }
 input[type='checkbox']:focus-visible {
   outline: none;
@@ -52,6 +88,16 @@ body[data-theme='light'] input[type='checkbox'],
 body[data-theme='fancy-light'] input[type='checkbox'] {
   background: #f3f6fd;
   border-color: #d8e0f0;
+}
+/* Light themes' accent is a darker teal, not a bright cyan - a dark tick would read
+   muddy against it, so the checkmark goes white there instead. */
+body[data-theme='light'] input[type='checkbox']:checked::after,
+body[data-theme='fancy-light'] input[type='checkbox']:checked::after {
+  border-color: #ffffff;
+}
+body[data-theme='light'] input[type='checkbox']:indeterminate::after,
+body[data-theme='fancy-light'] input[type='checkbox']:indeterminate::after {
+  background: #ffffff;
 }
 
 .btn {

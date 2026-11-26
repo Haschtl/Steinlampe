@@ -1,25 +1,58 @@
-import { ZapOff, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bell, Send, StopCircle } from 'lucide-react';
+import { ActiveToggleButton } from '@/components/ui/active-toggle-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Collapsible } from '@/components/ui/collapsible';
+import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
-type Props = {
-  notifySeq: string;
-  setNotifySeq: (v: string) => void;
-  notifyFade: number;
-  setNotifyFade: (v: number) => void;
-  notifyRepeat: number;
-  setNotifyRepeat: (v: number) => void;
-  notifyMin: number;
-  setNotifyMin: (v: number) => void;
-  handleNotify: (seq: string, fade?: number, repeat?: number) => void;
-  sendCmd: (cmd: string) => void;
-};
+const PRESETS = [
+  { key: 'notify.preset.short', fallback: 'Short blink', seq: '80 40 80 120', fade: 0 },
+  { key: 'notify.preset.soft', fallback: 'Soft alert', seq: '200 100', fade: 100 },
+  { key: 'notify.preset.triple', fallback: 'Triple pulse', seq: '120 80 120 80 120 200', fade: 40 },
+  { key: 'notify.preset.door', fallback: 'Doorbell', seq: '200 80 200 400', fade: 30 },
+  { key: 'notify.preset.longfade', fallback: 'Long Fade Alert', seq: '500 300', fade: 120 },
+  { key: 'notify.preset.double', fallback: 'Double 60', seq: '60 60 60 200', fade: 0 },
+];
 
-export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade, notifyRepeat, setNotifyRepeat, notifyMin, setNotifyMin, handleNotify, sendCmd }: Props) {
+export function NotifyCard() {
+  const { status, sendCmd } = useConnection();
+  const [notifySeq, setNotifySeq] = useState('80 40 80 120');
+  const [notifyFade, setNotifyFade] = useState(0);
+  const [notifyRepeat, setNotifyRepeat] = useState(1);
+  const [notifyMin, setNotifyMin] = useState(10);
+  const active = status.notifyActive ?? false;
+
+  useEffect(() => {
+    if (typeof status.notifyMin === 'number' && !Number.isNaN(status.notifyMin)) {
+      setNotifyMin(status.notifyMin);
+    }
+  }, [status.notifyMin]);
+
+  const buildNotifyCmd = (seq: string, fade?: number, repeat = 1) => {
+    const parts = seq
+      .split(/\s+/)
+      .map((n) => parseInt(n, 10))
+      .filter((n) => !Number.isNaN(n) && n > 0);
+    if (!parts.length) return '';
+    const expanded: number[] = [];
+    for (let i = 0; i < repeat; i += 1) expanded.push(...parts);
+    let cmd = `notify ${expanded.join(' ')}`;
+    if (fade && fade > 0) cmd += ` fade=${fade}`;
+    return cmd;
+  };
+
+  const handleNotify = (seq: string, fade?: number, repeat = 1) => {
+    const cmd = buildNotifyCmd(seq, fade, repeat);
+    if (!cmd) return;
+    sendCmd(cmd).catch((e) => console.warn(e));
+  };
+
+  const stop = () => sendCmd('notify stop').catch((e) => console.warn(e));
+
   return (
     <Card>
       <CardHeader>
@@ -28,56 +61,32 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {[
-            {
-              key: "notify.preset.short",
-              fallback: "Short blink",
-              seq: "80 40 80 120",
-              fade: 0,
-            },
-            {
-              key: "notify.preset.soft",
-              fallback: "Soft alert",
-              seq: "200 100",
-              fade: 100,
-            },
-            {
-              key: "notify.preset.triple",
-              fallback: "Triple pulse",
-              seq: "120 80 120 80 120 200",
-              fade: 40,
-            },
-            {
-              key: "notify.preset.door",
-              fallback: "Doorbell",
-              seq: "200 80 200 400",
-              fade: 30,
-            },
-            {
-              key: "notify.preset.longfade",
-              fallback: "Long Fade Alert",
-              seq: "500 300",
-              fade: 120,
-            },
-            {
-              key: "notify.preset.double",
-              fallback: "Double 60",
-              seq: "60 60 60 200",
-              fade: 0,
-            },
-          ].map((p) => (
-            <Button key={p.seq} onClick={() => handleNotify(p.seq, p.fade, 1)}>
-              <Trans k={p.key}>{p.fallback}</Trans>
+        {active ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-accent">
+              <Bell className="h-4 w-4 animate-pulse" />
+              <Trans k="label.notifyRunning">Benachrichtigung läuft…</Trans>
+            </div>
+            <Button size="sm" variant="danger" onClick={stop}>
+              <StopCircle className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
             </Button>
-          ))}
-          <Button onClick={() => sendCmd("sos")}>
-            <Trans k="notify.preset.sos">SOS</Trans>
-          </Button>
-          <Button variant="ghost" onClick={() => sendCmd("notify stop")} title="Stop">
-            <ZapOff className="h-4 w-4" />
-          </Button>
-        </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {PRESETS.map((p) => (
+              <Button
+                key={p.seq}
+                className="h-auto min-h-[2.5rem] whitespace-normal py-2 text-center leading-snug"
+                onClick={() => handleNotify(p.seq, p.fade, 1)}
+              >
+                <Trans k={p.key}>{p.fallback}</Trans>
+              </Button>
+            ))}
+            <Button className="h-auto min-h-[2.5rem] py-2" onClick={() => sendCmd('sos').catch((e) => console.warn(e))}>
+              <Trans k="notify.preset.sos">SOS</Trans>
+            </Button>
+          </div>
+        )}
         <Collapsible title={<Trans k="label.customSequence">Custom sequence</Trans>}>
           <div className="grid gap-2 md:grid-cols-[1fr_auto]">
             <div className="space-y-1">
@@ -90,6 +99,7 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                 value={notifySeq}
                 onChange={(e) => setNotifySeq(e.target.value)}
                 suffix="ms"
+                disabled={active}
               />
               <div className="flex items-center gap-3 flex-wrap">
                 <div>
@@ -105,9 +115,10 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                     onChange={(e) => setNotifyFade(Number(e.target.value))}
                     className="w-24"
                     suffix="ms"
+                    disabled={active}
                   />
                 </div>
-                <div >
+                <div>
                   <Label className="m-0 text-muted">
                     <Trans k="label.repeat">Repeat</Trans>
                   </Label>
@@ -119,6 +130,7 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                     value={notifyRepeat}
                     onChange={(e) => setNotifyRepeat(Number(e.target.value))}
                     className="w-20"
+                    disabled={active}
                   />
                 </div>
                 <div>
@@ -135,7 +147,7 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                     onBlur={(e) => {
                       const v = Math.min(100, Math.max(0, Number(e.target.value)));
                       setNotifyMin(v);
-                      sendCmd(`notify min ${v.toFixed(1)}`);
+                      sendCmd(`notify min ${v.toFixed(1)}`).catch((e2) => console.warn(e2));
                     }}
                     className="w-24"
                     suffix="%"
@@ -143,18 +155,16 @@ export function NotifyCard({ notifySeq, setNotifySeq, notifyFade, setNotifyFade,
                 </div>
               </div>
             </div>
-            <div className="flex items-end gap-2">
-              <Button
-                variant="primary"
-                onClick={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}
-              >
-                <Send className="mr-1 h-4 w-4" />{" "}
-                <Trans k="title.notify">Notify</Trans>
-              </Button>
-              <Button variant="danger" onClick={() => sendCmd("notify stop")}>
-                <ZapOff className="mr-1 h-4 w-4" />{" "}
-                <Trans k="btn.stop">Stop</Trans>
-              </Button>
+            <div className="flex items-end">
+              <ActiveToggleButton
+                active={active}
+                onStart={() => handleNotify(notifySeq, notifyFade, notifyRepeat)}
+                onStop={stop}
+                startIcon={Send}
+                stopIcon={StopCircle}
+                startLabel={<Trans k="title.notify">Notify</Trans>}
+                stopLabel={<Trans k="btn.stop">Stop</Trans>}
+              />
             </div>
           </div>
         </Collapsible>

@@ -7,14 +7,13 @@ import { ActionsSection } from './sections/ActionsSection';
 import { FilterSection } from './sections/FilterSection';
 import { HelpSection } from './sections/HelpSection';
 import { AdvancedOverview } from './sections/advanced/AdvancedOverview';
+import { BackupImportPage, BackupExportPage } from './sections/settings/BackupPages';
 import {
   AnwesenheitPage,
-  CustomPage,
   LedPage,
   LichtPage,
   MusikPage,
   PotiPage,
-  QuickPage,
   RadarPage,
   TasterPage,
   TouchPage,
@@ -23,7 +22,13 @@ import {
 const rootRoute = createRootRoute({ component: RootLayout });
 
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: withPageTransition(HomeSection) });
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: withPageTransition(SettingsSection) });
+// AnimatedOutlet, not a plain Outlet: /settings now has its own sub-routes (the
+// backup import/export subpages) and should animate between them the same way
+// the top-level tabs do - same reasoning as /advanced below.
+const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: AnimatedOutlet });
+const settingsIndexRoute = createRoute({ getParentRoute: () => settingsRoute, path: '/', component: withPageTransition(SettingsSection) });
+const backupImportRoute = createRoute({ getParentRoute: () => settingsRoute, path: 'backup/import', component: withPageTransition(BackupImportPage) });
+const backupExportRoute = createRoute({ getParentRoute: () => settingsRoute, path: 'backup/export', component: withPageTransition(BackupExportPage) });
 const actionsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/actions', component: withPageTransition(ActionsSection) });
 const filtersRoute = createRoute({ getParentRoute: () => rootRoute, path: '/filters', component: withPageTransition(FilterSection) });
 const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: '/help', component: withPageTransition(HelpSection) });
@@ -40,12 +45,10 @@ const radarRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'rad
 const lichtRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'licht', component: withPageTransition(LichtPage) });
 const touchRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'touch', component: withPageTransition(TouchPage) });
 const ledRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'led', component: withPageTransition(LedPage) });
-const quickRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'quick', component: withPageTransition(QuickPage) });
-const customRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'custom', component: withPageTransition(CustomPage) });
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
-  settingsRoute,
+  settingsRoute.addChildren([settingsIndexRoute, backupImportRoute, backupExportRoute]),
   actionsRoute,
   filtersRoute,
   helpRoute,
@@ -59,8 +62,6 @@ const routeTree = rootRoute.addChildren([
     lichtRoute,
     touchRoute,
     ledRoute,
-    quickRoute,
-    customRoute,
   ]),
 ]);
 

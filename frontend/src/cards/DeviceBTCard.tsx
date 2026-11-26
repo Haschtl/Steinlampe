@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useConnection } from '@/context/connection';
@@ -8,23 +8,39 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export function DeviceBTCard() {
-  const { sendCmd, status } = useConnection();
-  const [bleName, setBleName] = useState(() => localStorage.getItem('ql-ble-name') || 'Quarzlampe');
+  const { sendCmdReliable, status } = useConnection();
+  // status.deviceName (the connected GATT device's own advertised name) is the live
+  // source of truth - this used to default straight to a hardcoded "Quarzlampe" from
+  // localStorage and never synced from the actual device, so it could show a name
+  // belonging to a completely different lamp (or just the wrong default) while the
+  // page header elsewhere correctly showed the real one. localStorage is now only a
+  // fallback for while disconnected/before the first status arrives.
+  const [bleName, setBleName] = useState(() => status.deviceName || localStorage.getItem('ql-ble-name') || 'Quarzlampe');
+  useEffect(() => {
+    if (status.deviceName) setBleName(status.deviceName);
+  }, [status.deviceName]);
   const [editOpen, setEditOpen] = useState(false);
   const [editValue, setEditValue] = useState(bleName);
   const [clearBondsOpen, setClearBondsOpen] = useState(false);
 
   const handleClearBonds = () => {
     setClearBondsOpen(false);
-    sendCmd('trust ble clearbonds').catch(() => undefined);
+    sendCmdReliable('trust ble clearbonds').catch(() => undefined);
   };
 
   const applyBleName = () => {
     const next = editValue.trim() || 'Quarzlampe';
-    setBleName(next);
-    localStorage.setItem('ql-ble-name', next);
-    sendCmd(`name ble ${next}`).catch(() => undefined);
     setEditOpen(false);
+    // write-with-response, and only update the displayed/cached name once the
+    // device actually confirms it - same reasoning as the profile-slot fixes
+    // (memory: profile-show-no-response-investigation): a silently-dropped
+    // rename must not leave the UI showing a name the lamp never actually took.
+    sendCmdReliable(`name ble ${next}`)
+      .then(() => {
+        setBleName(next);
+        localStorage.setItem('ql-ble-name', next);
+      })
+      .catch(() => undefined);
   };
 
   return (
@@ -54,7 +70,7 @@ export function DeviceBTCard() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium"><Trans k="title.trustController">Controller trusted devices</Trans></div>
-            <Button size="sm" variant="ghost" onClick={() => sendCmd('trust list').catch(() => undefined)}>
+            <Button size="sm" variant="ghost" onClick={() => sendCmdReliable('trust list').catch(() => undefined)}>
               <Trans k="btn.reload">Reload</Trans>
             </Button>
           </div>
@@ -66,7 +82,7 @@ export function DeviceBTCard() {
                   <button
                     type="button"
                     className="text-red-400 hover:underline"
-                    onClick={() => sendCmd(`trust ble del ${addr}`).catch(() => undefined)}
+                    onClick={() => sendCmdReliable(`trust ble del ${addr}`).catch(() => undefined)}
                     title="Forget"
                   >
                     ×
@@ -82,7 +98,7 @@ export function DeviceBTCard() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium"><Trans k="title.bleBonds">BLE bonds</Trans></div>
-            <Button size="sm" variant="ghost" onClick={() => sendCmd('trust ble bonds').catch(() => undefined)}>
+            <Button size="sm" variant="ghost" onClick={() => sendCmdReliable('trust ble bonds').catch(() => undefined)}>
               <Trans k="btn.reload">Reload</Trans>
             </Button>
           </div>

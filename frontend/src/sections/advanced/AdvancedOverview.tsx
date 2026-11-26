@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import { Gauge, Hand, Lightbulb, ListMusic, Music, Palette, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
+import { Gauge, Hand, Lightbulb, Music, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IdleOffCard } from '@/cards/IdleOffCard';
 import { GestureMappingCard } from '@/cards/GestureMappingCard';
+import { QuickModesCard } from '@/cards/QuickModesCard';
+import { CustomPatternCard } from '@/cards/CustomPatternCard';
 import { useConnection } from '@/context/connection';
 import { Trans, useI18n } from '@/i18n';
 
@@ -35,8 +37,6 @@ export function AdvancedOverview() {
       descFallback: 'Touch surface input',
       show: status.hasTouch !== false && status.touchState !== undefined && status.touchState !== 'N/A',
     },
-    { to: '/advanced/quick' as const, icon: ListMusic, labelKey: 'nav.quick', labelFallback: 'Quick', descKey: 'desc.tile.quick', descFallback: 'Quick-tap mode list', show: true },
-    { to: '/advanced/custom' as const, icon: Palette, labelKey: 'nav.custom', labelFallback: 'Custom', descKey: 'desc.tile.custom', descFallback: 'Custom brightness pattern', show: true },
   ].filter((tile) => tile.show);
 
   return (
@@ -67,6 +67,8 @@ export function AdvancedOverview() {
         </Card>
       )}
       <GestureMappingCard />
+      <QuickModesCard />
+      <CustomPatternCard />
     </div>
   );
 }

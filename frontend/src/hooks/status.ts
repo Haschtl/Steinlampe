@@ -111,6 +111,9 @@ export type DeviceStatus = {
   patternReactive?: boolean;
   outputMode?: "pwm" | "analog";
   idleOffMin?: number;
+  wakeActive?: boolean;
+  sleepActive?: boolean;
+  notifyActive?: boolean;
   idleMinutes?: number;
   pwmCurve?: number;
   pwmRaw?: number;
@@ -362,6 +365,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         rampOffPow: asNum('ramp_off_pow') ?? s.rampOffPow,
         rampAmbient: asNum('ramp_amb') ?? s.rampAmbient,
         idleOffMin: asInt('idle_min') ?? s.idleOffMin,
+        wakeActive: kv.wake_active ? kv.wake_active === '1' : s.wakeActive,
+        sleepActive: kv.sleep_active ? kv.sleep_active === '1' : s.sleepActive,
+        notifyActive: kv.notify_active ? kv.notify_active === '1' : s.notifyActive,
         idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
         patternFade: kv.pat_fade ? (kv.pat_fade === 'off' ? 0 : parseFloat(kv.pat_fade)) : s.patternFade,
