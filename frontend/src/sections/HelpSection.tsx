@@ -1,8 +1,9 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Link2 } from 'lucide-react';
+import { Link2, Zap } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Trans, useI18n } from '@/i18n';
+import { useConnection } from '@/context/connection';
 
 const bleGuids = [
   { label: 'Service', value: 'd94d86d7-1eaf-47a4-9d1e-7a90bf34e66b' },
@@ -56,6 +57,7 @@ const midiMapping = [
 
 export function HelpSection() {
   const { t } = useI18n();
+  const { status, connectSerial } = useConnection();
   const midi = midiMapping;
 
   const copyConnectLink = async () => {
@@ -325,6 +327,30 @@ export function HelpSection() {
               "trust ble clearbonds" to inspect or reset that.
             </Trans>
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <Trans k="help.debugging">Debugging</Trans>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted">
+            <Trans k="help.serialDesc">
+              Direct USB/UART connection via the Web Serial API - bypasses BLE entirely. Useful when BLE pairing
+              is stuck or to watch boot/trust-window log lines a BLE link can't catch in time.
+            </Trans>
+          </p>
+          <Button
+            type="button"
+            onClick={connectSerial}
+            disabled={status.connecting || status.connected}
+          >
+            <Zap className="mr-2 h-4 w-4" />
+            <Trans k="btn.connectSerial">Connect Serial</Trans>
+          </Button>
         </CardContent>
       </Card>
     </div>

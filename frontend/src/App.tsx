@@ -255,23 +255,13 @@ export function RootLayout() {
                     {t("btn.disconnect", "Disconnect")}
                   </Button>
                 ) : (
-                  <div className="flex overflow-hidden rounded-md border border-border">
-                    <Button
-                      variant="primary"
-                      className="rounded-none border-none border-r border-border"
-                      onClick={connectBle}
-                      disabled={status.connecting}
-                    >
-                      <Bluetooth className="mr-1 h-4 w-4" /> BTE
-                    </Button>
-                    <Button
-                      className="rounded-none border-none"
-                      onClick={connectSerial}
-                      disabled={status.connecting}
-                    >
-                      <Zap className="mr-1 h-4 w-4" /> Serial (BT)
-                    </Button>
-                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={connectBle}
+                    disabled={status.connecting}
+                  >
+                    <Bluetooth className="mr-1 h-4 w-4" /> BLE
+                  </Button>
                 )}
               </div>
             </div>

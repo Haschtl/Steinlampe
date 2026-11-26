@@ -25,19 +25,24 @@ export class BleDroppedAfterConnectError extends Error {
   }
 }
 
-export async function requestDevice(): Promise<BluetoothDevice> {
-  try {
-    return await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE] }],
-      optionalServices: [SERVICE],
-    });
-  } catch (e) {
-    // Some devices might not advertise the UUID in the scan response; fallback to acceptAllDevices
+export async function requestDevice(opts: { unfiltered?: boolean } = {}): Promise<BluetoothDevice> {
+  if (opts.unfiltered) {
     return navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [SERVICE],
     });
   }
+  return navigator.bluetooth.requestDevice({
+    filters: [
+      { services: [SERVICE] },
+      // esp_ble_mesh's own PB-GATT/Proxy advertising (active once ENABLE_BLE_MESH is on) goes
+      // through a different adv path than our startBleAdvertising() in comms.cpp and never
+      // carries our custom service UUID in its scan response - only the device name. Match it by
+      // name too so a mesh-enabled lamp still shows up here instead of only via `unfiltered`.
+      { namePrefix: 'ESP-BLE-MESH' },
+    ],
+    optionalServices: [SERVICE],
+  });
 }
 
 export async function connectDevice(device: BluetoothDevice): Promise<BleHandles> {

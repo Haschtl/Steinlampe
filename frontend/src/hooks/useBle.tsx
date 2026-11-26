@@ -449,28 +449,64 @@ export function useBle(): BleApi {
     [attachListeners, cleanup, pushLog, refreshStatus],
   );
 
+  // Shared by the normal (service/name-filtered) connect and the "show all devices" retry
+  // below. These must stay two separate user-triggered calls rather than one chaining into the
+  // other in a .catch(): requestDevice() only runs with the click's "transient activation" still
+  // live, which is already borderline for the first call (native chooser render + the time the
+  // user spends looking at it) - by the time a .catch() fires for a *second* call, that
+  // activation has reliably expired, so Chrome rejects it with a SecurityError regardless of
+  // what the first call's outcome was. Each call here is only ever invoked straight from a real
+  // click handler (connect() itself, or the toast button below) so it always gets a fresh one.
+  const runConnectAttempt = useCallback(
+    async (unfiltered: boolean) => {
+      setStatus((s) => ({ ...s, connecting: true }));
+      try {
+        const dev = await requestDevice({ unfiltered });
+        if (dev?.id) {
+          knownDevicesRef.current[dev.id] = dev.name || 'BLE';
+          localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
+        }
+        await connectWithDevice(dev);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        pushLog('Connect error: ' + msg);
+        setStatus((s) => ({ ...s, connecting: false }));
+        cleanup();
+        // Chosen "Cancel" in the picker, or nothing matched the filters - not a real error, so
+        // offer the broader search as a one-click retry instead of a scary error message. The
+        // retry has to be its own button (not an automatic follow-up call) for the reason above.
+        const noSelection = e instanceof DOMException && e.name === 'NotFoundError';
+        if (noSelection && !unfiltered) {
+          toast.info(
+            <span>
+              Kein Gerät ausgewählt oder keins passt zum Filter - Gerät evtl. nicht in der
+              gefilterten Liste (z.B. neue BLE-Mesh-Firmware).{' '}
+              <button
+                type="button"
+                className="font-semibold underline"
+                onClick={() => runConnectAttempt(true)}
+              >
+                Alle Bluetooth-Geräte anzeigen
+              </button>
+            </span>,
+            { autoClose: false },
+          );
+        } else {
+          toast.error('Connect error: ' + msg);
+        }
+      }
+    },
+    [cleanup, connectWithDevice, pushLog],
+  );
+
   const connect = useCallback(async () => {
     if (!navigator.bluetooth) {
       pushLog('Web Bluetooth not available');
       toast.error('Web Bluetooth not available in this browser');
       return;
     }
-    setStatus((s) => ({ ...s, connecting: true }));
-    try {
-      const dev = await requestDevice();
-      if (dev?.id) {
-        knownDevicesRef.current[dev.id] = dev.name || 'BLE';
-        localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
-      }
-      await connectWithDevice(dev);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      pushLog('Connect error: ' + msg);
-      setStatus((s) => ({ ...s, connecting: false }));
-      cleanup();
-      toast.error('Connect error: ' + msg);
-    }
-  }, [cleanup, connectWithDevice, pushLog]);
+    await runConnectAttempt(false);
+  }, [pushLog, runConnectAttempt]);
 
   const tryReconnectLast = useCallback(async () => {
     if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
