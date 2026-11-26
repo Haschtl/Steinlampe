@@ -66,6 +66,7 @@ static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
+static const char *PREF_KEY_QUICK_PROFILE_MASK = "qmask_prof";
 static const char *PREF_KEY_GESTURES = "gest_map";
 static const char *PREF_KEY_MESH_HASKEY = "mesh_haskey";
 static const char *PREF_KEY_MESH_NETKEY = "mesh_netkey";
@@ -155,11 +156,12 @@ static const char *PREF_KEY_FILTER_DELAY_MS = "fil_dl_ms";
 static const char *PREF_KEY_FILTER_DELAY_FB = "fil_dl_fb";
 static const char *PREF_KEY_FILTER_DELAY_MIX = "fil_dl_mx";
 
-bool parseQuickCsv(const String &csv, uint64_t &outMask)
+bool parseQuickCsv(const String &csv, uint64_t &outPatternMask, uint8_t &outProfileMask)
 {
     String tmp = csv;
     tmp.replace(',', ' ');
-    outMask = 0;
+    outPatternMask = 0;
+    outProfileMask = 0;
     size_t total = quickModeCount();
     int start = 0;
     while (start < tmp.length())
@@ -173,11 +175,24 @@ bool parseQuickCsv(const String &csv, uint64_t &outMask)
             end++;
         String tok = tmp.substring(start, end);
         int idx = tok.toInt();
-        if (idx >= 1 && idx <= (int)total && idx <= 64)
-            outMask |= (1ULL << (idx - 1));
+        if (idx >= 1 && (size_t)idx <= total)
+        {
+            size_t zeroBased = (size_t)idx - 1;
+            if (zeroBased < PATTERN_COUNT)
+            {
+                if (zeroBased < 64)
+                    outPatternMask |= (1ULL << zeroBased);
+            }
+            else
+            {
+                size_t slot = zeroBased - PATTERN_COUNT;
+                if (slot < 8)
+                    outProfileMask |= (uint8_t)(1u << slot);
+            }
+        }
         start = end + 1;
     }
-    return outMask != 0;
+    return outPatternMask != 0 || outProfileMask != 0;
 }
 
 /**
@@ -592,6 +607,7 @@ static void saveSettingsNow()
     prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
     prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
+    prefs.putUChar(PREF_KEY_QUICK_PROFILE_MASK, quickProfileMask);
     prefs.putString(PREF_KEY_GESTURES, gestureBindingsToCsv());
 #if ENABLE_BLE_MESH_PROVISIONER
     prefs.putBool(PREF_KEY_MESH_HASKEY, meshHasLocalKeys);
@@ -653,7 +669,8 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     touchHoldStartMs = Settings::TOUCH_HOLD_MS_DEFAULT;
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
 #endif
-    quickMask = computeDefaultQuickMask();
+    quickMask = 0;
+    quickProfileMask = computeDefaultProfileMask();
     resetGestureBindingsToDefault();
     patternReactiveMask = 0;
     presenceBleEnabled = Settings::PRESENCE_BLE_DEFAULT_ENABLED;
@@ -811,9 +828,10 @@ void loadSettings()
         touchDimStep = 0.05f;
 #endif
     {
-        uint64_t lo = prefs.getUInt(PREF_KEY_QUICK_MASK, (uint32_t)(computeDefaultQuickMask() & 0xFFFFFFFFULL));
+        uint64_t lo = prefs.getUInt(PREF_KEY_QUICK_MASK, 0);
         uint64_t hi = prefs.getUInt(PREF_KEY_QUICK_MASK_HI, 0);
         quickMask = (hi << 32) | lo;
+        quickProfileMask = (uint8_t)prefs.getUChar(PREF_KEY_QUICK_PROFILE_MASK, computeDefaultProfileMask());
     }
     sanitizeQuickMask();
     {
@@ -1797,18 +1815,20 @@ void importConfig(const String &args)
         }
         else if (key == "quick")
         {
-            uint64_t mask = 0;
+            uint64_t patternMask = 0;
+            uint8_t profileMask = 0;
             if (val.equalsIgnoreCase(F("default")) || val.equalsIgnoreCase(F("none")))
             {
-                mask = computeDefaultQuickMask();
+                profileMask = computeDefaultProfileMask();
             }
             else
             {
-                parseQuickCsv(val, mask);
+                parseQuickCsv(val, patternMask, profileMask);
             }
-            if (mask != 0)
+            if (patternMask != 0 || profileMask != 0)
             {
-                quickMask = mask;
+                quickMask = patternMask;
+                quickProfileMask = profileMask;
                 sanitizeQuickMask();
             }
         }

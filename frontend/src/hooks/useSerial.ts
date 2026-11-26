@@ -20,6 +20,7 @@ type SerialApi = {
   refreshStatus: () => Promise<void>;
   sendCmd: (cmd: string) => Promise<void>;
   sendCmdReliable: (cmd: string) => Promise<void>;
+  sendCmdReliableSilent: (cmd: string) => Promise<void>;
 };
 
 export function useSerial(): SerialApi {
@@ -262,7 +263,9 @@ export function useSerial(): SerialApi {
       sendCmd,
       // Serial has no with/without-response distinction like BLE GATT writes - the writer's
       // promise already only resolves once the OS accepts the bytes, same guarantee either way.
+      // OtaUpdateCard only picks the *Silent variant for the BLE transport anyway.
       sendCmdReliable: sendCmd,
+      sendCmdReliableSilent: sendCmd,
     }),
     [connect, disconnect, filterParsed, forgetSerial, knownSerials, liveLog, log, refreshStatus, sendCmd, setFilterParsed, setLogPublic, status],
   );

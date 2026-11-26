@@ -8,7 +8,7 @@ extern Preferences prefs;
 extern const uint8_t PROFILE_SLOTS;
 extern const char *PREF_KEY_PROFILE_BASE;
 
-bool parseQuickCsv(const String &csv, uint64_t &outMask);
+bool parseQuickCsv(const String &csv, uint64_t &outPatternMask, uint8_t &outProfileMask);
 
 /**
  * @brief Build a profile string (cfg import style): pattern/brightness/ramp/speed/margin scene

@@ -13,7 +13,7 @@ const SERIAL_CHUNK_BYTES = 4096;
 type Phase = 'idle' | 'checking' | 'up-to-date' | 'available' | 'confirm' | 'updating' | 'success' | 'error';
 
 export function OtaUpdateCard() {
-  const { status, sendCmd, sendCmdReliable, transport, log } = useConnection();
+  const { status, sendCmd, sendCmdReliableSilent, transport, log } = useConnection();
   const [manifest, setManifest] = useState<OtaManifest | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export function OtaUpdateCard() {
       const bytes = await fetchOtaBinary(env);
       const waitForLine = createLineWaiter(() => logRef.current);
       const chunkSize = transport === 'ble' ? BLE_CHUNK_BYTES : SERIAL_CHUNK_BYTES;
-      const sendChunk = transport === 'ble' ? sendCmdReliable : sendCmd;
+      const sendChunk = transport === 'ble' ? sendCmdReliableSilent : sendCmd;
       await runOtaUpdate({
         bytes,
         md5: entry.md5,

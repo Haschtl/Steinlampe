@@ -228,6 +228,12 @@ export type DeviceStatus = {
   pushStep?: number;
   trustedBle?: string[];
   trustedBleBonds?: string[];
+  // Raw "profile show N" response text per slot (or "empty"), keyed by slot
+  // number - lives here (global, connection-scoped) rather than as per-card
+  // local state so navigating away and back doesn't forget it and flash
+  // "Loading..." again for data the device already told us once this
+  // session. See memory: profile-preview-global-state.
+  profilePreviews?: Record<number, string>;
 };
 
 /**
@@ -266,43 +272,14 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     }));
     return true;
   }
-  if (line.startsWith('[Lamp]')) {
-    const match = line.match(/\[Lamp\]\s+(ON|OFF(?:-PEND)?)/i);
-    if (match) {
-      setStatus((s) => ({
-        ...s,
-        lampState: match[1].toUpperCase().startsWith('ON') ? 'ON' : 'OFF',
-        lastStatusAt: Date.now(),
-      }));
-      return true;
-    }
-  }
-  // Parse clap summary lines: "[Clap] ON thr=0.35 cool=800"
-  if (line.startsWith('[Clap]')) {
-    const lower = line.toLowerCase();
-    const enabled = lower.includes('on');
-    const thrMatch = lower.match(/thr=([0-9.]+)/);
-    const coolMatch = lower.match(/cool=([0-9]+)/);
-    const thrVal = thrMatch ? parseFloat(thrMatch[1]) : undefined;
-    const coolVal = coolMatch ? parseInt(coolMatch[1] ?? '', 10) : undefined;
-    setStatus((s) => ({
-      ...s,
-      clapEnabled: enabled,
-      clapThreshold: Number.isFinite(thrVal ?? NaN) ? thrVal : s.clapThreshold,
-      clapCooldownMs: Number.isFinite(coolVal ?? NaN) ? coolVal : s.clapCooldownMs,
-    }));
-    return true;
-  }
-  if (line.startsWith('[Brightness]')) {
-    const match = line.match(/Brightness\]\s*([0-9.]+)/i);
-    const val = match ? parseFloat(match[1]) : undefined;
-    setStatus((s) => ({
-      ...s,
-      brightness: Number.isFinite(val ?? NaN) ? val : s.brightness,
-      lastStatusAt: Date.now(),
-    }));
-    return true;
-  }
+  // [Lamp]/[Clap]/[Brightness] and the rest of this file's old ad-hoc
+  // human-text parsers (below, after the structured branches) were deleted
+  // here (status protocol consolidation) - every one of them was either
+  // chasing a line format the firmware no longer emits (dead), or actively
+  // wrong (e.g. the old [Quick]/[PresenceBLE] parsers extracted garbage or
+  // clobbered state from unrelated lines), and in every live case the same
+  // information already arrives via STATE|/a structured KEY|k=v group line.
+  // See memory: status-parsing-consolidation.
   if (line.startsWith('STATUS')) {
     const parts = line.split('|').slice(1);
     const kv: Record<string, string> = {};
@@ -322,29 +299,20 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     };
     const isAvailable = (k: string) => (kv[k] ? kv[k].toUpperCase() !== 'N/A' : false);
     setStatus((s) => {
+      // Everything here is the slimmed core line (status protocol redesign) -
+      // light_*/music_*/clap_*/poti_*(detail)/push_*(detail)/filter_*/
+      // radar_*(detail)/custom_len/custom_step_ms/gamma/pwm_*/bri_min/
+      // bri_max/notif_min no longer ever arrive on this line; they're their
+      // own on-demand group (LIGHT|/MUSIC|/POTI|/PUSH|/FILTERS|/RADAR|/IO|)
+      // or, for custom_len/step, already covered by CUSTOM|. Only the
+      // ON/OFF/N/A glance for each feature stays here, for Home chips and
+      // the Advanced tile list.
       const hasLight = kv.light ? isAvailable('light') : s.hasLight;
-      const lightRaw = kv.light_raw ? asNum('light_raw') : s.hasLight ? s.lightRaw : undefined;
-      const lightRawMin = kv.light_raw_min ? asNum('light_raw_min') : s.lightRawMin;
-      const lightRawMax = kv.light_raw_max ? asNum('light_raw_max') : s.lightRawMax;
-      const pwmRaw = kv.pwm_raw ? asInt("pwm_raw") : undefined;
-      const pwmMax = kv.pwm_max ? asInt("pwm_max") : undefined;
-      const outputMode = kv.out ? (kv.out.toLowerCase().startsWith('ana') ? 'analog' : 'pwm') : undefined;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
-      const notifyMin = kv.notif_min ? asNum('notif_min') : s.notifyMin;
-      const potiVal = Object.prototype.hasOwnProperty.call(kv, 'poti_val') ? asNum('poti_val') : undefined;
-      const potiRaw = Object.prototype.hasOwnProperty.call(kv, 'poti_raw') ? asInt('poti_raw') : undefined;
-      const potiMin = Object.prototype.hasOwnProperty.call(kv, 'poti_min') ? asNum('poti_min') : undefined;
-      const potiMax = Object.prototype.hasOwnProperty.call(kv, 'poti_max') ? asNum('poti_max') : undefined;
-      const potiInvert = kv.poti_inv ? kv.poti_inv === '1' : undefined;
-      const potiMode = kv.poti_mode === 'scan' || kv.poti_mode === 'brightness' ? kv.poti_mode : undefined;
-      const potiTarget = kv.poti_target;
       const buttons = Object.prototype.hasOwnProperty.call(kv, 'buttons') ? parseButtonsField(kv.buttons) : undefined;
       const hasPush = kv.push ? isAvailable('push') : s.hasPush;
       const hasPresenceBle = kv.presence_ble ? isAvailable('presence_ble') : s.hasPresenceBle;
-      const presenceBleList = kv.presence_ble_list
-        ? kv.presence_ble_list.split(',').map((x) => x.trim()).filter(Boolean)
-        : s.presenceBleList;
       const hasRadar = kv.radar ? isAvailable('radar') : s.hasRadar;
       const hasSwitch = kv.switch ? kv.switch.toUpperCase() !== 'N/A' : s.hasSwitch;
       const hasTouch = kv.touch ? isAvailable('touch') : s.hasTouch;
@@ -401,117 +369,20 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,
-        presenceBleThreshold: asInt('presence_ble_thr') ?? s.presenceBleThreshold,
-        presenceBleAutoOn: kv.presence_ble_on
-          ? ['1', 'on', 'true'].includes(kv.presence_ble_on.toLowerCase())
-          : s.presenceBleAutoOn,
-        presenceBleAutoOff: kv.presence_ble_off
-          ? ['1', 'on', 'true'].includes(kv.presence_ble_off.toLowerCase())
-          : s.presenceBleAutoOff,
-        presenceBleList,
-        presenceBleGraceMs: asInt('presence_ble_grace') ?? s.presenceBleGraceMs,
-        presenceBleHwOverride: kv.presence_ble_hwoverride ? kv.presence_ble_hwoverride === '1' : s.presenceBleHwOverride,
         hasRadar,
         radarEnabled: kv.radar ? kv.radar.toUpperCase() === 'ON' : hasRadar === false ? false : s.radarEnabled,
-        radarPresent: kv.radar_present ? kv.radar_present === '1' : s.radarPresent,
-        radarDistanceCm: asNum('radar_dist') ?? s.radarDistanceCm,
-        radarSpeedCmS: asNum('radar_speed') ?? s.radarSpeedCmS,
-        radarTargetCount: asInt('radar_targets') ?? s.radarTargetCount,
-        radarDimEnabled: kv.radar_dim ? kv.radar_dim === '1' : s.radarDimEnabled,
-        radarDimNearCm: asNum('radar_dim_near') ?? s.radarDimNearCm,
-        radarDimFarCm: asNum('radar_dim_far') ?? s.radarDimFarCm,
-        radarMotionOnEnabled: kv.radar_motion ? kv.radar_motion === '1' : s.radarMotionOnEnabled,
-        radarMotionSpeedThr: asNum('radar_motion_thr') ?? s.radarMotionSpeedThr,
-        radarMotionHoldMs: asInt('radar_motion_hold') ?? s.radarMotionHoldMs,
-        radarOffDistanceEnabled: kv.radar_offdist ? kv.radar_offdist === '1' : s.radarOffDistanceEnabled,
-        radarOffDistanceCm: asNum('radar_off_cm') ?? s.radarOffDistanceCm,
-        radarOffGraceMs: asInt('radar_off_grace') ?? s.radarOffGraceMs,
-        radarHwOverride: kv.radar_hwoverride ? kv.radar_hwoverride === '1' : s.radarHwOverride,
-        radarVelocityFactor: asNum('radar_velocity') ?? s.radarVelocityFactor,
         firmwareVersion: kv.fw_ver ?? s.firmwareVersion,
         firmwareEnv: kv.fw_env ?? s.firmwareEnv,
         otaActive: kv.ota_active !== undefined ? kv.ota_active === '1' : s.otaActive,
-        outputMode: outputMode ?? s.outputMode,
-        customLen: asInt('custom_len') ?? s.customLen,
-        customStepMs: asInt('custom_step_ms') ?? s.customStepMs,
-        pwmCurve: asNum('gamma') ?? s.pwmCurve,
-        pwmRaw: pwmRaw ?? s.pwmRaw,
-        pwmMax: pwmMax ?? s.pwmMax,
-        briMin: asNum('bri_min') ?? s.briMin,
-        briMax: asNum('bri_max') ?? s.briMax,
-        filterIir: kv.filter_iir ? kv.filter_iir.toUpperCase() === 'ON' : s.filterIir,
-        filterIirAlpha: asNum('filter_alpha') ?? s.filterIirAlpha,
-        filterClip: kv.filter_clip ? kv.filter_clip.toUpperCase() === 'ON' : s.filterClip,
-        filterClipAmt: asNum('filter_clip_amt') ?? s.filterClipAmt,
-        filterClipCurve: asInt('filter_clip_curve') ?? s.filterClipCurve,
-        filterTrem: kv.filter_trem ? kv.filter_trem.toUpperCase() === 'ON' : s.filterTrem,
-        filterTremRate: asNum('filter_trem_rate') ?? s.filterTremRate,
-        filterTremDepth: asNum('filter_trem_depth') ?? s.filterTremDepth,
-        filterTremWave: asInt('filter_trem_wave') ?? s.filterTremWave,
-        filterSpark: kv.filter_spark ? kv.filter_spark.toUpperCase() === 'ON' : s.filterSpark,
-        filterSparkDens: asNum('filter_spark_dens') ?? s.filterSparkDens,
-        filterSparkInt: asNum('filter_spark_int') ?? s.filterSparkInt,
-        filterSparkDecay: asInt('filter_spark_decay') ?? s.filterSparkDecay,
-        filterDelay: kv.filter_delay ? kv.filter_delay.toUpperCase() === 'ON' : s.filterDelay,
-        filterDelayMs: asInt('filter_delay_ms') ?? s.filterDelayMs,
-        filterDelayFb: asNum('filter_delay_fb') ?? s.filterDelayFb,
-        filterDelayMix: asNum('filter_delay_mix') ?? s.filterDelayMix,
-        filterComp: kv.filter_comp ? kv.filter_comp.toUpperCase() === 'ON' : s.filterComp,
-        filterCompThr: asNum('filter_comp_thr') ?? s.filterCompThr,
-        filterCompRatio: asNum('filter_comp_ratio') ?? s.filterCompRatio,
-        filterCompAttack: asInt('filter_comp_att') ?? s.filterCompAttack,
-        filterCompRelease: asInt('filter_comp_rel') ?? s.filterCompRelease,
-        filterEnv: kv.filter_env ? kv.filter_env.toUpperCase() === 'ON' : s.filterEnv,
-        filterEnvAttack: asInt('filter_env_att') ?? s.filterEnvAttack,
-        filterEnvRelease: asInt('filter_env_rel') ?? s.filterEnvRelease,
         bleAvailable: kv.ble ? kv.ble.toUpperCase() !== 'DOWN' : s.bleAvailable,
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
-        lightGain: asNum('light_gain') ?? s.lightGain,
-        lightAlpha: asNum('light_alpha') ?? s.lightAlpha,
-        lightClampMin: asNum('light_min') ?? s.lightClampMin,
-        lightClampMax: asNum('light_max') ?? s.lightClampMax,
-        lightRaw,
-        lightRawMin,
-        lightRawMax,
         hasMusic,
         musicEnabled: kv.music ? kv.music.toUpperCase() === 'ON' : hasMusic === false ? false : s.musicEnabled,
-        musicGain: asNum('music_gain') ?? s.musicGain,
-        musicSmooth: asNum('music_smooth') ?? s.musicSmooth,
-        musicEnv: asNum('music_env') ?? s.musicEnv,
-        musicLevel: asNum('music_level') ?? s.musicLevel,
-        musicAuto: kv.music_auto ? kv.music_auto.toUpperCase() === 'ON' : s.musicAuto,
-        musicAutoThr: asNum('music_thr') ?? s.musicAutoThr,
-        musicMode: kv.music_mode ?? s.musicMode,
-        musicMod: asNum('music_mod') ?? s.musicMod,
-        musicKickMs: asNum('music_kick_ms') ?? s.musicKickMs,
-        notifyMin,
-        clapEnabled: kv.clap ? kv.clap.toUpperCase() === 'ON' : hasMusic === false ? false : s.clapEnabled,
-        clapThreshold: asNum('clap_thr') ?? s.clapThreshold,
-        clapCooldownMs: asInt('clap_cool') ?? s.clapCooldownMs,
-        clapCmd1: kv.clap_cmd1 ?? s.clapCmd1,
-        clapCmd2: kv.clap_cmd2 ?? s.clapCmd2,
-        clapCmd3: kv.clap_cmd3 ?? s.clapCmd3,
         hasPoti,
         potiEnabled: kv.poti ? kv.poti.toUpperCase() === 'ON' : hasPoti === false ? false : s.potiEnabled,
-        potiAlpha: asNum('poti_alpha') ?? s.potiAlpha,
-        potiDelta: asNum('poti_delta') ?? s.potiDelta,
-        potiOff: asNum('poti_off') ?? s.potiOff,
-        potiSample: asInt('poti_sample') ?? s.potiSample,
-        potiMin: potiMin ?? s.potiMin,
-        potiMax: potiMax ?? s.potiMax,
-        potiInvert: typeof potiInvert === 'boolean' ? potiInvert : s.potiInvert,
-        potiMode: potiMode ?? s.potiMode,
-        potiTarget: potiTarget ?? s.potiTarget,
-        potiVal: potiVal ?? s.potiVal,
-        potiRaw: potiRaw ?? s.potiRaw,
         hasPush,
         pushEnabled: kv.push ? kv.push.toUpperCase() === 'ON' : hasPush === false ? false : s.pushEnabled,
-        pushDebounceMs: asInt('push_db') ?? s.pushDebounceMs,
-        pushDoubleMs: asInt('push_dbl') ?? s.pushDoubleMs,
-        pushHoldMs: asInt('push_hold') ?? s.pushHoldMs,
-        pushStepMs: asInt('push_step_ms') ?? s.pushStepMs,
-        pushStep: asNum('push_step') ?? s.pushStep,
       };
     });
     return true;
@@ -844,215 +715,32 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     });
     return true;
   }
+  // Everything below this point used to include a long tail of ad-hoc
+  // human-text parsers (generic "Switch:"/"Touch:" regexes, a "Lamp="
+  // fallback, an old "Pattern N/Total - 'name'" line, [Quick]/[Mode]/
+  // [PresenceBLE]/[Touch]/[Filter]/Ramp=/RampOn/RampOff/PresenceBLE=) - all
+  // deleted (status protocol consolidation). Checked each against what the
+  // firmware actually emits today: most matched nothing anymore (dead), a
+  // few were actively wrong (e.g. [Quick] extracted "set -> 1,2,3" instead
+  // of "1,2,3"; [PresenceBLE] overwrote presenceBle's ON/OFF from ANY
+  // "[PresenceBLE] ..." line, including ones that aren't enable/disable
+  // confirmations at all, like "[PresenceBLE] Grace 1000 ms"), and the rest
+  // were simply superseded by a structured KEY|k=v line that already
+  // covers the same ground more reliably. See memory:
+  // status-parsing-consolidation.
   let handled = false;
-  const swAny = line.match(/Switch[:=]\s*([A-Za-z0-9]+)/i);
-  const touchAny = line.match(/Touch[:=]\s*([A-Za-z0-9]+)/i);
-  if (swAny) {
-    handled = true;
-    setStatus((s) => ({ ...s, switchState: swAny[1].toUpperCase(), lastStatusAt: Date.now() }));
-  }
-  if (touchAny) {
-    handled = true;
-    setStatus((s) => ({ ...s, touchState: touchAny[1].toUpperCase(), lastStatusAt: Date.now() }));
-  }
-  if (line.includes('Lamp=')) {
-    handled = true;
-    const b = line.match(/Brightness=([0-9.]+)/);
-    const lamp = line.match(/Lamp=([A-Z]+)/);
-    const sw = line.match(/Switch=([A-Z]+)/);
-    setStatus((s) => ({
-      ...s,
-      brightness: b ? parseFloat(b[1]) : s.brightness,
-      lampState: lamp ? lamp[1] : s.lampState,
-      switchState: sw ? sw[1] : s.switchState,
-      lastStatusAt: Date.now(),
-    }));
-  }
-  if (line.startsWith('Pattern ')) {
-    const modeMatch = line.match(/Pattern\s+(\d+)\/(\d+).*?'([^']+)'/);
-    const autoMatch = line.match(/AutoCycle=(ON|OFF)/);
-    const speedMatch = line.match(/Speed=([0-9.]+)/);
-    if (modeMatch) {
+  if (line.startsWith('[Profile ')) {
+    const m = line.match(/^\[Profile (\d+)\]\s*(.*)$/);
+    if (m) {
       handled = true;
-      const idx = parseInt(modeMatch[1], 10);
-      const total = parseInt(modeMatch[2], 10);
+      const slot = parseInt(m[1], 10);
+      const raw = m[2];
       setStatus((s) => ({
         ...s,
-        currentPattern: !Number.isNaN(idx) ? idx : s.currentPattern,
-        patternCount: !Number.isNaN(total) ? total : s.patternCount,
-        patternName: modeMatch[3] || s.patternName,
-        autoCycle: autoMatch ? autoMatch[1] === 'ON' : s.autoCycle,
-        patternSpeed: speedMatch ? parseFloat(speedMatch[1]) : s.patternSpeed,
+        profilePreviews: { ...s.profilePreviews, [slot]: raw },
         lastStatusAt: Date.now(),
       }));
     }
-  }
-  if (line.startsWith('[Quick]')) {
-    handled = true;
-    const csv = line.replace('[Quick]', '').trim();
-    setStatus((s) => ({ ...s, quickCsv: csv, lastStatusAt: Date.now() }));
-  }
-  if (line.startsWith('[Mode]')) {
-    handled = true;
-    const num = line.match(/Mode\]\s*([0-9]+)/i);
-    const total = line.match(/\/\s*([0-9]+)/);
-    const name = line.split('-').slice(1).join('-').trim();
-    setStatus((s) => ({
-      ...s,
-      currentPattern: num ? parseInt(num[1], 10) : s.currentPattern,
-      patternCount: total ? parseInt(total[1], 10) : s.patternCount,
-      patternName: name || s.patternName,
-      lastStatusAt: Date.now(),
-    }));
-  }
-  if (line.startsWith('[PresenceBLE]')) {
-    handled = true;
-    const enabled = line.toLowerCase().includes('enabled');
-    // const disabled = line.toLowerCase().includes("disabled");
-    const unavailable = line.toUpperCase().includes("N/A");
-    setStatus((s) => ({
-      ...s,
-      hasPresenceBle: unavailable ? false : true,
-      presenceBle: enabled ? 'ON' : 'OFF',
-      lastStatusAt: Date.now(),
-    }));
-  }
-  if (line.startsWith('[Touch]')) {
-    handled = true;
-    const active = line.includes('active=1');
-    const base = line.match(/base=([0-9]+)/);
-    const raw = line.match(/raw=([0-9]+)/);
-    const delta = line.match(/delta=([-0-9]+)/);
-    const thrOn = line.match(/thrOn=([0-9]+)/);
-    const thrOff = line.match(/thrOff=([0-9]+)/);
-    setStatus((s) => ({
-      ...s,
-      touchState: active ? 'TOUCH' : 'idle',
-      touchBase: base ? parseInt(base[1], 10) : s.touchBase,
-      touchRaw: raw ? parseInt(raw[1], 10) : s.touchRaw,
-        touchDelta: delta ? parseInt(delta[1], 10) : s.touchDelta,
-        touchThrOn: thrOn ? parseInt(thrOn[1], 10) : s.touchThrOn,
-        touchThrOff: thrOff ? parseInt(thrOff[1], 10) : s.touchThrOff,
-        touchActive: active,
-        lastTouchLine: line,
-        touchDimStep: s.touchDimStep,
-        lastStatusAt: Date.now(),
-      }));
-  }
-  if (line.startsWith('[Filter]')) {
-    handled = true;
-    const lower = line.toLowerCase();
-    const hasLbl = (lbl: string) =>
-      lower.includes(`${lbl}=`) || new RegExp(`\\b${lbl}\\s+(on|off)\\b`).test(lower);
-    const onOff = (lbl: string, prev?: boolean) => {
-      const eqMatch = lower.match(new RegExp(`${lbl}=([a-z]+)`));
-      if (eqMatch && eqMatch[1]) return eqMatch[1] === 'on';
-      const plain = lower.match(new RegExp(`\\b${lbl}\\s+(on|off)\\b`));
-      if (plain && plain[1]) return plain[1] === 'on';
-      return prev ?? false;
-    };
-    const numInParens = (lbl: string) => {
-      const match = line.match(new RegExp(`${lbl}=\\w+\\(([^)]+)\\)`));
-      if (match && match[1]) {
-        const parts = match[1].split(/[\\/]/).map((p) => parseFloat(p));
-        return parts;
-      }
-      return [];
-    };
-    const parseNumAfter = (lbl: string) => {
-      const match = line.match(new RegExp(`${lbl}=([0-9.+-]+)`));
-      return match ? parseFloat(match[1]) : undefined;
-    };
-    setStatus((s) => {
-      const iirParts = numInParens('iir');
-      const clipParts = numInParens('clip');
-      const tremParts = numInParens('trem');
-      const sparkParts = numInParens('spark');
-      const compParts = numInParens('comp');
-      const envParts = numInParens('env');
-      const alphaInline = parseNumAfter('alpha');
-      const clipAmtInline = parseNumAfter('amt');
-      const tremRateInline = parseNumAfter('rate');
-      const tremDepthInline = parseNumAfter('depth');
-      const sparkDensInline = parseNumAfter('dens');
-      const sparkIntInline = parseNumAfter('intensity') ?? parseNumAfter('int');
-      const sparkDecayInline = parseNumAfter('decay');
-      const compThrInline = parseNumAfter('thr');
-      const compRatioInline = parseNumAfter('ratio');
-      const compAttInline = parseNumAfter('att');
-      const compRelInline = parseNumAfter('comp_rel');
-      const envAttInline = parseNumAfter('att');
-      const envRelInline = parseNumAfter('env_rel');
-      const delayMs = parseNumAfter('filter_delay_ms') ?? (numInParens('delay')[0] ?? undefined);
-      return {
-        ...s,
-        filterIir: onOff('iir', s.filterIir),
-        filterIirAlpha: iirParts[0] ?? alphaInline ?? s.filterIirAlpha,
-        filterClip: onOff('clip', s.filterClip),
-        filterClipAmt: clipParts[0] ?? clipAmtInline ?? s.filterClipAmt,
-        filterTrem: onOff('trem', s.filterTrem),
-        filterTremRate: tremParts[0] ?? tremRateInline ?? s.filterTremRate,
-        filterTremDepth: tremParts[1] ?? tremDepthInline ?? s.filterTremDepth,
-        filterSpark: onOff('spark', s.filterSpark),
-        filterSparkDens: sparkParts[0] ?? sparkDensInline ?? s.filterSparkDens,
-        filterSparkInt: sparkParts[1] ?? sparkIntInline ?? s.filterSparkInt,
-        filterSparkDecay: sparkParts[2] ? Number(sparkParts[2]) : sparkDecayInline ?? s.filterSparkDecay,
-        filterComp: onOff('comp', s.filterComp),
-        filterCompThr: compParts[0] ?? compThrInline ?? s.filterCompThr,
-        filterCompRatio: compParts[1] ?? compRatioInline ?? s.filterCompRatio,
-        filterCompAttack: compParts[2] ? Number(compParts[2]) : compAttInline ?? s.filterCompAttack,
-        filterCompRelease: compParts[3] ? Number(compParts[3]) : compRelInline ?? s.filterCompRelease,
-        filterEnv: onOff('env', s.filterEnv),
-        filterEnvAttack: envParts[0] ? Number(envParts[0]) : envAttInline ?? s.filterEnvAttack,
-        filterEnvRelease: envParts[1] ? Number(envParts[1]) : envRelInline ?? s.filterEnvRelease,
-        filterDelay: onOff('delay', s.filterDelay),
-        filterDelayMs: delayMs ?? s.filterDelayMs,
-      };
-    });
-  }
-  if (line.startsWith('Ramp=')) {
-    handled = true;
-    const onMs = line.match(/Ramp=([0-9]+)/);
-    const offMs = line.match(/\/\s*([0-9]+)ms/);
-    const idle = line.match(/IdleOff=([0-9]+)m/);
-    const patFade = line.match(/PatFade=ON\(([0-9.]+)\)/);
-    const touchDim = line.match(/TouchDim=(ON|OFF)/);
-    setStatus((s) => ({
-      ...s,
-      rampOnMs: onMs ? parseInt(onMs[1], 10) : s.rampOnMs,
-      rampOffMs: offMs ? parseInt(offMs[1], 10) : s.rampOffMs,
-      idleOffMin: idle ? parseInt(idle[1], 10) : s.idleOffMin,
-      idleMinutes: idle ? parseInt(idle[1], 10) : s.idleMinutes,
-      patternFade: patFade ? parseFloat(patFade[1]) : s.patternFade,
-      touchState: touchDim ? (touchDim[1] === 'ON' ? 'TOUCHDIM' : s.touchState) : s.touchState,
-      lastStatusAt: Date.now(),
-    }));
-  }
-  if (/RampOn/i.test(line) || /RampOff/i.test(line)) {
-    handled = true;
-    const on = line.match(/RampOn[:=]?\s*([0-9]+)/i);
-    const off = line.match(/RampOff[:=]?\s*([0-9]+)/i);
-    setStatus((s) => ({
-      ...s,
-      rampOnMs: on ? parseInt(on[1], 10) : s.rampOnMs,
-      rampOffMs: off ? parseInt(off[1], 10) : s.rampOffMs,
-      lastStatusAt: Date.now(),
-    }));
-  }
-  if (line.startsWith('PresenceBLE=')) {
-    handled = true;
-    setStatus((s) => ({ ...s, presenceBle: line.replace('PresenceBLE=', '').trim(), lastStatusAt: Date.now() }));
-  }
-  if (line.startsWith('[Custom]')) {
-    handled = true;
-    const len = line.match(/len=([0-9]+)/);
-    const step = line.match(/stepMs=([0-9]+)/);
-    setStatus((s) => ({
-      ...s,
-      customLen: len ? parseInt(len[1], 10) : s.customLen,
-      customStepMs: step ? parseInt(step[1], 10) : s.customStepMs,
-      lastStatusAt: Date.now(),
-    }));
   }
   if (line.startsWith('CUSTOM|')) {
     handled = true;
@@ -1070,36 +758,5 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       lastStatusAt: Date.now(),
     }));
   }
-  if (line.startsWith('[Music]')) {
-    handled = true;
-    setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
-  }
-  if (line.startsWith("[Light]")) {
-    const rawMatch = line.match(/raw=([0-9.]+)/i);
-    const minMatch = line.match(/min=([0-9.]+)/i);
-    const maxMatch = line.match(/max=([0-9.]+)/i);
-    const ambMatch = line.match(/ambx=([0-9.]+)/i);
-    const ambFactorMatch = line.match(/rampamb=([0-9.]+)/i);
-    const rawVal = rawMatch ? parseFloat(rawMatch[1]) : undefined;
-    const minVal = minMatch ? parseFloat(minMatch[1]) : undefined;
-    const maxVal = maxMatch ? parseFloat(maxMatch[1]) : undefined;
-    const ambVal = ambMatch ? parseFloat(ambMatch[1]) : undefined;
-    const ambFacVal = ambFactorMatch ? parseFloat(ambFactorMatch[1]) : undefined;
-    setStatus((s) => ({
-      ...s,
-      lightRaw: Number.isFinite(rawVal ?? NaN) ? rawVal : s.lightRaw,
-      lightRawMin: Number.isFinite(minVal ?? NaN) ? minVal : s.lightRawMin,
-      lightRawMax: Number.isFinite(maxVal ?? NaN) ? maxVal : s.lightRawMax,
-      lightAmbMult: Number.isFinite(ambVal ?? NaN) ? ambVal : s.lightAmbMult,
-      rampAmbient: Number.isFinite(ambFacVal ?? NaN) ? ambFacVal : s.rampAmbient,
-      hasLight: line.toUpperCase().includes("N/A") ? false : s.hasLight ?? true,
-      lightEnabled: line.toUpperCase().includes("N/A")
-        ? false
-        : s.lightEnabled ?? true,
-      lastStatusAt: Date.now(),
-    }));
-    handled =true;
-  }
-
   return handled;
 }

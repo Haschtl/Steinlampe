@@ -122,73 +122,125 @@ class LampStatusStore:
                     "quick": kv.get("quick"),
                     "presence_ble": kv.get("presence_ble"),
                     "presence_ble_hwoverride": is_on("presence_ble_hwoverride"),
-                    "custom_len": int_or_none("custom_len"),
-                    "custom_step_ms": int_or_none("custom_step_ms"),
-                    "demo": kv.get("demo") == "ON" if "demo" in kv else None,
-                    "gamma": float_or_none("gamma"),
-                    "bri_min": float_or_none("bri_min"),
-                    "bri_max": float_or_none("bri_max"),
+                    # has_X/X_enabled: just the ON/OFF/N/A glance - the rest of
+                    # each cluster lives in its own on-demand group now (see
+                    # the MUSIC|/RADAR|/IO| branches below, and memory:
+                    # status-protocol-redesign). custom_len/custom_step_ms
+                    # dropped entirely here - CUSTOM| (from "custom export")
+                    # already carries both.
                     "has_light": has_light,
                     "light_enabled": is_on("light"),
-                    "light_gain": float_or_none("light_gain"),
-                    "light_min": float_or_none("light_min"),
-                    "light_max": float_or_none("light_max"),
-                    "light_alpha": float_or_none("light_alpha"),
-                    "light_raw": float_or_none("light_raw"),
-                    "light_raw_min": float_or_none("light_raw_min"),
-                    "light_raw_max": float_or_none("light_raw_max"),
                     "has_music": has_music,
                     "music_enabled": is_on("music"),
-                    "music_gain": float_or_none("music_gain"),
-                    "music_auto": kv.get("music_auto") == "ON"
-                    if "music_auto" in kv
-                    else None,
-                    "music_thr": float_or_none("music_thr"),
-                    "music_mode": kv.get("music_mode"),
-                    "music_mod": float_or_none("music_mod"),
-                    "music_kick_ms": float_or_none("music_kick_ms"),
-                    "notif_min": float_or_none("notif_min"),
-                    "music_env": float_or_none("music_env"),
-                    "music_level": float_or_none("music_level"),
-                    "music_smooth": float_or_none("music_smooth"),
-                    "clap": is_on("clap"),
-                    "clap_thr": float_or_none("clap_thr"),
-                    "clap_cool": int_or_none("clap_cool"),
-                    "clap_cmd1": kv.get("clap_cmd1"),
-                    "clap_cmd2": kv.get("clap_cmd2"),
-                    "clap_cmd3": kv.get("clap_cmd3"),
                     "has_poti": has_poti,
                     "poti_enabled": is_on("poti"),
-                    "poti_alpha": float_or_none("poti_alpha"),
-                    "poti_delta": float_or_none("poti_delta"),
-                    "poti_off": float_or_none("poti_off"),
-                    "poti_sample": int_or_none("poti_sample"),
                     "has_push": has_push,
                     "push_enabled": is_on("push"),
-                    "push_db": int_or_none("push_db"),
-                    "push_dbl": int_or_none("push_dbl"),
-                    "push_hold": int_or_none("push_hold"),
-                    "push_step_ms": int_or_none("push_step_ms"),
-                    "push_step": float_or_none("push_step"),
                     "has_presence_ble": has_presence_ble,
                     "has_touch": has_touch,
                     "has_radar": has_radar,
+                    # Just the ON/OFF glance - the rest moved to the RADAR|
+                    # group below (status protocol redesign).
                     "radar": kv.get("radar"),
+                }
+            )
+        elif line.startswith("RADAR|"):
+            # radar_dist/radar_speed/radar_targets etc. used to arrive on
+            # STATUS| - they're now their own on-demand group, requested
+            # explicitly via "status radar" (see ble.py/bt_serial.py's
+            # async_request_status()). See memory: status-protocol-redesign.
+            handled = True
+            parts = line.split("|")[1:]
+            kv = {}
+            for part in parts:
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    kv[key] = val
+
+            def is_on(key: str) -> bool | None:
+                if key not in kv:
+                    return None
+                val = kv[key].upper()
+                if val == "N/A":
+                    return None
+                return val in {"ON", "1", "TRUE"}
+
+            self.data.update(
+                {
                     "radar_present": is_on("radar_present"),
-                    "radar_dist": float_or_none("radar_dist"),
-                    "radar_speed": float_or_none("radar_speed"),
-                    "radar_targets": int_or_none("radar_targets"),
+                    "radar_dist": _as_float(kv.get("radar_dist")),
+                    "radar_speed": _as_float(kv.get("radar_speed")),
+                    "radar_targets": _as_int(kv.get("radar_targets")),
                     "radar_dim": is_on("radar_dim"),
-                    "radar_dim_near": float_or_none("radar_dim_near"),
-                    "radar_dim_far": float_or_none("radar_dim_far"),
+                    "radar_dim_near": _as_float(kv.get("radar_dim_near")),
+                    "radar_dim_far": _as_float(kv.get("radar_dim_far")),
                     "radar_motion": is_on("radar_motion"),
-                    "radar_motion_thr": float_or_none("radar_motion_thr"),
-                    "radar_motion_hold": int_or_none("radar_motion_hold"),
+                    "radar_motion_thr": _as_float(kv.get("radar_motion_thr")),
+                    "radar_motion_hold": _as_int(kv.get("radar_motion_hold")),
                     "radar_offdist": is_on("radar_offdist"),
-                    "radar_off_cm": float_or_none("radar_off_cm"),
-                    "radar_off_grace": int_or_none("radar_off_grace"),
+                    "radar_off_cm": _as_float(kv.get("radar_off_cm")),
+                    "radar_off_grace": _as_int(kv.get("radar_off_grace")),
                     "radar_hwoverride": is_on("radar_hwoverride"),
-                    "radar_velocity": float_or_none("radar_velocity"),
+                    "radar_velocity": _as_float(kv.get("radar_velocity")),
+                }
+            )
+        elif line.startswith("MUSIC|"):
+            # clap (switch.py), music_gain/music_auto/music_thr/music_mode/
+            # music_mod/clap_cmd1-3 used to arrive on STATUS1| - that line is
+            # retired, this is now its own on-demand group, requested via
+            # "status music" (see async_request_status()). See memory:
+            # status-protocol-redesign.
+            handled = True
+            parts = line.split("|")[1:]
+            kv = {}
+            for part in parts:
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    kv[key] = val
+
+            def is_on(key: str) -> bool | None:
+                if key not in kv:
+                    return None
+                val = kv[key].upper()
+                if val == "N/A":
+                    return None
+                return val in {"ON", "1", "TRUE"}
+
+            self.data.update(
+                {
+                    "music_enabled": is_on("music"),
+                    "music_gain": _as_float(kv.get("music_gain")),
+                    "music_auto": is_on("music_auto"),
+                    "music_thr": _as_float(kv.get("music_thr")),
+                    "music_mode": kv.get("music_mode"),
+                    "music_mod": _as_float(kv.get("music_mod")),
+                    "music_kick_ms": _as_float(kv.get("music_kick_ms")),
+                    "clap": is_on("clap"),
+                    "clap_thr": _as_float(kv.get("clap_thr")),
+                    "clap_cool": _as_int(kv.get("clap_cool")),
+                    "clap_cmd1": kv.get("clap_cmd1"),
+                    "clap_cmd2": kv.get("clap_cmd2"),
+                    "clap_cmd3": kv.get("clap_cmd3"),
+                }
+            )
+        elif line.startswith("IO|"):
+            # gamma/bri_min/bri_max (number.py) used to arrive on STATUS1| -
+            # now its own on-demand group, requested via "status io". See
+            # memory: status-protocol-redesign.
+            handled = True
+            parts = line.split("|")[1:]
+            kv = {}
+            for part in parts:
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    kv[key] = val
+            self.data.update(
+                {
+                    "demo": kv.get("demo") == "ON" if "demo" in kv else None,
+                    "gamma": _as_float(kv.get("gamma")),
+                    "bri_min": _as_float(kv.get("bri_min")),
+                    "bri_max": _as_float(kv.get("bri_max")),
+                    "notif_min": _as_float(kv.get("notif_min")),
                 }
             )
         elif line.startswith("SENSORS|"):

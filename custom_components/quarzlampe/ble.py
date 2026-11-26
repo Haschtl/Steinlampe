@@ -93,8 +93,33 @@ class QuarzlampeClient:
         await self._client.write_gatt_char(BLE_COMMAND_CHAR, payload, response=True)
 
     async def async_request_status(self) -> dict[str, Any]:
-        """Trigger a status snapshot and wait briefly for notify."""
+        """Trigger a status snapshot and wait briefly for notify.
+
+        "status" alone only covers the core snapshot. radar_dist/radar_speed/
+        radar_targets, clap/gamma/bri_min/bri_max (switch.py/number.py), and
+        light_raw/music_level (sensor.py) all used to arrive on STATUS1|
+        (retired - see memory: status-protocol-redesign) or were never
+        requested at all (SENSORS|, predates that redesign) - these entities
+        have likely always read as unavailable. Fired sequentially, same
+        clear-then-wait pattern as the existing "status" call, since replies
+        aren't request/response correlated - whichever structured line
+        arrives next resolves the wait. Five sequential round-trips is a lot
+        for one poll cycle, but still comfortably under DEFAULT_UPDATE_INTERVAL
+        (30s) even in the worst case (5 * 2s timeout).
+        """
         self._store.clear_event()
         await self.async_send_command("status")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status radar")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status music")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status io")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("sensors")
         await self._store.wait_for_update(timeout=2.0)
         return self.status

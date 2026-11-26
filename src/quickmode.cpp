@@ -5,7 +5,8 @@
 #include "persistence.h"
 #include "comms.h"
 
-uint64_t quickMask = 0; // bitmask of modes used for quick switch tap cycling (supports up to 64 entries)
+uint64_t quickMask = 0; // bitmask of PATTERNS used for quick switch tap cycling (supports up to 64 entries)
+uint8_t quickProfileMask = 0; // bitmask of profile slots used for quick-cycling - see quickmode.h
 
 size_t quickModeCount()
 {
@@ -13,40 +14,42 @@ size_t quickModeCount()
 }
 
 /**
- * @brief Build default quick-cycle mask: the three profile slots by default.
+ * @brief Default profile slots enabled for quick-cycling (the first up to 3).
  */
-uint64_t computeDefaultQuickMask()
+uint8_t computeDefaultProfileMask()
 {
-    // Default: the three profile slots (mode indices PATTERN_COUNT .. PATTERN_COUNT+2)
-    uint64_t mask = 0;
-    for (size_t slot = 0; slot < PROFILE_SLOTS && slot < 3; ++slot)
-    {
-        size_t idx = PATTERN_COUNT + slot;
-        if (idx < 64)
-            mask |= (1ULL << idx);
-    }
+    uint8_t mask = 0;
+    for (size_t slot = 0; slot < PROFILE_SLOTS && slot < 3 && slot < 8; ++slot)
+        mask |= (uint8_t)(1u << slot);
     // Fallback to the first profile bit if nothing set (should not happen)
-    if (mask == 0 && PROFILE_SLOTS > 0 && PATTERN_COUNT < 64)
-        mask = (1ULL << PATTERN_COUNT);
+    if (mask == 0 && PROFILE_SLOTS > 0)
+        mask = 1u;
     return mask;
 }
 
 /**
- * @brief Clamp the quick-mode mask to available patterns and ensure non-empty.
+ * @brief Clamp both quick-mode masks to what's actually available and ensure
+ * at least one entry is enabled.
  */
 void sanitizeQuickMask()
 {
-    size_t total = quickModeCount();
-    uint64_t limitMask = (total >= 64) ? 0xFFFFFFFFFFFFFFFFULL : ((1ULL << total) - 1ULL);
-    quickMask &= limitMask;
-    if (quickMask == 0)
-        quickMask = computeDefaultQuickMask() & limitMask;
+    uint64_t patternLimit = (PATTERN_COUNT >= 64) ? 0xFFFFFFFFFFFFFFFFULL : ((1ULL << PATTERN_COUNT) - 1ULL);
+    quickMask &= patternLimit;
+    uint8_t profileLimit = (PROFILE_SLOTS >= 8) ? 0xFFu : (uint8_t)((1u << PROFILE_SLOTS) - 1u);
+    quickProfileMask &= profileLimit;
+    if (quickMask == 0 && quickProfileMask == 0)
+        quickProfileMask = computeDefaultProfileMask() & profileLimit;
 }
 
 bool isQuickEnabled(size_t idx)
 {
     size_t total = quickModeCount();
-    return idx < total && idx < 64 && (quickMask & (1ULL << idx));
+    if (idx >= total)
+        return false;
+    if (idx < PATTERN_COUNT)
+        return idx < 64 && (quickMask & (1ULL << idx));
+    size_t slot = idx - PATTERN_COUNT;
+    return slot < 8 && (quickProfileMask & (1u << slot));
 }
 
 size_t enabledQuickModeCount()

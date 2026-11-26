@@ -432,7 +432,7 @@ export function FilterSection() {
             />{' '}
             <Trans k="btn.enable">Enable</Trans>
           </label>
-          <div className="flex flex-wrap gap-4 justify-around pt-2">
+          <div className="flex flex-wrap items-start justify-around gap-4 pt-2">
             <Knob
               label={<Trans k="filter.compAttack">Attack (ms)</Trans>}
               min={1}

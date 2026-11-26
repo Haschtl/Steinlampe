@@ -90,8 +90,23 @@ class QuarzlampeBtSerialClient:
         await self._writer.drain()
 
     async def async_request_status(self) -> dict[str, Any]:
+        # See the identical comment in ble.py's async_request_status() -
+        # "status" alone no longer covers radar_*/clap/gamma/bri_min/
+        # bri_max/light_raw/music_level.
         self._store.clear_event()
         await self.async_send_command("status")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status radar")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status music")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("status io")
+        await self._store.wait_for_update(timeout=2.0)
+        self._store.clear_event()
+        await self.async_send_command("sensors")
         await self._store.wait_for_update(timeout=2.0)
         return self.status
 

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { Camera, ClipboardPaste, Copy } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, ClipboardPaste, Copy, Download, Loader2, RefreshCw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useConnection } from '@/context/connection';
-import { Trans } from '@/i18n';
+import { Trans, useI18n } from '@/i18n';
+import { createLineWaiter } from '@/lib/ota';
 import { SettingsSubpage } from './SettingsSubpage';
 
 export function BackupImportPage() {
@@ -131,23 +132,56 @@ export function BackupImportPage() {
 }
 
 export function BackupExportPage() {
+  const { t } = useI18n();
   const { sendCmd, log } = useConnection();
   const [exportText, setExportText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // The old version read `log` directly inside a setTimeout callback fired
+  // from runCfgExport() - that callback closed over whatever `log` was AT
+  // THE MOMENT runCfgExport ran (before the device's reply had arrived), so
+  // it always searched a stale, reply-less log and silently found nothing.
+  // A ref always reads the latest log instead, and createLineWaiter (already
+  // used by OTA for the same "wait for a specific reply line" problem) polls
+  // it properly instead of guessing a fixed delay.
+  const logRef = useRef(log);
+  logRef.current = log;
+  const waitForLine = useMemo(() => createLineWaiter(() => logRef.current), []);
 
-  const grabLatestCfg = () => {
-    const line = [...log].reverse().find((l) => l.line.includes('cfg import'));
-    if (line) setExportText(line.line.trim());
-  };
+  const runCfgExport = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sinceIndex = logRef.current.length;
+      await sendCmd('cfg export');
+      const line = await waitForLine((l) => l.includes('cfg import'), sinceIndex, 6000);
+      setExportText(line.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [sendCmd, waitForLine]);
 
-  const runCfgExport = () => {
-    sendCmd('cfg export')
-      .then(() => setTimeout(grabLatestCfg, 200))
-      .catch((e) => console.warn(e));
-  };
+  // Load immediately on opening this page, instead of waiting for a click.
+  useEffect(() => {
+    runCfgExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const buildCfgLink = (cfg: string) => {
     const base = `${window.location.origin}${window.location.pathname}`;
     return `${base}?cfg=${encodeURIComponent(cfg)}`;
+  };
+
+  const saveToDisk = () => {
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quarzlampe-backup-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -157,31 +191,40 @@ export function BackupExportPage() {
           <CardTitle><Trans k="btn.exportQr">Export to text/QR</Trans></CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={runCfgExport}>
-              <Copy className="mr-1 h-4 w-4" /> <Trans k="btn.exportQr">Export to text/QR</Trans>
-            </Button>
-            <Button variant="ghost" onClick={grabLatestCfg}>
-              <ClipboardPaste className="mr-1 h-4 w-4" /> <Trans k="btn.reload">Reload</Trans>
-            </Button>
-          </div>
-          {exportText && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Input className="w-full font-mono" value={exportText} readOnly />
-                <Button size="sm" onClick={() => navigator.clipboard.writeText(exportText)}>
-                  <Copy className="mr-1 h-4 w-4" /> Copy
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input className="w-full font-mono" value={buildCfgLink(exportText)} readOnly />
-                <Button size="sm" onClick={() => navigator.clipboard.writeText(buildCfgLink(exportText))}>
-                  <Copy className="mr-1 h-4 w-4" /> Link
-                </Button>
-              </div>
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t('status.loadingExport', 'Lade Export-Daten…')}
+            </div>
+          )}
+          {!loading && error && (
+            <div className="flex items-center justify-between gap-2 rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-400">
+              <span>{error}</span>
+              <Button size="sm" variant="ghost" onClick={runCfgExport}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          {!loading && !error && exportText && (
+            <div className="flex flex-col gap-3">
               <div className="w-full rounded-lg border border-border bg-panel p-3">
                 <QRCodeSVG value={buildCfgLink(exportText)} width={200} height={200} className="mx-auto" />
               </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveToDisk}>
+                  <Download className="mr-1 h-4 w-4" /> {t('btn.saveToDisk', 'Save to disk')}
+                </Button>
+                <Button variant="ghost" onClick={() => navigator.clipboard.writeText(exportText)}>
+                  <Copy className="mr-1 h-4 w-4" /> Copy
+                </Button>
+                <Button variant="ghost" onClick={() => navigator.clipboard.writeText(buildCfgLink(exportText))}>
+                  <Copy className="mr-1 h-4 w-4" /> Link
+                </Button>
+                <Button variant="ghost" onClick={runCfgExport}>
+                  <RefreshCw className="mr-1 h-4 w-4" /> <Trans k="btn.reload">Reload</Trans>
+                </Button>
+              </div>
+              <Input className="w-full font-mono" value={exportText} readOnly />
             </div>
           )}
         </CardContent>

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bluetooth, Copy, HelpCircle, Home, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
+import { Bluetooth, Copy, HelpCircle, Home, Loader2, LogOut, RefreshCw, Send, Settings, Wand2, Wrench, Zap, Sliders } from 'lucide-react';
 import { X } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -311,7 +311,17 @@ export function RootLayout() {
         </header>
 
         <main className={`relative mx-auto max-w-6xl px-4 py-4 ${devLogVisible ? 'pb-32' : 'pb-8'}`}>
-          <AnimatedOutlet />
+          {/* Route components are code-split (router.tsx's lazyRouteComponent) - this
+              catches the brief loading state for whichever chunk hasn't been fetched yet. */}
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-20 text-muted">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            }
+          >
+            <AnimatedOutlet />
+          </Suspense>
           <motion.div
             key={`${pathname}-glow`}
             className="pointer-events-none absolute -inset-10 -z-10 hidden md:block"

@@ -15,7 +15,12 @@ export function QuickModesCard() {
   const [quickSearch, setQuickSearch] = useState('');
   const [quickSelection, setQuickSelection] = useState<number[]>([]);
 
-  const quickMax = useMemo(() => Math.min((status.patternCount || patternLabels.length) + PROFILE_SLOTS, 64), [status.patternCount]);
+  // No artificial 64-entry cap here anymore - that only existed because the
+  // firmware used to pack patterns AND profile slots into one shared 64-bit
+  // mask. Profile slots now have their own independent mask on the firmware
+  // side (see memory: quick-mode-profile-mask-overflow), so they're never
+  // out of range regardless of how many patterns exist.
+  const quickMax = useMemo(() => (status.patternCount || patternLabels.length) + PROFILE_SLOTS, [status.patternCount]);
 
   useEffect(() => {
     if (status.quickCsv) {

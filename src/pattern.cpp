@@ -48,6 +48,14 @@ void announcePattern(const bool &force)
 {
     sendFeedback(String(F("[Mode] ")) + String(currentPattern + 1) + F("/") + String(PATTERN_COUNT) + F(" - ") + PATTERNS[currentPattern].name,force);
     queueLiveState(force);
+    // STATE| (above) only carries the pattern index, not pattern_name/
+    // pattern_total - app-initiated mode changes already re-request a full
+    // "status" themselves (see command.cpp's "mode"/"next"/"prev"), but a
+    // mode change from physical input (poti scan mode, quick-tap cycling)
+    // goes straight through this function with nothing else to close that
+    // gap. Discrete action (one mode per change), safe to push unconditionally -
+    // not a continuous/drag-driven command. See memory: status-parsing-consolidation.
+    printStatusCore(force);
 }
 
 /**

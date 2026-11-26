@@ -49,9 +49,19 @@ function previewText(p: ProfilePreview | undefined, t: (k: string, fb: string) =
 }
 
 export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmdReliable, log, status, refreshStatus } = useConnection();
+  const { sendCmdReliable, status, refreshStatus } = useConnection();
   const { t } = useI18n();
-  const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
+  // Previews live in the global DeviceStatus (status.profilePreviews), not
+  // local component state - this card used to keep its own `useState({})`
+  // scanned from the rolling `log` text, which reset to empty (showing
+  // "Lädt…" again for data the device already told us) every time this
+  // card remounted, e.g. navigating away from Home and back. See memory:
+  // profile-preview-global-state.
+  const previews: Record<number, ProfilePreview> = {};
+  for (const slot of SLOT_INDICES) {
+    const raw = status.profilePreviews?.[slot];
+    if (raw !== undefined) previews[slot] = parseProfileCfg(raw);
+  }
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
 
   // writeValueWithResponse (sendCmdReliable), not the fire-and-forget sendCmd:
@@ -82,21 +92,6 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
     if (status.connected && status.statusReady) refreshPreviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status.connected, status.statusReady]);
-
-  useEffect(() => {
-    const next: Record<number, ProfilePreview> = {};
-    let changed = false;
-    for (const slot of SLOT_INDICES) {
-      const entry = [...log].reverse().find((l) => l.line.startsWith(`[Profile ${slot}]`));
-      if (entry) {
-        const cfg = entry.line.replace(`[Profile ${slot}] `, '');
-        next[slot] = parseProfileCfg(cfg);
-        changed = true;
-      }
-    }
-    if (changed) setPreviews((prev) => ({ ...prev, ...next }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [log]);
 
   const handleLoad = (slot: number) => {
     // writeValueWithResponse, not the fire-and-forget sendCmd: on Android,

@@ -4,7 +4,7 @@ import { ActiveToggleButton } from '@/components/ui/active-toggle-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useConnection } from '@/context/connection';
 import { Trans } from '@/i18n';
 
@@ -43,21 +43,31 @@ export function MorseCard() {
           <Label>
             <Trans k="label.morseText">Text</Trans>
           </Label>
-          <div className="flex items-center gap-2">
-            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="SOS" className="flex-1" disabled={active} />
-            <Select value="" onValueChange={(v) => setText(v)} disabled={active}>
-              <SelectTrigger className="w-28">
-                <SelectValue placeholder={<Trans k="label.examples">Beispiele</Trans>} />
-              </SelectTrigger>
-              <SelectContent>
-                {EXAMPLES.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="SOS"
+            disabled={active}
+            suffix={
+              <Select value="" onValueChange={(v) => setText(v)} disabled={active}>
+                <SelectTrigger
+                  className="h-auto w-auto gap-0 border-none bg-transparent p-0 shadow-none hover:bg-transparent focus:outline-none focus:ring-0 focus:ring-offset-0"
+                  aria-label="Beispiele"
+                >
+                  <span className="sr-only">
+                    <Trans k="label.examples">Beispiele</Trans>
+                  </span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {EXAMPLES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
         </div>
         <ActiveToggleButton
           active={active}

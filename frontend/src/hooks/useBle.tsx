@@ -25,6 +25,7 @@ type BleApi = {
   refreshStatus: () => Promise<void>;
   sendCmd: (cmd: string) => Promise<void>;
   sendCmdReliable: (cmd: string) => Promise<void>;
+  sendCmdReliableSilent: (cmd: string) => Promise<void>;
 };
 
 export function useBle(): BleApi {
@@ -214,11 +215,36 @@ export function useBle(): BleApi {
     [pushLog],
   );
 
-  // Waits for the GATT write response instead of firing-and-forgetting, for OTA chunks - see
-  // writeLineWithResponse. Intentionally doesn't toast/log per-chunk (would spam during a transfer).
-  const sendCmdReliable = useCallback(async (cmd: string) => {
+  // Low-level, deliberately silent (no log/toast) - used only by OTA's
+  // chunk-send loop (OtaUpdateCard.tsx), which can fire hundreds/thousands
+  // of these; logging each would flood the app log. Everything else should
+  // use sendCmdReliable below instead, which does log - this one used to be
+  // the only "reliable" primitive, so general commands (trust list, filter
+  // toggles, etc.) went through it too and silently never appeared in the
+  // log at all, making a working command look like it did nothing.
+  const sendCmdReliableSilent = useCallback(async (cmd: string) => {
     await writeLineWithResponse(cmdCharRef.current, cmd);
   }, []);
+
+  // Waits for the GATT write response instead of firing-and-forgetting - see
+  // writeLineWithResponse. Logs on success same as sendCmd, unlike the silent
+  // variant above.
+  const sendCmdReliable = useCallback(
+    async (cmd: string) => {
+      try {
+        await sendCmdReliableSilent(cmd);
+        pushLog('> ' + cmd);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (lastToast.current !== msg) {
+          toast.error('Command failed: ' + msg);
+          lastToast.current = msg;
+        }
+        throw e;
+      }
+    },
+    [pushLog, sendCmdReliableSilent],
+  );
 
   const refreshStatus = useCallback(async () => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
@@ -585,6 +611,7 @@ export function useBle(): BleApi {
       refreshStatus,
       sendCmd,
       sendCmdReliable,
+      sendCmdReliableSilent,
     }),
     [
       autoReconnect,
@@ -601,6 +628,7 @@ export function useBle(): BleApi {
       renameDevice,
       sendCmd,
       sendCmdReliable,
+      sendCmdReliableSilent,
       setAutoReconnect,
       setFilterParsed,
       setLiveLog,

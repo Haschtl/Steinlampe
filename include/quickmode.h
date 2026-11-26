@@ -2,14 +2,21 @@
 
 #include <Arduino.h>
 
-extern uint64_t quickMask; // bitmask of modes used for quick switch tap cycling (supports up to 64 entries)
+extern uint64_t quickMask; // bitmask of PATTERNS used for quick switch tap cycling (supports up to 64 entries)
+// Separate bitmask for profile slots (bit N = profile slot N+1), rather than
+// packing them into the high bits of quickMask above PATTERN_COUNT - with 65
+// compiled patterns that packing scheme already needed bit indices >= 64,
+// which isQuickEnabled() has always had to reject (uint64_t only has 64
+// bits), silently making most/all profile slots impossible to quick-cycle.
+// See memory: quick-mode-profile-mask-overflow.
+extern uint8_t quickProfileMask;
 
 size_t quickModeCount();
 
 /**
- * @brief Build default quick-cycle mask: the three profile slots by default.
+ * @brief Default profile slots enabled for quick-cycling (the first up to 3).
  */
-uint64_t computeDefaultQuickMask();
+uint8_t computeDefaultProfileMask();
 
 /**
  * @brief Clamp the quick-mode mask to available patterns and ensure non-empty.

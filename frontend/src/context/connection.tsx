@@ -33,6 +33,7 @@ type ConnectionContextValue = {
   disconnect: () => void;
   sendCmd: (cmd: string) => Promise<void>;
   sendCmdReliable: (cmd: string) => Promise<void>;
+  sendCmdReliableSilent: (cmd: string) => Promise<void>;
   refreshStatus: () => Promise<void>;
 };
 
@@ -119,6 +120,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       },
       sendCmd: active.sendCmd,
       sendCmdReliable: active.sendCmdReliable,
+      sendCmdReliableSilent: active.sendCmdReliableSilent,
       refreshStatus: active.refreshStatus,
     };
   }, [ble, serial, transport, devLogVisible]);

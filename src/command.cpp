@@ -87,19 +87,29 @@ void handleCommand(const String &line)
         args.trim();
         if (args.isEmpty() || args.equalsIgnoreCase(F("default")))
         {
-            quickMask = computeDefaultQuickMask();
+            quickMask = 0;
+            quickProfileMask = computeDefaultProfileMask();
             sanitizeQuickMask();
             saveSettings();
             sendFeedback(String(F("[Quick] default -> ")) + quickMaskToCsv());
+            // Discrete action, safe to push unconditionally - the old
+            // [Quick] text line this used to be the only live-update path
+            // for is gone now (status protocol consolidation; it was also
+            // extracting the wrong substring anyway). See memory:
+            // status-parsing-consolidation.
+            printStatusCore();
             return;
         }
-        uint64_t mask = 0;
-        if (parseQuickCsv(args, mask))
+        uint64_t patternMask = 0;
+        uint8_t profileMask = 0;
+        if (parseQuickCsv(args, patternMask, profileMask))
         {
-            quickMask = mask;
+            quickMask = patternMask;
+            quickProfileMask = profileMask;
             sanitizeQuickMask();
             saveSettings();
             sendFeedback(String(F("[Quick] set -> ")) + quickMaskToCsv());
+            printStatusCore();
         }
         else
         {
