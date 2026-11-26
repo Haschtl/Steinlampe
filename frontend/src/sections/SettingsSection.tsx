@@ -10,6 +10,31 @@ import { Trans } from '@/i18n';
 import { useConnection } from '@/context/connection';
 import { DeviceBTCard } from '@/cards/DeviceBTCard';
 
+function DevOptionsCard() {
+  const { devLogVisible, setDevLogVisible } = useConnection();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <Trans k="title.devOptions">Dev options</Trans>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <label className="pill cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-accent"
+            checked={devLogVisible}
+            onChange={(e) => setDevLogVisible(e.target.checked)}
+          />{' '}
+          <Trans k="toggle.devLogOverlay">Show log overlay</Trans>
+        </label>
+      </CardContent>
+    </Card>
+  );
+}
+
 function FactoryResetCard() {
   const { sendCmd } = useConnection();
   const [open, setOpen] = useState(false);
@@ -69,6 +94,7 @@ export function SettingsSection() {
       <BackupRestoreCard />
       <OtaUpdateCard />
       <FactoryResetCard />
+      <DevOptionsCard />
     </div>
   );
 }

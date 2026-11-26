@@ -16,6 +16,8 @@ type ConnectionContextValue = {
   setFilterParsed: (v: boolean) => void;
   autoReconnect: boolean;
   setAutoReconnect: (v: boolean) => void;
+  devLogVisible: boolean;
+  setDevLogVisible: (v: boolean) => void;
   autoReconnectState: 'idle' | 'connecting' | 'failed';
   autoReconnectDeviceName: string;
   knownDevices: Record<string, string>;
@@ -50,6 +52,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     if (t) localStorage.setItem('ql-last-transport', t);
   };
 
+  // Dev-only log overlay, off by default - moved out of the main UI into a Settings
+  // toggle so it doesn't take up footer space for everyday use.
+  const [devLogVisible, setDevLogVisibleState] = useState<boolean>(
+    () => localStorage.getItem('ql-dev-log-visible') === 'true',
+  );
+  const setDevLogVisible = (v: boolean) => {
+    setDevLogVisibleState(v);
+    localStorage.setItem('ql-dev-log-visible', v ? 'true' : 'false');
+  };
+
   const value = useMemo<ConnectionContextValue>(() => {
     const active = transport === 'serial' ? serial : ble;
     const deviceName = active.status.deviceName || localStorage.getItem('ql-last-device-name') || '';
@@ -65,6 +77,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       setFilterParsed: active.setFilterParsed,
       autoReconnect: ble.autoReconnect,
       setAutoReconnect: ble.setAutoReconnect,
+      devLogVisible,
+      setDevLogVisible,
       autoReconnectState: ble.autoReconnectState,
       autoReconnectDeviceName: ble.autoReconnectDeviceName,
       knownDevices: ble.knownDevices,
@@ -107,7 +121,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       sendCmdReliable: active.sendCmdReliable,
       refreshStatus: active.refreshStatus,
     };
-  }, [ble, serial, transport]);
+  }, [ble, serial, transport, devLogVisible]);
 
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;
 }

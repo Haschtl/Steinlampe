@@ -211,6 +211,7 @@ export type DeviceStatus = {
   pushStepMs?: number;
   pushStep?: number;
   trustedBle?: string[];
+  trustedBleBonds?: string[];
 };
 
 /**
@@ -498,7 +499,11 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
   }
   if (line.startsWith('[Trust]')) {
     const lower = line.toLowerCase();
-    const isBle = lower.includes('ble');
+    // "[Trust] BLE bonds: ..." also contains "ble", so it must be checked
+    // before the plain trust-list match below or it clobbers trustedBle
+    // with the bonds list instead of its own field.
+    const isBleBonds = lower.includes('ble bonds');
+    const isBle = !isBleBonds && lower.includes('ble');
     const payload = line.includes(':') ? line.slice(line.indexOf(':') + 1) : '';
     const list = payload
       .split(',')
@@ -507,6 +512,7 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     setStatus((s) => ({
       ...s,
       trustedBle: isBle ? list : s.trustedBle,
+      trustedBleBonds: isBleBonds ? list : s.trustedBleBonds,
       lastStatusAt: Date.now(),
     }));
     return true;

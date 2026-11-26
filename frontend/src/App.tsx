@@ -35,6 +35,7 @@ export function RootLayout() {
     refreshStatus,
     sendCmd,
     setLog,
+    devLogVisible,
   } = useConnection();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [logOpen, setLogOpen] = useState(false);
@@ -250,9 +251,9 @@ export function RootLayout() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {status.connected ? (
-                  <Button onClick={disconnect}>
-                    <LogOut className="mr-1 h-4 w-4" />{" "}
-                    {t("btn.disconnect", "Disconnect")}
+                  <Button onClick={disconnect} title={t("btn.disconnect", "Disconnect")}>
+                    <LogOut className="sm:mr-1 h-4 w-4" />
+                    <span className="hidden sm:inline">{t("btn.disconnect", "Disconnect")}</span>
                   </Button>
                 ) : (
                   <Button
@@ -309,7 +310,7 @@ export function RootLayout() {
           </div>
         </header>
 
-        <main className="relative mx-auto max-w-6xl px-4 py-4 pb-32">
+        <main className={`relative mx-auto max-w-6xl px-4 py-4 ${devLogVisible ? 'pb-32' : 'pb-8'}`}>
           <AnimatedOutlet />
           <motion.div
             key={`${pathname}-glow`}
@@ -354,6 +355,7 @@ export function RootLayout() {
           />
         </main>
 
+        {devLogVisible && (
         <footer className="sticky bottom-0 z-20 border-t border-border/60 backdrop-blur-sm relative">
           <div
             className="pointer-events-none absolute -top-3 inset-x-0 h-4 bg-gradient-to-t from-bg/0 via-bg/0 to-transparent"
@@ -530,6 +532,7 @@ export function RootLayout() {
             )}
           </div>
         </footer>
+        )}
         <ToastContainer
           position="bottom-right"
           newestOnTop

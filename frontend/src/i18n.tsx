@@ -134,6 +134,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.profiles": "Profiles",
     "title.help": "Command Reference & Links",
     "title.factory": "Factory Defaults",
+    "title.devOptions": "Dev options",
+    "toggle.devLogOverlay": "Show log overlay",
     "title.factoryConfirm": "Reset all settings?",
     "title.names": "Lamp Names",
     "label.language": "Language",
@@ -239,6 +241,14 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.serialDevices": "Serial",
     "label.noDevices": "No trusted devices yet",
     "title.trustController": "Controller trusted devices",
+    "title.bleBonds": "BLE bonds",
+    "desc.bleBonds":
+      "The actual pairing/encryption keys (separate from the trust list above). Clear these if the OS keeps showing pairing prompts or a reconnect fails right after a reflash.",
+    "label.noBonds": "No bonds stored",
+    "btn.clearBonds": "Clear bonds",
+    "title.clearBondsConfirm": "Clear all BLE bonds?",
+    "desc.clearBondsConfirm":
+      "Every paired device (this browser included) will need to pair again - on Linux, also remove the lamp from bluetoothctl/the system Bluetooth settings first, or the OS will keep retrying its now stale pairing keys.",
     "desc.devicesDuplicates":
       "Duplicates can show up here when switching between a dev build and the deployed app - the browser hands each origin its own device id, so the same lamp can appear twice.",
     "btn.clearAll": "Clear all",
@@ -574,6 +584,8 @@ const translations: Record<Lang, Record<string, string>> = {
     "title.profiles": "Profile",
     "title.help": "Befehle & Links",
     "title.factory": "Werkseinstellungen",
+    "title.devOptions": "Entwickler-Optionen",
+    "toggle.devLogOverlay": "Protokoll-Overlay anzeigen",
     "title.factoryConfirm": "Alle Einstellungen zurücksetzen?",
     "title.names": "Lampennamen",
     "label.language": "Sprache",
@@ -679,6 +691,14 @@ const translations: Record<Lang, Record<string, string>> = {
     "label.serialDevices": "Serial",
     "label.noDevices": "Noch keine Geräte",
     "title.trustController": "Controller vertrauenswürdige Geräte",
+    "title.bleBonds": "BLE-Bonds",
+    "desc.bleBonds":
+      "Die eigentlichen Pairing-/Verschlüsselungs-Schlüssel (getrennt von der Vertrauensliste oben). Löschen, wenn das Betriebssystem ständig Kopplungsaufforderungen zeigt oder eine Verbindung nach einem Reflash fehlschlägt.",
+    "label.noBonds": "Keine Bonds gespeichert",
+    "btn.clearBonds": "Bonds löschen",
+    "title.clearBondsConfirm": "Alle BLE-Bonds löschen?",
+    "desc.clearBondsConfirm":
+      "Jedes gekoppelte Gerät (auch dieser Browser) muss sich neu koppeln - unter Linux vorher auch die Lampe aus bluetoothctl/den System-Bluetooth-Einstellungen entfernen, sonst versucht das Betriebssystem weiter mit den jetzt veralteten Schlüsseln zu verbinden.",
     "desc.devicesDuplicates":
       "Doppelte Einträge können auftreten, wenn zwischen einem Dev-Build und der deployten App gewechselt wird - der Browser vergibt pro Origin eine eigene Geräte-ID, dadurch kann dieselbe Lampe doppelt auftauchen.",
     "btn.clearAll": "Alle entfernen",

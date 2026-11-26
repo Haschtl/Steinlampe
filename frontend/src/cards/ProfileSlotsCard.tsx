@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,9 +53,19 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
 
-  const refreshPreviews = () => {
-    SLOT_INDICES.forEach((slot) => sendCmd(`profile show ${slot}`).catch((e) => console.warn(e)));
-  };
+  // Sequential with a stagger, not a burst of 6 writes fired back to back: the
+  // command characteristic is write-without-response, so nothing here previously
+  // waited for the device to actually react to one line before the next was
+  // already in flight. Spacing them out is a mitigation for suspected BLE
+  // write-flood/timing issues (unconfirmed without a live device trace) where
+  // "profile show 1..6" sent as a burst got no response at all, while single
+  // commands like "status raw" worked fine.
+  const refreshPreviews = useCallback(async () => {
+    for (const slot of SLOT_INDICES) {
+      await sendCmd(`profile show ${slot}`).catch((e) => console.warn(e));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }, [sendCmd]);
 
   useEffect(() => {
     // Gate on statusReady (set once refreshStatus() has completed), not the
