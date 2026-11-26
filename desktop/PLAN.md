@@ -8,7 +8,9 @@ desktop tray/menu-bar app (Windows/macOS/Linux) that can see and control *all* o
 one place, plus a generic "when X happens, do Y to lamp(s) Z" automation system — starting with one
 concrete trigger: turn a lamp on when the microphone becomes active (the "on-air light" use case).
 A manual multi-select console for direct control, and a future music-reactive visualizer, round out
-the vision; notifications-as-a-trigger and the visualizer are explicitly deferred past v1.
+the vision; notifications-as-a-trigger and the visualizer were initially deferred past v1, though
+the notification trigger (Linux D-Bus eavesdropping) was in fact built within v1 - see item 20
+below and the "Explicitly out of scope" section's note.
 
 Decisions already made with the user:
 - **New top-level folder in this repo** (`desktop/`), not a separate repo — keeps BLE-protocol
@@ -1067,6 +1069,12 @@ desktop/
 
 ## Explicitly out of scope for v1
 
-Notification trigger (per-OS detection is its own hard problem — Linux via D-Bus eavesdropping,
-Windows needs app-identity/MSIX packaging, macOS is heavily locked down) and the music-reactive
-visualizer. Both fit the existing `Trigger`/`Action` enum shape without rework when picked up later.
+The music-reactive visualizer. Fits the existing `Trigger`/`Action` enum shape without rework when
+picked up later.
+
+The notification trigger was originally listed here too (per-OS detection is its own hard problem —
+Linux via D-Bus eavesdropping, Windows needs app-identity/MSIX packaging, macOS is heavily locked
+down), but the Linux D-Bus-eavesdrop path was in fact built within v1 (`OnNotification`, extended
+with an `app_name_filter` in item 20) and is **not** out of scope anymore - only its Windows/macOS
+equivalents remain unimplemented, since no portable "a notification was shown" API exists on either
+OS (see item 20's "Why `OnNotification` stay Linux-only" note).

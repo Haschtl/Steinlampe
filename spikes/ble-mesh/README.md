@@ -1,5 +1,11 @@
 # BLE Mesh feasibility spike
 
+> **Superseded.** This spike succeeded and BLE Mesh is now live in the real
+> firmware (`src/mesh.cpp`, `include/lamp_mesh.h`, `ENABLE_BLE_MESH` on every
+> env — see the main [README](../../README.md#ble-mesh-multi-lamp-control)).
+> Kept here as a reference for the questions it answered and the
+> framework/sdkconfig issues it hit along the way; not maintained further.
+
 Throwaway, not part of the real quarzlampe firmware. Answers two questions:
 
 1. Does NimBLE (not Bluedroid) + a BLE Mesh Node with a Generic OnOff

@@ -142,7 +142,7 @@ export function provisionDevice(
               resolve({ addr: parseInt(ok[1], 16) });
               return;
             }
-            const fail = line.match(/^\[Mesh\] Provisioning 0x[0-9a-f]+ failed: (.*)$/i);
+            const fail = line.match(/^\[Mesh\] Provisioning (?:0x[0-9a-f]+ )?(?:start )?failed: (.*)$/i);
             if (fail) {
               reject(new Error(fail[1]));
               return;

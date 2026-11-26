@@ -27,6 +27,7 @@ If you only want to turn the lamp on from your phone, start with the [web app](#
 
 - [Hardware variants](#hardware-variants)
 - [Firmware](#firmware)
+  - [BLE Mesh (multi-lamp control)](#ble-mesh-multi-lamp-control)
 - [Web app](#web-app)
 - [Desktop app](#desktop-app)
 - [Home Assistant integration](#home-assistant-integration)
@@ -67,7 +68,7 @@ pio run -e quarzlampe          # or quarzlampe_rd03 / quarzlampe_rd03d / desk_la
 pio run -e quarzlampe -t upload
 ```
 
-Requires [PlatformIO](https://platformio.org/). Feature flags live in `include/lamp_config.h`; runtime defaults (names, BLE UUIDs, thresholds) in `include/settings.h`.
+Requires [PlatformIO](https://platformio.org/). Feature flags live in `include/lamp_config.h`; runtime defaults (names, BLE UUIDs, thresholds) in `include/lamp_settings.h`.
 
 Partition table: default is `min_spiffs.csv` (two OTA slots, small SPIFFS). If you don't need OTA and want more app headroom plus larger NVS, set `board_build.partitions = partitions/quarzlampe_no_ota_large_nvs.csv` (~3.4 MB app space, 64 KB NVS, no OTA slot).
 
@@ -81,6 +82,8 @@ Partition table: default is `min_spiffs.csv` (two OTA slots, small SPIFFS). If y
 - Six save/load profile slots, config export/import, factory reset (also triggerable via 5 switch toggles or poti swings within 1s of boot, without needing a command channel).
 - BLE-MIDI receive for brightness/mode control from an external MIDI controller, plus MIDI Show Control (MSC) GO/STOP/RESUME over the same connection.
 - OTA firmware updates over BLE/BT-Serial/USB (chunked, MD5-verified).
+- **BLE Mesh** (on every env, see [below](#ble-mesh-multi-lamp-control)): any lamp can provision and control others over the standard Bluetooth Mesh NLC Basic Lightness Controller profile, independent of nRF Mesh or any other app.
+- **Gesture mapping**: remap what an N-tap/N-swing/long-press/double-long gesture on the switch, a button, or the potentiometer does — including sending a Mesh on/off/brightness command to another lamp — from the web app, instead of only the build-time default behavior.
 
 ### Command reference (BLE / BT-Serial / USB)
 
@@ -102,16 +105,29 @@ Plain newline-terminated text commands, identical over all three transports:
 | Radar (RD-03 variants) | `radar on\|off`, `radar dim\|motion\|offdist <params>`, `radar debug on\|off` |
 | Profiles/quick | `profile save\|load\|show <1-6>`, `quick <csv>\|default` |
 | Trust/pairing | `trust list\|ble\|bt add/del <MAC>`, `trust ble bonds\|clearbonds` |
+| Gestures | `gest`/`gest list`, `gest default`, `gest clear`, `gest set <binding;...>` |
+| Mesh | `mesh on\|off <addr>`, `mesh bri <addr> <pct>`, `mesh network create [<netkey32hex> <appkey32hex>]`, `mesh provision scan [secs]\|stop\|list\|add <idx> [group]\|remove <addr>`, `mesh rename <addr> <name>`, `mesh nodes` |
 | OTA | `ota begin <size> <md5> <version>`, `ota chunk <base64>`, `ota end`, `ota abort`, `ota status` |
 | Config | `cfg export`, `cfg import key=val ...`, `factory`, `status`, `status raw`, `help` |
 
 A first connection from an unrecognized device, outside the ~60s post-boot trust window, requires a physical confirmation within ~20s (toggle the switch or move the potentiometer) before it's trusted - for both BLE and BT-Serial. BLE additionally pairs/encrypts (bonds) for real via NimBLE security once trusted; `trust ble bonds` lists the bond store, `trust ble clearbonds` resets it (independent of the `trust ble add/del` MAC list).
 
-BLE UUIDs (default, see `include/settings.h`):
+BLE UUIDs (default, see `include/lamp_settings.h`):
 
 - Service: `d94d86d7-1eaf-47a4-9d1e-7a90bf34e66b`
 - Command (Write / Write-No-Response): `4bb5047d-0d8b-4c5e-81cd-6fb5c0d1d1f7`
 - Status (Read / Notify): `c5ad78b6-9b77-4a96-9a42-8e6e9a40c123`
+
+### BLE Mesh (multi-lamp control)
+
+Every lamp runs a standard Bluetooth Mesh stack (`esp_ble_mesh`, NLC Basic Lightness Controller profile) alongside the custom BLE/BT-Serial/USB protocol above, and can provision/control other lamps itself — no nRF Mesh or other third-party app needed. Set up from the web app's "Mesh" settings card, or the equivalent `mesh` commands:
+
+1. **Create a network identity** on one lamp (`mesh network create`) — generates a random NetKey/AppKey and prints them in the feedback log.
+2. **Join every other lamp** to the same network, using the keys the first lamp printed (`mesh network create <netkey32hex> <appkey32hex>`). Repeating this with the same keys later is a no-op; different keys replace the stored identity.
+3. From a lamp that already has a network identity, **scan for unprovisioned lamps** (`mesh provision scan`), then **provision** one by its list index (`mesh provision add <idx> [group]`), optionally subscribing it to a group address.
+4. Once provisioned, any lamp with a bound AppKey can send it `mesh on\|off <addr>` / `mesh bri <addr> <pct>` — to an individual node's unicast address or a shared group address.
+
+`mesh nodes` lists this lamp's known (already-provisioned) nodes; `mesh rename <addr> <name>` labels one for the UI. The provisioner role (`ENABLE_BLE_MESH_PROVISIONER`) is a separate build flag from Mesh support itself (`ENABLE_BLE_MESH`) — on by default everywhere, but can be turned off per-env if flash/RAM pressure ever requires it, without losing Mesh control itself.
 
 ## Web app
 

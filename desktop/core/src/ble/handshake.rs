@@ -9,9 +9,10 @@
 //!    attempt and lets the caller decide whether to retry).
 //!
 //! The firmware now does real pairing/encryption (NimBLE bonding) before
-//! any of this - `comms.cpp`'s `onConnect` forces it via
-//! `NimBLEDevice::startSecurity()`, and both GATT characteristics require
-//! encryption (`_ENC` properties) at the stack level, so step 1's
+//! any of this - `comms.cpp`'s `bleGapEvent()` forces it via
+//! `ble_gap_security_initiate()` on connect (native ESP-IDF NimBLE API,
+//! not the old NimBLE-Arduino wrapper), and both GATT characteristics
+//! require encryption (`_ENC` properties) at the stack level, so step 1's
 //! subscribe and step 2's write only succeed once that's done. None of
 //! that needs anything from this client beyond what `btleplug`/the OS
 //! Bluetooth stack already does automatically for a bonded link - no more
