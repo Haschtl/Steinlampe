@@ -55,7 +55,7 @@ function PreviewGraph({ values, stepMs }: { values: number[]; stepMs?: number })
 }
 
 export function CustomPatternCard() {
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmd, sendCmdReliable } = useConnection();
   const [customCsv, setCustomCsv] = useState('');
   const [customStep, setCustomStep] = useState(400);
   const [loadedFromStatus, setLoadedFromStatus] = useState(false);
@@ -68,8 +68,19 @@ export function CustomPatternCard() {
   }, [status.customCsv, loadedFromStatus]);
 
   const applyCustom = () => {
-    if (customCsv.trim()) sendCmd(`custom ${customCsv.replace(/\s+/g, '')}`);
-    if (customStep) sendCmd(`custom step ${customStep}`);
+    // Sequential + write-with-response: these two were previously fired as
+    // two independent fire-and-forget writeValueWithoutResponse calls with no
+    // gap at all - the riskiest version of the pattern behind the profile-load
+    // bug (memory: profile-show-no-response-investigation), since Android can
+    // silently drop one of two back-to-back no-response writes with zero error.
+    (async () => {
+      try {
+        if (customCsv.trim()) await sendCmdReliable(`custom ${customCsv.replace(/\s+/g, '')}`);
+        if (customStep) await sendCmdReliable(`custom step ${customStep}`);
+      } catch (e) {
+        console.warn(e);
+      }
+    })();
   };
 
   const parsed = customCsv

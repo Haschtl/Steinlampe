@@ -16,7 +16,7 @@ type OverlayKey = 'speed' | 'margin' | 'fade';
 
 export function ModesCard() {
   const { t } = useI18n();
-  const { status, sendCmd } = useConnection();
+  const { status, sendCmd, sendCmdReliable } = useConnection();
   const [pattern, setPattern] = useState(1);
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey | null>(null);
   const [patternSpeed, editPatternSpeed] = useSyncedValue(status.patternSpeed, {
@@ -30,8 +30,14 @@ export function ModesCard() {
         sendCmd('pat fade off').catch((e) => console.warn(e));
         return;
       }
-      sendCmd('pat fade on').catch((e) => console.warn(e));
-      sendCmd(`pat fade amt ${v.toFixed(2)}`).catch((e) => console.warn(e));
+      // write-with-response and awaited: see the identical fix/reasoning in
+      // ProfileSlotsCard.tsx (memory: profile-show-no-response-investigation) -
+      // two writeValueWithoutResponse calls fired back to back can have the
+      // first silently dropped on Android with zero error anywhere, so "on"
+      // must be confirmed delivered before "amt" goes out.
+      sendCmdReliable('pat fade on')
+        .then(() => sendCmdReliable(`pat fade amt ${v.toFixed(2)}`))
+        .catch((e) => console.warn(e));
     },
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -69,7 +75,10 @@ export function ModesCard() {
 
   const handlePatternChange = (val: number) => {
     setPattern(val);
-    sendCmd(`mode ${val}`)
+    // mode switch itself goes write-with-response (the thing that actually
+    // matters here) - the follow-up status echo stays best-effort, same
+    // reasoning as the ModesCard fade fix above.
+    sendCmdReliable(`mode ${val}`)
       .then(() => sendCmd('status'))
       .catch((e) => console.warn(e));
   };
