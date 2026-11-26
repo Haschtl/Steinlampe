@@ -11,9 +11,11 @@ type Props = {
   marginHigh: number;
   invert: boolean;
   fade: number;
+  /** Defaults to filling the parent edge-to-edge - this is meant to be used as a frame's own background, not a boxed-in graph, so sizing/border/rounding belongs to the parent. */
+  className?: string;
 };
 
-export function PatternPreviewGraph({ pattern, speed, marginLow, marginHigh, invert, fade }: Props) {
+export function PatternPreviewGraph({ pattern, speed, marginLow, marginHigh, invert, fade, className }: Props) {
   const { rawPath, fadedPath, w, h, pad, usableW, usableH, marginLowY, marginHighY } = useMemo(() => {
     const w = 320;
     const h = 120;
@@ -56,38 +58,34 @@ export function PatternPreviewGraph({ pattern, speed, marginLow, marginHigh, inv
   }, [pattern, speed, marginLow, marginHigh, invert, fade]);
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner">
-      <div className="relative w-full" style={{ paddingTop: '52%' }}>
-        <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 h-full w-full">
-          <defs>
-            <linearGradient id="patPreviewGrad" x1="0%" x2="100%" y1="0%" y2="0%">
-              <stop offset="0%" stopColor="#5be6ff" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#5be6ff" stopOpacity="0.9" />
-            </linearGradient>
-            <pattern id="patPreviewGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-              <path d="M24 0H0V24" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect x="0" y="0" width={w} height={h} fill="url(#patPreviewGrid)" />
-          <rect x={pad} y={pad} width={usableW} height={usableH} rx="10" fill="rgba(255,255,255,0.02)" />
-          {(marginLow > 0 || marginHigh < 1) && (
-            <>
-              <line x1={pad} x2={pad + usableW} y1={marginLowY} y2={marginLowY} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
-              <line x1={pad} x2={pad + usableW} y1={marginHighY} y2={marginHighY} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
-            </>
-          )}
-          {fade > 0 && <path d={rawPath} fill="none" stroke="rgba(91,230,255,0.35)" strokeWidth="1.5" />}
-          <path
-            d={fade > 0 ? fadedPath : rawPath}
-            fill="none"
-            stroke="url(#patPreviewGrad)"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-          <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-          <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-        </svg>
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={className ?? 'absolute inset-0 h-full w-full'}>
+      <defs>
+        <linearGradient id="patPreviewGrad" x1="0%" x2="100%" y1="0%" y2="0%">
+          <stop offset="0%" stopColor="#5be6ff" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#5be6ff" stopOpacity="0.9" />
+        </linearGradient>
+        <pattern id="patPreviewGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+          <path d="M24 0H0V24" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width={w} height={h} fill="url(#patPreviewGrid)" />
+      <rect x={pad} y={pad} width={usableW} height={usableH} rx="10" fill="rgba(255,255,255,0.02)" />
+      {(marginLow > 0 || marginHigh < 1) && (
+        <>
+          <line x1={pad} x2={pad + usableW} y1={marginLowY} y2={marginLowY} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
+          <line x1={pad} x2={pad + usableW} y1={marginHighY} y2={marginHighY} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
+        </>
+      )}
+      {fade > 0 && <path d={rawPath} fill="none" stroke="rgba(91,230,255,0.35)" strokeWidth="1.5" />}
+      <path
+        d={fade > 0 ? fadedPath : rawPath}
+        fill="none"
+        stroke="url(#patPreviewGrad)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+      <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+    </svg>
   );
 }

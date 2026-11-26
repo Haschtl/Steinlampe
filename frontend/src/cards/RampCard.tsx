@@ -29,58 +29,49 @@ const RampGraph = ({ duration, reverse, pow = 2, ease = 'linear' }: {
   const accent = reverse ? '#f97316' : '#5be6ff';
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner">
-      <div className="relative w-full" style={{ paddingTop: '62%' }}>
-        <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 h-full w-full">
-          <defs>
-            <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-              <stop offset="0%" stopColor={accent} stopOpacity="0.35" />
-              <stop offset="100%" stopColor={accent} stopOpacity="0.8" />
-            </linearGradient>
-            <linearGradient id="bgFade" x1="0%" x2="0%" y1="0%" y2="100%">
-              <stop offset="0%" stopColor={accent} stopOpacity="0.08" />
-              <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
-            </linearGradient>
-            <pattern id={gridId} width="24" height="24" patternUnits="userSpaceOnUse">
-              <path d="M24 0H0V24" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect x="0" y="0" width={w} height={h} fill={`url(#${gridId})`} />
-          <rect x={pad} y={pad} width={usableW} height={usableH} rx="10" fill="url(#bgFade)" opacity="0.08" />
-          <motion.path
-            d={area}
-            fill={`url(#${gradientId})`}
-            opacity="0.3"
-            initial={false}
-            animate={{ d: area }}
-            transition={{ type: 'spring', stiffness: 120, damping: 22 }}
-          />
-          <motion.path
-            d={path}
-            fill="none"
-            stroke={`url(#${gradientId})`}
-            strokeWidth="5"
-            strokeLinecap="round"
-            initial={false}
-            animate={{ d: path }}
-            transition={{ type: 'spring', stiffness: 160, damping: 28 }}
-          />
-          <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-          <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-          <text x={pad} y={h - 4} className="text-muted" fill="currentColor" fontSize="10">
-            0 ms
-          </text>
-          <text x={pad + usableW - 36} y={h - 4} className="text-muted" fill="currentColor" fontSize="10">
-            {dur} ms
-          </text>
-        </svg>
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+      <defs>
+        <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
+          <stop offset="0%" stopColor={accent} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={accent} stopOpacity="0.8" />
+        </linearGradient>
+        <linearGradient id="bgFade" x1="0%" x2="0%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor={accent} stopOpacity="0.08" />
+          <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
+        </linearGradient>
+        <pattern id={gridId} width="24" height="24" patternUnits="userSpaceOnUse">
+          <path d="M24 0H0V24" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width={w} height={h} fill={`url(#${gridId})`} />
+      <rect x={pad} y={pad} width={usableW} height={usableH} rx="10" fill="url(#bgFade)" opacity="0.08" />
+      <motion.path
+        d={area}
+        fill={`url(#${gradientId})`}
+        opacity="0.3"
+        initial={false}
+        animate={{ d: area }}
+        transition={{ type: 'spring', stiffness: 120, damping: 22 }}
+      />
+      <motion.path
+        d={path}
+        fill="none"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="5"
+        strokeLinecap="round"
+        initial={false}
+        animate={{ d: path }}
+        transition={{ type: 'spring', stiffness: 160, damping: 28 }}
+      />
+      <line x1={pad} y1={h - pad} x2={pad + usableW} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+      <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+    </svg>
   );
 };
 
-// The plot is the card's own background; title + duration/ease summary float over it, and
-// the whole tile is a button that opens the editor as a popup (no inline expand section).
+// The plot is the card's own background (filling the whole frame, not boxed in separately);
+// title/duration/ease float over it in frosted glass chips, and the whole tile is a button
+// that opens the editor as a popup (no inline expand section).
 const RampTile = ({
   title,
   duration,
@@ -96,20 +87,38 @@ const RampTile = ({
   ease: EaseType;
   onOpen: () => void;
 }) => (
-  <button
+  <motion.button
     type="button"
     onClick={onOpen}
-    className="group relative block w-full rounded-xl text-left focus:outline-none focus:ring-2 focus:ring-accent"
+    whileHover={{ scale: 1.015 }}
+    whileTap={{ scale: 0.99 }}
+    transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+    className="group relative block min-h-[150px] w-full overflow-hidden rounded-2xl border border-border/70 bg-panel/70 text-left shadow-[0_10px_30px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-accent"
   >
     <RampGraph duration={duration} reverse={reverse} pow={pow} ease={ease} />
-    <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-2.5">
-      <span className="text-sm font-semibold text-text drop-shadow-md">{title}</span>
-      <Pencil className="h-3.5 w-3.5 text-muted/90 drop-shadow-md transition group-hover:text-accent" />
+    <div
+      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      style={{ background: `radial-gradient(60% 50% at 50% 100%, ${reverse ? 'rgba(249,115,22,0.18)' : 'rgba(91,230,255,0.18)'}, transparent 70%)` }}
+    />
+    <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/35 to-transparent p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-sm font-semibold text-text backdrop-blur-sm">
+          {title}
+        </span>
+        <span className="rounded-full border border-white/10 bg-black/30 p-1.5 text-muted/90 backdrop-blur-sm transition group-hover:text-accent">
+          <Pencil className="h-3.5 w-3.5" />
+        </span>
+      </div>
     </div>
-    <div className="pointer-events-none absolute inset-x-2.5 bottom-2 text-[11px] text-muted drop-shadow-md">
-      {ease} · γ={pow.toFixed(1)}
+    <div className="pointer-events-none absolute inset-x-2.5 bottom-2 flex items-center justify-between text-[11px]">
+      <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-muted backdrop-blur-sm">
+        {ease} · γ={pow.toFixed(1)}
+      </span>
+      <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-muted backdrop-blur-sm">
+        {duration ?? 0} ms
+      </span>
     </div>
-  </button>
+  </motion.button>
 );
 
 export function RampCard() {
@@ -204,7 +213,9 @@ export function RampCard() {
             <DialogHeader>
               <DialogTitle><Trans k="label.rampOn">Ramp On</Trans></DialogTitle>
             </DialogHeader>
-            <RampGraph duration={rampOn} pow={onPow} ease={rampOnEase as EaseType} />
+            <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
+              <RampGraph duration={rampOn} pow={onPow} ease={rampOnEase as EaseType} />
+            </div>
             <div className="flex items-center gap-2">
               <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
               <Button
@@ -257,7 +268,9 @@ export function RampCard() {
             <DialogHeader>
               <DialogTitle><Trans k="label.rampOff">Ramp Off</Trans></DialogTitle>
             </DialogHeader>
-            <RampGraph duration={rampOff} reverse pow={offPow} ease={rampOffEase as EaseType} />
+            <div className="relative overflow-hidden rounded-xl border border-border bg-panel/70 shadow-inner" style={{ paddingTop: '62%' }}>
+              <RampGraph duration={rampOff} reverse pow={offPow} ease={rampOffEase as EaseType} />
+            </div>
             <div className="flex items-center gap-2">
               <Label className="m-0"><Trans k="label.mode">Mode</Trans></Label>
               <Button
