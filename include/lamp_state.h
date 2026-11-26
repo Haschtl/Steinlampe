@@ -2,10 +2,9 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 // Shared LEDC configuration
-extern const int LEDC_CH;
 extern const int LEDC_FREQ;
 extern const int LEDC_RES;
 extern const int PWM_MAX;

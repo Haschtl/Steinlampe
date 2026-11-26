@@ -319,11 +319,10 @@ export function HelpSection() {
           </p>
           <p className="text-muted">
             <Trans k="help.btPairingHint">
-              First connection outside the ~60s post-boot trust window (BLE or Classic-BT-Serial, whichever this
-              build has): the lamp holds the link open and waits up to 20s for you to confirm by toggling the
-              switch or moving the potentiometer, then trusts the device. BLE additionally pairs/encrypts
-              (bonds) for real at this point - see "trust ble bonds"/"trust ble clearbonds" to inspect or reset
-              that.
+              First connection outside the ~60s post-boot trust window: the lamp holds the link open and waits
+              up to 20s for you to confirm by toggling the switch or moving the potentiometer, then trusts the
+              device. BLE additionally pairs/encrypts (bonds) for real at this point - see "trust ble bonds"/
+              "trust ble clearbonds" to inspect or reset that.
             </Trans>
           </p>
         </CardContent>

@@ -6,6 +6,7 @@
 #include "libb64/cdecode.h"
 
 #include "comms.h"
+#include "persistence.h"
 
 bool otaActive = false;
 size_t otaExpectedSize = 0;
@@ -154,6 +155,9 @@ void otaLoop()
     if (otaRebootAtMs > 0 && (int32_t)(now - otaRebootAtMs) >= 0)
     {
         otaRebootAtMs = 0;
+        // Any debounced saveSettings() still pending would otherwise be lost
+        // to the reboot before its window elapses.
+        flushSettingsNow();
         ESP.restart();
     }
 }

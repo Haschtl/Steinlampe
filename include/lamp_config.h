@@ -13,6 +13,27 @@
 #define ENABLE_BT_SERIAL 1
 #endif
 
+// BLE Mesh (feat/ble-mesh Step 3: NLC Basic Lightness Controller profile) -
+// off by default, on only for the envs that have actually been tested with
+// it. Needs ENABLE_BLE (shares its NimBLE host) and is meaningless without
+// it.
+#ifndef ENABLE_BLE_MESH
+#define ENABLE_BLE_MESH 0
+#endif
+#if ENABLE_BLE_MESH && !ENABLE_BLE
+#error "ENABLE_BLE_MESH requires ENABLE_BLE=1 - mesh runs on the same NimBLE host."
+#endif
+
+// Lets this node provision OTHER lamps into the mesh itself (no nRF Mesh
+// needed) - independent flag so it can be disabled per-env without losing
+// the rest of Mesh. Meaningless without ENABLE_BLE_MESH.
+#ifndef ENABLE_BLE_MESH_PROVISIONER
+#define ENABLE_BLE_MESH_PROVISIONER 0
+#endif
+#if ENABLE_BLE_MESH_PROVISIONER && !ENABLE_BLE_MESH
+#error "ENABLE_BLE_MESH_PROVISIONER requires ENABLE_BLE_MESH=1."
+#endif
+
 // NimBLE (ENABLE_BLE's implementation since the migration off the Bluedroid
 // BLE stack) frees the Classic-BT (BR/EDR) controller memory on init
 // (NimBLEDevice::init() -> esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT)

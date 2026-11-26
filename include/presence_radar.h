@@ -23,7 +23,7 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 #ifndef ENABLE_RD03
 #define ENABLE_RD03 0

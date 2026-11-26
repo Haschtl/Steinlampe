@@ -5,7 +5,7 @@
 #include "comms.h"
 #include "midi_bt.h"
 
-void handleCommand(String line);
+void handleCommand(const String &line);
 
 namespace
 {

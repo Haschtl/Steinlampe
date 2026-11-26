@@ -144,6 +144,9 @@ export type DeviceStatus = {
   radarHwOverride?: boolean;
   radarVelocityFactor?: number;
   quickCsv?: string;
+  gestCsv?: string;
+  meshNet?: boolean;
+  meshNodeCount?: number;
   rampOnMs?: number;
   rampOffMs?: number;
   rampOnEase?: string;
@@ -208,9 +211,6 @@ export type DeviceStatus = {
   pushStepMs?: number;
   pushStep?: number;
   trustedBle?: string[];
-  trustedBt?: string[];
-  btSleepBootMs?: number;
-  btSleepBleMs?: number;
 };
 
 /**
@@ -375,6 +375,9 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
         quickCsv: kv.quick ?? s.quickCsv,
+        gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
+        meshNet: Object.prototype.hasOwnProperty.call(kv, 'mesh_net') ? kv.mesh_net === '1' : s.meshNet,
+        meshNodeCount: asInt('mesh_nodes') ?? s.meshNodeCount,
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,
@@ -409,8 +412,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         firmwareEnv: kv.fw_env ?? s.firmwareEnv,
         otaActive: kv.ota_active !== undefined ? kv.ota_active === '1' : s.otaActive,
         outputMode: outputMode ?? s.outputMode,
-        btSleepBootMs: asInt('bt_sleep_boot_ms') ?? s.btSleepBootMs,
-        btSleepBleMs: asInt('bt_sleep_ble_ms') ?? s.btSleepBleMs,
         customLen: asInt('custom_len') ?? s.customLen,
         customStepMs: asInt('custom_step_ms') ?? s.customStepMs,
         pwmCurve: asNum('gamma') ?? s.pwmCurve,
@@ -498,7 +499,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
   if (line.startsWith('[Trust]')) {
     const lower = line.toLowerCase();
     const isBle = lower.includes('ble');
-    const isBt = lower.includes('bt');
     const payload = line.includes(':') ? line.slice(line.indexOf(':') + 1) : '';
     const list = payload
       .split(',')
@@ -507,7 +507,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     setStatus((s) => ({
       ...s,
       trustedBle: isBle ? list : s.trustedBle,
-      trustedBt: isBt ? list : s.trustedBt,
       lastStatusAt: Date.now(),
     }));
     return true;

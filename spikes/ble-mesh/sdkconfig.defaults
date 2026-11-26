@@ -1,0 +1,59 @@
+# Minimal hand-picked set for the spike - deliberately NOT copied from any
+# of Espressif's example sdkconfig.defaults files (several of those turned
+# out to be one shared, huge, mostly-irrelevant template covering WiFi,
+# speech recognition, Insights/Rainmaker, etc. - noise for this question).
+#
+# Host: NimBLE instead of the default Bluedroid - this is the entire point
+# of the spike, see platformio.ini's comment.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# CONFIG_BT_BLUEDROID_ENABLED is not set
+
+# BLE Mesh: Node role (this device joins a mesh, it doesn't provision
+# others), and the Generic Server model group for the Generic OnOff
+# Server. CONFIG_BLE_MESH_GENERIC_SERVER is the only Kconfig toggle for
+# the generic *server* models - there's no finer-grained per-model flag
+# on the server side (checked common/include/mesh/config.h; the client
+# side does have per-model _CLI flags, the server side doesn't need them
+# since the app chooses which server models to instantiate in code, not
+# via Kconfig).
+#
+# Both provisioning bearers, not just PB-ADV: a phone provisioner app
+# (nRF Mesh et al.) provisions over PB-GATT almost always, not PB-ADV -
+# phone OS BLE stacks don't give apps the raw access to mesh advertising
+# PDUs that PB-ADV provisioning needs on the provisioner's side, so PB-ADV
+# alone would make this node invisible to nRF Mesh's provisioning flow
+# even though it's otherwise advertising correctly. PB-ADV is still worth
+# keeping for provisioning from another ESP32 node later. CONFIG_BLE_MESH_PROXY
+# is needed too, separately from provisioning - it's what lets the phone's
+# ongoing GATT connection (not just the provisioning handshake) send
+# Config Client messages afterwards (AppKey bind, model pub/sub setup).
+CONFIG_BLE_MESH=y
+CONFIG_BLE_MESH_NODE=y
+CONFIG_BLE_MESH_PROV=y
+CONFIG_BLE_MESH_PB_ADV=y
+CONFIG_BLE_MESH_PB_GATT=y
+CONFIG_BLE_MESH_PROXY=y
+CONFIG_BLE_MESH_GENERIC_SERVER=y
+# Health Server is its own separate Kconfig toggle, not folded into
+# GENERIC_SERVER above - see main.cpp's comment on why it's needed at all.
+CONFIG_BLE_MESH_HEALTH_SRV=y
+
+# Arduino core itself requires this (CMakeLists.txt hard-checks it).
+CONFIG_FREERTOS_HZ=1000
+
+# Without this, no app_main() gets generated to call into Arduino's
+# setup()/loop() - the final link fails with "undefined reference to
+# app_main" (found by actually building this; the official
+# espidf-arduino-blink example this project started from carries this in
+# its own sdkconfig.defaults, buried in an otherwise mostly-irrelevant
+# kitchen-sink config file, which is why it got left out of the first
+# pass here).
+CONFIG_AUTOSTART_ARDUINO=y
+
+# Without this, it silently falls back to a 2MB-flash-sized default
+# partition table ("Warning! Flash memory size mismatch detected. Expected
+# 4MB, found 2MB!" at build time) - both real boards this targets
+# (upesy_wroom and on_air's ESP32-S3 Super Mini) have 4MB flash.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+

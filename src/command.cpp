@@ -10,7 +10,7 @@
 #include "filters.h"
 #include "lamp_state.h"
 #include "patterns.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include "utils.h"
 #include "persistence.h"
 #include "print.h"
@@ -26,9 +26,9 @@
 #include "notifications.h"
 #include "pattern.h"
 #include "demo.h"
-
-#if ENABLE_BLE
-#include <NimBLEDevice.h>
+#include "gestures.h"
+#if ENABLE_BLE_MESH
+#include "lamp_mesh.h"
 #endif
 
 // SOS shortcut snapshot
@@ -42,15 +42,33 @@ bool sosPrevLampOn = false;
 /**
  * @brief Parse and execute a command string from any input channel.
  */
-void handleCommand(String line)
+void handleCommand(const String &line)
 {
-    line.trim();
+    // Trimming is the caller's job now (processInputChar() already does
+    // this on `buffer` before calling; the MIDI dispatch paths construct
+    // already-clean strings) - `line` used to be a by-value parameter, and
+    // that copy, plus the `lower` copy just below, were part of the
+    // allocation pattern that reproduced a TLSF heap corruption on real
+    // hardware (see the other fixes alongside this one). Taking `line` by
+    // reference removes one of those two copies entirely.
     if (line.isEmpty())
         return;
 
     lastActivityMs = millis();
 
-    String lower = line;
+    // `lower` is function-static and reserved once rather than a fresh
+    // local copy every call, same reasoning. 64 bytes comfortably covers
+    // every normal command; the rare long "ota chunk <base64>" command (up
+    // to ~5600 bytes, see LINE_BUFFER_MAX) still works, it just triggers one
+    // real reallocation on that uncommon, non-hot path.
+    static String lower;
+    static bool lowerReserved = false;
+    if (!lowerReserved)
+    {
+        lower.reserve(64);
+        lowerReserved = true;
+    }
+    lower = line;
     lower.toLowerCase();
 
     if (lower == "help")
@@ -89,9 +107,173 @@ void handleCommand(String line)
         }
         return;
     }
+    if (lower == "gest" || lower == "gest list")
+    {
+        sendFeedback(String(F("[Gest] ")) + gestureBindingsToCsv());
+        return;
+    }
+    if (lower == "gest default")
+    {
+        resetGestureBindingsToDefault();
+        saveSettings();
+        sendFeedback(F("[Gest] default (empty)"));
+        return;
+    }
+    if (lower == "gest clear")
+    {
+        gestureBindingCount = 0;
+        saveSettings();
+        sendFeedback(F("[Gest] cleared"));
+        return;
+    }
+    if (lower.startsWith("gest set"))
+    {
+        String args = line.substring(8);
+        args.trim();
+        args.toLowerCase();
+        if (parseGestureCsv(args))
+        {
+            saveSettings();
+            sendFeedback(String(F("[Gest] set -> ")) + gestureBindingsToCsv());
+        }
+        else
+        {
+            sendFeedback(F("[Gest] malformed binding list, nothing changed"));
+        }
+        return;
+    }
+    if (lower.startsWith("mesh "))
+    {
+#if ENABLE_BLE_MESH
+        String args = line.substring(5);
+        args.trim();
+        if (args.startsWith("on ") || args.startsWith("off "))
+        {
+            bool on = args.startsWith("on ");
+            uint16_t addr = (uint16_t)strtoul(args.substring(on ? 3 : 4).c_str(), nullptr, 0);
+            meshSendOnOff(addr, on);
+            sendFeedback(String(F("[Mesh] ")) + (on ? F("on") : F("off")) + F(" -> 0x") + String(addr, HEX));
+        }
+        else if (args.startsWith("bri "))
+        {
+            String rest = args.substring(4);
+            rest.trim();
+            int sp = rest.indexOf(' ');
+            if (sp > 0)
+            {
+                uint16_t addr = (uint16_t)strtoul(rest.substring(0, sp).c_str(), nullptr, 0);
+                float pct = rest.substring(sp + 1).toFloat();
+                meshSendLightness(addr, pct);
+                sendFeedback(String(F("[Mesh] bri -> 0x")) + String(addr, HEX) + F(" ") + fmtF(pct, 1) + F("%"));
+            }
+            else
+            {
+                sendFeedback(F("Usage: mesh bri <addr> <pct>"));
+            }
+        }
+#if ENABLE_BLE_MESH_PROVISIONER
+        else if (args.startsWith("network create"))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            uint8_t netKey[16], appKey[16];
+            bool haveNet = false, haveApp = false;
+            if (!rest.isEmpty())
+            {
+                int sp = rest.indexOf(' ');
+                String netHex = sp > 0 ? rest.substring(0, sp) : rest;
+                String appHex = sp > 0 ? rest.substring(sp + 1) : String();
+                appHex.trim();
+                if (netHex.length() == 32 && appHex.length() == 32)
+                {
+                    for (uint8_t i = 0; i < 16; ++i)
+                    {
+                        netKey[i] = (uint8_t)strtoul(netHex.substring(i * 2, i * 2 + 2).c_str(), nullptr, 16);
+                        appKey[i] = (uint8_t)strtoul(appHex.substring(i * 2, i * 2 + 2).c_str(), nullptr, 16);
+                    }
+                    haveNet = haveApp = true;
+                }
+                else
+                {
+                    sendFeedback(F("Usage: mesh network create [<netkey32hex> <appkey32hex>]"));
+                    return;
+                }
+            }
+            meshNetworkCreate(haveNet ? netKey : nullptr, haveApp ? appKey : nullptr);
+        }
+        else if (args.startsWith("provision scan"))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            uint32_t secs = rest.isEmpty() ? 20 : (uint32_t)rest.toInt();
+            meshProvisionScanStart(secs == 0 ? 20 : secs);
+        }
+        else if (args == "provision stop")
+        {
+            meshProvisionScanStop();
+        }
+        else if (args == "provision list")
+        {
+            sendFeedback(meshProvisionListText());
+        }
+        else if (args.startsWith("provision add "))
+        {
+            String rest = args.substring(14);
+            rest.trim();
+            int sp = rest.indexOf(' ');
+            uint8_t idx = (uint8_t)(sp > 0 ? rest.substring(0, sp).toInt() : rest.toInt());
+            uint16_t group = sp > 0 ? (uint16_t)strtoul(rest.substring(sp + 1).c_str(), nullptr, 0) : 0;
+            meshProvisionAdd(idx, group);
+        }
+        else if (args.startsWith("provision remove "))
+        {
+            uint16_t addr = (uint16_t)strtoul(args.substring(17).c_str(), nullptr, 0);
+            meshProvisionRemove(addr);
+        }
+        else if (args == "nodes")
+        {
+            sendFeedback(meshKnownNodesText());
+        }
+        else if (args.startsWith("rename "))
+        {
+            String rest = args.substring(7);
+            // Left-trim only (not rest.trim()) - a full trim would eat the
+            // one separating space when the name is deliberately empty
+            // (clearing a node back to its fallback "Lamp 0x.." label),
+            // leaving no space for indexOf(' ') to find at all. The name
+            // itself still gets trimmed, just inside meshRenameNode() via
+            // renameKnownNodeByAddr()'s own sanitization, not here.
+            while (rest.length() > 0 && rest[0] == ' ')
+                rest.remove(0, 1);
+            int sp = rest.indexOf(' ');
+            if (sp > 0)
+            {
+                uint16_t addr = (uint16_t)strtoul(rest.substring(0, sp).c_str(), nullptr, 0);
+                meshRenameNode(addr, rest.substring(sp + 1));
+            }
+            else
+            {
+                sendFeedback(F("Usage: mesh rename <addr> <name>"));
+            }
+        }
+#endif
+        else
+        {
+            sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"
+#if ENABLE_BLE_MESH_PROVISIONER
+                           " | mesh network create [<net> <app>] | mesh provision scan|stop|list|add|remove"
+                           " | mesh nodes | mesh rename <addr> <name>"
+#endif
+                           ));
+        }
+#else
+        sendFeedback(F("[Mesh] disabled at build"));
+#endif
+        return;
+    }
     if (lower == "status")
     {
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "status raw" || lower == "status json")
@@ -108,28 +290,28 @@ void handleCommand(String line)
     {
         setLampEnabled(true, "cmd on");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "off")
     {
         setLampEnabled(false, "cmd off");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "sync")
     {
         syncLampToSwitch();
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "toggle")
     {
         setLampEnabled(!lampEnabled, "cmd toggle");
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower == "touch")
@@ -851,8 +1033,10 @@ void handleCommand(String line)
             }
             if (extInputAnalog)
             {
-                analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
+                // arduino-esp32 3.x: pinMode(INPUT) before analogSetPinAttenuation() -
+                // see the same reordering + rationale in main.cpp's setup().
                 pinMode(Settings::EXT_INPUT_PIN, INPUT);
+                analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
             }
             else
             {
@@ -934,7 +1118,7 @@ void handleCommand(String line)
         else
             sendFeedback(F("auto on|off"));
         saveSettings();
-        printStatus();
+        printStatusStructured();
         return;
     }
     if (lower.startsWith("bt sleep"))

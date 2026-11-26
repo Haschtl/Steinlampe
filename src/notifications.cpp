@@ -1,6 +1,6 @@
 
 #include "Arduino.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include <vector>
 
 // Notify blink

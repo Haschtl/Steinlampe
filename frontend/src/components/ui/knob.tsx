@@ -9,6 +9,7 @@ type KnobProps = {
   value: number;
   onChange: (v: number) => void;
   disabled?: boolean;
+  size?: number;
 };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -16,7 +17,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /**
  * Quartz-styled knob using react-knob-headless for interaction/keyboard handling.
  */
-export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, disabled }: KnobProps) {
+export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, disabled, size = 92 }: KnobProps) {
   const span = max - min || 1;
   const [internalVal, setInternalVal] = useState(value);
   const norm = clamp((internalVal - min) / span, 0, 1);
@@ -93,7 +94,7 @@ export function Knob({ label, min = 0, max = 1, step = 0.01, value, onChange, di
   return (
     <div className="flex flex-col items-center gap-2 text-center" style={{marginTop:0}}>
       {label && <span className="text-xs font-medium text-muted">{label}</span>}
-      <div className={`relative ${disabled ? 'opacity-50' : ''}`} style={{ width: 92, height: 92 }}>
+      <div className={`relative ${disabled ? 'opacity-50' : ''}`} style={{ width: size, height: size }}>
         {/* Outer shimmer */}
         <div
           className="pointer-events-none absolute -inset-4 rounded-full blur-2xl"

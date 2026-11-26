@@ -3,11 +3,20 @@
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 
 #include "comms.h"
+#include "midi_ble.h"
 #include "midi_show_control.h"
 
-#include <NimBLEDevice.h>
+#include "host/ble_gatt.h"
+#include "host/ble_hs.h"
 
-void handleCommand(String line);
+void handleCommand(const String &line);
+
+// Shared with comms.cpp's startBleAdvertising() (scan-response UUID list)
+// and uuid128FromString() (the same runtime UUID-string parser comms.cpp
+// defines statically - duplicated here rather than shared via a header
+// since it's a two-line helper and the alternative is a new internal
+// header just for it).
+ble_uuid128_t midiServiceUuid;
 
 namespace
 {
@@ -21,7 +30,30 @@ namespace
   constexpr uint8_t CC_BRIGHTNESS = 7;    // Channel volume maps to brightness
   constexpr uint8_t CC_MODE = 20;         // Maps to mode 1..8
 
-  NimBLECharacteristic *midiChar = nullptr;
+  ble_uuid128_t midiCharUuid;
+  uint16_t midiCharHandle = 0;
+
+  ble_uuid128_t uuid128FromString(const char *str)
+  {
+    uint8_t display[16];
+    int bi = 0;
+    for (int i = 0; str[i] != '\0' && bi < 16;)
+    {
+      if (str[i] == '-')
+      {
+        i++;
+        continue;
+      }
+      char hex[3] = {str[i], str[i + 1], '\0'};
+      display[bi++] = (uint8_t)strtol(hex, nullptr, 16);
+      i += 2;
+    }
+    ble_uuid128_t u{};
+    u.u.type = BLE_UUID_TYPE_128;
+    for (int i = 0; i < 16; i++)
+      u.value[i] = display[15 - i];
+    return u;
+  }
 
   void dispatchCommand(const String &cmd)
   {
@@ -131,31 +163,58 @@ namespace
     }
   }
 
-  class MidiCallbacks : public NimBLECharacteristicCallbacks
+  int midiAccessCb(uint16_t conn_handle, uint16_t attr_handle,
+                   struct ble_gatt_access_ctxt *ctxt, void *arg)
   {
-    void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &connInfo) override
-    {
-      (void)connInfo;
-      NimBLEAttValue val = c->getValue();
-      if (val.length() == 0)
-        return;
-      handleMidiMessage(val.data(), val.length());
-    }
+    (void)conn_handle;
+    (void)attr_handle;
+    (void)arg;
+    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR)
+      return 0;
+    uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+    if (len == 0)
+      return 0;
+    // BLE-MIDI packets are small (a handful of 3-byte MIDI messages plus
+    // timestamp bytes); 64 is generous headroom, not a negotiated-MTU-sized
+    // buffer like comms.cpp's command characteristic needs.
+    uint8_t buf[64];
+    uint16_t copyLen = len < sizeof(buf) ? len : (uint16_t)sizeof(buf);
+    if (os_mbuf_copydata(ctxt->om, 0, copyLen, buf) != 0)
+      return 0;
+    handleMidiMessage(buf, copyLen);
+    return 0;
+  }
+
+  struct ble_gatt_chr_def midiChars[] = {
+      {
+          .uuid = &midiCharUuid.u,
+          .access_cb = midiAccessCb,
+          .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+          .val_handle = &midiCharHandle,
+      },
+      {0},
+  };
+
+  struct ble_gatt_svc_def midiSvcs[] = {
+      {
+          .type = BLE_GATT_SVC_TYPE_PRIMARY,
+          .uuid = &midiServiceUuid.u,
+          .characteristics = midiChars,
+      },
+      {0},
   };
 } // namespace
 
-void setupBleMidi(NimBLEServer *server, NimBLEAdvertising *advertising)
+void setupBleMidi()
 {
-  if (!server)
-    return;
-  NimBLEService *svc = server->createService(MIDI_SERVICE_UUID);
-  midiChar = svc->createCharacteristic(MIDI_CHAR_UUID,
-                                       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
-  midiChar->setCallbacks(new MidiCallbacks());
-  // NimBLEService::start() is a deprecated no-op in this NimBLE-Arduino
-  // version - services start automatically with the server.
-  if (advertising)
-    advertising->addServiceUUID(MIDI_SERVICE_UUID);
+  midiServiceUuid = uuid128FromString(MIDI_SERVICE_UUID);
+  midiCharUuid = uuid128FromString(MIDI_CHAR_UUID);
+
+  int rc = ble_gatts_count_cfg(midiSvcs);
+  ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+  rc = ble_gatts_add_svcs(midiSvcs);
+  ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+
   Serial.println(F("[BLE-MIDI] Receive-only service aktiv."));
 }
 

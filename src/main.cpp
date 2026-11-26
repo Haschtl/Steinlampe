@@ -15,12 +15,13 @@
 #include <vector>
 #include <ctype.h>
 #include <esp_system.h>
+#include <esp_mac.h> // esp_efuse_mac_get_default/esp_base_mac_addr_set - arduino-esp32 3.x no longer pulls this in transitively
 
 #include "comms.h"
 #include "filters.h"
 #include "lamp_state.h"
 #include "patterns.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include "utils.h"
 #include "persistence.h"
 #include "print.h"
@@ -36,13 +37,11 @@
 #include "notifications.h"
 #include "pattern.h"
 #include "demo.h"
-
-#if ENABLE_BLE
-#include <NimBLEDevice.h>
+#if ENABLE_BLE_MESH_PROVISIONER
+#include "lamp_mesh.h"
 #endif
 
 #include <esp_sleep.h>
-#include <esp_spp_api.h>
 
 bool ensureBaseMac()
 {
@@ -454,19 +453,33 @@ void setup()
 #if ENABLE_LIGHT_SENSOR || ENABLE_POTI || ENABLE_MUSIC_MODE || ENABLE_EXT_INPUT
   analogReadResolution(12);
 #endif
+// arduino-esp32 3.x: analogSetPinAttenuation() only *reconfigures* a pin
+// that's already registered as an ADC channel - that registration itself
+// only happens lazily, inside analogRead()'s own first-call path
+// (esp32-hal-adc.c's __analogRead(), via perimanGetPinBus(...,
+// ESP32_BUS_TYPE_ADC_ONESHOT) == NULL -> __analogInit()). Calling
+// analogSetPinAttenuation() before the pin's very first analogRead() is
+// therefore always a silent no-op ("Pin is not configured as analog
+// channel" at boot, attenuation request dropped) - true under 2.x too, but
+// masked there since analogRead() itself defaulted to 11dB already. A dummy
+// analogRead() forces that lazy registration before the real attenuation
+// override, so it actually takes effect.
 #if ENABLE_LIGHT_SENSOR
-  analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
   pinMode(Settings::LIGHT_PIN, INPUT);
+  analogRead(Settings::LIGHT_PIN);
+  analogSetPinAttenuation(Settings::LIGHT_PIN, ADC_11db);
 #endif
 #if ENABLE_POTI
-  analogSetPinAttenuation(PIN_POTI, ADC_11db);
   pinMode(PIN_POTI, INPUT);
+  analogRead(PIN_POTI);
+  analogSetPinAttenuation(PIN_POTI, ADC_11db);
 #endif
 #if ENABLE_EXT_INPUT
   if (extInputAnalog)
   {
-    analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
     pinMode(Settings::EXT_INPUT_PIN, INPUT);
+    analogRead(Settings::EXT_INPUT_PIN);
+    analogSetPinAttenuation(Settings::EXT_INPUT_PIN, ADC_11db);
   }
   else
   {
@@ -474,8 +487,9 @@ void setup()
   }
 #endif
 #if ENABLE_MUSIC_MODE
-  analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
   pinMode(Settings::MUSIC_PIN, INPUT);
+  analogRead(Settings::MUSIC_PIN);
+  analogSetPinAttenuation(Settings::MUSIC_PIN, ADC_11db);
 #endif
 #if ENABLE_RD03
   radarSetup();
@@ -485,9 +499,8 @@ void setup()
   trustSetBootMs(millis());
 
 #if !ENABLE_ANALOG_OUTPUT
-  ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RES);
-  ledcAttachPin(PIN_OUTPUT, LEDC_CH);
-  ledcWrite(LEDC_CH, OFF_RAW); // explicit off at startup
+  ledcAttach(PIN_OUTPUT, LEDC_FREQ, LEDC_RES); // arduino-esp32 3.x: replaces ledcSetup()+ledcAttachPin()
+  ledcWrite(PIN_OUTPUT, OFF_RAW);              // explicit off at startup
 #else
   dacWrite(PIN_OUTPUT, OFF_RAW);
 #endif
@@ -495,7 +508,20 @@ void setup()
 
   announcePattern(true);
   printHelp(true);
-  printStatus(true);
+  printStatusStructured(true);
+  // Force printSensorsStructured()/queueLiveState()'s own one-time internal
+  // buffer reservations to happen here too, in this safe, early,
+  // single-threaded setup context - same reasoning as the updateBleStatus()
+  // prewarm call in startBle(). Neither of these runs anywhere else during
+  // boot (printSensorsStructured only from the "sensors" command;
+  // queueLiveState only from loop()), so without this their one-time
+  // reserve() would otherwise land on whatever live command/poti-update
+  // happens to trigger them first post-boot - exactly the deferred-timing
+  // pattern that reproduced the TLSF heap corruption on real hardware.
+  // force=false on both: feedbackArmed is still false this early, so
+  // sendFeedback() no-ops and nothing is actually printed/sent.
+  printSensorsStructured(false);
+  queueLiveState(false);
   setupCommunications();
   updatePatternEngine();
 
@@ -520,7 +546,7 @@ void loop()
 #if ENABLE_ANALOG_OUTPUT
       dacWrite(PIN_OUTPUT, OFF_RAW);
 #else
-      ledcWrite(LEDC_CH, OFF_RAW);
+      ledcWrite(PIN_OUTPUT, OFF_RAW);
 #endif
       delay(10);
       return;
@@ -534,6 +560,9 @@ void loop()
     setLampEnabled(hardwareWantsOn(), "secure-boot window closed");
   }
   pollCommunications();
+#if ENABLE_BLE_MESH_PROVISIONER
+  meshProvisionTick();
+#endif
 #if ENABLE_BUTTONS
   updateButtons();
 #endif
@@ -559,6 +588,7 @@ void loop()
   otaLoop();
 #endif
   flushLiveState();
+  flushSettingsIfDue();
   maybeLightSleep();
   delay(10);
 }

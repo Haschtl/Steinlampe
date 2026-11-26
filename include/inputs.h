@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 
 // Mirrors the debounced level of whichever ROLE_POWER+BTN_TOGGLE button
@@ -32,12 +32,29 @@ struct ButtonState
     uint32_t lastDebounceMs = 0;
     uint32_t pressMs = 0;      // momentary: last press edge
     uint32_t lastReleaseMs = 0; // momentary: last release edge
-    bool awaitDouble = false;   // momentary ROLE_POWER
+    bool awaitDouble = false;   // momentary ROLE_POWER/ROLE_MODE_NEXT: a tap
+                                 // burst is in progress, waiting to see if
+                                 // another release follows within pushDoubleMs
     bool holdActive = false;    // momentary: currently in hold-repeat
     uint32_t holdLastStepMs = 0;
-    bool modeTapArmed = false;  // toggle ROLE_POWER
-    uint32_t lastOnMs = 0;      // toggle ROLE_POWER
-    uint32_t lastOffMs = 0;     // toggle ROLE_POWER
+
+    // Generalized gesture tracking (see gestures.h) - toggle switch N-tap
+    // burst counting.
+    uint8_t switchTapCount = 0;
+    bool switchTapStartOn = false;
+    uint32_t switchTapLastEdgeMs = 0;
+    bool switchTapPending = false;
+
+    // Generalized gesture tracking - momentary button N-tap burst counting
+    // (generalizes the old fixed double-press check), plus long-press/
+    // double-long.
+    uint8_t pressBurstCount = 0;
+    bool doubleArmed = false;     // this press followed a recent release - a
+                                   // hold now is a double-long, not a long-press
+    bool longGestureFired = false; // one-shot latch: fired already this hold
+    bool holdGestureBound = false; // an explicit long-press/double-long binding
+                                    // fired this hold - suppresses the legacy
+                                    // continuous brightness ramp for it
 };
 extern ButtonState buttonStates[];
 
@@ -147,6 +164,14 @@ extern bool potiInvert;
 extern PotiRole potiRole;
 /// Inert today - see CHANNEL_TARGET_ALL in pinout.h.
 extern uint8_t potiTarget;
+
+// Gesture tracking (see gestures.h) - N-swing burst counting during normal
+// operation, independent thresholds/timeout from the boot-only
+// SECURE_POTI_LOW/HIGH in inputs.cpp (poti swings are slower than finger
+// taps, so these use a longer timeout).
+extern const float POTI_SWING_LOW;
+extern const float POTI_SWING_HIGH;
+extern const uint32_t POTI_SWING_MAX_MS;
 #endif
 
 #if ENABLE_PUSH_BUTTON

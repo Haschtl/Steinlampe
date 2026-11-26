@@ -14,7 +14,6 @@
 #include <string.h>
 
 // ---------- Output driver (PWM or DAC) ----------
-const int LEDC_CH = 0;
 // more conservative
 // const int LEDC_FREQ = 2000;
 // const int LEDC_RES = 15; // 15-bit resolution @2 kHz still fits LEDC clock
@@ -25,9 +24,9 @@ const int LEDC_RES = 8; // DAC uses 8-bit values
 const int PWM_MAX = 255;
 #else
 // Lower PWM frequency to gain extra resolution (quieter LEDs). ESP32-S3's LEDC hardware caps
-// duty resolution at 14 bits (vs. up to 20 on the classic ESP32); ledcSetup() silently fails
+// duty resolution at 14 bits (vs. up to 20 on the classic ESP32); ledcAttach() silently fails
 // above that ("No more LEDC channels available! ... or bit width too big (maximum 14)"),
-// which left the channel uninitialized and the output permanently stuck/off on-air.
+// which left the pin unattached and the output permanently stuck/off on-air.
 const int LEDC_FREQ = 1000;
 #if CONFIG_IDF_TARGET_ESP32S3
 const int LEDC_RES = 14; // max duty resolution on ESP32-S3's LEDC
@@ -48,7 +47,7 @@ static inline void writeOutputRaw(uint32_t value)
     value = (uint32_t)PWM_MAX;
   dacWrite(PIN_OUTPUT, (uint8_t)value);
 #else
-  ledcWrite(LEDC_CH, value);
+  ledcWrite(PIN_OUTPUT, value); // arduino-esp32 3.x: ledcWrite() addresses by pin, not channel
 #endif
 }
 
@@ -142,7 +141,7 @@ void logBrightnessChange(const char *reason)
     return;
   lastLoggedBrightness = masterBrightness;
   float perc = clamp01(masterBrightness) * 100.0f;
-  String msg = String(F("[Brightness] ")) + String(perc, 1) + F(" %");
+  String msg = String(F("[Brightness] ")) + fmtF(perc, 1) + F(" %");
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");
@@ -160,7 +159,22 @@ void logBrightnessChange(const char *reason)
 void logLampState(const char *reason)
 {
   bool forceSerial = (reason && (strstr(reason, "init") != nullptr || strstr(reason, "startup") != nullptr));
-  String msg = String(F("[Lamp] ")) + (lampOffPending ? F("OFF-PEND") : (lampEnabled ? F("ON") : F("OFF")));
+  // Function-static and reserved once, not a fresh local String built via
+  // `String(...) + ...` every call - that's exactly the malloc()+free()
+  // churn pattern that corrupts the TLSF heap on real hardware once BLE is
+  // active (see emitLiveState()'s comment in print.cpp for the full
+  // writeup) - this function just never got the same treatment, and
+  // reliably crashed inside String::~String() on every "on"/"off"/"toggle"
+  // once found.
+  static String msg;
+  static bool msgReserved = false;
+  if (!msgReserved)
+  {
+    msg.reserve(80);
+    msgReserved = true;
+  }
+  msg = F("[Lamp] ");
+  msg += lampOffPending ? F("OFF-PEND") : (lampEnabled ? F("ON") : F("OFF"));
   if (reason && reason[0] != '\0')
   {
     msg += F(" (");

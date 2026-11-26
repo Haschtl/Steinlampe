@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 #include "comms.h"
 
 #if ENABLE_MUSIC_MODE

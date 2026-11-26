@@ -15,6 +15,8 @@
 #include "presence_ble.h"
 #include "presence_radar.h"
 #include "print.h"
+#include "gestures.h"
+#include "lamp_mesh.h"
 
 // ---------- Persistenz ----------
 Preferences prefs;
@@ -64,6 +66,11 @@ static const char *PREF_KEY_TOUCH_HOLD = "touch_hold";
 static const char *PREF_KEY_PAT_SCALE = "pat_scale";
 static const char *PREF_KEY_QUICK_MASK = "qmask";
 static const char *PREF_KEY_QUICK_MASK_HI = "qmask_hi";
+static const char *PREF_KEY_GESTURES = "gest_map";
+static const char *PREF_KEY_MESH_HASKEY = "mesh_haskey";
+static const char *PREF_KEY_MESH_NETKEY = "mesh_netkey";
+static const char *PREF_KEY_MESH_APPKEY = "mesh_appkey";
+static const char *PREF_KEY_MESH_NODES = "mesh_nodes";
 static const char *PREF_KEY_PAT_REACT = "pat_react";
 static const char *PREF_KEY_PAT_REACT_HI = "pat_react_hi";
 static const char *PREF_KEY_PAT_FADE = "pat_fade";
@@ -288,7 +295,7 @@ bool loadProfileSlot(uint8_t slot, bool announce)
     if (announce)
     {
         sendFeedback(String(F("[Profile] Loaded slot ")) + String(slot));
-        printStatus();
+        printStatusStructured();
     }
     return true;
 }
@@ -394,6 +401,8 @@ void exportConfig()
     cfg += String(rampEaseOffPower, 2);
     cfg += F(" quick=");
     cfg += quickMaskToCsv();
+    cfg += F(" gest=");
+    cfg += gestureBindingsToCsv();
     cfg += F(" pat_reactive=");
     cfg += patternReactiveMaskToCsv();
 #if ENABLE_MUSIC_MODE
@@ -431,11 +440,47 @@ void exportConfig()
     sendFeedback(cfg);
 }
 
-/**
- * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
- */
+// Debounce window for saveSettings() - see persistence.h. Chosen to
+// comfortably coalesce a rapid sequence of toggles/setting changes (a user
+// fat-fingering on/off, or a BLE client applying several settings in a
+// burst) into one NVS write a short, user-imperceptible moment after things
+// settle, rather than one write per call.
+static constexpr uint32_t SAVE_SETTINGS_DEBOUNCE_MS = 2000;
+static bool settingsDirty = false;
+static uint32_t settingsDirtyMs = 0;
+
+static void saveSettingsNow();
+
 void saveSettings()
 {
+    settingsDirty = true;
+    settingsDirtyMs = millis();
+}
+
+void flushSettingsIfDue()
+{
+    if (!settingsDirty)
+        return;
+    if (millis() - settingsDirtyMs < SAVE_SETTINGS_DEBOUNCE_MS)
+        return;
+    saveSettingsNow();
+}
+
+void flushSettingsNow()
+{
+    if (!settingsDirty)
+        return;
+    saveSettingsNow();
+}
+
+/**
+ * @brief Persist current brightness, pattern and auto-cycle flag in NVS.
+ * The actual, immediate NVS write - only ever called from flushSettingsIfDue()/
+ * flushSettingsNow() once the debounce window clears; see saveSettings() above.
+ */
+static void saveSettingsNow()
+{
+    settingsDirty = false;
     uint16_t b = (uint16_t)(clamp01(masterBrightness) * 1000.0f + 0.5f);
     prefs.putUShort(PREF_KEY_B1000, b);
     prefs.putUShort(PREF_KEY_MODE, (uint16_t)currentPattern);
@@ -546,6 +591,16 @@ void saveSettings()
     prefs.putFloat(PREF_KEY_PAT_FADE_AMT, patternFadeStrength);
     prefs.putUInt(PREF_KEY_QUICK_MASK, (uint32_t)(quickMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_QUICK_MASK_HI, (uint32_t)(quickMask >> 32));
+    prefs.putString(PREF_KEY_GESTURES, gestureBindingsToCsv());
+#if ENABLE_BLE_MESH_PROVISIONER
+    prefs.putBool(PREF_KEY_MESH_HASKEY, meshHasLocalKeys);
+    if (meshHasLocalKeys)
+    {
+        prefs.putBytes(PREF_KEY_MESH_NETKEY, meshLocalNetKey, 16);
+        prefs.putBytes(PREF_KEY_MESH_APPKEY, meshLocalAppKey, 16);
+    }
+    prefs.putString(PREF_KEY_MESH_NODES, meshKnownNodesCsv());
+#endif
     prefs.putUInt(PREF_KEY_PAT_REACT, (uint32_t)(patternReactiveMask & 0xFFFFFFFFULL));
     prefs.putUInt(PREF_KEY_PAT_REACT_HI, (uint32_t)(patternReactiveMask >> 32));
     prefs.putFloat(PREF_KEY_PWM_GAMMA, outputGamma);
@@ -598,6 +653,7 @@ void applyDefaultSettings(float brightnessOverride, bool announce)
     touchDimStep = Settings::TOUCH_DIM_STEP_DEFAULT;
 #endif
     quickMask = computeDefaultQuickMask();
+    resetGestureBindingsToDefault();
     patternReactiveMask = 0;
     presenceBleEnabled = Settings::PRESENCE_BLE_DEFAULT_ENABLED;
     presenceBleGraceMs = Settings::PRESENCE_BLE_GRACE_MS_DEFAULT;
@@ -759,6 +815,20 @@ void loadSettings()
         quickMask = (hi << 32) | lo;
     }
     sanitizeQuickMask();
+    {
+        String gestCsv = prefs.getString(PREF_KEY_GESTURES, "");
+        if (gestCsv.isEmpty() || !parseGestureCsv(gestCsv))
+            resetGestureBindingsToDefault();
+    }
+#if ENABLE_BLE_MESH_PROVISIONER
+    meshHasLocalKeys = prefs.getBool(PREF_KEY_MESH_HASKEY, false);
+    if (meshHasLocalKeys)
+    {
+        prefs.getBytes(PREF_KEY_MESH_NETKEY, meshLocalNetKey, 16);
+        prefs.getBytes(PREF_KEY_MESH_APPKEY, meshLocalAppKey, 16);
+    }
+    meshSetKnownNodesFromCsv(prefs.getString(PREF_KEY_MESH_NODES, ""));
+#endif
     {
         uint64_t lo = prefs.getUInt(PREF_KEY_PAT_REACT, 0);
         uint64_t hi = prefs.getUInt(PREF_KEY_PAT_REACT_HI, 0);
@@ -1741,6 +1811,10 @@ void importConfig(const String &args)
                 sanitizeQuickMask();
             }
         }
+        else if (key == "gest")
+        {
+            parseGestureCsv(val);
+        }
         else if (key == "pat_reactive")
         {
             setPatternReactiveMaskFromCsv(val);
@@ -1765,5 +1839,5 @@ void importConfig(const String &args)
     sendFeedback(F("[Config] Imported"));
     if (briMaxUser < briMinUser)
         briMaxUser = briMinUser;
-    printStatus();
+    printStatusStructured();
 }

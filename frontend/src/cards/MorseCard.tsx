@@ -35,22 +35,22 @@ export function MorseCard({ sendCmd }: Props) {
           <Label>
             <Trans k="label.morseText">Text</Trans>
           </Label>
-          <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="SOS" />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={handleSend}>
-            <Send className="mr-1 h-4 w-4" /> <Trans k="btn.send">Send</Trans>
-          </Button>
-          <Button variant="danger" onClick={() => sendCmd('notify stop').catch((e) => console.warn(e))}>
-            <StopCircle className="mr-1 h-4 w-4" /> <Trans k="btn.stop">Stop</Trans>
-          </Button>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="SOS" className="flex-1" />
             {['SOS', 'HELLO', 'QUARZ'].map((p) => (
-              <Button key={p} size="sm" onClick={() => quickSend(p)}>
+              <Button key={p} size="sm" variant="ghost" onClick={() => quickSend(p)}>
                 {p}
               </Button>
             ))}
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={handleSend}>
+            <Send className="mr-1 h-4 w-4" /> <Trans k="btn.send">Send</Trans>
+          </Button>
+          <Button variant="ghost" onClick={() => sendCmd('notify stop').catch((e) => console.warn(e))} title="Stop">
+            <StopCircle className="h-4 w-4" />
+          </Button>
         </div>
       </CardContent>
     </Card>

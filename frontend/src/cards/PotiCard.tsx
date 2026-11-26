@@ -1,10 +1,36 @@
 import { useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
+import { ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SliderRow } from '@/components/ui/slider-row';
 import { useConnection } from '@/context/connection';
 import { useSyncedValue } from '@/hooks/useSyncedValue';
+import { GestureRow, parseGestureCsv } from '@/lib/gestures';
 import { Trans, useI18n } from '@/i18n';
+
+function describeGestureAction(row: GestureRow, t: (k: string, fb: string) => string): string {
+  switch (row.action) {
+    case 'quick':
+      return t('label.actionQuick', 'Cycle quick mode');
+    case 'toggle':
+      return t('label.actionToggle', 'Toggle on/off');
+    case 'on':
+      return t('label.actionOn', 'Turn on');
+    case 'off':
+      return t('label.actionOff', 'Turn off');
+    case 'bri':
+      return `${t('label.actionBri', 'Set brightness')} ${row.param1}%`;
+    case 'mesh_on':
+      return t('label.actionMeshOn', 'Mesh: turn on');
+    case 'mesh_off':
+      return t('label.actionMeshOff', 'Mesh: turn off');
+    case 'mesh_bri':
+      return t('label.actionMeshBri', 'Mesh: set brightness');
+    default:
+      return row.action;
+  }
+}
 
 export function PotiCard() {
   const { status, sendCmd } = useConnection();
@@ -31,6 +57,7 @@ export function PotiCard() {
   const [calMin, setCalMin] = useState(0);
   const [calMax, setCalMax] = useState(1);
   const [invert, setInvert] = useState(false);
+  const [potiGestures, setPotiGestures] = useState<GestureRow[]>([]);
 
   useEffect(() => {
     if (typeof status.potiEnabled === 'boolean') setEnabled(status.potiEnabled);
@@ -49,6 +76,12 @@ export function PotiCard() {
       });
     }
   }, [status.potiVal]);
+
+  useEffect(() => {
+    if (status.gestCsv !== undefined) {
+      setPotiGestures(parseGestureCsv(status.gestCsv).filter((r) => r.inputKind === 'po'));
+    }
+  }, [status.gestCsv]);
 
   const apply = (cmd: string) => sendCmd(cmd).catch((err) => console.warn(err));
 
@@ -92,160 +125,7 @@ export function PotiCard() {
           <Trans k="label.enabled">Enabled</Trans>
         </label>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <SliderRow
-          label={<Trans k="label.alpha">Alpha</Trans>}
-          description={<Trans k="desc.potiAlpha">Filter strength</Trans>}
-          inputProps={{
-            min: 0.01,
-            max: 1,
-            step: 0.01,
-            value: alpha ?? 0.25,
-          }}
-          onInputChange={(val) => {
-            if (!Number.isNaN(val)) editAlpha(val);
-          }}
-          disabled={!enabled}
-        />
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div>
-            <label className="text-sm font-medium">
-              <Trans k="label.potiCalMin">Calib min</Trans>
-            </label>
-            <div className="flex items-center gap-2 mt-1">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="1.2"
-                value={calMin}
-                onChange={(e) => setCalMin(Number(e.target.value))}
-                className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
-              />
-              <button
-                className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
-                onClick={() => {
-                  const vMin = Math.max(0, Math.min(1.2, calMin));
-                  const vMax = Math.min(1.5, Math.max(vMin + 0.05, calMax));
-                  setCalMin(vMin);
-                  setCalMax(vMax);
-                  apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
-                }}
-                disabled={!enabled}
-              >
-                <Trans k="btn.apply">Apply</Trans>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium">
-              <Trans k="label.potiCalMax">Calib max</Trans>
-            </label>
-            <div className="flex items-center gap-2 mt-1">
-              <input
-                type="number"
-                step="0.01"
-                min="0.05"
-                max="1.5"
-                value={calMax}
-                onChange={(e) => setCalMax(Number(e.target.value))}
-                className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
-              />
-              <button
-                className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
-                onClick={() => {
-                  const vMin = Math.max(0, Math.min(1.2, calMin));
-                  const vMax = Math.max(vMin + 0.05, Math.min(1.5, calMax));
-                  setCalMin(vMin);
-                  setCalMax(vMax);
-                  apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
-                }}
-                disabled={!enabled}
-              >
-                <Trans k="btn.apply">Apply</Trans>
-              </button>
-            </div>
-          </div>
-        </div>
-        <label className="pill cursor-pointer">
-          <input
-            type="checkbox"
-            className="accent-accent"
-            checked={invert}
-            onChange={(e) => {
-              const next = e.target.checked;
-              setInvert(next);
-              apply(`poti invert ${next ? 'on' : 'off'}`);
-            }}
-          />{' '}
-          <Trans k="label.potiInvert">Invert poti</Trans>
-        </label>
-        <div>
-          <label className="text-sm font-medium">
-            <Trans k="label.potiMode">Mode</Trans>
-          </label>
-          <div className="text-xs text-muted-foreground mb-1">
-            <Trans k="desc.potiMode">What the knob position controls while the lamp is on</Trans>
-          </div>
-          <Select
-            value={mode}
-            onValueChange={(v) => {
-              const next = v === 'scan' ? 'scan' : 'brightness';
-              setMode(next);
-              apply(`poti mode ${next}`);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="brightness">{t('label.potiModeBrightness', 'Brightness')}</SelectItem>
-              <SelectItem value="scan">{t('label.potiModeScan', 'Scan profiles')}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <SliderRow
-          label={<Trans k="label.delta">Delta</Trans>}
-          description={<Trans k="desc.potiDelta">Min. change before updating</Trans>}
-          inputProps={{
-            min: 0.001,
-            max: 0.3,
-            step: 0.001,
-            value: delta ?? 0.025,
-          }}
-          onInputChange={(val) => {
-            if (!Number.isNaN(val)) editDelta(val);
-          }}
-          disabled={!enabled}
-        />
-        <SliderRow
-          label={<Trans k="label.offThresh">Off threshold</Trans>}
-          description={<Trans k="desc.potiOff">Below this the lamp switches off</Trans>}
-          inputProps={{
-            min: 0,
-            max: 0.4,
-            step: 0.005,
-            value: off ?? 0.02,
-          }}
-          onInputChange={(val) => {
-            if (!Number.isNaN(val)) editOff(val);
-          }}
-          disabled={!enabled}
-        />
-        <SliderRow
-          label={<Trans k="label.sampleMs">Sample (ms)</Trans>}
-          description={<Trans k="desc.potiSample">Read interval</Trans>}
-          inputProps={{
-            min: 10,
-            max: 2000,
-            step: 10,
-            value: sample ?? 80,
-          }}
-          onInputChange={(val) => {
-            if (!Number.isNaN(val)) editSample(val);
-          }}
-          disabled={!enabled}
-        />
+      <CardContent className="space-y-4">
         <div>
           <div className="flex items-center justify-between">
             <div>
@@ -307,6 +187,188 @@ export function PotiCard() {
             )}
           </div>
         </div>
+
+        <div className="space-y-2">
+          <div className="text-sm font-medium">
+            <Trans k="label.potiGestures">Gesture bindings</Trans>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {potiGestures.length === 0 && (
+              <span className="text-xs text-muted">
+                <Trans k="label.gestNone">No gestures configured - every input uses its built-in default behavior.</Trans>
+              </span>
+            )}
+            {potiGestures.map((row) => (
+              <span key={row.id} className="chip-muted text-xs">
+                <Trans k="label.gestSwing">N-swing</Trans> ({row.count}) → {describeGestureAction(row, t)}
+              </span>
+            ))}
+            <Link to="/settings" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+              <Trans k="btn.editGestures">Edit gestures</Trans> <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
+
+        <Card className="p-3">
+          <CardTitle className="text-base text-text">
+            <Trans k="title.potiCalibration">Hardware calibration</Trans>
+          </CardTitle>
+          <CardContent className="space-y-3 px-0">
+            <SliderRow
+              label={<Trans k="label.alpha">Alpha</Trans>}
+              description={<Trans k="desc.potiAlpha">Filter strength</Trans>}
+              inputProps={{
+                min: 0.01,
+                max: 1,
+                step: 0.01,
+                value: alpha ?? 0.25,
+              }}
+              onInputChange={(val) => {
+                if (!Number.isNaN(val)) editAlpha(val);
+              }}
+              disabled={!enabled}
+            />
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium">
+                  <Trans k="label.potiCalMin">Calib min</Trans>
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1.2"
+                    value={calMin}
+                    onChange={(e) => setCalMin(Number(e.target.value))}
+                    className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
+                  />
+                  <button
+                    className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
+                    onClick={() => {
+                      const vMin = Math.max(0, Math.min(1.2, calMin));
+                      const vMax = Math.min(1.5, Math.max(vMin + 0.05, calMax));
+                      setCalMin(vMin);
+                      setCalMax(vMax);
+                      apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
+                    }}
+                    disabled={!enabled}
+                  >
+                    <Trans k="btn.apply">Apply</Trans>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  <Trans k="label.potiCalMax">Calib max</Trans>
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.05"
+                    max="1.5"
+                    value={calMax}
+                    onChange={(e) => setCalMax(Number(e.target.value))}
+                    className="w-24 rounded-md border border-border bg-panel px-2 py-1 text-sm"
+                  />
+                  <button
+                    className="rounded-md border border-border px-3 py-1 text-sm hover:border-accent"
+                    onClick={() => {
+                      const vMin = Math.max(0, Math.min(1.2, calMin));
+                      const vMax = Math.max(vMin + 0.05, Math.min(1.5, calMax));
+                      setCalMin(vMin);
+                      setCalMax(vMax);
+                      apply(`poti calib ${vMin.toFixed(3)} ${vMax.toFixed(3)}`);
+                    }}
+                    disabled={!enabled}
+                  >
+                    <Trans k="btn.apply">Apply</Trans>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <label className="pill cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-accent"
+                checked={invert}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setInvert(next);
+                  apply(`poti invert ${next ? 'on' : 'off'}`);
+                }}
+              />{' '}
+              <Trans k="label.potiInvert">Invert poti</Trans>
+            </label>
+            <div>
+              <label className="text-sm font-medium">
+                <Trans k="label.potiMode">Mode</Trans>
+              </label>
+              <div className="text-xs text-muted-foreground mb-1">
+                <Trans k="desc.potiMode">What the knob position controls while the lamp is on</Trans>
+              </div>
+              <Select
+                value={mode}
+                onValueChange={(v) => {
+                  const next = v === 'scan' ? 'scan' : 'brightness';
+                  setMode(next);
+                  apply(`poti mode ${next}`);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="brightness">{t('label.potiModeBrightness', 'Brightness')}</SelectItem>
+                  <SelectItem value="scan">{t('label.potiModeScan', 'Scan profiles')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <SliderRow
+              label={<Trans k="label.delta">Delta</Trans>}
+              description={<Trans k="desc.potiDelta">Min. change before updating</Trans>}
+              inputProps={{
+                min: 0.001,
+                max: 0.3,
+                step: 0.001,
+                value: delta ?? 0.025,
+              }}
+              onInputChange={(val) => {
+                if (!Number.isNaN(val)) editDelta(val);
+              }}
+              disabled={!enabled}
+            />
+            <SliderRow
+              label={<Trans k="label.offThresh">Off threshold</Trans>}
+              description={<Trans k="desc.potiOff">Below this the lamp switches off</Trans>}
+              inputProps={{
+                min: 0,
+                max: 0.4,
+                step: 0.005,
+                value: off ?? 0.02,
+              }}
+              onInputChange={(val) => {
+                if (!Number.isNaN(val)) editOff(val);
+              }}
+              disabled={!enabled}
+            />
+            <SliderRow
+              label={<Trans k="label.sampleMs">Sample (ms)</Trans>}
+              description={<Trans k="desc.potiSample">Read interval</Trans>}
+              inputProps={{
+                min: 10,
+                max: 2000,
+                step: 10,
+                value: sample ?? 80,
+              }}
+              onInputChange={(val) => {
+                if (!Number.isNaN(val)) editSample(val);
+              }}
+              disabled={!enabled}
+            />
+          </CardContent>
+        </Card>
       </CardContent>
     </Card>
   );

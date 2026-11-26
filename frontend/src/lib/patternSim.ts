@@ -942,3 +942,22 @@ export function getPatternBrightness(idx: number, ms: number): number {
   if (!fn) return 0;
   return fn(ms);
 }
+
+/**
+ * Mirrors the firmware's margin/invert post-processing of a raw 0..1 pattern
+ * sample (see e.g. the controller's pattern-engine clamp step). Single
+ * source of truth shared by the live lamp-glow preview (LampPowerCard) and
+ * the pattern-settings preview plot (PatternPreviewGraph), so both agree on
+ * what moving these sliders actually does to the output.
+ */
+export function applyPatternAdjustments(
+  raw: number,
+  opts: { invert?: boolean; marginLow?: number; marginHigh?: number },
+): number {
+  const invert = opts.invert ?? false;
+  const marginLow = typeof opts.marginLow === 'number' ? opts.marginLow : 0;
+  const marginHigh = typeof opts.marginHigh === 'number' ? opts.marginHigh : 1;
+  const span = Math.max(0, marginHigh - marginLow);
+  const rawClamped = Math.min(1, Math.max(0, raw));
+  return marginLow + (invert ? 1 - rawClamped : rawClamped) * span;
+}

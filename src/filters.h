@@ -1,6 +1,6 @@
 #pragma once
 
-#include "settings.h"
+#include "lamp_settings.h"
 #include <Arduino.h>
 
 struct FilterState

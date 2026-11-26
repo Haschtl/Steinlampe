@@ -1,7 +1,7 @@
 #include "comms.h"
 
 #include "lamp_config.h"
-#include "settings.h"
+#include "lamp_settings.h"
 #include <vector>
 #include <deque>
 #include <algorithm>
@@ -10,8 +10,9 @@
 #endif
 #if ENABLE_BLE && ENABLE_BLE_MIDI
 #include "midi_ble.h"
-// // UUID duplicated here so we can place it into scan response only.
-// static constexpr const char *BLE_MIDI_SERVICE_UUID = "03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
+#endif
+#if ENABLE_BLE_MESH
+#include "lamp_mesh.h"
 #endif
 
 #if ENABLE_BT_SERIAL
@@ -20,9 +21,38 @@
 #endif
 
 #if ENABLE_BLE
-#include <NimBLEDevice.h>
+// Native ESP-IDF NimBLE host API, not the NimBLE-Arduino C++ wrapper -
+// switched because esp_ble_mesh (see spikes/ble-mesh/) needs to be the sole
+// owner of ble_svc_gap_init()/ble_svc_gatt_init() on the shared host;
+// NimBLE-Arduino calls those itself too, with no coordination between the
+// two, which crashed in a boot loop on real hardware when both were present
+// in one image (documented in spikes/ble-mesh/README.md's "Decision gate").
+// This is the same native API that spike's Mesh node already uses.
+#include "esp32-hal-bt.h"
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
+#include "host/ble_gap.h"
+#include "host/ble_gatt.h"
+#include "host/ble_store.h"
+#include "host/ble_hs_id.h"
+#include "host/util/util.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+#include "store/config/ble_store_config.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+
+// Not actually declared by ble_store_config.h (only read/write/delete are) -
+// Espressif's own bleprph example forward-declares it the same way.
+extern "C" void ble_store_config_init(void);
+#endif
+
+#if ENABLE_BLE_MESH
+// esp_ble_mesh's own coexistence hook (see startBle()'s call site for why) -
+// not declared in any public esp_ble_mesh header, same situation as
+// ble_store_config_init() above.
+extern "C" void bt_mesh_gatts_svcs_add(void);
 #endif
 
 /**
@@ -31,7 +61,7 @@
  */
 
 // Provided by main.cpp to route parsed command strings.
-void handleCommand(String line);
+void handleCommand(const String &line);
 void saveSettings();
 
 // Trusted device storage (shared across helpers)
@@ -55,12 +85,12 @@ static const uint32_t BT_PAIR_TIMEOUT_MS = 20000;
 // BLE's equivalent of the above: a physical-gesture fallback for a genuinely
 // new (now bonded, but not yet trusted) device outside the trust grace
 // window, so first-time pairing doesn't require rebooting the lamp to reopen
-// that window. Reached from onAuthenticationComplete() once a connection has
-// bonded but its identity address isn't on the trust list - see comms.cpp.
-// Same 20s budget as BT-Classic's gesture window, same confirmation
-// mechanism (confirmPendingPairing, called from the switch/poti handlers),
-// same "commands are gated until confirmed" posture - deliberately no
-// light/blink feedback, only text.
+// that window. Reached from the GAP event callback's ENC_CHANGE handling
+// once a connection has bonded but its identity address isn't on the trust
+// list - see comms.cpp. Same 20s budget as BT-Classic's gesture window, same
+// confirmation mechanism (confirmPendingPairing, called from the switch/poti
+// handlers), same "commands are gated until confirmed" posture - deliberately
+// no light/blink feedback, only text.
 static bool blePairPending = false;
 static uint32_t blePairStartMs = 0;
 static String blePendingAddr;
@@ -215,22 +245,28 @@ void processInputChar(String &buffer, char c)
   }
 }
 
+#if ENABLE_BLE
+static void startBleAdvertising(); // fwd decl, used by setBleName()
+static int bleGapEvent(struct ble_gap_event *event, void *arg); // fwd decl, used by startBleAdvertising()
+#endif
+
 void setBleName(const String &name)
 {
 #if ENABLE_BLE
   if (name.length() >= 2)
   {
     bleName = name;
+#if !ENABLE_BLE_MESH
     // Live rename of advertisement can be flaky; store for next restart.
-    if (NimBLEDevice::isInitialized())
+    // Skipped entirely once Mesh is active - it permanently owns the
+    // single advertising slot on this chip (see startBleAdvertising()'s
+    // own comment), and its own advertisement doesn't use bleName anyway.
+    if (ble_hs_synced())
     {
-      auto *adv = NimBLEDevice::getAdvertising();
-      if (adv)
-      {
-        adv->stop();
-        adv->start();
-      }
+      ble_gap_adv_stop();
+      startBleAdvertising();
     }
+#endif
   }
 #else
   (void)name;
@@ -369,9 +405,8 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 #endif
 
 #if ENABLE_BLE
-NimBLEServer *bleServer = nullptr;
-NimBLECharacteristic *bleCommandCharacteristic = nullptr;
-NimBLECharacteristic *bleStatusCharacteristic = nullptr;
+uint16_t bleCommandCharHandle = 0;
+uint16_t bleStatusCharHandle = 0;
 bool bleClientConnected = false;
 // Most recent BLE client address
 String bleLastAddr;
@@ -382,10 +417,51 @@ static uint32_t bleLastNotifyMs = 0;
 static SemaphoreHandle_t bleNotifyMutex = nullptr;
 static constexpr size_t BLE_NOTIFY_QUEUE_MAX = 64;
 static constexpr uint32_t BLE_NOTIFY_INTERVAL_MS = 8;
-// Matches NimBLE's default CONFIG_BT_NIMBLE_MAX_CONNECTIONS (not overridden in
-// this project's sdkconfig). Keeps us from re-arming advertising once the
+// Matches CONFIG_BT_NIMBLE_MAX_CONNECTIONS (not overridden in this project's
+// sdkconfig, default 3). Keeps us from re-arming advertising once the
 // controller can't accept another BLE link anyway.
 static constexpr uint8_t BLE_MAX_CONCURRENT_CLIENTS = 3;
+// Tracks connected conn_handles - the native API has no single "list all
+// connected peers" helper the way NimBLEServer::getPeerDevices() did.
+static std::vector<uint16_t> bleConnHandles;
+
+// Parses one of our settings.h UUID strings ("d94d86d7-...") into a native
+// ble_uuid128_t at runtime, rather than hand-transcribing reversed byte
+// arrays for BLE_UUID128_INIT (error-prone, and would duplicate the UUID
+// strings that already live in settings.h as the single source of truth).
+static ble_uuid128_t uuid128FromString(const char *str)
+{
+  uint8_t display[16];
+  int bi = 0;
+  for (int i = 0; str[i] != '\0' && bi < 16;)
+  {
+    if (str[i] == '-')
+    {
+      i++;
+      continue;
+    }
+    char hex[3] = {str[i], str[i + 1], '\0'};
+    display[bi++] = (uint8_t)strtol(hex, nullptr, 16);
+    i += 2;
+  }
+  ble_uuid128_t u{};
+  u.u.type = BLE_UUID_TYPE_128;
+  // BLE_UUID128_INIT-style storage is byte-reversed (little-endian) relative
+  // to the human-readable/display order parsed above.
+  for (int i = 0; i < 16; i++)
+    u.value[i] = display[15 - i];
+  return u;
+}
+
+// NimBLEAddress::toString()'s equivalent: ble_addr_t.val[] is stored
+// little-endian on the wire; standard MAC notation displays it reversed.
+String bleAddrToString(const ble_addr_t &a)
+{
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x",
+           a.val[5], a.val[4], a.val[3], a.val[2], a.val[1], a.val[0]);
+  return String(buf);
+}
 
 static void queueBleNotification(const String &line)
 {
@@ -415,7 +491,7 @@ static void queueBleNotification(const String &line)
 
 static void flushBleNotification()
 {
-  if (!bleClientConnected || !bleStatusCharacteristic || !bleServer)
+  if (!bleClientConnected || !bleStatusCharHandle)
   {
     bleNotifyCurrent = "";
     bleNotifyOffset = 0;
@@ -447,13 +523,12 @@ static void flushBleNotification()
   }
 
   size_t chunkSize = 20;
-  const auto peers = bleServer->getPeerDevices();
-  if (!peers.empty())
+  if (!bleConnHandles.empty())
   {
     chunkSize = 514;
-    for (uint16_t connHandle : peers)
+    for (uint16_t connHandle : bleConnHandles)
     {
-      uint16_t mtu = bleServer->getPeerMTU(connHandle);
+      uint16_t mtu = ble_att_mtu(connHandle);
       size_t peerChunkSize = mtu > 3 ? (size_t)mtu - 3 : 20;
       if (peerChunkSize < chunkSize)
         chunkSize = peerChunkSize;
@@ -463,14 +538,17 @@ static void flushBleNotification()
   size_t remaining = bleNotifyCurrent.length() - bleNotifyOffset;
   size_t length = remaining < chunkSize ? remaining : chunkSize;
   const uint8_t *data = reinterpret_cast<const uint8_t *>(bleNotifyCurrent.c_str() + bleNotifyOffset);
-  // NimBLECharacteristic::notify() returns whether the stack actually accepted
-  // the chunk. Only advance past it on success - on a congested link (this
-  // drains every 8ms, faster than most negotiated connection intervals), the
-  // old Bluedroid BLECharacteristic::notify() had no way to report that back,
-  // so a dropped chunk here used to be silently skipped instead of retried,
-  // corrupting the line downstream. Leaving bleNotifyCurrent/Offset untouched
-  // on failure just retries the same chunk on the next tick.
-  bool sent = bleStatusCharacteristic->notify(data, length);
+  // ble_gatts_notify_custom() consumes the mbuf regardless of outcome and
+  // returns a status - only advance past this chunk on success, same
+  // retry-on-congestion reasoning as the old NimBLECharacteristic::notify()
+  // return-value check this replaces.
+  bool sent = false;
+  for (uint16_t connHandle : bleConnHandles)
+  {
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, length);
+    if (om && ble_gatts_notify_custom(connHandle, bleStatusCharHandle, om) == 0)
+      sent = true;
+  }
   bleLastNotifyMs = now;
   if (!sent)
     return;
@@ -490,145 +568,337 @@ static void flushBleNotification()
 // a never-confirmed pairing timing out, or an outright rejection) also drops
 // its crypto keys instead of leaving a "ghost" bond the stack would happily
 // re-encrypt against later despite the device no longer being trusted.
-// NimBLEAddress has no plain "parse this MAC string" constructor (the ctor
-// that takes a string also wants an explicit address type, which we don't
-// know from a bare trust-list entry) - so match by comparing toString()
-// against the stack's own bond list instead of constructing one by hand.
+static constexpr int BLE_MAX_BONDS = 16;
+
 static bool deleteBleBondByAddr(const String &addr)
 {
-  int count = NimBLEDevice::getNumBonds();
+  ble_addr_t peers[BLE_MAX_BONDS];
+  int count = 0;
+  ble_store_util_bonded_peers(peers, &count, BLE_MAX_BONDS);
   for (int i = 0; i < count; ++i)
   {
-    NimBLEAddress bonded = NimBLEDevice::getBondedAddress(i);
-    if (addrEqual(String(bonded.toString().c_str()), addr))
-      return NimBLEDevice::deleteBond(bonded);
+    if (addrEqual(bleAddrToString(peers[i]), addr))
+      return ble_store_util_delete_peer(&peers[i]) == 0;
   }
   return false;
 }
 
 String trustGetBleBondsCsv()
 {
+  ble_addr_t peers[BLE_MAX_BONDS];
+  int count = 0;
+  ble_store_util_bonded_peers(peers, &count, BLE_MAX_BONDS);
   String csv;
-  int count = NimBLEDevice::getNumBonds();
   for (int i = 0; i < count; ++i)
   {
     if (csv.length() > 0)
       csv += ",";
-    csv += NimBLEDevice::getBondedAddress(i).toString().c_str();
+    csv += bleAddrToString(peers[i]);
   }
   return csv;
 }
 
 bool trustClearBleBonds()
 {
-  if (NimBLEDevice::getNumBonds() == 0)
+  ble_addr_t peers[BLE_MAX_BONDS];
+  int count = 0;
+  ble_store_util_bonded_peers(peers, &count, BLE_MAX_BONDS);
+  if (count == 0)
     return false;
-  return NimBLEDevice::deleteAllBonds();
+  for (int i = 0; i < count; ++i)
+    ble_store_util_delete_peer(&peers[i]);
+  return true;
 }
 
-/**
- * @brief Handles BLE server connection and pairing/bonding events.
- *
- * The trust decision used to be made in onConnect(), keyed off the central's
- * over-the-air address. That address rotates on unbonded Android/iOS centrals
- * (BLE privacy), which is exactly what the old ENABLE_BLE_TRUST_TOKEN hack
- * existed to work around. Real bonding (see startBle()) replaces that: every
- * connection is pushed through pairing via NimBLEDevice::startSecurity(), and
- * the trust decision moves to onAuthenticationComplete(), keyed off the
- * resolved, stable identity address (NimBLEConnInfo::getIdAddress()) instead.
- */
-class LampBleServerCallbacks : public NimBLEServerCallbacks
-{
-  void onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) override
-  {
-    String addr = String(connInfo.getAddress().toString().c_str());
-    bleLastAddr = addr;
-    bleClientConnected = true;
-    lastBtActivityMs = millis();
-    if (feedbackAllowed())
-    {
-      Serial.print(F("[BLE] Verbindung (ungesichert): "));
-      Serial.println(addr);
-    }
-    if (!NimBLEDevice::startSecurity(connInfo.getConnHandle()))
-    {
-      if (feedbackAllowed())
-        Serial.println(F("[BLE] Security-Request fehlgeschlagen"));
-      server->disconnect(connInfo.getConnHandle());
-    }
-  }
+// Persists across GATT writes so a command split across two "Write Without Response" PDUs
+// (no trailing '\n' in the first one) is reassembled instead of being dispatched truncated.
+// Only ever touched from the main loop (see pollCommunications) - never from the access callback.
+static String bufferBle;
 
-  // Fires once pairing/encryption (triggered by our own startSecurity() call
-  // above) has run its course, success or failure - this is where trust is
-  // actually decided now.
-  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override
+// Raw bytes handed off from the GATT access callback to the main loop. That
+// callback runs on the NimBLE host task, which has a small internal stack;
+// handleCommand() is a large dispatcher that used to run directly from the
+// old Bluedroid onWrite() callback and could overflow a small callback
+// stack (reproduced on ESP32-S3: "Guru Meditation Error ... Stack canary
+// watchpoint triggered", reliably right after a few quick commands). The
+// access callback now only ever appends bytes here; pollCommunications()
+// drains this into bufferBle and dispatches on the main loop's much larger
+// stack instead.
+static String bleRxPending;
+static SemaphoreHandle_t bleRxMutex = nullptr;
+
+static ble_uuid128_t bleServiceUuid;
+static ble_uuid128_t bleCommandCharUuid;
+static ble_uuid128_t bleStatusCharUuid;
+
+// Decides whether `connHandle` is currently authorized to issue commands,
+// lazily starting (or keeping alive) the physical-gesture pairing flow for
+// a not-yet-trusted peer if needed. Side-effects global trust state
+// (trustedBle/blePairPending/etc) but never terminates or blocks the
+// connection itself by rejecting a write - `pollCommunications()`'s
+// existing `if (blePairPending) continue;` is what actually discards
+// buffered command bytes while a confirmation is outstanding; this
+// function's job is just to make sure that flag gets set, and the trust
+// list updated once confirmed, regardless of *how* the request got here.
+//
+// Called from two places: (a) BLE_GAP_EVENT_ENC_CHANGE, for a connection
+// that came in through our OWN ble_gap_adv_start() call in
+// startBleAdvertising() - comms.cpp owns that connection's GAP events, so
+// this fires the moment encryption completes; (b) lazily, from this GATT
+// access callback itself, for a connection that came in through someone
+// ELSE's advertising instead (BLE Mesh's own ble_gap_adv_start() call, once
+// Mesh is active - mesh's own gap_event_cb owns that connection's GAP
+// events, ours never fires for it at all, so this is the only place trust
+// ever gets decided for it). Idempotent either way - re-derives the
+// allow/deny outcome from current trust-list/pending state every call
+// rather than caching a verdict, so calling it once per incoming write is
+// safe and cheap.
+static bool authorizeBleConn(uint16_t connHandle)
+{
+  struct ble_gap_conn_desc desc;
+  if (ble_gap_conn_find(connHandle, &desc) != 0)
+    return false;
+  // Belt-and-suspenders: BLE_GATT_CHR_F_WRITE_ENC on the characteristic
+  // itself already makes the ATT server refuse this access callback from
+  // ever running at all on an unencrypted link.
+  if (!desc.sec_state.encrypted)
+    return false;
+
+  String addr = bleAddrToString(desc.peer_id_addr);
+  bleLastAddr = addr;
+
+  if (allowBleAddr(addr))
   {
-    uint16_t connHandle = connInfo.getConnHandle();
-    if (!connInfo.isEncrypted())
-    {
-      if (feedbackAllowed())
-        Serial.println(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen"));
-      if (bleServer)
-        bleServer->disconnect(connHandle);
-      return;
-    }
-    // Stable across the central's over-the-air address rotating on later
-    // reconnects, now that it's bonded and resolvable.
-    String addr = String(connInfo.getIdAddress().toString().c_str());
-    bleLastAddr = addr;
-    if (!allowBleAddr(addr))
-    {
-#if ENABLE_BT_PAIRING
-      blePairPending = true;
-      blePairStartMs = millis();
-      blePendingAddr = addr;
-      blePendingConnId = connHandle;
-      lastBtActivityMs = millis();
-      // Structured marker (force=true) so a connected client can tell
-      // "deliberately holding you pending a physical gesture" apart from a
-      // generic status-snapshot timeout and wait this out instead of giving
-      // up and reconnecting (which would just restart this same 20s window
-      // from zero on the firmware side).
-      sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
-      if (feedbackAllowed())
-        sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
-#else
-      if (feedbackAllowed())
-      {
-        Serial.print(F("[BLE] Rejecting unknown "));
-        Serial.println(addr);
-      }
-      // A real (encrypted) bond now exists for this address even though
-      // we're not authorizing it - drop the keys too, not just the
-      // connection, so it can't silently re-encrypt against them later.
-      deleteBleBondByAddr(addr);
-      if (bleServer)
-        bleServer->disconnect(connHandle);
-#endif
-      return;
-    }
     lastBtActivityMs = millis();
     if (addToList(trustedBle, addr))
       saveSettings();
-    if (feedbackAllowed())
-    {
-      Serial.print(F("[BLE] Verbunden (gesichert): "));
-      Serial.println(addr);
-    }
-    // The controller stops connectable advertising once a central connects;
-    // re-arm it here (bounded by the controller's max BLE connection count,
-    // CONFIG_BT_NIMBLE_MAX_CONNECTIONS, default 3) so additional trusted
-    // devices can still find and connect to the lamp while this one stays
-    // connected.
-    if (bleServer && bleServer->getConnectedCount() < BLE_MAX_CONCURRENT_CLIENTS)
-      bleServer->startAdvertising();
+    return true;
   }
 
-  void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override
+#if ENABLE_BT_PAIRING
+  if (!(blePairPending && blePendingConnId == connHandle))
   {
-    (void)reason;
-    bleClientConnected = server->getConnectedCount() > 0;
-    String addr = String(connInfo.getIdAddress().toString().c_str());
+    blePairPending = true;
+    blePairStartMs = millis();
+    blePendingAddr = addr;
+    blePendingConnId = connHandle;
+    lastBtActivityMs = millis();
+    // Structured marker (force=true) so a connected client can tell
+    // "deliberately holding you pending a physical gesture" apart from a
+    // generic status-snapshot timeout and wait this out instead of giving
+    // up and reconnecting (which would just restart this same 20s window
+    // from zero on the firmware side).
+    sendFeedback(String(F("BLE_PAIR_PENDING|")) + addr, true);
+    if (feedbackAllowed())
+      sendFeedback(String(F("[BLE] Pair request ")) + addr + F(" – confirm via switch or poti"));
+  }
+#else
+  if (feedbackAllowed())
+  {
+    Serial.print(F("[BLE] Rejecting unknown "));
+    Serial.println(addr);
+  }
+  // A real (encrypted) bond now exists for this address even though we're
+  // not authorizing it - drop the keys too, not just the connection, so it
+  // can't silently re-encrypt against them later.
+  deleteBleBondByAddr(addr);
+  ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
+#endif
+  return false;
+}
+
+static int bleCommandAccessCb(uint16_t conn_handle, uint16_t attr_handle,
+                              struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+  (void)attr_handle;
+  (void)arg;
+  if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR)
+    return 0;
+  authorizeBleConn(conn_handle);
+  uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
+  if (len == 0)
+    return 0;
+  lastBtActivityMs = millis();
+  // Stack buffer, not heap - this runs on the host task for every single
+  // write. 600 comfortably covers any single ATT write at our 517-byte
+  // preferred MTU (minus ATT op/handle overhead); a command spanning
+  // multiple writes is reassembled in bleRxPending/bufferBle regardless.
+  uint8_t buf[600];
+  uint16_t copyLen = len < sizeof(buf) ? len : (uint16_t)sizeof(buf);
+  if (os_mbuf_copydata(ctxt->om, 0, copyLen, buf) != 0)
+    return 0;
+  if (!bleRxMutex || xSemaphoreTake(bleRxMutex, pdMS_TO_TICKS(20)) != pdTRUE)
+    return 0;
+  if (bleRxPending.length() < LINE_BUFFER_MAX)
+  {
+    size_t room = LINE_BUFFER_MAX - bleRxPending.length();
+    size_t n = copyLen < room ? copyLen : room;
+    for (size_t i = 0; i < n; i++)
+      bleRxPending += (char)buf[i];
+  }
+  xSemaphoreGive(bleRxMutex);
+  return 0;
+}
+
+// Backs the status characteristic's READ access - its current value is
+// whatever updateBleStatus() last set. Notifications (the primary way
+// clients actually receive status) go through flushBleNotification()
+// instead; this is only hit on an explicit GATT read.
+static String bleStatusReadValue;
+
+static int bleStatusAccessCb(uint16_t conn_handle, uint16_t attr_handle,
+                             struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+  (void)conn_handle;
+  (void)attr_handle;
+  (void)arg;
+  if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR)
+    return 0;
+  int rc = os_mbuf_append(ctxt->om, bleStatusReadValue.c_str(), bleStatusReadValue.length());
+  return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+static struct ble_gatt_chr_def bleSvcChars[] = {
+    {
+        .uuid = &bleCommandCharUuid.u,
+        .access_cb = bleCommandAccessCb,
+        // _ENC on both characteristics: belt-and-suspenders alongside the GAP
+        // event callback's explicit ble_gap_security_initiate() call. That
+        // call forces pairing the instant a link comes up, but it's still an
+        // async handshake - without _ENC here, a write arriving in the
+        // (normally brief) window before it completes would reach
+        // bleRxPending, and from there handleCommand(), over a still-
+        // unencrypted link. With _ENC, the stack itself refuses GATT access
+        // until the link is actually encrypted, regardless of that timing.
+        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC,
+        .val_handle = &bleCommandCharHandle,
+    },
+    {
+        .uuid = &bleStatusCharUuid.u,
+        .access_cb = bleStatusAccessCb,
+        // NOTIFY only (no INDICATE) - the firmware only ever calls
+        // ble_gatts_notify_custom(), and the host manages the 0x2902 CCCD
+        // automatically from the characteristic's flags.
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &bleStatusCharHandle,
+    },
+    {0},
+};
+
+static struct ble_gatt_svc_def bleGattSvcs[] = {
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &bleServiceUuid.u,
+        .characteristics = bleSvcChars,
+    },
+    {0},
+};
+
+// Only ever called when ENABLE_BLE_MESH is off - classic ESP32 NimBLE has
+// exactly one advertising slot (ble_gap_adv_start() while one is already
+// active just errors/no-ops, doesn't queue), and once Mesh is active it
+// permanently owns that slot (its own unprovisioned-beacon/PB-ADV/PB-GATT,
+// then Proxy advertising after provisioning, re-armed by mesh's own GAP
+// event handling - see adapter.c). All of this function's own call sites
+// are `#if !ENABLE_BLE_MESH`-guarded rather than relying on the
+// `ble_gap_adv_active()` check below alone, since there's a real (if
+// narrow) race window between mesh stopping its own advertisement and
+// re-arming it where that check could pass and we'd steal the slot. Our
+// own GATT characteristics stay registered and reachable either way -
+// mesh's advertisement is just what gets a central connected in the first
+// place; see authorizeBleConn()'s comment for how trust/pairing is handled
+// for a connection that arrived that way instead of through this function.
+static void startBleAdvertising()
+{
+  if (ble_gap_adv_active())
+    return;
+
+  struct ble_hs_adv_fields fields = {};
+  fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+  fields.tx_pwr_lvl_is_present = 1;
+  fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+  fields.name = (const uint8_t *)bleName.c_str();
+  fields.name_len = bleName.length();
+  fields.name_is_complete = 1;
+  fields.appearance = 0;
+  fields.appearance_is_present = 1;
+  static const uint8_t slaveItvlRange[4] = {0x06, 0x00, 0x12, 0x00}; // matches the old setPreferredParams(0x06, 0x12)
+  fields.slave_itvl_range = slaveItvlRange;
+  ble_gap_adv_set_fields(&fields);
+
+  // Service UUIDs go in the scan response, not the main ADV payload - a
+  // 128-bit UUID is 18 bytes with its header, and the device name above
+  // already uses a good chunk of the 31-byte legacy ADV payload. Matches
+  // NimBLEAdvertising's own enableScanResponse(true) behavior, which split
+  // overflow into the scan response the same way.
+  static ble_uuid128_t scanRspUuids[2];
+  scanRspUuids[0] = bleServiceUuid;
+  uint8_t numUuids = 1;
+#if ENABLE_BLE_MIDI
+  extern ble_uuid128_t midiServiceUuid; // defined in midi_ble.cpp
+  scanRspUuids[1] = midiServiceUuid;
+  numUuids = 2;
+#endif
+  struct ble_hs_adv_fields rspFields = {};
+  rspFields.uuids128 = scanRspUuids;
+  rspFields.num_uuids128 = numUuids;
+  rspFields.uuids128_is_complete = 1;
+  ble_gap_adv_rsp_set_fields(&rspFields);
+
+  struct ble_gap_adv_params advParams = {};
+  advParams.conn_mode = BLE_GAP_CONN_MODE_UND;
+  advParams.disc_mode = BLE_GAP_DISC_MODE_GEN;
+  ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &advParams, bleGapEvent, NULL);
+}
+
+static int bleGapEvent(struct ble_gap_event *event, void *arg)
+{
+  (void)arg;
+  switch (event->type)
+  {
+  case BLE_GAP_EVENT_CONNECT:
+  {
+    if (event->connect.status == 0)
+    {
+      struct ble_gap_conn_desc desc;
+      if (ble_gap_conn_find(event->connect.conn_handle, &desc) != 0)
+        break;
+      bleConnHandles.push_back(event->connect.conn_handle);
+      String addr = bleAddrToString(desc.peer_ota_addr);
+      bleLastAddr = addr;
+      bleClientConnected = true;
+      lastBtActivityMs = millis();
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BLE] Verbindung (ungesichert): "));
+        Serial.println(addr);
+      }
+      if (ble_gap_security_initiate(event->connect.conn_handle) != 0)
+      {
+        if (feedbackAllowed())
+          Serial.println(F("[BLE] Security-Request fehlgeschlagen"));
+        ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+      }
+    }
+    else
+    {
+#if !ENABLE_BLE_MESH
+      // Connection attempt itself failed - the controller stops advertising
+      // regardless, re-arm it. (Mesh owns re-arming its own advertisement
+      // once active - see startBleAdvertising()'s comment.)
+      startBleAdvertising();
+#endif
+    }
+    break;
+  }
+  case BLE_GAP_EVENT_DISCONNECT:
+  {
+    uint16_t connHandle = event->disconnect.conn.conn_handle;
+    auto it = std::find(bleConnHandles.begin(), bleConnHandles.end(), connHandle);
+    if (it != bleConnHandles.end())
+      bleConnHandles.erase(it);
+    bleClientConnected = !bleConnHandles.empty();
+    String addr = bleAddrToString(event->disconnect.conn.peer_id_addr);
     if (feedbackAllowed())
     {
       Serial.print(F("[BLE] Getrennt: "));
@@ -636,7 +906,6 @@ class LampBleServerCallbacks : public NimBLEServerCallbacks
     }
     bleLastAddr = addr;
 #if ENABLE_BT_PAIRING
-    uint16_t connHandle = connInfo.getConnHandle();
     // A device that disconnected (or was dropped - see the pairing-timeout
     // check in pollCommunications()) while waiting on the physical-gesture
     // confirmation never got to prove itself - forget it on both counts
@@ -648,101 +917,192 @@ class LampBleServerCallbacks : public NimBLEServerCallbacks
       blePendingAddr = "";
     }
 #endif
-    NimBLEDevice::startAdvertising();
+#if !ENABLE_BLE_MESH
+    startBleAdvertising();
+#endif
+    break;
   }
-};
-
-// Persists across GATT writes so a command split across two "Write Without Response" PDUs
-// (no trailing '\n' in the first one) is reassembled instead of being dispatched truncated.
-// Only ever touched from the main loop (see pollCommunications) - never from onWrite().
-static String bufferBle;
-
-// Raw bytes handed off from onWrite() to the main loop. onWrite() runs on Bluedroid's
-// BTC_TASK, which has a small internal stack; handleCommand() is a large dispatcher that used
-// to run directly from onWrite() and could overflow it (reproduced on ESP32-S3: "Guru
-// Meditation Error ... Stack canary watchpoint triggered (BTC_TASK)", reliably right after a
-// few quick commands). onWrite() now only ever appends bytes here; pollCommunications() drains
-// this into bufferBle and dispatches on the main loop's much larger stack instead.
-static String bleRxPending;
-static SemaphoreHandle_t bleRxMutex = nullptr;
-
-/**
- * @brief Receives BLE writes and hands the raw bytes off to the main loop (see bleRxPending).
- */
-class LampBleCommandCallbacks : public NimBLECharacteristicCallbacks
-{
-  void onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) override
+  case BLE_GAP_EVENT_ENC_CHANGE:
   {
-    (void)connInfo;
-    NimBLEAttValue value = characteristic->getValue();
-    if (value.length() == 0)
-      return;
-    lastBtActivityMs = millis();
-    if (!bleRxMutex || xSemaphoreTake(bleRxMutex, pdMS_TO_TICKS(20)) != pdTRUE)
-      return;
-    if (bleRxPending.length() < LINE_BUFFER_MAX)
+    // Fires once pairing/encryption (triggered by our own
+    // ble_gap_security_initiate() call above) has run its course, success
+    // or failure. Only relevant for a connection that came in through our
+    // OWN ble_gap_adv_start() call - one that came in through someone
+    // else's advertising (BLE Mesh's, once active) never reaches this
+    // callback at all, since mesh's own gap_event_cb owns it instead; see
+    // authorizeBleConn()'s comment for how that path gets covered.
+    uint16_t connHandle = event->enc_change.conn_handle;
+    if (event->enc_change.status != 0)
     {
-      size_t room = LINE_BUFFER_MAX - bleRxPending.length();
-      size_t n = value.length() < room ? value.length() : room;
-      const uint8_t *data = value.data();
-      for (size_t i = 0; i < n; i++)
-        bleRxPending += (char)data[i];
+      if (feedbackAllowed())
+        Serial.println(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen"));
+      ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
+      break;
     }
-    xSemaphoreGive(bleRxMutex);
+    if (authorizeBleConn(connHandle))
+    {
+      if (feedbackAllowed())
+      {
+        Serial.print(F("[BLE] Verbunden (gesichert): "));
+        Serial.println(bleLastAddr);
+      }
+#if !ENABLE_BLE_MESH
+      // The controller stops connectable advertising once a central
+      // connects; re-arm it here (bounded by CONFIG_BT_NIMBLE_MAX_CONNECTIONS,
+      // default 3) so additional trusted devices can still find and connect
+      // to the lamp while this one stays connected.
+      if ((int)bleConnHandles.size() < BLE_MAX_CONCURRENT_CLIENTS)
+        startBleAdvertising();
+#endif
+    }
+    // Not yet authorized: authorizeBleConn() already started (or kept
+    // alive) the physical-gesture pending-confirm flow, or rejected and
+    // terminated the connection outright if ENABLE_BT_PAIRING is off -
+    // either way, nothing else to do here.
+    break;
   }
-};
+  case BLE_GAP_EVENT_ADV_COMPLETE:
+#if !ENABLE_BLE_MESH
+    startBleAdvertising();
+#endif
+    break;
+  default:
+    break;
+  }
+  return 0;
+}
+
+static void bleHostTask(void *param)
+{
+  (void)param;
+  nimble_port_run();
+  nimble_port_freertos_deinit();
+}
+
+static void bleOnReset(int reason)
+{
+  if (feedbackAllowed())
+  {
+    Serial.print(F("[BLE] Host reset, reason="));
+    Serial.println(reason);
+  }
+}
+
+static void bleOnSync()
+{
+  // Ensures a usable address is set up (classic ESP32 always has a factory
+  // public BT MAC, so this is normally a no-op) before advertising, same
+  // ordering as Espressif's own NimBLE examples.
+  ble_hs_util_ensure_addr(0);
+  // Force updateBleStatus()'s own one-time internal buffer reservation to
+  // happen right here, in this safe, early, single-threaded context - not
+  // lazily deferred to whenever the first real status print happens to run
+  // post-boot. That deferred-until-first-real-use timing was itself part of
+  // a real-hardware heap corruption bug fixed earlier (see git history).
+  updateBleStatus("");
+#if ENABLE_BLE_MESH
+  // esp_ble_mesh's own GATT services (Provisioning + Proxy) were already
+  // queued via bt_mesh_gatts_svcs_add() in startBle(), before the NimBLE
+  // host's single automatic ble_gatts_start() call fired - see the
+  // QUARZLAMPE_MESH_GATT_COEX patch note in platformio.ini for why
+  // bt_mesh_gatt_init() (called from here, via meshSetup()) no longer
+  // calls ble_gatts_start() a second time. Safe to call synchronously.
+  meshSetup();
+#else
+  startBleAdvertising();
+  Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
+#endif
+}
 
 /**
  * @brief Configure and advertise the BLE service.
  */
 void startBle()
 {
-  NimBLEDevice::init(bleName.c_str());
-  NimBLEDevice::setMTU(517);
+  // Confirmed on real hardware: without this, Arduino's own early startup
+  // releases the Classic-BT controller memory before nimble_port_init()
+  // gets a chance to use it. esp32-hal-bt.c has a strong, non-weak
+  // btInUse() -> true on classic ESP32 that's supposed to prevent exactly
+  // that release - but only if the linker actually pulls that translation
+  // unit in, which nothing else here references. Calling btStarted() (a
+  // plain status check, return value unused) just forces that link - the
+  // same workaround NimBLE-Arduino's own NimBLEDevice::init() used, and the
+  // one spikes/ble-mesh/'s native Mesh node already confirmed necessary.
+  btStarted();
+
+  ESP_ERROR_CHECK(nimble_port_init());
+
+  ble_hs_cfg.reset_cb = bleOnReset;
+  ble_hs_cfg.sync_cb = bleOnSync;
+  ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
   // Real pairing/bonding: bonding+LE-Secure-Connections, no MITM protection,
   // "Just Works" (no PIN/passkey - neither side has a display or keypad).
   // This only gets encryption and a stable, resolvable identity address for
-  // the trust decision in onAuthenticationComplete() below - it does NOT by
+  // the trust decision in the ENC_CHANGE handler above - it does NOT by
   // itself decide whether a device is *authorized*. Just Works pairing can
   // be initiated by any nearby device with zero human-visible confirmation,
   // so the actual authorization gate (trust grace window / physical
   // switch-or-poti gesture, same as before) still happens after bonding
   // completes, not instead of it.
-  NimBLEDevice::setSecurityAuth(true, false, true);
-  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
-  bleServer = NimBLEDevice::createServer();
-  bleServer->setCallbacks(new LampBleServerCallbacks());
-  NimBLEService *service = bleServer->createService(Settings::BLE_SERVICE_UUID);
-  // _ENC on both characteristics: belt-and-suspenders alongside onConnect()'s
-  // explicit startSecurity() call. That call forces pairing the instant a
-  // link comes up, but it's still an async handshake - without _ENC here, a
-  // write arriving in the (normally brief) window before it completes would
-  // reach bleRxPending, and from there handleCommand(), over a still-
-  // unencrypted link. With _ENC, the stack itself refuses GATT access until
-  // the link is actually encrypted, regardless of that timing.
-  bleCommandCharacteristic = service->createCharacteristic(
-      Settings::BLE_COMMAND_CHAR_UUID,
-      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC);
-  bleCommandCharacteristic->setCallbacks(new LampBleCommandCallbacks());
-  // NOTIFY only (no INDICATE) - the firmware only ever calls notify(), and
-  // NimBLE manages the 0x2902 CCCD automatically from the characteristic's
-  // properties, so there's no separate descriptor to create/configure here
-  // (unlike the old Bluedroid BLE2902).
-  bleStatusCharacteristic = service->createCharacteristic(
-      Settings::BLE_STATUS_CHAR_UUID,
-      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::NOTIFY);
-  // NimBLEService::start() is a deprecated no-op in this NimBLE-Arduino
-  // version - services start automatically with the server.
-  NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
-  advertising->addServiceUUID(Settings::BLE_SERVICE_UUID);
-  advertising->setAppearance(0);
-  advertising->enableScanResponse(true);
-  advertising->setPreferredParams(0x06, 0x12);
-#if ENABLE_BLE_MIDI
-  setupBleMidi(bleServer, advertising);
+  ble_hs_cfg.sm_bonding = 1;
+  ble_hs_cfg.sm_mitm = 0;
+  ble_hs_cfg.sm_sc = 1;
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+  ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+  ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+
+  ble_att_set_preferred_mtu(517);
+
+#if ENABLE_BLE_MESH
+  // esp_ble_mesh's Provisioning + Proxy GATT services must be queued into
+  // NimBLE's pending-services array before the host's single automatic
+  // ble_gatts_start() call fires (triggered the moment the host task below
+  // starts running) - exactly mirroring Espressif's own NimBLE+Mesh
+  // coexistence example (ble_mesh_example_init.c). bt_mesh_gatts_svcs_add()
+  // also calls ble_svc_gap_init()/ble_svc_gatt_init() for us, so we must
+  // not call them a second time here. Normally that function (and the
+  // no-op bt_mesh_gatt_init() it enables) only exists under
+  // CONFIG_BLE_MESH_USE_BLE_50, which needs BLE-5.0-capable hardware we
+  // don't have on classic ESP32 - see the QUARZLAMPE_MESH_GATT_COEX patch
+  // in platformio.ini that widens that guard. Without this, mesh's own
+  // later bt_mesh_gatt_init() (called from meshSetup(), after sync) would
+  // call ble_gatts_start() a second time and corrupt the attribute table
+  // the host's first automatic call already built for our own services
+  // (the exact ble_uuid_cmp/NULL-ha_uuid crash seen on real hardware).
+  bt_mesh_gatts_svcs_add();
+#else
+  ble_svc_gap_init();
+  ble_svc_gatt_init();
 #endif
-  NimBLEDevice::startAdvertising();
-  Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
+  // NVS-backed persistent bond storage - replaces NimBLEDevice's own
+  // automatic bond persistence.
+  ble_store_config_init();
+
+  bleServiceUuid = uuid128FromString(Settings::BLE_SERVICE_UUID);
+  bleCommandCharUuid = uuid128FromString(Settings::BLE_COMMAND_CHAR_UUID);
+  bleStatusCharUuid = uuid128FromString(Settings::BLE_STATUS_CHAR_UUID);
+
+  int rc = ble_gatts_count_cfg(bleGattSvcs);
+  ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+  rc = ble_gatts_add_svcs(bleGattSvcs);
+  ESP_ERROR_CHECK(rc == 0 ? ESP_OK : ESP_FAIL);
+
+#if ENABLE_BLE_MIDI
+  setupBleMidi();
+#endif
+
+  ble_svc_gap_device_name_set(bleName.c_str());
+  // Deliberately NOT calling ble_gatts_start() here: the host calls it
+  // itself (ble_hs_sync() -> ble_hs_start() -> ble_gatts_start()) once it
+  // syncs with the controller, confirmed in Espressif's own bleprph example
+  // (which never calls it either). Calling it a second time here corrupted
+  // the attribute table on real hardware - ble_att_svr_free_start_mem()
+  // from the host's own internal call freed and recalloc'd the same memory
+  // our explicit call had just registered 19 attributes into, and the
+  // stale ble_att_svr_list head (never reset) ended up aliasing the fresh
+  // mempool's own internal free-block chain, crashing on the next lookup.
+
+  nimble_port_freertos_init(bleHostTask);
 }
 #endif
 
@@ -999,11 +1359,10 @@ void pollCommunications()
   {
     if (feedbackAllowed())
       sendFeedback(F("[BLE] Pair request timed out"));
-    // Never confirmed - forget the bond NimBLE's security handshake already
-    // created for it, same as the onDisconnect() path for this case.
+    // Never confirmed - forget the bond the security handshake already
+    // created for it, same as the disconnect path for this case.
     deleteBleBondByAddr(blePendingAddr);
-    if (bleServer)
-      bleServer->disconnect(blePendingConnId);
+    ble_gap_terminate(blePendingConnId, BLE_ERR_REM_USER_CONN_TERM);
     blePairPending = false;
     blePendingAddr = "";
   }
@@ -1049,9 +1408,9 @@ void sendFeedback(const String &line, const bool &force)
 #endif
 #if ENABLE_BLE
   // Queue newline-delimited feedback and split it according to the negotiated
-  // ATT MTU. The main loop drains the queue so BLE callbacks never burst large
-  // status snapshots into a single oversized notification.
-  if ((allow || force) && bleClientConnected && bleStatusCharacteristic)
+  // ATT MTU. The main loop drains the queue so the GATT access callback never
+  // bursts large status snapshots into a single oversized notification.
+  if ((allow || force) && bleClientConnected && bleStatusCharHandle)
     queueBleNotification(line);
 #endif
 }
@@ -1063,13 +1422,32 @@ void sendFeedback(const String &line, const bool &force)
 void updateBleStatus(const String &statusPayload)
 {
 #if ENABLE_BLE
-  if (!bleStatusCharacteristic)
+  if (!bleStatusCharHandle)
     return;
   // Only refresh the readable characteristic value (with newline terminator).
   // Notification is handled by the preceding sendFeedback() of the same line,
   // so we avoid sending each status line twice.
-  String payload = statusPayload + "\n";
-  bleStatusCharacteristic->setValue(payload.c_str());
+  //
+  // `payload` is function-static and reserved once, not a fresh local String
+  // built via `statusPayload + "\n"` every call - that `operator+` always
+  // allocates a brand-new temporary (StringSumHelper), which reproduced a
+  // real TLSF heap corruption on real hardware (see git history around this
+  // comment) when combined with print.cpp's own status-string builders.
+  // 750: must cover whichever of print.cpp's own STATUS/STATUS1/STATUS2/
+  // STATUS_END lines is longest, plus the appended '\n' - those are each
+  // reserve(700) now (see print.cpp) after discovering their OWN reserve()
+  // sizes had quietly fallen under the real measured content for a while
+  // (420 vs. an actual 555 bytes, 450 vs. 494, etc.) - trust a fresh byte
+  // count over any of these round numbers if the field set grows again,
+  // this one included.
+  static bool payloadReserved = false;
+  if (!payloadReserved)
+  {
+    bleStatusReadValue.reserve(750);
+    payloadReserved = true;
+  }
+  bleStatusReadValue = statusPayload;
+  bleStatusReadValue += '\n';
 #else
   (void)statusPayload;
 #endif
@@ -1113,10 +1491,15 @@ String getLastBleAddr()
 
 String getBLEAddress(){
 #if ENABLE_BLE
-  if (NimBLEDevice::isInitialized())
-    return NimBLEDevice::getAddress().toString().c_str();
-  else
+  if (!ble_hs_synced())
     return F("N/A");
+  uint8_t addrVal[6];
+  if (ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, addrVal, NULL) != 0)
+    return F("N/A");
+  ble_addr_t a{};
+  a.type = BLE_ADDR_PUBLIC;
+  memcpy(a.val, addrVal, 6);
+  return bleAddrToString(a);
 #else
   return F("N/A");
 #endif

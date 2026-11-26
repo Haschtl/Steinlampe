@@ -2,7 +2,7 @@
 
 #include <ctype.h>
 
-#include "settings.h"
+#include "lamp_settings.h"
 #include "utils.h"
 #include "patterns.h"
 #include "comms.h"

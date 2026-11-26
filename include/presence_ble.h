@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <vector>
 
-#include "settings.h"
+#include "lamp_settings.h"
 
 // PresenceBLE tracking (BLE phone-proximity based auto on/off)
 extern bool presenceBleEnabled;

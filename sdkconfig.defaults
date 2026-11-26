@@ -1,0 +1,112 @@
+# Step 2 of the NimBLE-Arduino -> native-API + BLE Mesh migration (see the
+# feat/ble-mesh plan): comms.cpp/midi_ble.cpp/presence_ble.cpp now talk to
+# the native ESP-IDF NimBLE host directly - NimBLE on, Bluedroid stays off
+# (nothing in this firmware uses it, per the ENABLE_BLE/ENABLE_BT_SERIAL
+# #error in lamp_config.h).
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# CONFIG_BT_BLUEDROID_ENABLED is not set
+
+# Step 3: BLE Mesh (NLC Basic Lightness Controller profile). These flags are
+# shared (sdkconfig.defaults is one file for every env), so they're always
+# compiled into the esp_ble_mesh component regardless of which env is being
+# built - mesh.cpp itself is still gated per-env by ENABLE_BLE_MESH
+# (lamp_config.h), so an env that doesn't enable it just never calls any of
+# this, at a small flash cost for the unused component code. Node role (this
+# device joins a mesh, it doesn't provision others), both provisioning
+# bearers (PB-ADV for ESP32-to-ESP32, PB-GATT since phone provisioner apps
+# like nRF Mesh provision over GATT almost exclusively), Proxy (lets an
+# already-provisioned phone's ongoing GATT connection carry Config
+# Client/model messages, not just the provisioning handshake) - all
+# confirmed working together on real hardware in spikes/ble-mesh/. Generic
+# Server + Lighting Server (the single umbrella Kconfig flag that covers
+# BOTH Light Lightness Server and Light LC Server - there's no separate
+# per-model flag) + Health Server round out the NLC BLC model set.
+CONFIG_BLE_MESH=y
+CONFIG_BLE_MESH_NODE=y
+CONFIG_BLE_MESH_PROV=y
+CONFIG_BLE_MESH_PB_ADV=y
+CONFIG_BLE_MESH_PB_GATT=y
+CONFIG_BLE_MESH_PROXY=y
+CONFIG_BLE_MESH_GENERIC_SERVER=y
+CONFIG_BLE_MESH_LIGHTING_SERVER=y
+CONFIG_BLE_MESH_HEALTH_SRV=y
+# Generic OnOff Client + Light Lightness Client - lets this node SEND Set
+# messages to other nodes (mesh actions from the input-gesture mapping,
+# gestures.cpp/mesh.cpp's meshSendOnOff()/meshSendLightness()), on top of
+# the Server models above that let it RECEIVE them. Each of these two is its
+# own Kconfig leaf (no umbrella flag like the Server side has) - both are
+# computed into the CONFIG_BLE_MESH_GENERIC_CLIENT/_LIGHTING_CLIENT macros
+# that actually gate models/client/generic_client.c and lighting_client.c's
+# compilation, which is why omitting them links with "undefined reference"
+# even though the client API headers compile fine either way.
+CONFIG_BLE_MESH_GENERIC_ONOFF_CLI=y
+CONFIG_BLE_MESH_LIGHT_LIGHTNESS_CLI=y
+# Persists provisioning state (NetKey/AppKey/node address/model bindings)
+# across reboots - unlike the spike, which deliberately left this off for
+# fast re-provisioning during testing. A real product shouldn't forget its
+# mesh identity (and need re-provisioning) on every power cycle.
+CONFIG_BLE_MESH_SETTINGS=y
+
+# Provisioner role (self-provisioning plan) - lets this node provision OTHER
+# lamps into the mesh itself (scan for unprovisioned beacons, run the
+# handshake, Config AppKey Add/Model App Bind/Subscription Add), so nRF Mesh
+# is never required. CONFIG_BLE_MESH_CFG_CLI is required alongside it per
+# examples/bluetooth/esp_ble_mesh/fast_provisioning/fast_prov_client's own
+# composition (Config Server alone, already on via Node role above, isn't
+# enough to *send* Config messages to other nodes). TX/RX_SEG_MSG_COUNT
+# bumped from their defaults (used by provisioner/sdkconfig.defaults, since
+# Config messages segment more than our simple OnOff/Lightness Sets do).
+CONFIG_BLE_MESH_PROVISIONER=y
+CONFIG_BLE_MESH_CFG_CLI=y
+CONFIG_BLE_MESH_TX_SEG_MSG_COUNT=10
+CONFIG_BLE_MESH_RX_SEG_MSG_COUNT=10
+# Default is 10 - bumped to match mesh.cpp's own MAX_KNOWN_NODES (16), since
+# a Provisioner literally cannot track more devices than this regardless of
+# our own display-list size. CRPL (replay protection list) must be >= this
+# times each node's element count (1, our composition is single-element) -
+# Kconfig's own help text spells out that exact formula - bumped to 20 for
+# a little headroom instead of the bare minimum.
+CONFIG_BLE_MESH_MAX_PROV_NODES=16
+CONFIG_BLE_MESH_CRPL=20
+
+# Default is 3, matching BLE_MAX_CONCURRENT_CLIENTS in comms.cpp - but a
+# *bond* (unlike a live connection) persists for a previously-trusted device
+# that isn't currently connected, and the app-level trust list in comms.cpp
+# (TRUST_MAX) allows remembering up to 12 devices over time. Bumped so a
+# device bonded earlier doesn't get silently evicted from the crypto bond
+# store (forcing a re-pair) just because newer devices bonded since.
+CONFIG_BT_NIMBLE_MAX_BONDS=8
+CONFIG_BT_NIMBLE_MAX_CCCDS=8
+
+# Arduino core itself requires this (CMakeLists.txt hard-checks it).
+CONFIG_FREERTOS_HZ=1000
+
+# Without this, no app_main() gets generated to call into Arduino's
+# setup()/loop() - the final link fails with "undefined reference to
+# app_main".
+CONFIG_AUTOSTART_ARDUINO=y
+
+# Both real boards this targets (upesy_wroom and on_air's ESP32-S3 Super
+# Mini) have 4MB flash - without this it silently falls back to a
+# 2MB-sized default partition table.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Core dump (into the existing coredump partition, already in min_spiffs.csv)
+# gives a full post-mortem via espcoredump.py for any future crash - cheap to
+# leave on, costs nothing but a bit of flash that's already reserved.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# Default (8192) measured on real hardware (desk_lamp, via a saved core
+# dump's own per-task "STACK USED/FREE" table) hitting a genuine, repeatable
+# stack overflow in loopTask at ~9040 bytes used while processing a "status"
+# command with BLE active - a real FreeRTOS stack-overflow detection, a
+# different mechanism/bug class from the three TLSF heap-corruption bugs
+# fixed in commit 239bdb5 (those just happened to crash first, every time,
+# masking this one until they were fixed). Root call chain not pinned down
+# exactly (the saved backtrace is corrupted past the panic handler, as
+# expected once the overflow has already happened) - bumped generously
+# rather than trimming to the exact minimum, cheap in RAM terms relative to
+# this chip's ~320KB.
+CONFIG_ARDUINO_LOOP_STACK_SIZE=16384

@@ -7,7 +7,18 @@ import { ActionsSection } from './sections/ActionsSection';
 import { FilterSection } from './sections/FilterSection';
 import { HelpSection } from './sections/HelpSection';
 import { AdvancedOverview } from './sections/advanced/AdvancedOverview';
-import { AnwesenheitPage, LichtPage, MusikPage, PotiPage, RadarPage, TasterPage, TouchPage } from './sections/advanced/subpages';
+import {
+  AnwesenheitPage,
+  CustomPage,
+  LedPage,
+  LichtPage,
+  MusikPage,
+  PotiPage,
+  QuickPage,
+  RadarPage,
+  TasterPage,
+  TouchPage,
+} from './sections/advanced/subpages';
 
 const rootRoute = createRootRoute({ component: RootLayout });
 
@@ -28,6 +39,9 @@ const musikRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'mus
 const radarRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'radar', component: withPageTransition(RadarPage) });
 const lichtRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'licht', component: withPageTransition(LichtPage) });
 const touchRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'touch', component: withPageTransition(TouchPage) });
+const ledRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'led', component: withPageTransition(LedPage) });
+const quickRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'quick', component: withPageTransition(QuickPage) });
+const customRoute = createRoute({ getParentRoute: () => advancedRoute, path: 'custom', component: withPageTransition(CustomPage) });
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -44,6 +58,9 @@ const routeTree = rootRoute.addChildren([
     radarRoute,
     lichtRoute,
     touchRoute,
+    ledRoute,
+    quickRoute,
+    customRoute,
   ]),
 ]);
 
