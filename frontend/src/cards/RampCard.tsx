@@ -188,7 +188,7 @@ export function RampCard() {
       <CardHeader>
         <CardTitle><Trans k="title.ramps">Ramps</Trans></CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <LiveOutputGraph />
         <div className="grid gap-3 md:grid-cols-2">
           <RampTile

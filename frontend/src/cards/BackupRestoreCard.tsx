@@ -127,7 +127,7 @@ export function BackupRestoreCard() {
                   <DialogDescription><Trans k="desc.scanQr">Richte die Kamera auf den QR-Code mit der cfg import Zeile.</Trans></DialogDescription>
                 </DialogHeader>
                 <div className="mt-3 space-y-3">
-                  {scanError && <div className="rounded-md bg-destructive/20 px-3 py-2 text-sm text-destructive">{scanError}</div>}
+                  {scanError && <div className="rounded-md bg-red-500/20 px-3 py-2 text-sm text-red-400">{scanError}</div>}
                   <div className="overflow-hidden rounded-lg border border-border">
                     <video ref={videoRef} className="aspect-video w-full bg-black/50" muted playsInline />
                   </div>

@@ -57,7 +57,7 @@ export function PresenceBleCard() {
             {devices.map((d) => (
               <span key={d} className="chip-muted flex items-center gap-1">
                 {d}
-                <button className="text-muted hover:text-foreground" onClick={() => sendCmd(`presence_ble del ${d}`)}>
+                <button className="text-muted hover:text-text" onClick={() => sendCmd(`presence_ble del ${d}`)}>
                   <MinusCircle className="h-3 w-3" />
                 </button>
               </span>

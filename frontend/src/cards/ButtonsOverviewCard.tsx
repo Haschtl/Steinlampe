@@ -34,12 +34,12 @@ export function ButtonsOverviewCard() {
         </CardTitle>
         <span className="pill">{buttons.length}</span>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="text-xs text-muted-foreground">
+      <CardContent>
+        <div className="text-xs text-muted">
           <Trans k="desc.buttonsOverview">Physical buttons wired on this board and what they do (set at build time)</Trans>
         </div>
         {buttons.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted">
             <Trans k="label.noButtons">No buttons configured on this board</Trans>
           </div>
         ) : (
@@ -56,7 +56,7 @@ export function ButtonsOverviewCard() {
                   </span>
                   <span className="pill text-xs">{t(roleKey[btn.role])}</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{stateLabel(btn)}</span>
+                <span className="text-xs text-muted">{stateLabel(btn)}</span>
               </div>
             ))}
           </div>

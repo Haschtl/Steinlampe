@@ -65,7 +65,7 @@ export function DeviceBTCard() {
                   <span className="max-w-[160px] truncate">{addr}</span>
                   <button
                     type="button"
-                    className="text-destructive hover:underline"
+                    className="text-red-400 hover:underline"
                     onClick={() => sendCmd(`trust ble del ${addr}`).catch(() => undefined)}
                     title="Forget"
                   >

@@ -88,7 +88,7 @@ export function LedConfigCard() {
           <Label>
             <Trans k="label.briMin">Min brightness after gamma (%)</Trans>
           </Label>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted mt-1">
             <Trans k="desc.briMin">
               Sets the low end of the post-gamma range; output 0% maps here.
             </Trans>
@@ -114,7 +114,7 @@ export function LedConfigCard() {
           <Label>
             <Trans k="label.briMax">Max brightness after gamma (%)</Trans>
           </Label>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted mt-1">
             <Trans k="desc.briMax">
               Sets the high end of the post-gamma range; output 100% maps here.
             </Trans>
@@ -153,7 +153,7 @@ export function LedConfigCard() {
               suffix="γ"
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted mt-1">
             <Trans k="desc.pwm">
               Gamma to linearize LED brightness (0.5–4). Pick a simple step
               pattern (e.g. “Stufen”) and tweak until each step looks equally
@@ -161,7 +161,7 @@ export function LedConfigCard() {
             </Trans>
           </p>
         </div>
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div className="flex items-center justify-between text-sm text-muted">
           <div>
             <Label>
               <Trans k="label.outputMode">Output mode</Trans>
@@ -175,7 +175,7 @@ export function LedConfigCard() {
           <Label>
             <Trans k="label.pwmRaw">Output raw</Trans>
           </Label>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted">
             {typeof pwmRaw === "number" ? (
               <>
                 {pwmRaw}/{pwmMax}{" "}
@@ -190,7 +190,7 @@ export function LedConfigCard() {
           <Label>
             <Trans k="label.gammaCurve">Gamma curve</Trans>
           </Label>
-          <p className="text-xs text-muted-foreground mb-2">
+          <p className="text-xs text-muted mb-2">
             <Trans k="desc.gammaCurve">
               Shows how brightness maps to PWM with the current gamma. Dot =
               live PWM.
@@ -302,7 +302,7 @@ export function LedConfigCard() {
               </text>
             </svg>
             {typeof pwmRatio === "number" && (
-              <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-3">
+              <div className="mt-2 text-xs text-muted flex flex-wrap gap-3">
                 <span>γ={safeGamma.toFixed(2)}</span>
                 <span>
                   PWM/Analog: {(pwmRatio * 100).toFixed(1)}% ({pwmRaw}/{pwmMax})

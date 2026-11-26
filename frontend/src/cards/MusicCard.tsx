@@ -107,7 +107,7 @@ export function MusicCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2 rounded-lg border border-border/70 bg-panel/70 p-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-muted">
+          <div className="flex items-center gap-2 text-sm font-medium">
             <Trans k="title.music">Musik</Trans>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted">
@@ -191,7 +191,7 @@ export function MusicCard() {
               </span>
             </div>
           </div>
-          <div className="text-xs text-foreground/80">
+          <div className="text-xs text-text/80">
             <strong>Env:</strong> {status.musicEnv !== undefined ? status.musicEnv.toFixed(3) : "—"}{" "}
             <strong>Mod:</strong> {status.musicMod !== undefined ? status.musicMod.toFixed(2) : "—"}{" "}
             <strong>Smooth:</strong> {status.musicSmooth !== undefined ? status.musicSmooth.toFixed(2) : "—"}{" "}
@@ -199,7 +199,7 @@ export function MusicCard() {
           </div>
         </div>
         <div className="space-y-3 rounded-lg border border-border/70 bg-panel/70 p-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-muted">
+          <div className="flex items-center gap-2 text-sm font-medium">
             <Trans k="label.clap">Klatschen</Trans>
           </div>
           <div className="flex flex-wrap items-center gap-2">

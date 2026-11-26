@@ -48,7 +48,7 @@ export function RadarCard() {
           <Trans k="title.radar">Radar</Trans>
         </label>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <div className="space-y-2">
           <label className="pill cursor-pointer">
             <input

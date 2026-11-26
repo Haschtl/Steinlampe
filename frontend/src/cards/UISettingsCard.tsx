@@ -95,7 +95,7 @@ export function UISettingsCard() {
               {Object.keys(knownDevices || {}).length > 0 && (
                 <button
                   type="button"
-                  className="text-xs text-destructive hover:underline"
+                  className="text-xs text-red-400 hover:underline"
                   onClick={() => Object.keys(knownDevices || {}).forEach((id) => forgetDevice(id))}
                 >
                   <Trans k="btn.clearAll">Clear all</Trans>
@@ -119,7 +119,7 @@ export function UISettingsCard() {
                   </button>
                   <button
                     type="button"
-                    className="text-destructive hover:underline"
+                    className="text-red-400 hover:underline"
                     onClick={() => forgetDevice(id)}
                     title="Forget"
                   >
@@ -138,7 +138,7 @@ export function UISettingsCard() {
               {Object.keys(knownSerials || {}).length > 0 && (
                 <button
                   type="button"
-                  className="text-xs text-destructive hover:underline"
+                  className="text-xs text-red-400 hover:underline"
                   onClick={() => Object.keys(knownSerials || {}).forEach((id) => forgetSerial(id))}
                 >
                   <Trans k="btn.clearAll">Clear all</Trans>
@@ -162,7 +162,7 @@ export function UISettingsCard() {
                   </button>
                   <button
                     type="button"
-                    className="text-destructive hover:underline"
+                    className="text-red-400 hover:underline"
                     onClick={() => forgetSerial(id)}
                     title="Forget"
                   >

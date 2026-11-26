@@ -176,7 +176,7 @@ export function MeshProvisioningCard() {
           </Trans>
         </p>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent>
         {!status.meshNet ? (
           <div className="space-y-2 rounded-lg border border-border p-3">
             <div className="text-sm font-medium"><Trans k="label.meshNotSetUp">No mesh network yet</Trans></div>
@@ -243,7 +243,7 @@ export function MeshProvisioningCard() {
                           <Button size="sm" variant="primary" onClick={commitRename}>
                             <Trans k="btn.save">Save</Trans>
                           </Button>
-                          <button className="text-muted hover:text-foreground" onClick={() => setEditingAddr(null)}>
+                          <button className="text-muted hover:text-text" onClick={() => setEditingAddr(null)}>
                             <X className="h-4 w-4" />
                           </button>
                         </>
@@ -258,7 +258,7 @@ export function MeshProvisioningCard() {
                           ) : (
                             <>
                               <button
-                                className="text-muted hover:text-foreground"
+                                className="text-muted hover:text-text"
                                 title={t('btn.meshRename', 'Rename')}
                                 onClick={() => startRename(node)}
                               >
@@ -339,7 +339,7 @@ export function MeshProvisioningCard() {
 
             <div>
               <button
-                className="flex items-center gap-1 text-xs text-muted hover:text-foreground"
+                className="flex items-center gap-1 text-xs text-muted hover:text-text"
                 onClick={() => setShowAdvanced((v) => !v)}
               >
                 {showAdvanced ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}

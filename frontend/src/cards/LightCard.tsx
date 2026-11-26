@@ -60,7 +60,7 @@ export function LightCard() {
           Light
         </label>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <div className="grid gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2">
@@ -105,7 +105,7 @@ export function LightCard() {
               Tip: First press “Calib min” while covering the sensor (dark), then “Calib max” under bright light so slow sensors get a clean span.
             </Trans>
           </p>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-foreground/80">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-text/80">
             <span className="chip-muted">
               <strong>Raw:</strong> {raw !== undefined ? raw.toFixed(2) : '—'}
             </span>

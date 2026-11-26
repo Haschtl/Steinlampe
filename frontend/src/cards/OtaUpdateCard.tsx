@@ -146,7 +146,7 @@ export function OtaUpdateCard() {
 
         {phase === 'error' && (
           <div className="space-y-2">
-            <p className="flex items-center gap-1.5 text-xs text-destructive">
+            <p className="flex items-center gap-1.5 text-xs text-red-400">
               <AlertTriangle className="h-3.5 w-3.5" /> {error}
             </p>
             <Button variant="ghost" onClick={() => setPhase(isNewer ? 'available' : 'idle')}>

@@ -125,18 +125,18 @@ export function PotiCard() {
           <Trans k="label.enabled">Enabled</Trans>
         </label>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <div>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-medium">
                 <Trans k="label.potiVal">Live value</Trans>
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted">
                 <Trans k="desc.potiVal">Filtered knob position (0..1)</Trans>
               </div>
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted">
               {typeof lastVal === 'number' ? `${(lastVal * 100).toFixed(1)}%` : '--'}{' '}
               {typeof lastRaw === 'number' ? `(raw ${lastRaw})` : ''}
             </div>
@@ -305,7 +305,7 @@ export function PotiCard() {
               <label className="text-sm font-medium">
                 <Trans k="label.potiMode">Mode</Trans>
               </label>
-              <div className="text-xs text-muted-foreground mb-1">
+              <div className="text-xs text-muted mb-1">
                 <Trans k="desc.potiMode">What the knob position controls while the lamp is on</Trans>
               </div>
               <Select

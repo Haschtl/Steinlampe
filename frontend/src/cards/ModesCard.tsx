@@ -100,7 +100,7 @@ export function ModesCard() {
           <Trans k="title.pattern">Pattern</Trans>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         {/* One unified frame: the preview graph is this whole frame's background (not a
             boxed-in sub-element), with the pattern switcher and the param palette floating
             on top of it. A fixed min-height (not width-driven aspect ratio) keeps the right-edge

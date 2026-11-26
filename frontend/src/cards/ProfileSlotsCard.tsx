@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Save } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -48,7 +49,7 @@ function previewText(p: ProfilePreview | undefined, t: (k: string, fb: string) =
 }
 
 export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmd, log, status, refreshStatus } = useConnection();
+  const { sendCmd, sendCmdReliable, log, status, refreshStatus } = useConnection();
   const { t } = useI18n();
   const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
@@ -93,9 +94,18 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
   }, [log]);
 
   const handleLoad = (slot: number) => {
-    setProfileSlot(String(slot));
-    sendCmd(`profile load ${slot}`)
+    // writeValueWithResponse, not the fire-and-forget sendCmd: on Android,
+    // writeValueWithoutResponse can silently drop a write over a flaky link
+    // without the JS promise ever rejecting (OTA chunks hit the same risk,
+    // see sendCmdReliable's own comment) - for a single, infrequent command
+    // like this, trading a bit of latency for an actual GATT-level
+    // delivery confirmation is worth it. The UI's selected slot is only
+    // updated once that confirmation comes back, so a dropped command
+    // shows up as the dropdown not moving instead of silently lying about
+    // what's loaded.
+    sendCmdReliable(`profile load ${slot}`)
       .then(() => {
+        setProfileSlot(String(slot));
         setTimeout(refreshPreviews, 200);
         // The firmware does push an unsolicited status snapshot right
         // after applying a profile (loadProfileSlot's announce path), so
@@ -110,14 +120,24 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
         // this card.
         refreshStatus().catch((e) => console.warn(e));
       })
-      .catch((e) => console.warn(e));
+      .catch((e) => {
+        console.warn(e);
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(t('err.profileLoadFailed', 'Profil konnte nicht geladen werden') + ': ' + msg);
+      });
   };
 
   const handleSaveConfirmed = (slot: number) => {
     setConfirmSlot(null);
-    sendCmd(`profile save ${slot}`)
+    // Same write-with-response reasoning as handleLoad - a dropped "save"
+    // would silently discard the user's settings into an unchanged slot.
+    sendCmdReliable(`profile save ${slot}`)
       .then(() => setTimeout(refreshPreviews, 200))
-      .catch((e) => console.warn(e));
+      .catch((e) => {
+        console.warn(e);
+        const msg = e instanceof Error ? e.message : String(e);
+        toast.error(t('err.profileSaveFailed', 'Profil konnte nicht gespeichert werden') + ': ' + msg);
+      });
   };
 
   const activeSlot = Number(profileSlot) || 1;
@@ -127,7 +147,7 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
       <CardHeader>
         <CardTitle><Trans k="title.profiles">Profile</Trans></CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent>
         <div className="flex items-center justify-between gap-2 rounded-lg border border-accent bg-accent/10 px-3 py-2">
           <div className="min-w-0 flex-1">
             <div className="text-xs text-muted">

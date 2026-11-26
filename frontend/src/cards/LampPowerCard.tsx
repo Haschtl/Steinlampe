@@ -178,7 +178,7 @@ export function LampPowerCard() {
           {presenceActive && <span className="chip-muted text-[11px] px-1.5 py-0.5"><Trans k="title.presenceBle">Presence (BLE)</Trans></span>}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         <motion.button
           type="button"
           ref={sliderRef}

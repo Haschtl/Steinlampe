@@ -285,7 +285,7 @@ export function GestureMappingCard() {
               ) : null}
 
               <button
-                className="text-muted hover:text-foreground"
+                className="text-muted hover:text-text"
                 onClick={() => removeRow(row.id)}
                 title={t('btn.gestRemove', 'Remove binding')}
               >
