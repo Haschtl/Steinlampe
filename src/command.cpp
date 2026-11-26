@@ -2910,7 +2910,11 @@ void handleCommand(const String &line)
             if (slot >= 1 && slot <= PROFILE_SLOTS)
             {
                 String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
-                String cfg = prefs.getString(key.c_str(), "");
+                // isKey() first: getString() on a key that was never saved logs an
+                // ESP_LOGE "nvs_get_str len fail: ... NOT_FOUND" on every call -
+                // noisy on Serial for the (common) case of an unused slot, and this
+                // is a normal/expected state, not an actual error.
+                String cfg = prefs.isKey(key.c_str()) ? prefs.getString(key.c_str(), "") : "";
                 if (cfg.length() == 0)
                     cfg = defaultProfileString((uint8_t)slot);
                 sendFeedback(String(F("[Profile ")) + String(slot) + F("] ") + (cfg.length() ? cfg : String(F("empty"))));

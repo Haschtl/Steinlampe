@@ -32,7 +32,6 @@ extern "C"
 #include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_networking_api.h"
 #include "esp_ble_mesh_provisioning_api.h"
-#include "services/gap/ble_svc_gap.h" // ble_svc_gap_device_name_set() - see meshSetup()'s own comment
 #if ENABLE_BLE_MESH_PROVISIONER
 #include "esp_ble_mesh_local_data_operation_api.h" // esp_ble_mesh_get_primary_element_address()
 #include "host/ble_gap.h"                          // ble_gap_disc_active()
@@ -709,13 +708,32 @@ void meshSetup()
         return;
     }
     // esp_ble_mesh_init() -> bt_mesh_proxy_server_init() unconditionally
-    // overwrites the NimBLE GAP device name to its own hardcoded
-    // "ESP-BLE-MESH" (esp_ble_mesh/core/proxy_server.c), clobbering the
-    // real name startBle() already set before this ran - confirmed on real
+    // overwrites its own internal `device_name` buffer (esp_ble_mesh/core/
+    // proxy_server.c) to the hardcoded "ESP-BLE-MESH" - confirmed on real
     // hardware as the lamp showing up as "ESP-BLE-MESH" instead of its own
-    // name in a SIG Mesh provisioner app. Both calls go through the same
-    // ble_svc_gap_device_name_set() in the end, so just re-apply ours.
-    ble_svc_gap_device_name_set(getBleName().c_str());
+    // name in a SIG Mesh provisioner app and in this project's own web app.
+    // An earlier attempt "fixed" this via ble_svc_gap_device_name_set(),
+    // which only changes the NimBLE GAP service's Device Name
+    // characteristic - that's a completely separate piece of state from
+    // proxy_server.c's own static buffer, which is what both its
+    // unprovisioned PB-GATT advertising (gatt_prov_adv_create) AND its
+    // post-provisioning Proxy advertising (gatt_proxy_adv_create) actually
+    // read from when building the "Complete Local Name" AD field most
+    // scanners/pickers show - so that fix had no effect at all. The real
+    // setter for that buffer is bt_mesh_set_device_name(), exposed
+    // publicly as esp_ble_mesh_set_unprovisioned_device_name() despite its
+    // name (the API doc scopes it to the unprovisioned/PB-GATT case, but
+    // the implementation is the same single buffer both advertising paths
+    // share - verified by reading proxy_server.c directly).
+    // Only fails on a too-long name (ESP_BLE_MESH_DEVICE_NAME_MAX_LEN, ~29
+    // bytes) - setBleName() itself has no upper bound, so this is reachable
+    // with a long custom name. Log rather than ESP_ERROR_CHECK: leaving the
+    // lamp advertising as "ESP-BLE-MESH" is the pre-existing (bad) behavior
+    // this call is fixing, not a reason to abort boot over a name the user
+    // typed.
+    esp_err_t nameErr = esp_ble_mesh_set_unprovisioned_device_name(getBleName().c_str());
+    if (nameErr != ESP_OK)
+        ESP_LOGW(TAG, "esp_ble_mesh_set_unprovisioned_device_name failed: %d (name too long?)", nameErr);
     ESP_ERROR_CHECK(esp_ble_mesh_register_prov_callback(provisioningCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_config_server_callback(configServerCallback));
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_server_callback(genericServerCallback));

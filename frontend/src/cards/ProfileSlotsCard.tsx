@@ -49,24 +49,29 @@ function previewText(p: ProfilePreview | undefined, t: (k: string, fb: string) =
 }
 
 export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot: string; setProfileSlot: (v: string) => void }) {
-  const { sendCmd, sendCmdReliable, log, status, refreshStatus } = useConnection();
+  const { sendCmdReliable, log, status, refreshStatus } = useConnection();
   const { t } = useI18n();
   const [previews, setPreviews] = useState<Record<number, ProfilePreview>>({});
   const [confirmSlot, setConfirmSlot] = useState<number | null>(null);
 
-  // Sequential with a stagger, not a burst of 6 writes fired back to back: the
-  // command characteristic is write-without-response, so nothing here previously
-  // waited for the device to actually react to one line before the next was
-  // already in flight. Spacing them out is a mitigation for suspected BLE
-  // write-flood/timing issues (unconfirmed without a live device trace) where
-  // "profile show 1..6" sent as a burst got no response at all, while single
-  // commands like "status raw" worked fine.
+  // writeValueWithResponse (sendCmdReliable), not the fire-and-forget sendCmd:
+  // confirmed live on a real Android phone (2026-11-26, chrome://inspect console)
+  // that "profile show 1..6" fired as a staggered sequence of
+  // writeValueWithoutResponse calls got ZERO responses for any of the 6, with no
+  // JS exception anywhere, while a lone "status raw" right before/after always
+  // got its response immediately and reliably - i.e. not a firmware bug (same
+  // command text verified correct over a live Serial connection) and not a
+  // thrown/caught error, which matches Android's Web Bluetooth
+  // writeValueWithoutResponse sometimes resolving before the write actually
+  // reached the radio, silently dropping a write that races the previous one.
+  // write-with-response forces a real GATT-level ack per write, which both
+  // confirms delivery and naturally paces the sequence - no artificial delay
+  // needed between iterations anymore.
   const refreshPreviews = useCallback(async () => {
     for (const slot of SLOT_INDICES) {
-      await sendCmd(`profile show ${slot}`).catch((e) => console.warn(e));
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await sendCmdReliable(`profile show ${slot}`).catch((e) => console.warn(e));
     }
-  }, [sendCmd]);
+  }, [sendCmdReliable]);
 
   useEffect(() => {
     // Gate on statusReady (set once refreshStatus() has completed), not the

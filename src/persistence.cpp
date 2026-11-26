@@ -277,7 +277,8 @@ bool loadProfileSlot(uint8_t slot, bool announce)
     if (slot < 1 || slot > PROFILE_SLOTS)
         return false;
     String key = String(PREF_KEY_PROFILE_BASE) + String(slot);
-    String cfg = prefs.getString(key.c_str(), "");
+    // isKey() first - see the identical guard in command.cpp's "profile show" for why.
+    String cfg = prefs.isKey(key.c_str()) ? prefs.getString(key.c_str(), "") : "";
     if (cfg.length() == 0)
     {
         cfg = defaultProfileString(slot);
