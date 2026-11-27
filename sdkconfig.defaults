@@ -110,3 +110,16 @@ CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 # rather than trimming to the exact minimum, cheap in RAM terms relative to
 # this chip's ~320KB.
 CONFIG_ARDUINO_LOOP_STACK_SIZE=16384
+
+# Default (50) exhausted at boot on real hardware (desk_lamp) once BLE Mesh
+# tries to create its own internal timers (secure network beacon timer,
+# provisioning timeouts) on top of everything else already competing for
+# this same fixed-size osi_alarm pool (BLE GATT, BT Classic SPP, NimBLE
+# connection management) - confirmed via "osi_alarm_new alarm_cbs
+# exhausted"/"BLE_MESH: Init, alarm not created"/"Init settings failed,
+# name mesh_core" at boot, which then cascaded into every BLE Mesh NVS
+# settings write failing with ESP_ERR_NVS_INVALID_HANDLE for the rest of
+# that boot. Doubled rather than trimmed to the exact minimum, same
+# reasoning as CONFIG_ARDUINO_LOOP_STACK_SIZE above - cheap relative to
+# this chip's RAM.
+CONFIG_BT_ALARM_MAX_NUM=100
