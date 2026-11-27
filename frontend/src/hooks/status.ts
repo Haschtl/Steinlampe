@@ -646,6 +646,21 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
     });
     return true;
   }
+  if (line.startsWith('[Touch] raw=')) {
+    // Only the "touch" command's debug snapshot (src/print.cpp's
+    // printTouchDebug()) - other "[Touch] ..." lines (detected/double-tap/
+    // release/disabled/tune ...) have a different shape and are left to
+    // the console log only, not this card's live fields.
+    const m = line.match(/thrOn=(-?\d+)\s+thrOff=(-?\d+)/);
+    setStatus((s) => ({
+      ...s,
+      touchThrOn: m ? parseInt(m[1], 10) : s.touchThrOn,
+      touchThrOff: m ? parseInt(m[2], 10) : s.touchThrOff,
+      lastTouchLine: line,
+      lastStatusAt: Date.now(),
+    }));
+    return true;
+  }
   if (line.startsWith('[Trust]')) {
     const lower = line.toLowerCase();
     // "[Trust] BLE bonds: ..." also contains "ble", so it must be checked
