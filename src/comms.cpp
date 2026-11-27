@@ -248,6 +248,20 @@ void processInputChar(String &buffer, char c)
 #if ENABLE_BLE
 static void startBleAdvertising(); // fwd decl, used by setBleName()
 static int bleGapEvent(struct ble_gap_event *event, void *arg); // fwd decl, used by startBleAdvertising()
+
+// Whether our own classic, connectable GATT advertising should be running
+// right now. Without Mesh, always yes - the original behavior. With Mesh:
+// only a provisioned mesh *Node* gets a working connectable path from
+// Mesh's own Proxy advertising - everything else (no mesh identity yet, or
+// a self-made Provisioner) needs this instead, since bt_mesh_is_provisioned()
+// is tied to Node role specifically and never becomes true for a
+// Provisioner-only lamp. See startBleAdvertising()'s own comment for the
+// hardware-confirmed story and how coexistence with Mesh actually works.
+#if ENABLE_BLE_MESH
+static bool bleShouldAdvertiseClassic() { return meshRoleText() != "node"; }
+#else
+static bool bleShouldAdvertiseClassic() { return true; }
+#endif
 #endif
 
 void setBleName(const String &name)
@@ -256,17 +270,15 @@ void setBleName(const String &name)
   if (name.length() >= 2)
   {
     bleName = name;
-#if !ENABLE_BLE_MESH
-    // Live rename of advertisement can be flaky; store for next restart.
-    // Skipped entirely once Mesh is active - it permanently owns the
-    // single advertising slot on this chip (see startBleAdvertising()'s
-    // own comment), and its own advertisement doesn't use bleName anyway.
-    if (ble_hs_synced())
+    // Live rename of advertisement can be flaky; store for next restart
+    // either way. Only worth restarting advertising immediately when it's
+    // actually our own classic advertisement running right now - see
+    // bleShouldAdvertiseClassic()'s own comment.
+    if (bleShouldAdvertiseClassic() && ble_hs_synced())
     {
       ble_gap_adv_stop();
       startBleAdvertising();
     }
-#endif
   }
 #else
   (void)name;
@@ -918,20 +930,34 @@ static struct ble_gatt_svc_def bleGattSvcs[] = {
     {0},
 };
 
-// Only ever called when ENABLE_BLE_MESH is off - classic ESP32 NimBLE has
-// exactly one advertising slot (ble_gap_adv_start() while one is already
-// active just errors/no-ops, doesn't queue), and once Mesh is active it
-// permanently owns that slot (its own unprovisioned-beacon/PB-ADV/PB-GATT,
-// then Proxy advertising after provisioning, re-armed by mesh's own GAP
-// event handling - see adapter.c). All of this function's own call sites
-// are `#if !ENABLE_BLE_MESH`-guarded rather than relying on the
-// `ble_gap_adv_active()` check below alone, since there's a real (if
-// narrow) race window between mesh stopping its own advertisement and
-// re-arming it where that check could pass and we'd steal the slot. Our
-// own GATT characteristics stay registered and reachable either way -
-// mesh's advertisement is just what gets a central connected in the first
-// place; see authorizeBleConn()'s comment for how trust/pairing is handled
-// for a connection that arrived that way instead of through this function.
+// Classic, connectable GATT advertising for this lamp's own command/
+// status service. Originally only ever called when ENABLE_BLE_MESH was
+// off, on the assumption Mesh permanently needs the chip's one NimBLE
+// advertising slot for its own connectable advertising once active - WRONG
+// for any lamp that isn't a provisioned mesh *Node* specifically (found
+// 2026-11-27, hardware-confirmed: a self-made Provisioner lamp never gets
+// Mesh's own connectable Proxy advertising at all, since
+// bt_mesh_is_provisioned() checks Node-role state, not "has local
+// Provisioner keys" - it was left with zero connectable BLE path, only
+// its own brief, non-connectable Secure Network Beacon traffic every
+// ~10-20s, which a scanner can see but never connect to).
+//
+// Now runs whenever bleShouldAdvertiseClassic() says so, coexisting with
+// Mesh's use of the same single slot: Mesh force-steals it via its own
+// ble_gap_adv_stop() call whenever its periodic beacon/relay traffic needs
+// it (esp_ble_mesh's nimble_host/adapter.c retries its own
+// ble_gap_adv_start() on BLE_HS_EALREADY by calling ble_gap_adv_stop()
+// first) - confirmed by reading NimBLE's own ble_gap_adv_stop_no_lock()
+// that this does NOT fire our BLE_GAP_EVENT_ADV_COMPLETE callback, so
+// event-driven re-arming alone (the four call sites below) can silently
+// stay off forever after Mesh's first steal. pollCommunications() backstops
+// this with a cheap periodic re-check instead - this function's own
+// ble_gap_adv_active() guard below makes repeated calls free once already
+// running. Our own GATT characteristics stay registered and reachable
+// either way - Mesh's advertisement (for a provisioned Node) or this
+// function's (everything else) is just what gets a central connected in
+// the first place; see authorizeBleConn()'s comment for how trust/pairing
+// is handled either way.
 static void startBleAdvertising()
 {
   if (ble_gap_adv_active())
@@ -997,21 +1023,24 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
         Serial.print(F("[BLE] Verbindung (ungesichert): "));
         Serial.println(addr);
       }
-      if (ble_gap_security_initiate(event->connect.conn_handle) != 0)
+      int secRc = ble_gap_security_initiate(event->connect.conn_handle);
+      if (secRc != 0)
       {
         if (feedbackAllowed())
-          Serial.println(F("[BLE] Security-Request fehlgeschlagen"));
+        {
+          Serial.print(F("[BLE] Security-Request fehlgeschlagen, rc="));
+          Serial.println(secRc);
+        }
         ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
       }
     }
     else
     {
-#if !ENABLE_BLE_MESH
       // Connection attempt itself failed - the controller stops advertising
-      // regardless, re-arm it. (Mesh owns re-arming its own advertisement
-      // once active - see startBleAdvertising()'s comment.)
-      startBleAdvertising();
-#endif
+      // regardless, re-arm it if it's still our job to be advertising at
+      // all - see bleShouldAdvertiseClassic()'s comment.
+      if (bleShouldAdvertiseClassic())
+        startBleAdvertising();
     }
     break;
   }
@@ -1041,9 +1070,8 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
       blePendingAddr = "";
     }
 #endif
-#if !ENABLE_BLE_MESH
-    startBleAdvertising();
-#endif
+    if (bleShouldAdvertiseClassic())
+      startBleAdvertising();
     break;
   }
   case BLE_GAP_EVENT_ENC_CHANGE:
@@ -1059,7 +1087,10 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
     if (event->enc_change.status != 0)
     {
       if (feedbackAllowed())
-        Serial.println(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen"));
+      {
+        Serial.print(F("[BLE] Pairing/Verschlüsselung fehlgeschlagen, status="));
+        Serial.println(event->enc_change.status);
+      }
       ble_gap_terminate(connHandle, BLE_ERR_REM_USER_CONN_TERM);
       break;
     }
@@ -1070,14 +1101,12 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
         Serial.print(F("[BLE] Verbunden (gesichert): "));
         Serial.println(bleLastAddr);
       }
-#if !ENABLE_BLE_MESH
       // The controller stops connectable advertising once a central
       // connects; re-arm it here (bounded by CONFIG_BT_NIMBLE_MAX_CONNECTIONS,
       // default 3) so additional trusted devices can still find and connect
       // to the lamp while this one stays connected.
-      if ((int)bleConnHandles.size() < BLE_MAX_CONCURRENT_CLIENTS)
+      if (bleShouldAdvertiseClassic() && (int)bleConnHandles.size() < BLE_MAX_CONCURRENT_CLIENTS)
         startBleAdvertising();
-#endif
     }
     // Not yet authorized: authorizeBleConn() already started (or kept
     // alive) the physical-gesture pending-confirm flow, or rejected and
@@ -1094,9 +1123,8 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
     quarzlampeBleNotifyTxEvent(event->notify_tx.attr_handle, event->notify_tx.status, event->notify_tx.indication);
     break;
   case BLE_GAP_EVENT_ADV_COMPLETE:
-#if !ENABLE_BLE_MESH
-    startBleAdvertising();
-#endif
+    if (bleShouldAdvertiseClassic())
+      startBleAdvertising();
     break;
   default:
     break;
@@ -1140,6 +1168,14 @@ static void bleOnSync()
   // bt_mesh_gatt_init() (called from here, via meshSetup()) no longer
   // calls ble_gatts_start() a second time. Safe to call synchronously.
   meshSetup();
+  // Classic advertising coexists with Mesh now - see
+  // bleShouldAdvertiseClassic()'s and startBleAdvertising()'s own comments
+  // for why this is needed and how the coexistence works.
+  if (bleShouldAdvertiseClassic())
+  {
+    startBleAdvertising();
+    Serial.println(F("[BLE] Werbung aktiv (klassisch, neben Mesh)."));
+  }
 #else
   startBleAdvertising();
   Serial.println(F("[BLE] Werbung aktiv. Über BLE-Kommandos steuerbar."));
@@ -1486,6 +1522,24 @@ void pollCommunications()
   }
 #endif
 #if ENABLE_BLE
+#if ENABLE_BLE_MESH
+  // Mesh can silently steal the one shared NimBLE adv slot for its own
+  // periodic beacon/relay traffic without ever telling us - see
+  // startBleAdvertising()'s own comment. This backstops the event-driven
+  // re-arms in bleGapEvent() by reclaiming the slot within one poll of
+  // Mesh's brief use of the radio actually ending, instead of relying on
+  // an ADV_COMPLETE callback that may never fire.
+  {
+    static uint32_t lastClassicAdvCheckMs = 0;
+    uint32_t nowMs = millis();
+    if (nowMs - lastClassicAdvCheckMs >= 250)
+    {
+      lastClassicAdvCheckMs = nowMs;
+      if (bleShouldAdvertiseClassic())
+        startBleAdvertising();
+    }
+  }
+#endif
 #if ENABLE_BT_PAIRING
   if (blePairPending && blePairStartMs > 0 && (millis() - blePairStartMs) > BLE_PAIR_TIMEOUT_MS)
   {

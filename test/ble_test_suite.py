@@ -4,8 +4,12 @@ Automated BLE regression suite for the quarzlampe custom GATT protocol.
 
 Connects over real BLE (not Serial - this exercises the actual path a phone
 uses, which is where this project has repeatedly found bugs that static code
-review or a Serial-only test missed), fires a battery of commands, and checks
-that each one's expected response line actually arrives within a timeout.
+review or a Serial-only test missed). Starts with a pre-flight check that the
+lamp is actually discoverable AND connectable at all (see check_connectable()'s
+own doc comment - this is what would have caught the 2026-11-27 regression
+where a self-made Mesh Provisioner lamp lost its only connectable BLE path),
+then fires a battery of commands and checks that each one's expected response
+line actually arrives within a timeout.
 Exists specifically to catch "a write or a notification was silently dropped,
 with no error raised on either end" - the root cause behind several bugs
 found in this codebase (profile show/load over a write-without-response
@@ -157,6 +161,57 @@ async def scan(timeout: float) -> None:
         print("  (no candidate lamp found - try again, or check it's powered on)")
 
 
+async def check_connectable(address: str, scan_timeout: float, connect_timeout: float) -> Optional[str]:
+    """Pre-flight check: is the lamp actually advertising right now, and can a
+    fresh BLE central connect to it at all? Returns None if both hold, or an
+    error string describing what failed.
+
+    Exists because every other check in this suite assumes you already have
+    an open, working connection - none of them would have caught the real
+    2026-11-27 regression where a self-made BLE Mesh Provisioner lamp stopped
+    advertising a connectable GATT path entirely (it still showed up in a
+    plain scan via leftover non-connectable mesh beacon traffic, but nothing
+    could connect to it - see comms.cpp's bleShouldAdvertiseClassic() for the
+    fix). A failure here means "nobody can reach this lamp over BLE at all",
+    which is a more fundamental problem than any single command's response
+    being slow or dropped.
+
+    Needs a BlueZ pairing agent to be registered system-wide (true on an
+    ordinary desktop with its Bluetooth applet running; NOT true in a bare
+    headless/CI shell with no `bluetoothctl agent on` or equivalent run first)
+    - without one, a *fresh* (never-bonded) connection's pairing handshake can
+    be rejected by BlueZ itself with "Pairing Not Supported", which looks
+    identical to a real firmware bug from this script's point of view. This
+    is a real, confirmed gotcha (hit directly while building this check), not
+    a hypothetical one - if this fails only in a stripped-down shell/CI
+    container, check for a registered agent before suspecting the firmware.
+    """
+    print(f"Pre-flight: scanning for {address} ({scan_timeout:.0f}s)...", flush=True)
+    found = False
+
+    def cb(dev, _adv):
+        nonlocal found
+        if dev.address.lower() == address.lower():
+            found = True
+
+    scanner = BleakScanner(detection_callback=cb)
+    await scanner.start()
+    deadline = time.time() + scan_timeout
+    while time.time() < deadline and not found:
+        await asyncio.sleep(0.1)
+    await scanner.stop()
+    if not found:
+        return f"not seen in a {scan_timeout:.0f}s scan - lamp may be off, out of range, or not advertising at all"
+
+    print("Pre-flight: seen in scan, attempting connect...", flush=True)
+    try:
+        async with BleakClient(address, timeout=connect_timeout):
+            pass
+    except Exception as e:
+        return f"scan found it, but connect failed: {type(e).__name__}: {e}"
+    return None
+
+
 async def run_sequential(client: BleakClient, cases: List[TestCase], log: ReceivedLog, verbose: bool) -> List[CaseResult]:
     results = []
     for case in cases:
@@ -253,6 +308,13 @@ async def main_async(args: argparse.Namespace) -> int:
     if args.scan:
         await scan(args.scan_timeout)
         return 0
+
+    connect_failure = await check_connectable(args.address, args.scan_timeout, connect_timeout=20.0)
+    if connect_failure:
+        print(f"\n[FAIL] Pre-flight connectivity check: {connect_failure}")
+        print("Nothing else in this suite can run without a working connection - stopping here.")
+        return 1
+    print("Pre-flight: connect succeeded.\n", flush=True)
 
     log = ReceivedLog()
 
