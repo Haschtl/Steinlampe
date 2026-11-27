@@ -101,6 +101,18 @@ def build_sequential_cases() -> List[TestCase]:
         TestCase("filter iir on", "filter iir on 0.2", [r"^\[Filter\] IIR"], timeout=15.0),
         TestCase("filter iir off", "filter iir off", [r"^\[Filter\] IIR"], timeout=15.0),
         TestCase("name query", "name", [r"^\[Name\] BLE="], timeout=15.0),
+        # Regression test for a real bug found while extracting command.cpp's
+        # dispatch table (see memory: command-dispatch-table-refactor): "notify
+        # stop" used to be swallowed by the broader "notify" prefix match (checked
+        # earlier), so it never reached the dedicated exact-match stop handler -
+        # instead it turned the lamp ON and started a default blink. Fire a plain
+        # "notify" first (confirms the normal blink still runs and self-finishes),
+        # then "notify stop" and require the real stop feedback - if the ordering
+        # regresses, this instead sees "[Lamp] ON (notify)" and a new blink here.
+        TestCase("notify - plain blink", "notify",
+                 [r"^\[Notify\] \d+/\d+/\d+/\d+", r"^\[Lamp\] OFF \(notify done\)"], timeout=3.0),
+        TestCase("notify stop - must actually stop, not restart a blink", "notify stop",
+                 [r"^\[Notify\] stopped"], timeout=2.0),
     ]
 
 
@@ -244,9 +256,20 @@ async def main_async(args: argparse.Namespace) -> int:
 
     log = ReceivedLog()
 
+    # Buffered across packets, not split per-notification-packet: a multi-line
+    # response (or even one long line) commonly spans more than one ATT
+    # indicate/notify packet, and splitting each packet independently on its
+    # own tears a line in half at the packet boundary - the fragments then
+    # land as bogus separate "lines" (confirmed while adding the notify/notify
+    # stop regression cases below: a late-arriving tail fragment of the
+    # previous case's response bled into the next case's match window).
+    notify_buf = ""
+
     def on_notify(_char, data: bytearray) -> None:
-        text = bytes(data).decode(errors="replace")
-        for line in text.splitlines():
+        nonlocal notify_buf
+        notify_buf += bytes(data).decode(errors="replace")
+        while "\n" in notify_buf:
+            line, notify_buf = notify_buf.split("\n", 1)
             line = line.strip()
             if line:
                 log.append(line)
