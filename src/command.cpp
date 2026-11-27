@@ -414,6 +414,14 @@ static void cmd_Mesh(const String &line, const String &lower)
     {
         sendFeedback(meshKnownNodesText());
     }
+    else if (args == "keys")
+    {
+        sendFeedback(meshKeysText());
+    }
+    else if (args == "export nrf")
+    {
+        sendFeedback(meshExportNrfJson());
+    }
     else if (args.startsWith("rename "))
     {
         String rest = args.substring(7);
@@ -442,7 +450,7 @@ static void cmd_Mesh(const String &line, const String &lower)
         sendFeedback(F("Usage: mesh on|off <addr> | mesh bri <addr> <pct>"
 #if ENABLE_BLE_MESH_PROVISIONER
                        " | mesh network create [<net> <app>] | mesh provision scan|stop|list|add|remove"
-                       " | mesh nodes | mesh rename <addr> <name>"
+                       " | mesh nodes | mesh rename <addr> <name> | mesh keys | mesh export nrf"
 #endif
                        ));
     }

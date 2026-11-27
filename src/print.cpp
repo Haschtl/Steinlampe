@@ -371,6 +371,14 @@ void printStatusCore(const bool &force)
     line += F("|mesh_nodes=");
     line += String(meshKnownNodeCount());
 #endif
+#if ENABLE_BLE_MESH
+    // provisioner|node|none - see meshRoleText()'s own doc comment. Always
+    // available (unlike mesh_net=/mesh_nodes= above, which only exist in a
+    // provisioner-capable build) so even a plain node-only build can show
+    // "this lamp has been provisioned" in the UI.
+    line += F("|mesh_role=");
+    line += meshRoleText();
+#endif
     line += F("|pat_reactive=");
     line += isPatternReactive(currentPattern) ? F("1") : F("0");
     // Just the Home-chip glance (ON/OFF + how many) - the rest (thresholds,

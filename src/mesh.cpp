@@ -124,7 +124,13 @@ esp_ble_mesh_health_srv_t healthServer = {
 ESP_BLE_MESH_MODEL_PUB_DEFINE(healthPub, 2 + 1, ROLE_NODE);
 
 // ---------- Generic OnOff Server ----------
-ESP_BLE_MESH_MODEL_PUB_DEFINE(onoffPub, 2 + 1, ROLE_NODE);
+// 2+1 (just the opcode + present_onoff byte) was too small on real hardware:
+// esp_ble_mesh_server_model_update_state()'s own Generic OnOff Status publish
+// always reserves room for the optional target_onoff/remaining_time fields
+// too, even when unused - confirmed via "Too small publication msg size 3,
+// model id 0x1000" flooding the log on every periodic publish attempt.
+// Matches Espressif's own example sizing (aligenie_demo's onoff_pub_0/1/2).
+ESP_BLE_MESH_MODEL_PUB_DEFINE(onoffPub, 2 + 3, ROLE_NODE);
 esp_ble_mesh_gen_onoff_srv_t onoffServer = {
     .rsp_ctrl = {
         .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
@@ -143,7 +149,11 @@ esp_ble_mesh_light_lightness_state_t lightnessState = {
     .lightness_range_min = 1,
     .lightness_range_max = 65535,
 };
-ESP_BLE_MESH_MODEL_PUB_DEFINE(lightnessPub, 2 + 3, ROLE_NODE);
+// 2+3 was too small for the same reason as onoffPub above ("Too small
+// publication msg size 5, model id 0x1300") - Light Lightness Status always
+// reserves room for present+target+remaining_time. Matches Espressif's own
+// aligenie_demo example sizing (lightness_pub).
+ESP_BLE_MESH_MODEL_PUB_DEFINE(lightnessPub, 2 + 5, ROLE_NODE);
 esp_ble_mesh_light_lightness_srv_t lightnessServer = {
     .rsp_ctrl = {
         .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
@@ -747,6 +757,20 @@ void meshSetup()
     // on every boot, same idempotent path meshNetworkCreate() itself uses.
     if (meshHasLocalKeys)
     {
+        // ESP-IDF's mesh/role flag is mutually exclusive between Node and
+        // Provisioner (see bt_mesh_provisioner_enable()'s "Mismatch role"
+        // check) - a lamp that has chosen to be a Provisioner must release
+        // the Node role before re-applying its local keys on every boot,
+        // same as meshNetworkCreate() does when first choosing that role.
+        // node_prov_disable() only actually clears the persisted role while
+        // not yet genuinely provisioned (bt_mesh_is_provisioned() false) -
+        // true here, since a lamp that chose Provisioner was never itself
+        // joined to someone else's network.
+        esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
+        esp_err_t pvnrErr = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
+        if (pvnrErr != ESP_OK)
+            ESP_LOGW(TAG, "provisioner_prov_enable (boot restore) failed: %d", pvnrErr);
+
         uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
         if (myAddr == 0)
             myAddr = 1; // not yet a provisioned node - this lamp is the network root
@@ -755,6 +779,10 @@ void meshSetup()
         esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
         // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT (above) does
         // the Model App Bind to our own models once this completes.
+        // A Provisioner lamp never re-enables the Node bearer below - it
+        // chose its role for good the moment meshNetworkCreate() ran.
+        Serial.println(F("[Mesh] Provisioner role restored."));
+        return;
     }
 #endif
     err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
@@ -847,6 +875,17 @@ void meshPublishLocalState()
     }
 }
 
+String meshRoleText()
+{
+#if ENABLE_BLE_MESH_PROVISIONER
+    if (meshHasLocalKeys)
+        return F("provisioner");
+#endif
+    if (esp_ble_mesh_node_is_provisioned())
+        return F("node");
+    return F("none");
+}
+
 #if ENABLE_BLE_MESH_PROVISIONER
 bool meshHasNetworkIdentity()
 {
@@ -875,11 +914,33 @@ void meshNetworkCreate(const uint8_t *netKey, const uint8_t *appKey)
     if (myAddr == 0)
         myAddr = 1;
     esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
-    esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
-    esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
-    // The rest (Model App Bind to our own models) happens in
-    // provisioningCallback()'s ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT
-    // handler once this completes - async, not inline here.
+    // ESP-IDF's mesh/role flag is mutually exclusive between Node and
+    // Provisioner (see bt_mesh_provisioner_enable()'s own "Mismatch role"
+    // check in main.c) - our boot-time esp_ble_mesh_node_prov_enable() call
+    // already locked this device into the Node role, so
+    // provisioner_prov_enable() below would otherwise always fail.
+    // bt_mesh_prov_disable() only actually clears the stored role while the
+    // device isn't genuinely provisioned yet (bt_mesh_is_provisioned()
+    // false) - true here on a lamp choosing this role for the first time.
+    // KNOWN OPEN ISSUE: the stored role has been observed NOT to survive a
+    // reboot reliably once set (a later boot can still see "Mismatch role"/
+    // "Already provisioned" even after this exact call sequence succeeded
+    // on a previous boot) - the boot-time restore path below mirrors this
+    // same sequence, but role persistence itself needs more investigation.
+    esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
+    esp_err_t provEnableErr = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
+    esp_err_t netErr = esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
+    esp_err_t appErr = esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
+    // The Model App Bind to our own models happens in provisioningCallback()'s
+    // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT handler once this
+    // completes - async, not inline here.
+
+    if (provEnableErr != ESP_OK || netErr != ESP_OK || appErr != ESP_OK)
+    {
+        sendFeedback(String(F("[Mesh] Network identity setup failed (enable=")) + String(provEnableErr) +
+                     F(" net=") + String(netErr) + F(" app=") + String(appErr) + F(") - see Serial log"));
+        return;
+    }
 
     String netHex, appHex;
     for (uint8_t i = 0; i < 16; ++i)
@@ -1106,6 +1167,80 @@ void meshSetKnownNodesFromCsv(const String &csv)
             }
         }
     }
+}
+
+static String hexBytes16(const uint8_t bytes[16])
+{
+    String out;
+    out.reserve(32);
+    for (uint8_t i = 0; i < 16; ++i)
+    {
+        if (bytes[i] < 0x10)
+            out += '0';
+        out += String(bytes[i], HEX);
+    }
+    return out;
+}
+
+String meshKeysText()
+{
+    if (!meshHasLocalKeys)
+        return F("[Mesh] No network identity yet - run 'mesh network create' first");
+    return String(F("[Mesh] Keys: net=")) + hexBytes16(meshLocalNetKey) + F(" app=") + hexBytes16(meshLocalAppKey);
+}
+
+String meshExportNrfJson()
+{
+    if (!meshHasLocalKeys)
+        return F("[Mesh] No network identity yet - run 'mesh network create' first");
+
+    String out;
+    out.reserve(512 + (size_t)knownNodeCount * 220);
+    out += F("{\"meshName\":\"Quarzlampe Mesh\",");
+    out += F("\"netKeys\":[{\"name\":\"NetKey\",\"index\":0,\"key\":\"");
+    out += hexBytes16(meshLocalNetKey);
+    out += F("\",\"phase\":0}],");
+    out += F("\"appKeys\":[{\"name\":\"AppKey\",\"index\":0,\"key\":\"");
+    out += hexBytes16(meshLocalAppKey);
+    out += F("\",\"boundNetKey\":0}],");
+    out += F("\"ivIndex\":0,");
+    // Our own provisioner identity, with just its own address (1) reserved -
+    // deliberately NOT the whole low/high range a new provisioner (e.g. the
+    // importing app) might want for itself.
+    out += F("\"provisioners\":[{\"UUID\":\"");
+    out += hexBytes16(devUuid);
+    out += F("\",\"allocatedUnicastRange\":[{\"lowAddress\":\"0001\",\"highAddress\":\"0001\"}]}],");
+    out += F("\"nodes\":[");
+    bool first = true;
+    for (uint8_t i = 0; i < knownNodeCount; ++i)
+    {
+        esp_ble_mesh_node_t *node = esp_ble_mesh_provisioner_get_node_with_addr(knownNodes[i].addr);
+        if (!node)
+            continue; // stale bookkeeping entry (e.g. node removed from the stack's own table) - skip it rather than emit fake data
+        if (!first)
+            out += ',';
+        first = false;
+        char addrHex[5];
+        snprintf(addrHex, sizeof(addrHex), "%04x", knownNodes[i].addr);
+        out += F("{\"UUID\":\"");
+        out += hexBytes16(node->dev_uuid);
+        out += F("\",\"name\":\"");
+        out += knownNodes[i].name[0] ? String(knownNodes[i].name) : (String(F("Lamp 0x")) + addrHex);
+        out += F("\",\"deviceKey\":\"");
+        out += hexBytes16(node->dev_key);
+        out += F("\",\"unicastAddress\":\"");
+        out += addrHex;
+        // Deliberately no "bind" array on either model below - this lamp
+        // doesn't track per-node AppKey-bind confirmation yet (see
+        // meshExportNrfJson()'s own doc comment in lamp_mesh.h), so every
+        // imported node correctly shows up as "not configured" and the
+        // importing app does its own (idempotent) Model App Bind instead of
+        // this export claiming a binding state it hasn't verified.
+        out += F("\",\"elements\":[{\"index\":0,\"models\":["
+                  "{\"modelId\":\"1000\"},{\"modelId\":\"1300\"}]}]}");
+    }
+    out += F("]}");
+    return out;
 }
 #endif // ENABLE_BLE_MESH_PROVISIONER
 

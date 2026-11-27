@@ -42,6 +42,15 @@ void meshSendLightness(uint16_t addr, float percent);
  */
 void meshPublishLocalState();
 
+/// "provisioner" (this lamp has its own network identity - see
+/// meshHasNetworkIdentity()), "node" (this lamp has been provisioned by
+/// something else - nRF Mesh, another lamp, any provisioner), or "none"
+/// (neither has happened yet - a factory-fresh lamp). Always available (not
+/// gated behind ENABLE_BLE_MESH_PROVISIONER) since a plain, non-provisioner
+/// build can still become a "node". Exposed on STATUS| as mesh_role= for the
+/// frontend's per-lamp role display - see memory: mesh role status UI.
+String meshRoleText();
+
 #if ENABLE_BLE_MESH_PROVISIONER
 /**
  * @brief Whether a provisioner scan/add session is currently running - other
@@ -109,6 +118,26 @@ String meshKnownNodesText();
 /// Number of persisted known nodes - cheap enough for the periodic status
 /// line (print.cpp's |mesh_nodes=), unlike the full meshKnownNodesText().
 uint8_t meshKnownNodeCount();
+
+/// This lamp's current NetKey/AppKey as "[Mesh] Keys: net=<32hex>
+/// app=<32hex>" - re-displays what meshNetworkCreate() already printed once,
+/// without having to re-run it (which would be a no-op given the same
+/// values, but there's no reason to make the user remember them instead of
+/// just asking again). Empty-ish placeholder text if meshHasLocalKeys is
+/// false.
+String meshKeysText();
+
+/// Builds a Mesh Configuration Database ("nRF Mesh export") compatible JSON
+/// document covering this lamp's own network identity (as netKeys[0]/
+/// appKeys[0]) and every known node (as a nodes[] entry with its real
+/// deviceKey/UUID/unicastAddress, re-read live from the mesh stack's own
+/// provisioner node table - see esp_ble_mesh_provisioner_get_node_with_addr()
+/// in mesh.cpp). Deliberately omits each model's "bind" array rather than
+/// guessing - an importer then correctly treats every node as "not yet
+/// configured" and does its own (idempotent) Model App Bind, rather than
+/// this lamp claiming a binding state it hasn't verified. Requires
+/// meshHasLocalKeys; returns an error feedback string otherwise.
+String meshExportNrfJson();
 
 // ---------- persistence.cpp's own load/save hooks ----------
 // Raw storage + CSV (de)serialization, same split as gestures.h/gestures.cpp:
