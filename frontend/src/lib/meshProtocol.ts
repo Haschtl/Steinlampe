@@ -204,6 +204,34 @@ export async function createOrJoinNetwork(
   return reply;
 }
 
+/** This lamp's current NetKey/AppKey as hex, or throws if it has no network
+ * identity yet ("mesh network create" never ran). */
+export async function fetchKeys(sendCmd: (cmd: string) => Promise<void>, getLog: GetLog): Promise<{ netKeyHex: string; appKeyHex: string }> {
+  const reply = await sendAndWaitPrefix(sendCmd, getLog, 'mesh keys', '[Mesh]');
+  const m = reply.match(/net=([0-9a-f]{32})\s+app=([0-9a-f]{32})/i);
+  if (!m) throw new Error(reply.replace(/^\[Mesh\]\s*/, ''));
+  return { netKeyHex: m[1], appKeyHex: m[2] };
+}
+
+/** The raw nRF Mesh (Mesh Configuration Database) JSON export text - see
+ * meshExportNrfJson() in src/mesh.cpp for exactly what it contains and why.
+ * Throws with the firmware's own error text if there's no network identity
+ * yet (same "[Mesh] No network identity..." feedback fetchKeys() can hit). */
+export async function fetchNrfExport(sendCmd: (cmd: string) => Promise<void>, getLog: GetLog): Promise<string> {
+  const since = getLog().length;
+  await sendCmd('mesh export nrf');
+  const line = await pollUntil(() => {
+    const log = getLog();
+    for (let i = since; i < log.length; i++) {
+      const l = log[i].line;
+      if (l.startsWith('{') || l.startsWith('[Mesh]')) return l;
+    }
+    return undefined;
+  }, 6000);
+  if (!line.startsWith('{')) throw new Error(line.replace(/^\[Mesh\]\s*/, ''));
+  return line;
+}
+
 /** `addr` as the same lowercase "0x1a2b" form the rest of this module reads
  * back from firmware log lines - used for display and for round-tripping a
  * node's address into a command. */

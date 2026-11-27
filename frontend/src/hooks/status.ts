@@ -163,6 +163,8 @@ export type DeviceStatus = {
   gestCsv?: string;
   meshNet?: boolean;
   meshNodeCount?: number;
+  /** 'provisioner' | 'node' | 'none' - see src/mesh.cpp's meshRoleText(). */
+  meshRole?: 'provisioner' | 'node' | 'none';
   rampOnMs?: number;
   rampOffMs?: number;
   rampOnEase?: string;
@@ -366,6 +368,10 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
         meshNet: Object.prototype.hasOwnProperty.call(kv, 'mesh_net') ? kv.mesh_net === '1' : s.meshNet,
         meshNodeCount: asInt('mesh_nodes') ?? s.meshNodeCount,
+        meshRole:
+          kv.mesh_role === 'provisioner' || kv.mesh_role === 'node' || kv.mesh_role === 'none'
+            ? kv.mesh_role
+            : s.meshRole,
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,

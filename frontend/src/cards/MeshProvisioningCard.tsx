@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, Pencil, PlusCircle, RefreshCw, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Loader2, Pencil, PlusCircle, RefreshCw, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import {
   fallbackNodeLabel,
   fetchDiscovered,
   fetchKnownNodes,
+  fetchNrfExport,
   forgetNode,
   MeshDiscovered,
   MeshNode,
@@ -18,6 +19,37 @@ import {
   stopScan,
 } from '@/lib/meshProtocol';
 import { Trans, useI18n } from '@/i18n';
+import { DeviceStatus } from '@/hooks/status';
+
+// Plain, three-way status badge - this card's own "am I a provisioner, a
+// provisioned node, or neither yet" display (see src/mesh.cpp's
+// meshRoleText()/the mesh_role= status field). Kept dumb/obvious on purpose:
+// the whole point is a user who has no idea what "provisioner" even means
+// can still tell at a glance what state this exact lamp is in, since mixing
+// the two roles up is the single most confusing thing about self-hosted
+// mesh setup.
+function MeshRoleBadge({ role }: { role: DeviceStatus['meshRole'] }) {
+  const { t } = useI18n();
+  if (role === 'provisioner') {
+    return (
+      <span className="chip-muted shrink-0 bg-accent/15 text-accent">
+        {t('label.meshRoleProvisioner', 'Provisioner (manages other lamps)')}
+      </span>
+    );
+  }
+  if (role === 'node') {
+    return (
+      <span className="chip-muted shrink-0 bg-emerald-500/15 text-emerald-400">
+        {t('label.meshRoleNode', 'Provisioned (controlled by another provisioner)')}
+      </span>
+    );
+  }
+  return (
+    <span className="chip-muted shrink-0">
+      {t('label.meshRoleNone', 'Not part of a mesh yet')}
+    </span>
+  );
+}
 
 // Real device-management UI on top of the self-provisioning firmware
 // feature (src/mesh.cpp) - lamps by friendly name, scan results as clickable
@@ -51,6 +83,9 @@ export function MeshProvisioningCard() {
   const [discovered, setDiscovered] = useState<MeshDiscovered[]>([]);
   const [provisioning, setProvisioning] = useState<{ idx: number; progress: string } | null>(null);
   const [provisionError, setProvisionError] = useState<string | null>(null);
+
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const refreshNodes = async () => {
     setNodesLoading(true);
@@ -164,20 +199,57 @@ export function MeshProvisioningCard() {
     }
   };
 
+  // Downloads this lamp's network identity + known nodes as an nRF Mesh
+  // (Mesh Configuration Database) compatible JSON file - lets an external
+  // tool (e.g. Home Assistant's own mesh plugin, if it supports an
+  // "import existing network" flow) pick up the same network without
+  // actually re-provisioning anything through it. See meshExportNrfJson()
+  // in src/mesh.cpp for the exact shape and what it deliberately omits.
+  const exportNrf = async () => {
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const json = await fetchNrfExport(sendCmd, getLog);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'quarzlampe-mesh-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const rssiBars = (rssi: number) => (rssi > -60 ? 3 : rssi > -75 ? 2 : 1);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle><Trans k="title.meshProv">Mesh Network</Trans></CardTitle>
-        <p className="text-sm text-muted">
-          <Trans k="desc.meshProv">
-            Join multiple lamps into one network so they can relay to each other and be controlled together.
-          </Trans>
-        </p>
+      <CardHeader className="items-start">
+        <div>
+          <CardTitle><Trans k="title.meshProv">Mesh Network</Trans></CardTitle>
+          <p className="text-sm text-muted">
+            <Trans k="desc.meshProv">
+              Join multiple lamps into one network so they can relay to each other and be controlled together.
+            </Trans>
+          </p>
+        </div>
+        <MeshRoleBadge role={status.meshRole} />
       </CardHeader>
       <CardContent>
-        {!status.meshNet ? (
+        {status.meshRole === 'node' ? (
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <p className="text-sm text-muted">
+              <Trans k="desc.meshIsNode">
+                This lamp was provisioned into someone else's mesh network (e.g. via another lamp's "Add to mesh",
+                or an app like nRF Mesh) - it's controlled from there, not managed from this page.
+              </Trans>
+            </p>
+          </div>
+        ) : !status.meshNet ? (
           <div className="space-y-2 rounded-lg border border-border p-3">
             <div className="text-sm font-medium"><Trans k="label.meshNotSetUp">No mesh network yet</Trans></div>
             <p className="text-xs text-muted">
@@ -370,6 +442,20 @@ export function MeshProvisioningCard() {
                     </Button>
                   </div>
                   {networkError ? <p className="text-xs text-red-400">{networkError}</p> : null}
+
+                  <div className="border-t border-border pt-2 space-y-2">
+                    <p className="text-xs text-muted">
+                      <Trans k="desc.meshExportNrf">
+                        Export this network (keys + known lamps) as an nRF Mesh file - for apps/integrations that can
+                        import an existing network instead of provisioning through them directly.
+                      </Trans>
+                    </p>
+                    <Button variant="ghost" size="sm" disabled={exportBusy} onClick={exportNrf}>
+                      {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {' '}<Trans k="btn.meshExportNrf">Export as nRF Mesh JSON</Trans>
+                    </Button>
+                    {exportError ? <p className="text-xs text-red-400">{exportError}</p> : null}
+                  </div>
                 </div>
               ) : null}
             </div>
