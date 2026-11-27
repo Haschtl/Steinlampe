@@ -3,8 +3,24 @@ name: CI - Build Firmware
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'partitions/**'
+      - 'platformio.ini'
+      - 'sdkconfig.defaults'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'partitions/**'
+      - 'platformio.ini'
+      - 'sdkconfig.defaults'
+      - '.github/workflows/ci.yml'
 
 jobs:
   build:

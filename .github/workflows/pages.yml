@@ -3,6 +3,21 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [ main ]
+    paths:
+      # Firmware sources too, not just frontend/ - copy-firmware.mjs builds
+      # every real env and bundles the resulting binaries into the site's
+      # OTA manifest, so a firmware-only change does change deployed output.
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'partitions/**'
+      - 'platformio.ini'
+      - 'sdkconfig.defaults'
+      - 'frontend/**'
+      - 'scripts/copy-firmware.mjs'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
