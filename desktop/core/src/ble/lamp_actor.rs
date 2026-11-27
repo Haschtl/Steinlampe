@@ -41,7 +41,18 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30);
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 
 fn set_connection(state_tx: &watch::Sender<LampState>, conn: ConnectionState) {
-    state_tx.send_modify(|s| s.connection = conn);
+    // `last_error` is otherwise only ever set, never cleared (see
+    // set_disconnected_with_error and the NotTrusted branch below) - without
+    // this, a stale "toggle its switch/poti to confirm pairing" (or any
+    // other past error) would keep showing in the console/tray forever,
+    // even after a fully successful reconnect.
+    let clear_error = conn == ConnectionState::Connected;
+    state_tx.send_modify(|s| {
+        s.connection = conn;
+        if clear_error {
+            s.last_error = None;
+        }
+    });
 }
 
 fn set_disconnected_with_error(state_tx: &watch::Sender<LampState>, err: impl ToString) {

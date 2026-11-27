@@ -313,6 +313,11 @@ fn lamp_status_color(lamp: &LampSnapshot) -> [u8; 3] {
         [0x5b, 0xe6, 0xff]
     } else if lamp.connection == ConnectionState::Connected {
         [0x2a, 0x6b, 0x78]
+    } else if lamp.connection == ConnectionState::AwaitingPairing {
+        // Distinct from the generic "just not connected" grey below - this
+        // one needs the user to physically do something (toggle the lamp's
+        // switch/poti), not just wait.
+        [0xf2, 0xb5, 0x0a]
     } else {
         [0x5b, 0x61, 0x70]
     }
@@ -332,7 +337,7 @@ fn ordered_lamp_colors(lamps: &[LampSnapshot], index: &mut LampIndex) -> Vec<[u8
 fn tooltip_text(lang: Lang, lamps: &[LampSnapshot]) -> String {
     let connected = lamps.iter().filter(|l| l.connection == ConnectionState::Connected).count();
     let on = lamps.iter().filter(|l| l.connection == ConnectionState::Connected && l.lamp_on == Some(true)).count();
-    if connected == 0 {
+    let mut text = if connected == 0 {
         format!("Quarzlampe \u{2014} {}", t(lang, "tray.tooltipNoLamps"))
     } else {
         format!(
@@ -340,7 +345,17 @@ fn tooltip_text(lang: Lang, lamps: &[LampSnapshot]) -> String {
             t(lang, "tray.tooltipConnectedWord"),
             t(lang, "tray.tooltipOnWord")
         )
+    };
+    // Every lamp with a last_error gets its own line - most commonly
+    // AwaitingPairing's "toggle its switch/poti to confirm pairing", which
+    // otherwise had no surface reaching the tray tooltip/icon at all (see
+    // LampSnapshot::last_error's doc comment).
+    for lamp in lamps {
+        if let Some(err) = &lamp.last_error {
+            text.push_str(&format!("\n{}: {err}", lamp.name));
+        }
     }
+    text
 }
 
 fn spawn_or_note(console_child: &mut Option<Child>, console_path: &std::path::Path) {
@@ -395,6 +410,14 @@ struct LampSnapshot {
     connection: ConnectionState,
     lamp_on: Option<bool>,
     brightness_pct: Option<f32>,
+    /// Surfaced in the tray tooltip when set (see `tooltip_text`) - without
+    /// this, a lamp sitting in `ConnectionState::AwaitingPairing` (needs its
+    /// switch/poti toggled to confirm pairing) gave zero signal anywhere the
+    /// tray reaches without opening its dropdown menu: the tooltip just
+    /// counted it as "not connected" and the icon color didn't distinguish
+    /// it either (see `lamp_status_color`). The console window already
+    /// rendered this same field - the tray daemon just never carried it.
+    last_error: Option<String>,
 }
 
 fn snapshot_lamps(state: &Arc<Mutex<DaemonState>>) -> Vec<LampSnapshot> {
@@ -410,6 +433,7 @@ fn snapshot_lamps(state: &Arc<Mutex<DaemonState>>) -> Vec<LampSnapshot> {
                 connection: s.connection.clone(),
                 lamp_on: s.lamp_on,
                 brightness_pct: s.brightness_pct,
+                last_error: s.last_error.clone(),
             }
         })
         .collect()
