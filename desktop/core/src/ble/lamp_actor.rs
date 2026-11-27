@@ -84,6 +84,30 @@ pub async fn run_lamp_actor(
                     RunOutcome::Disconnected => {
                         set_connection(&state_tx, ConnectionState::Reconnecting);
                     }
+                    RunOutcome::UserDisconnected => {
+                        // Unlike RunOutcome::Disconnected above (an
+                        // unexpected drop, which should retry), the user
+                        // asked for this - stay idle at Disconnected until
+                        // a manual Reconnect comes in, same as the
+                        // give-up-after-failures loop below does.
+                        set_connection(&state_tx, ConnectionState::Disconnected);
+                        loop {
+                            match cmd_rx.recv().await {
+                                Some(LampCommand::Reconnect) => {
+                                    consecutive_failures = 0;
+                                    backoff = INITIAL_BACKOFF;
+                                    break;
+                                }
+                                Some(LampCommand::Shutdown) | None => {
+                                    set_connection(&state_tx, ConnectionState::Disconnected);
+                                    return;
+                                }
+                                // SendLine/Disconnect while idle: nothing to do, keep waiting.
+                                Some(LampCommand::SendLine(_)) | Some(LampCommand::Disconnect) => {}
+                            }
+                        }
+                        continue;
+                    }
                 }
             }
             Err(ConnectError::NotTrusted) => {
@@ -227,7 +251,12 @@ async fn connect_once(peripheral: &Peripheral) -> Result<(Characteristic, mpsc::
 }
 
 enum RunOutcome {
+    /// Unexpected drop (notification stream ended, write failed) - the
+    /// outer loop should retry with backoff.
     Disconnected,
+    /// `LampCommand::Disconnect` was received - the outer loop must NOT
+    /// auto-retry this one; see its handling above.
+    UserDisconnected,
     Shutdown,
 }
 
@@ -263,7 +292,7 @@ async fn run_connected(
                     }
                     Some(LampCommand::Disconnect) => {
                         let _ = peripheral.disconnect().await;
-                        return RunOutcome::Disconnected;
+                        return RunOutcome::UserDisconnected;
                     }
                     Some(LampCommand::Shutdown) | None => {
                         let _ = peripheral.disconnect().await;
