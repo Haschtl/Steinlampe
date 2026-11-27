@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Loader2, Pencil, PlusCircle, RefreshCw, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useConnection } from '@/context/connection';
 import {
@@ -15,6 +16,7 @@ import {
   MeshNode,
   provisionDevice,
   renameNode,
+  resetMeshIdentity,
   startScan,
   stopScan,
 } from '@/lib/meshProtocol';
@@ -86,6 +88,11 @@ export function MeshProvisioningCard() {
 
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetDone, setResetDone] = useState(false);
 
   const refreshNodes = async () => {
     setNodesLoading(true);
@@ -221,6 +228,23 @@ export function MeshProvisioningCard() {
       setExportError(e instanceof Error ? e.message : String(e));
     } finally {
       setExportBusy(false);
+    }
+  };
+
+  // Resets this lamp's own mesh identity (role, network, known nodes) back
+  // to factory-fresh - see meshResetIdentity() in src/mesh.cpp. Does NOT
+  // touch any other lamp in the mesh; they stay exactly as provisioned.
+  const resetMesh = async () => {
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      await resetMeshIdentity(sendCmd, getLog);
+      setResetDone(true);
+      setNodes([]);
+    } catch (e) {
+      setResetError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -455,6 +479,54 @@ export function MeshProvisioningCard() {
                       {' '}<Trans k="btn.meshExportNrf">Export as nRF Mesh JSON</Trans>
                     </Button>
                     {exportError ? <p className="text-xs text-red-400">{exportError}</p> : null}
+                  </div>
+
+                  <div className="border-t border-border pt-2 space-y-2">
+                    <p className="text-xs text-muted">
+                      <Trans k="desc.meshResetThis">
+                        Give up this lamp's role (Provisioner or whatever it currently is) and forget its network -
+                        for starting over on this exact lamp. Other lamps already in the mesh are not affected.
+                      </Trans>
+                    </p>
+                    <Dialog open={resetOpen} onOpenChange={(v) => { setResetOpen(v); if (v) { setResetError(null); setResetDone(false); } }}>
+                      <DialogTrigger asChild>
+                        <Button variant="danger" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                          {' '}<Trans k="btn.meshResetThis">Reset this lamp's mesh identity</Trans>
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle><Trans k="title.meshResetConfirm">Reset this lamp's mesh identity?</Trans></DialogTitle>
+                          <DialogDescription>
+                            <Trans k="desc.meshResetConfirm">
+                              This clears this lamp's NetKey/AppKey, its role, and its list of known lamps - as if
+                              "mesh network create" had never run. A reboot is needed afterwards for it to fully take
+                              effect. Other lamps already provisioned into this mesh are NOT reset and keep working
+                              with each other; this lamp just stops being their Provisioner (or whatever role it had).
+                            </Trans>
+                          </DialogDescription>
+                        </DialogHeader>
+                        {resetDone ? (
+                          <p className="text-sm text-emerald-400">
+                            <Trans k="label.meshResetDone">Done - reboot this lamp for it to take full effect.</Trans>
+                          </p>
+                        ) : (
+                          <>
+                            <DialogFooter className="flex justify-end gap-2">
+                              <Button variant="ghost" onClick={() => setResetOpen(false)}>
+                                <Trans k="btn.cancel">Cancel</Trans>
+                              </Button>
+                              <Button variant="danger" disabled={resetBusy} onClick={resetMesh}>
+                                {resetBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                {' '}<Trans k="btn.confirm">Yes, reset</Trans>
+                              </Button>
+                            </DialogFooter>
+                            {resetError ? <p className="text-xs text-red-400">{resetError}</p> : null}
+                          </>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               ) : null}

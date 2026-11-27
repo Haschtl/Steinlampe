@@ -232,6 +232,15 @@ export async function fetchNrfExport(sendCmd: (cmd: string) => Promise<void>, ge
   return line;
 }
 
+/** Resets this lamp's mesh identity back to factory-fresh (no role, no
+ * network, no known nodes) - see meshResetIdentity() in src/mesh.cpp. Does
+ * NOT reboot the lamp itself; the firmware's own feedback already says a
+ * reboot is needed for the cleared role to take full effect. */
+export async function resetMeshIdentity(sendCmd: (cmd: string) => Promise<void>, getLog: GetLog): Promise<void> {
+  const reply = await sendAndWaitPrefix(sendCmd, getLog, 'mesh reset', '[Mesh]');
+  if (!reply.startsWith('[Mesh] Reset to factory-fresh')) throw new Error(reply.replace(/^\[Mesh\]\s*/, ''));
+}
+
 /** `addr` as the same lowercase "0x1a2b" form the rest of this module reads
  * back from firmware log lines - used for display and for round-tripping a
  * node's address into a command. */
