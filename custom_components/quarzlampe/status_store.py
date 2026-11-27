@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from typing import Any
 
@@ -273,58 +272,6 @@ class LampStatusStore:
                     "music_kick_ms": _as_float(kv.get("music_kick_ms")),
                 }
             )
-        elif line.startswith("[Clap]"):
-            handled = True
-            lower = line.lower()
-            thr = re.search(r"thr=([0-9.]+)", lower)
-            cool = re.search(r"cool=([0-9]+)", lower)
-            self.data.update(
-                {
-                    "clap": "on" in lower,
-                    "clap_thr": float(thr.group(1)) if thr else self.data.get("clap_thr"),
-                    "clap_cool": int(cool.group(1)) if cool else self.data.get("clap_cool"),
-                }
-            )
-        elif line.startswith("[Touch]"):
-            handled = True
-            base = re.search(r"base=([0-9]+)", line)
-            raw = re.search(r"raw=([0-9]+)", line)
-            delta = re.search(r"delta=([-0-9]+)", line)
-            thr_on = re.search(r"thrOn=([0-9]+)", line)
-            thr_off = re.search(r"thrOff=([0-9]+)", line)
-            self.data.update(
-                {
-                    "touch_base": int(base.group(1)) if base else self.data.get("touch_base"),
-                    "touch_raw": int(raw.group(1)) if raw else self.data.get("touch_raw"),
-                    "touch_delta": int(delta.group(1))
-                    if delta
-                    else self.data.get("touch_delta"),
-                    "touch_thr_on": int(thr_on.group(1))
-                    if thr_on
-                    else self.data.get("touch_thr_on"),
-                    "touch_thr_off": int(thr_off.group(1))
-                    if thr_off
-                    else self.data.get("touch_thr_off"),
-                    "touch_active": "active=1" in line,
-                }
-            )
-        elif line.startswith("[Quick]"):
-            handled = True
-            self.data["quick"] = line.replace("[Quick]", "").strip()
-        elif line.startswith("[Custom]"):
-            handled = True
-            len_match = re.search(r"len=([0-9]+)", line)
-            step_match = re.search(r"stepMs=([0-9]+)", line)
-            self.data.update(
-                {
-                    "custom_len": int(len_match.group(1))
-                    if len_match
-                    else self.data.get("custom_len"),
-                    "custom_step_ms": int(step_match.group(1))
-                    if step_match
-                    else self.data.get("custom_step_ms"),
-                }
-            )
         elif line.startswith("CUSTOM|"):
             handled = True
             parts = line.split("|")[1:]
@@ -346,31 +293,6 @@ class LampStatusStore:
                     "custom_csv": kv.get("vals") or self.data.get("custom_csv"),
                 }
             )
-        elif line.startswith("Pattern "):
-            handled = True
-            mode = re.search(r"Pattern\s+([0-9]+)/([0-9]+)", line)
-            name_match = re.search(r"'([^']+)'", line)
-            auto_match = re.search(r"AutoCycle=(ON|OFF)", line)
-            self.data.update(
-                {
-                    "pattern": int(mode.group(1)) if mode else self.data.get("pattern"),
-                    "pattern_total": int(mode.group(2))
-                    if mode
-                    else self.data.get("pattern_total"),
-                    "pattern_name": name_match.group(1) if name_match else self.data.get("pattern_name"),
-                    "auto": auto_match.group(1) == "ON" if auto_match else self.data.get("auto"),
-                }
-            )
-        elif line.startswith("PresenceBLE="):
-            handled = True
-            self.data["presence_ble"] = line.replace("PresenceBLE=", "").strip()
-        elif line.startswith("Device="):
-            handled = True
-            # Example: Device=XX:YY | Service=... | Cmd=... | Status=...
-            mac = line.split("|")[0].replace("Device=", "").strip()
-            if mac:
-                self.data["ble_mac"] = mac
-
         if handled:
             self._notify_update()
         return handled
