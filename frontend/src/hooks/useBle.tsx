@@ -5,6 +5,8 @@ import { DeviceStatus, parseStatusLine } from './status';
 
 type LogEntry = { ts: number; line: string };
 
+const BLE_PAIR_PENDING_TOAST_ID = 'ble-pair-pending';
+
 type BleApi = {
   status: DeviceStatus;
   log: LogEntry[];
@@ -189,10 +191,22 @@ export function useBle(): BleApi {
     // conditions can become true in either order.
     if (statusEndSeenRef.current && statusCoreSeenRef.current) {
       statusEndWaiterRef.current?.();
+      // A completed status round-trip means the device is trusted (either
+      // it already was, or the physical gesture the toast below asked for
+      // just happened) - dismiss it rather than leaving it to sit there
+      // claiming confirmation is still needed.
+      toast.dismiss(BLE_PAIR_PENDING_TOAST_ID);
     }
     if (line.startsWith('BLE_PAIR_PENDING|') && !blePairPendingRef.current) {
       blePairPendingRef.current = true;
-      toast.info('Lamp needs physical confirmation - toggle the switch or poti to pair');
+      // autoClose: false (like the stale-bond toast above) - this is a
+      // live ~20s countdown on the device (BLE_PAIR_TIMEOUT_MS in
+      // comms.cpp), so the default toast duration could easily expire
+      // before the user notices and walks over to touch the switch/poti.
+      toast.info('Lamp needs physical confirmation - toggle the switch or poti to pair', {
+        toastId: BLE_PAIR_PENDING_TOAST_ID,
+        autoClose: false,
+      });
     }
   }, [parseStatus, pushLog]);
 
