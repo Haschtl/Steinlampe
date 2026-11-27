@@ -94,6 +94,15 @@ export function useBle(): BleApi {
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
   const knownDevicesRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-devices') || '{}'));
   const [knownDevices, setKnownDevices] = useState<Record<string, string>>(knownDevicesRef.current);
+  // tryReconnectLast()'s own "no known device yet, just try whatever the
+  // browser already granted BLE permission for" fallback used to fire right
+  // back after forgetDevice() cleared ql-last-device-id below - clearing it
+  // is exactly the signal that fallback watches for, so the app kept
+  // silently reconnecting to a device the user had just explicitly removed.
+  // This flag disables that one fallback until a real connect happens again
+  // (cleared in connectWithDevice's success path) - it doesn't touch the
+  // normal byId(lastId)/byId(urlBleId) paths at all.
+  const autoConnectAnyDisabledRef = useRef<boolean>(localStorage.getItem('ql-autoconnect-any-disabled') === '1');
   const forgetDevice = useCallback((id: string) => {
     if (knownDevicesRef.current[id]) {
       delete knownDevicesRef.current[id];
@@ -108,6 +117,21 @@ export function useBle(): BleApi {
       lastDeviceIdRef.current = null;
       localStorage.removeItem('ql-last-device-id');
       localStorage.removeItem('ql-last-device-name');
+    }
+    autoConnectAnyDisabledRef.current = true;
+    localStorage.setItem('ql-autoconnect-any-disabled', '1');
+    // Best-effort: actually revoke the browser's own remembered Web
+    // Bluetooth permission grant for this device, not just our own
+    // bookkeeping above - without this, navigator.bluetooth.getDevices()
+    // keeps returning it forever regardless of anything the app forgets.
+    // BluetoothDevice.forget() isn't guaranteed on every browser, so the
+    // flag above is the real fix; this is a bonus on top of it.
+    if (navigator.bluetooth?.getDevices) {
+      navigator.bluetooth
+        .getDevices()
+        .then((devices) => devices.find((d) => d.id === id))
+        .then((dev) => dev?.forget())
+        .catch(() => {});
     }
   }, []);
   const renameDevice = useCallback((id: string, name: string) => {
@@ -453,6 +477,8 @@ export function useBle(): BleApi {
         lastDeviceIdRef.current = dev.id || null;
         if (dev.id) localStorage.setItem('ql-last-device-id', dev.id);
         if (dev.name) localStorage.setItem('ql-last-device-name', friendlyName);
+        autoConnectAnyDisabledRef.current = false;
+        localStorage.removeItem('ql-autoconnect-any-disabled');
         if (dev.id) {
           knownDevicesRef.current[dev.id] = dev.name || 'BLE';
           localStorage.setItem('ql-known-devices', JSON.stringify(knownDevicesRef.current));
@@ -570,7 +596,9 @@ export function useBle(): BleApi {
       const match =
         byId(urlBleId) ||
         (allowAuto ? byId(lastId) : undefined) ||
-        (allowAuto && !urlBleId && !lastId ? devices.find((d) => d.name) : undefined);
+        (allowAuto && !urlBleId && !lastId && !autoConnectAnyDisabledRef.current
+          ? devices.find((d) => d.name)
+          : undefined);
       if (match) {
         const friendly = (match.id && knownDevicesRef.current[match.id]) || match.name || 'Quarzlampe';
         setAutoReconnectDeviceName(friendly);

@@ -236,6 +236,28 @@ export function RootLayout() {
             </motion.div>
           )}
         </AnimatePresence>
+        <AnimatePresence>
+          {status.connected && !status.statusReady && (
+            <motion.div
+              key="status-loading-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md px-3"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className="flex flex-col items-center gap-3 rounded-3xl border border-border/80 bg-panel/90 p-6 shadow-2xl"
+              >
+                <Loader2 className="h-8 w-8 animate-spin text-accent" />
+                <p className="text-sm text-muted">{t('status.loadingState', 'Loading lamp status…')}</p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <header className="sticky top-0 z-10 bg-header backdrop-blur-sm px-4 py-3 shadow-lg shadow-black/20">
           <div className="mx-auto flex max-w-6xl flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
