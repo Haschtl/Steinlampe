@@ -67,6 +67,16 @@ constexpr const char *TAG = "mesh";
 // rest stay zero.
 uint8_t devUuid[16] = {0};
 
+// Set once esp_ble_mesh_init() actually succeeds (meshSetup(), called
+// asynchronously from bleOnSync() once NimBLE's host task syncs - well
+// after boot). meshRoleText() checks this before calling any
+// esp_ble_mesh_node_*()/provisioner_*() query: calling those before mesh
+// itself is initialized hits an uncreated internal recursive mutex and
+// logs "BLE_MESH: Lock/Unlock, no recursive mutex" on every single early
+// STATUS| print (confirmed on real hardware - printStatusCore() runs once
+// right at boot, long before meshSetup() does).
+bool meshInitDone = false;
+
 esp_ble_mesh_prov_t provision = {
     .uuid = devUuid,
     .output_size = 0,
@@ -717,6 +727,7 @@ void meshSetup()
         ESP_LOGE(TAG, "esp_ble_mesh_init failed: %d", err);
         return;
     }
+    meshInitDone = true;
     // esp_ble_mesh_init() -> bt_mesh_proxy_server_init() unconditionally
     // overwrites its own internal `device_name` buffer (esp_ble_mesh/core/
     // proxy_server.c) to the hardcoded "ESP-BLE-MESH" - confirmed on real
@@ -775,7 +786,12 @@ void meshSetup()
         if (myAddr == 0)
             myAddr = 1; // not yet a provisioned node - this lamp is the network root
         esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
-        esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
+        // net_idx 0 (ESP_BLE_MESH_KEY_PRIMARY) is reserved - add_local_net_key()
+        // rejects it outright (ESP_ERR_INVALID_ARG); provisioner_prov_enable()
+        // above already auto-creates the primary NetKey (via its own
+        // bt_mesh_provisioner_net_create()) with a random value, so this has
+        // to UPDATE that key to our chosen value instead of "add"-ing it.
+        esp_ble_mesh_provisioner_update_local_net_key(meshLocalNetKey, 0);
         esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
         // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT (above) does
         // the Model App Bind to our own models once this completes.
@@ -877,6 +893,8 @@ void meshPublishLocalState()
 
 String meshRoleText()
 {
+    if (!meshInitDone)
+        return F("none");
 #if ENABLE_BLE_MESH_PROVISIONER
     if (meshHasLocalKeys)
         return F("provisioner");
@@ -884,6 +902,28 @@ String meshRoleText()
     if (esp_ble_mesh_node_is_provisioned())
         return F("node");
     return F("none");
+}
+
+String meshResetIdentity()
+{
+    // The official "forget everything, as if factory new" API - clears the
+    // stored mesh/role flag along with every other persisted mesh/* NVS
+    // entry (net/app keys, IV index, dev key, ...), not just our own
+    // meshHasLocalKeys bookkeeping below. Added specifically to recover
+    // from (and test a hypothesis about) a device whose role got stuck -
+    // see memory: mesh-self-provisioning-bugs-and-nrf-export, "role
+    // persistence across reboot" open issue.
+    esp_err_t err = esp_ble_mesh_node_local_reset();
+#if ENABLE_BLE_MESH_PROVISIONER
+    meshHasLocalKeys = false;
+    memset(meshLocalNetKey, 0, sizeof(meshLocalNetKey));
+    memset(meshLocalAppKey, 0, sizeof(meshLocalAppKey));
+    knownNodeCount = 0;
+    saveSettings();
+#endif
+    if (err != ESP_OK)
+        return String(F("[Mesh] Reset failed: ")) + String(err);
+    return F("[Mesh] Reset to factory-fresh (unprovisioned, no role) - reboot to take full effect");
 }
 
 #if ENABLE_BLE_MESH_PROVISIONER
@@ -922,14 +962,14 @@ void meshNetworkCreate(const uint8_t *netKey, const uint8_t *appKey)
     // bt_mesh_prov_disable() only actually clears the stored role while the
     // device isn't genuinely provisioned yet (bt_mesh_is_provisioned()
     // false) - true here on a lamp choosing this role for the first time.
-    // KNOWN OPEN ISSUE: the stored role has been observed NOT to survive a
-    // reboot reliably once set (a later boot can still see "Mismatch role"/
-    // "Already provisioned" even after this exact call sequence succeeded
-    // on a previous boot) - the boot-time restore path below mirrors this
-    // same sequence, but role persistence itself needs more investigation.
     esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
     esp_err_t provEnableErr = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
-    esp_err_t netErr = esp_ble_mesh_provisioner_add_local_net_key(meshLocalNetKey, 0);
+    // net_idx 0 is reserved (ESP_BLE_MESH_KEY_PRIMARY) - add_local_net_key()
+    // rejects it outright; provisioner_prov_enable() above already
+    // auto-created the primary NetKey with a random value via its own
+    // bt_mesh_provisioner_net_create(), so this UPDATEs that key to our
+    // chosen value instead.
+    esp_err_t netErr = esp_ble_mesh_provisioner_update_local_net_key(meshLocalNetKey, 0);
     esp_err_t appErr = esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
     // The Model App Bind to our own models happens in provisioningCallback()'s
     // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT handler once this

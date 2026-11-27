@@ -51,6 +51,15 @@ void meshPublishLocalState();
 /// frontend's per-lamp role display - see memory: mesh role status UI.
 String meshRoleText();
 
+/// Resets this lamp's mesh identity back to factory-fresh - no role, no
+/// provisioning, as if it had never run "mesh network create" or been
+/// provisioned by anything. Calls the official
+/// esp_ble_mesh_node_local_reset() (clears every mesh/* NVS entry, not just
+/// our own bookkeeping) plus clears meshHasLocalKeys/known nodes when the
+/// Provisioner role is built in. A reboot is needed for the cleared role to
+/// actually take effect in the mesh stack's own in-memory state.
+String meshResetIdentity();
+
 #if ENABLE_BLE_MESH_PROVISIONER
 /**
  * @brief Whether a provisioner scan/add session is currently running - other

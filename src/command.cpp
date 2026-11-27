@@ -418,6 +418,10 @@ static void cmd_Mesh(const String &line, const String &lower)
     {
         sendFeedback(meshKeysText());
     }
+    else if (args == "reset")
+    {
+        sendFeedback(meshResetIdentity());
+    }
     else if (args == "export nrf")
     {
         sendFeedback(meshExportNrfJson());
