@@ -311,6 +311,41 @@ esp_ble_mesh_comp_t composition = {
 void recordDiscovered(const uint8_t uuid[16], const esp_ble_mesh_bd_addr_t addr,
                        esp_ble_mesh_addr_type_t addrType, int8_t rssi);
 void beginNodeConfig(uint16_t targetAddr);
+
+// ---------- Local network identity setup (Provisioner role choice) ----------
+// meshNetworkCreate()/the boot-time local-key restore both need the exact
+// same sequence: release the Node bearer, enable the Provisioner bearer,
+// then overwrite the auto-created primary NetKey with our chosen value.
+// Every one of those esp_ble_mesh_provisioner_*()/node_prov_disable() calls
+// just queues work on another task (btc_transfer_context) and returns
+// before it's actually done - firing them back-to-back with no wait, as
+// this code originally did, is a real, confirmed-on-hardware race (an
+// early boot occasionally hit "Invalid address"/"Failed to init prov
+// info"/"NetKey 0x0000 not found" - see memory:
+// mesh-self-provisioning-bugs-and-nrf-export). This state machine instead
+// waits for each step's own *_COMP_EVT (handled in provisioningCallback()
+// below) before firing the next call, mirroring the node-configuration
+// state machine (ProvStep/onConfigStepResult()) defined further down.
+enum NetSetupStep : uint8_t
+{
+    NET_SETUP_IDLE = 0,
+    NET_SETUP_AWAIT_ADDR,
+    NET_SETUP_AWAIT_NODE_DISABLE,
+    NET_SETUP_AWAIT_PROV_ENABLE,
+    NET_SETUP_AWAIT_NETKEY_UPDATE,
+    // AppKey add is the terminal step - it already has its own event
+    // handler (ADD_LOCAL_APP_KEY_COMP_EVT below), shared with every other
+    // path that adds the local AppKey, so no separate "await" state here.
+};
+NetSetupStep netSetupStep = NET_SETUP_IDLE;
+uint32_t netSetupDueMs = 0;
+constexpr uint32_t NET_SETUP_STEP_TIMEOUT_MS = 4000;
+
+void failNetworkSetup(const String &reason)
+{
+    sendFeedback(String(F("[Mesh] Network identity setup failed: ")) + reason);
+    netSetupStep = NET_SETUP_IDLE;
+}
 #endif
 
 void provisioningCallback(esp_ble_mesh_prov_cb_event_t event, esp_ble_mesh_prov_cb_param_t *param)
@@ -332,8 +367,66 @@ void provisioningCallback(esp_ble_mesh_prov_cb_event_t event, esp_ble_mesh_prov_
         sendFeedback(F("[Mesh] Reset to unprovisioned"));
         break;
 #if ENABLE_BLE_MESH_PROVISIONER
+    case ESP_BLE_MESH_PROVISIONER_SET_PRIMARY_ELEM_ADDR_COMP_EVT:
+        if (netSetupStep == NET_SETUP_AWAIT_ADDR)
+        {
+            if (param->provisioner_set_primary_elem_addr_comp.err_code != 0)
+            {
+                failNetworkSetup(String(F("set address rc=")) + String(param->provisioner_set_primary_elem_addr_comp.err_code));
+                break;
+            }
+            netSetupStep = NET_SETUP_AWAIT_NODE_DISABLE;
+            netSetupDueMs = millis() + NET_SETUP_STEP_TIMEOUT_MS;
+            esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
+        }
+        break;
+    case ESP_BLE_MESH_NODE_PROV_DISABLE_COMP_EVT:
+        if (netSetupStep == NET_SETUP_AWAIT_NODE_DISABLE)
+        {
+            // bt_mesh_prov_disable() only actually clears the stored Node
+            // role while this lamp isn't genuinely provisioned yet - see
+            // meshNetworkCreate()'s own doc comment. A nonzero err_code
+            // here means that precondition didn't hold (e.g. this exact
+            // lamp was itself joined to someone else's network already).
+            if (param->node_prov_disable_comp.err_code != 0)
+            {
+                failNetworkSetup(String(F("release Node role rc=")) + String(param->node_prov_disable_comp.err_code));
+                break;
+            }
+            netSetupStep = NET_SETUP_AWAIT_PROV_ENABLE;
+            netSetupDueMs = millis() + NET_SETUP_STEP_TIMEOUT_MS;
+            esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
+        }
+        break;
     case ESP_BLE_MESH_PROVISIONER_PROV_ENABLE_COMP_EVT:
         ESP_LOGI(TAG, "provisioner enable, err=%d", param->provisioner_prov_enable_comp.err_code);
+        if (netSetupStep == NET_SETUP_AWAIT_PROV_ENABLE)
+        {
+            if (param->provisioner_prov_enable_comp.err_code != 0)
+            {
+                failNetworkSetup(String(F("enable Provisioner rc=")) + String(param->provisioner_prov_enable_comp.err_code));
+                break;
+            }
+            netSetupStep = NET_SETUP_AWAIT_NETKEY_UPDATE;
+            netSetupDueMs = millis() + NET_SETUP_STEP_TIMEOUT_MS;
+            esp_ble_mesh_provisioner_update_local_net_key(meshLocalNetKey, 0);
+        }
+        break;
+    case ESP_BLE_MESH_PROVISIONER_UPDATE_LOCAL_NET_KEY_COMP_EVT:
+        if (netSetupStep == NET_SETUP_AWAIT_NETKEY_UPDATE)
+        {
+            if (param->provisioner_update_net_key_comp.err_code != 0)
+            {
+                failNetworkSetup(String(F("update NetKey rc=")) + String(param->provisioner_update_net_key_comp.err_code));
+                break;
+            }
+            // Done waiting ourselves - AppKey add has its own event handler
+            // below (shared with every other local-AppKey-add path), which
+            // takes it from here (Model App Bind + the final "ready"/
+            // "failed" feedback).
+            netSetupStep = NET_SETUP_IDLE;
+            esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
+        }
         break;
     case ESP_BLE_MESH_PROVISIONER_PROV_DISABLE_COMP_EVT:
         ESP_LOGI(TAG, "provisioner disable, err=%d", param->provisioner_prov_disable_comp.err_code);
@@ -534,6 +627,28 @@ ProvStep provStep = PROV_STEP_IDLE;
 uint16_t provTargetAddr = 0;
 uint16_t provTargetGroup = 0;
 uint8_t provTargetUuid[16] = {0};
+
+// Starts (or restarts, on every boot that has local keys) the local
+// network-identity setup state machine - see its enum/globals/
+// failNetworkSetup() forward-declared near provisioningCallback() above,
+// for why this needs to be event-driven rather than firing every
+// esp_ble_mesh_provisioner_*() call back-to-back. meshLocalNetKey/
+// meshLocalAppKey must already hold the values to apply before calling
+// this.
+void beginNetworkSetup()
+{
+    if (netSetupStep != NET_SETUP_IDLE)
+    {
+        failNetworkSetup(F("another setup was already running - retry"));
+        return;
+    }
+    uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
+    if (myAddr == 0)
+        myAddr = 1; // not yet a provisioned node - this lamp is the network root
+    netSetupStep = NET_SETUP_AWAIT_ADDR;
+    netSetupDueMs = millis() + NET_SETUP_STEP_TIMEOUT_MS;
+    esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
+}
 
 bool scanSessionActive = false;
 uint32_t scanSessionDueMs = 0;
@@ -768,35 +883,13 @@ void meshSetup()
     // on every boot, same idempotent path meshNetworkCreate() itself uses.
     if (meshHasLocalKeys)
     {
-        // ESP-IDF's mesh/role flag is mutually exclusive between Node and
-        // Provisioner (see bt_mesh_provisioner_enable()'s "Mismatch role"
-        // check) - a lamp that has chosen to be a Provisioner must release
-        // the Node role before re-applying its local keys on every boot,
-        // same as meshNetworkCreate() does when first choosing that role.
-        // node_prov_disable() only actually clears the persisted role while
-        // not yet genuinely provisioned (bt_mesh_is_provisioned() false) -
-        // true here, since a lamp that chose Provisioner was never itself
-        // joined to someone else's network.
-        esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
-        esp_err_t pvnrErr = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
-        if (pvnrErr != ESP_OK)
-            ESP_LOGW(TAG, "provisioner_prov_enable (boot restore) failed: %d", pvnrErr);
-
-        uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
-        if (myAddr == 0)
-            myAddr = 1; // not yet a provisioned node - this lamp is the network root
-        esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
-        // net_idx 0 (ESP_BLE_MESH_KEY_PRIMARY) is reserved - add_local_net_key()
-        // rejects it outright (ESP_ERR_INVALID_ARG); provisioner_prov_enable()
-        // above already auto-creates the primary NetKey (via its own
-        // bt_mesh_provisioner_net_create()) with a random value, so this has
-        // to UPDATE that key to our chosen value instead of "add"-ing it.
-        esp_ble_mesh_provisioner_update_local_net_key(meshLocalNetKey, 0);
-        esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
-        // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT (above) does
-        // the Model App Bind to our own models once this completes.
-        // A Provisioner lamp never re-enables the Node bearer below - it
-        // chose its role for good the moment meshNetworkCreate() ran.
+        // Release the Node role and re-apply this lamp's chosen Provisioner
+        // identity, event-driven (see beginNetworkSetup()'s own doc comment
+        // for why this can't just fire every esp_ble_mesh_provisioner_*()
+        // call back-to-back). A Provisioner lamp never re-enables the Node
+        // bearer below - it chose its role for good the moment
+        // meshNetworkCreate() first ran.
+        beginNetworkSetup();
         Serial.println(F("[Mesh] Provisioner role restored."));
         return;
     }
@@ -950,38 +1043,6 @@ void meshNetworkCreate(const uint8_t *netKey, const uint8_t *appKey)
     meshHasLocalKeys = true;
     saveSettings();
 
-    uint16_t myAddr = esp_ble_mesh_get_primary_element_address();
-    if (myAddr == 0)
-        myAddr = 1;
-    esp_ble_mesh_provisioner_set_primary_elem_addr(myAddr);
-    // ESP-IDF's mesh/role flag is mutually exclusive between Node and
-    // Provisioner (see bt_mesh_provisioner_enable()'s own "Mismatch role"
-    // check in main.c) - our boot-time esp_ble_mesh_node_prov_enable() call
-    // already locked this device into the Node role, so
-    // provisioner_prov_enable() below would otherwise always fail.
-    // bt_mesh_prov_disable() only actually clears the stored role while the
-    // device isn't genuinely provisioned yet (bt_mesh_is_provisioned()
-    // false) - true here on a lamp choosing this role for the first time.
-    esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
-    esp_err_t provEnableErr = esp_ble_mesh_provisioner_prov_enable((esp_ble_mesh_prov_bearer_t)ESP_BLE_MESH_PROV_ADV);
-    // net_idx 0 is reserved (ESP_BLE_MESH_KEY_PRIMARY) - add_local_net_key()
-    // rejects it outright; provisioner_prov_enable() above already
-    // auto-created the primary NetKey with a random value via its own
-    // bt_mesh_provisioner_net_create(), so this UPDATEs that key to our
-    // chosen value instead.
-    esp_err_t netErr = esp_ble_mesh_provisioner_update_local_net_key(meshLocalNetKey, 0);
-    esp_err_t appErr = esp_ble_mesh_provisioner_add_local_app_key(meshLocalAppKey, 0, 0);
-    // The Model App Bind to our own models happens in provisioningCallback()'s
-    // ESP_BLE_MESH_PROVISIONER_ADD_LOCAL_APP_KEY_COMP_EVT handler once this
-    // completes - async, not inline here.
-
-    if (provEnableErr != ESP_OK || netErr != ESP_OK || appErr != ESP_OK)
-    {
-        sendFeedback(String(F("[Mesh] Network identity setup failed (enable=")) + String(provEnableErr) +
-                     F(" net=") + String(netErr) + F(" app=") + String(appErr) + F(") - see Serial log"));
-        return;
-    }
-
     String netHex, appHex;
     for (uint8_t i = 0; i < 16; ++i)
     {
@@ -992,8 +1053,14 @@ void meshNetworkCreate(const uint8_t *netKey, const uint8_t *appKey)
             appHex += '0';
         appHex += String(meshLocalAppKey[i], HEX);
     }
+    // Printed unconditionally and immediately, before the (now
+    // event-driven, see beginNetworkSetup()) actual setup even starts -
+    // these are the values that got saved either way, and "[Mesh] Network
+    // identity ready"/"setup failed" follows asynchronously once the mesh
+    // stack actually confirms them.
     sendFeedback(String(F("[Mesh] Network identity: net=")) + netHex + F(" app=") + appHex +
                  F(" - run the same 'mesh network create <net> <app>' on another lamp to let it provision too"));
+    beginNetworkSetup();
 }
 
 void meshProvisionScanStart(uint32_t seconds)
@@ -1038,6 +1105,13 @@ void meshProvisionTick()
 {
     if (scanSessionActive && (int32_t)(millis() - scanSessionDueMs) >= 0)
         meshProvisionScanStop();
+    // beginNetworkSetup()'s state machine normally advances purely from
+    // provisioningCallback()'s *_COMP_EVT handlers - this is just the
+    // backstop for a completion event that never arrives at all (a stuck
+    // step would otherwise block every future "mesh network create"/boot
+    // restore forever, since netSetupStep would never return to IDLE).
+    if (netSetupStep != NET_SETUP_IDLE && (int32_t)(millis() - netSetupDueMs) >= 0)
+        failNetworkSetup(F("timed out waiting for the mesh stack"));
 }
 
 // Count-in-header + one fixed-shape "DEV ..."/"NODE ..." line per item -
