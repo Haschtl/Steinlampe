@@ -154,14 +154,18 @@ jobs:
           name: quarzlampe-desktop-${{ matrix.platform }}
           path: dist/
 
-  # Separate from the matrix build above and never runs automatically - a
-  # deliberate, manually-triggered step (someone has to click "Run
-  # workflow") rather than something that republishes on every commit,
-  # since this is still an early, Linux-only-verified feature (see
+  # Separate from the matrix build above. Runs both on a manual "Run
+  # workflow" click and automatically on every push to main that touches
+  # desktop/** (the whole workflow's own push trigger is already scoped to
+  # that path, so no extra path check is needed here) - every such push
+  # republishes desktop-latest from the new build. Still excludes
+  # pull_request on purpose: a PR shouldn't be able to publish a release on
+  # its own. This is still an early, Linux-only-verified feature (see
   # PLAN.md): Windows/macOS here means "it compiles on that OS's own GitHub
-  # runner", not "BLE/mic detection were ever exercised on that OS".
+  # runner", not "BLE/mic detection were ever exercised on that OS" - the
+  # release body below says so explicitly.
   publish-release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -220,10 +224,11 @@ jobs:
           tag_name: desktop-latest
           name: Desktop app - latest build
           body: |
-            Builds of the Quarzlampe desktop tray app, rebuilt from the tip of `main` whenever this
-            workflow is run by hand - not a versioned release. The app itself checks this release
-            periodically and offers to update in place (tray menu + console "Update now") when a
-            newer build has been published - see the self-update note below.
+            Builds of the Quarzlampe desktop tray app, rebuilt from the tip of `main` on every push
+            that touches `desktop/**` (or on demand via "Run workflow") - a rolling build, not a
+            versioned release. The app itself checks this release periodically and offers to
+            update in place (tray menu + console "Update now") when a newer build has been
+            published - see the self-update note below.
 
             **Two options per platform**: a proper installer (`Quarzlampe-installer.msi` on
             Windows, `Quarzlampe.dmg` on macOS - Start Menu/Applications entry, uninstaller) or a
