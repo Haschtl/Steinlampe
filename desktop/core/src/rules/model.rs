@@ -28,8 +28,15 @@ pub enum Action {
 /// Only `MicActive` fires through the real evaluation loop today (M5);
 /// `OnBeforeSleep`/`BeforeShutdown`/`OnNotification` are Linux-only (logind
 /// D-Bus signals / notification-bus eavesdropping - see `app`'s trigger
-/// loops), `OnKeyPress` needs X11 or Windows/macOS (no Wayland global
-/// hotkey API exists - see PLAN.md). None of that is encoded in the type
+/// loops). `OnKeyPress` needs X11, Windows, or macOS - all three now pump
+/// the native message/run loop `global-hotkey`'s backend needs on each
+/// (X11: the crate's own thread; Windows/macOS: `app`'s
+/// `platform::windows::pump()`/`platform::macos::run()`, added for the
+/// tray icon and sleep/shutdown/screen-lock triggers, which happen to
+/// cover this too - see `init_hotkey_manager()`'s own doc comment for the
+/// "not run-time verified on Windows/Mac" caveat). Pure Wayland (no
+/// XWayland) is the one platform gap that's still real - `global-hotkey`
+/// 0.8 has no Wayland backend at all. None of this is encoded in the type
 /// itself; a rule using an unsupported-on-this-platform trigger simply
 /// never fires here, same as a `MicActive` rule would on a platform with
 /// no mic provider.

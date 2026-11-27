@@ -542,6 +542,14 @@ desktop/
      silently never fire on Windows, macOS, or Wayland Linux, full stop, until someone either runs
      this on real X11 or the daemon architecture changes. The user explicitly chose to build it
      anyway, accepting zero verification coverage here, after being told this upfront.
+     **UPDATE (2026-11-27)**: the Windows/macOS half of this gap was closed by a later milestone
+     this document was never updated to record - `app/src/platform::windows::pump()` and
+     `platform::macos::run()` (added for the tray icon and sleep/shutdown/screen-lock triggers)
+     already pump exactly the message/run loop `global-hotkey`'s Windows/macOS backends need, per
+     their own doc comments. `OnKeyPress` should now fire on Windows/macOS too, same as X11 - not
+     run-time verified on a real Windows/Mac machine either way, same caveat as everything else in
+     this project that's never been compiled off Linux. Wayland (no XWayland) remains the one real,
+     unfixable-by-us gap - see `init_hotkey_manager()`'s own doc comment in `app/src/main.rs`.
    - **Start-on-boot**: a `autostart` module (`app/src/autostart.rs`), one `cfg`-gated
      implementation per OS behind the same `is_enabled()`/`set_enabled(bool)` pair - Linux writes/
      removes an XDG `.desktop` file under `~/.config/autostart/`; Windows writes/removes a

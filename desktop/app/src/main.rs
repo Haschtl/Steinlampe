@@ -1138,18 +1138,32 @@ async fn spawn_notification_watch(state: Arc<Mutex<DaemonState>>) {
 /// `global-hotkey`'s Linux (X11) backend spins its own event-pumping
 /// thread (confirmed by reading its source), so just constructing it here
 /// and polling `GlobalHotKeyEvent::receiver()` like `MenuEvent`/
-/// `TrayIconEvent` is enough - no event loop of our own needed, consistent
-/// with the rest of this window-less daemon. Windows/macOS are a real
-/// exception: their backends need a native message/run loop pumped on the
-/// registering thread (Win32 `GetMessage`/`DispatchMessage`, Cocoa's
-/// `NSApplication` run loop respectively - see the crate's own README),
-/// which this daemon's plain `loop { ...; sleep(100ms) }` is not. Building
-/// one just for this would mean reworking the whole M0 window-less-daemon
-/// architecture - not done; `OnKeyPress` rules are expected to silently
-/// never fire on Windows/macOS until that happens. `None` if the manager
-/// itself fails to initialize (e.g. no X11 available at all, pure Wayland
-/// with no XWayland) - `OnKeyPress` rules then simply never fire, same
-/// graceful-degradation shape as every other trigger's platform gap.
+/// `TrayIconEvent` is enough - no event loop of our own needed.
+///
+/// CORRECTED (see git history for the original note this replaced):
+/// Windows and macOS *do* need a native message/run loop pumped on the
+/// registering thread for their `global-hotkey` backends to receive
+/// anything (Win32 `GetMessage`/`DispatchMessage`, Cocoa's `NSApplication`
+/// run loop respectively) - this was once a real gap in this daemon's
+/// plain `loop { ...; sleep(100ms) }` shape, but isn't anymore:
+/// `platform::windows::pump()` and `platform::macos::run()` were since
+/// added (for the tray icon and sleep/shutdown/screen-lock triggers) and,
+/// per their own doc comments, already pump exactly the message/run loop
+/// `global-hotkey`'s own hidden-window/Carbon-handler backends need on
+/// each platform - `OnKeyPress` should now fire there too, for free, with
+/// no changes needed in this function. Not run-time verified on an actual
+/// Windows or Mac machine (same "unverified until tried" caveat every
+/// other Windows/macOS-only module in this codebase already carries) -
+/// if it turns out not to fire in practice, look at *that* integration
+/// first (are these events actually reaching `GlobalHotKeyEvent::receiver()`
+/// after a pump?), not at this function.
+///
+/// `None` if the manager itself fails to initialize (e.g. no X11 available
+/// at all, pure Wayland with no XWayland - `global-hotkey` 0.8 has no
+/// Wayland backend at all, confirmed from its own platform support table;
+/// this is the one gap that's still real) - `OnKeyPress` rules then simply
+/// never fire, same graceful-degradation shape as every other trigger's
+/// platform gap.
 fn init_hotkey_manager() -> Option<GlobalHotKeyManager> {
     match GlobalHotKeyManager::new() {
         Ok(m) => Some(m),
