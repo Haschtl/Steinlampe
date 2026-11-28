@@ -75,6 +75,9 @@ static void cmd_StatusPush(const String &line, const String &lower);
 static void cmd_StatusPresence(const String &line, const String &lower);
 static void cmd_StatusFilters(const String &line, const String &lower);
 static void cmd_StatusIo(const String &line, const String &lower);
+static void cmd_StatusMeshStatus(const String &line, const String &lower);
+static void cmd_StatusTimers(const String &line, const String &lower);
+static void cmd_StatusMisc(const String &line, const String &lower);
 static void cmd_Sensors(const String &line, const String &lower);
 static void cmd_On(const String &line, const String &lower);
 static void cmd_Off(const String &line, const String &lower);
@@ -160,6 +163,9 @@ static const CommandEntry COMMAND_TABLE[] = {
     {"status presence", CmdMatch::Exact, cmd_StatusPresence},
     {"status filters", CmdMatch::Exact, cmd_StatusFilters},
     {"status io", CmdMatch::Exact, cmd_StatusIo},
+    {"status mesh", CmdMatch::Exact, cmd_StatusMeshStatus},
+    {"status timers", CmdMatch::Exact, cmd_StatusTimers},
+    {"status misc", CmdMatch::Exact, cmd_StatusMisc},
     {"status", CmdMatch::Exact, cmd_StatusCore},
     {"sensors", CmdMatch::Exact, cmd_Sensors},
     {"read sensors", CmdMatch::Exact, cmd_Sensors},
@@ -506,6 +512,21 @@ static void cmd_StatusFilters(const String &line, const String &lower)
 static void cmd_StatusIo(const String &line, const String &lower)
 {
     printIoStructured();
+}
+
+static void cmd_StatusMeshStatus(const String &line, const String &lower)
+{
+    printMeshStatusStructured();
+}
+
+static void cmd_StatusTimers(const String &line, const String &lower)
+{
+    printTimersStructured();
+}
+
+static void cmd_StatusMisc(const String &line, const String &lower)
+{
+    printMiscStructured();
 }
 
 static void cmd_Sensors(const String &line, const String &lower)

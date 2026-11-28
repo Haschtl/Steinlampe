@@ -257,8 +257,6 @@ void printStatusCore(const bool &force)
     line += PATTERNS[currentPattern].name;
     line += F("|pat_ms=");
     line += String(millis() - patternStartMs);
-    line += F("|auto=");
-    line += autoCycle ? F("1") : F("0");
     line += F("|bri=");
     line += fmtF(masterBrightness * 100.0f, 1);
     line += F("|lamp=");
@@ -312,8 +310,6 @@ void printStatusCore(const bool &force)
 #if ENABLE_TOUCH_DIM
     line += F("|touch_dim=");
     line += touchDimEnabled ? F("1") : F("0");
-    line += F("|touch_dim_step=");
-    line += fmtF(touchDimStep, 3);
 #else
     line += F("|touch=N/A");
 #endif
@@ -333,19 +329,9 @@ void printStatusCore(const bool &force)
     line += F("|ramp_amb=");
     line += fmtF(rampAmbientFactor, 2);
 #endif
-    line += F("|idle_min=");
-    line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
-    // Never exposed before this - the frontend had no way to show "wake/sleep
-    // fade is currently running" (e.g. to swap a Start button for Stop) and
-    // had to guess from its own local click history instead.
-    line += F("|wake_active=");
-    line += wakeFadeActive ? F("1") : F("0");
-    line += F("|sleep_active=");
-    line += sleepFadeActive ? F("1") : F("0");
-    // Shared by both Notify and Morse (morse reuses the same notify blink engine -
-    // see command.cpp's "morse" branch), same reasoning as wake/sleep above.
-    line += F("|notify_active=");
-    line += notifyActive ? F("1") : F("0");
+    // idle_min/wake_active/sleep_active/notify_active moved to the
+    // on-demand TIMERS| group (printTimersStructured()) 2026-11-28 - only
+    // IdleOffCard/WakeSleepCard/NotifyCard ever read these.
     line += F("|pat_speed=");
     line += fmtF(patternSpeedScale, 2);
     line += F("|pat_fade=");
@@ -356,29 +342,11 @@ void printStatusCore(const bool &force)
     line += fmtF(patternMarginLow, 3);
     line += F("|pat_hi=");
     line += fmtF(patternMarginHigh, 3);
-    line += F("|quick=");
-    line += quickMaskToCsv();
-    line += F("|gest=");
-    line += gestureBindingsToCsv();
-#if ENABLE_BLE_MESH_PROVISIONER
-    // Cheap glance state for the frontend's Mesh card (has a network been
-    // set up yet, roughly how many lamps are in it) - the full node list
-    // (names, addresses) is deliberately NOT in this high-frequency status
-    // line, same reasoning as |presence_ble_count= vs. the actual device
-    // list: fetched on demand via `mesh nodes` instead (see meshProtocol.ts).
-    line += F("|mesh_net=");
-    line += meshHasNetworkIdentity() ? F("1") : F("0");
-    line += F("|mesh_nodes=");
-    line += String(meshKnownNodeCount());
-#endif
-#if ENABLE_BLE_MESH
-    // provisioner|node|none - see meshRoleText()'s own doc comment. Always
-    // available (unlike mesh_net=/mesh_nodes= above, which only exist in a
-    // provisioner-capable build) so even a plain node-only build can show
-    // "this lamp has been provisioned" in the UI.
-    line += F("|mesh_role=");
-    line += meshRoleText();
-#endif
+    // quick/gest moved to the on-demand MISC| group (printMiscStructured())
+    // 2026-11-28 - only QuickModesCard/GestureMappingCard/PotiCard ever
+    // read these. mesh_net/mesh_nodes/mesh_role moved to the on-demand
+    // MESHSTATUS| group (printMeshStatusStructured()), same day - only
+    // MeshProvisioningCard reads these.
     line += F("|pat_reactive=");
     line += isPatternReactive(currentPattern) ? F("1") : F("0");
     // Just the Home-chip glance (ON/OFF + how many) - the rest (thresholds,
@@ -388,8 +356,9 @@ void printStatusCore(const bool &force)
     // this core line despite being radar-page-only diagnostics.
     line += F("|presence_ble=");
     line += presenceBleEnabled ? F("ON") : F("OFF");
-    line += F("|presence_ble_count=");
-    line += (int)presenceBleDevices.size();
+    // presence_ble_count removed 2026-11-28 - pure duplicate of what the
+    // PRESENCE| on-demand group (printPresenceStructured()) already
+    // reports; AnwesenheitPage already fetches that group directly.
 #if ENABLE_RD03
     line += F("|radar=");
     line += radarEnabled ? F("ON") : F("OFF");
@@ -424,18 +393,11 @@ void printStatusCore(const bool &force)
 #else
     line += F("|push=N/A");
 #endif
-#if ENABLE_BLE
-    line += F("|ble=");
-    line += bleActive() ? F("UP") : F("DOWN");
-#endif
-    line += F("|fw_ver=");
-    line += FIRMWARE_VERSION;
-    line += F("|fw_env=");
-    line += FIRMWARE_ENV;
-#if ENABLE_OTA
-    line += F("|ota_active=");
-    line += otaActive ? F("1") : F("0");
-#endif
+    // ble=/fw_ver=/fw_env=/ota_active= removed 2026-11-28 - ble= and
+    // ota_active= had zero consumers anywhere in the frontend (confirmed
+    // by tracing every DeviceStatus field to its actual readers); fw_ver/
+    // fw_env moved to the on-demand MISC| group (only OtaUpdateCard reads
+    // them, and they barely ever change at runtime).
     sendFeedback(line,force);
     updateBleStatus(line);
 
@@ -847,6 +809,86 @@ void printIoStructured(const bool &force)
     updateBleStatus(line);
 }
 
+// Added 2026-11-28 - see print.h's own comment on why these three exist:
+// splitting printStatusCore() further once it had grown to 566+ bytes.
+void printMeshStatusStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(80);
+        reserved = true;
+    }
+    line = F("MESHSTATUS|");
+#if ENABLE_BLE_MESH_PROVISIONER
+    line += F("mesh_net=");
+    line += meshHasNetworkIdentity() ? F("1") : F("0");
+    line += F("|mesh_nodes=");
+    line += String(meshKnownNodeCount());
+#else
+    line += F("mesh_net=N/A|mesh_nodes=N/A");
+#endif
+#if ENABLE_BLE_MESH
+    line += F("|mesh_role=");
+    line += meshRoleText();
+#else
+    line += F("|mesh_role=N/A");
+#endif
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printTimersStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(80);
+        reserved = true;
+    }
+    line = F("TIMERS|");
+    line += F("wake_active=");
+    line += wakeFadeActive ? F("1") : F("0");
+    line += F("|sleep_active=");
+    line += sleepFadeActive ? F("1") : F("0");
+    line += F("|notify_active=");
+    line += notifyActive ? F("1") : F("0");
+    line += F("|idle_min=");
+    line += idleOffMs == 0 ? F("0") : String(idleOffMs / 60000);
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
+void printMiscStructured(const bool &force)
+{
+    static String line;
+    static bool reserved = false;
+    if (!reserved)
+    {
+        line.reserve(150);
+        reserved = true;
+    }
+    line = F("MISC|");
+    line += F("quick=");
+    line += quickMaskToCsv();
+    line += F("|gest=");
+    line += gestureBindingsToCsv();
+#if ENABLE_TOUCH_DIM
+    line += F("|touch_dim_step=");
+    line += fmtF(touchDimStep, 3);
+#else
+    line += F("|touch_dim_step=N/A");
+#endif
+    line += F("|fw_ver=");
+    line += FIRMWARE_VERSION;
+    line += F("|fw_env=");
+    line += FIRMWARE_ENV;
+    sendFeedback(line, force);
+    updateBleStatus(line);
+}
+
 void printStatusAll(const bool &force)
 {
     printStatusCore(force);
@@ -858,6 +900,9 @@ void printStatusAll(const bool &force)
     printPresenceStructured(force);
     printFiltersStructured(force);
     printIoStructured(force);
+    printMeshStatusStructured(force);
+    printTimersStructured(force);
+    printMiscStructured(force);
 }
 
 /**

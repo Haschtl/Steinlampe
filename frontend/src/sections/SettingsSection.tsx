@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Trans } from '@/i18n';
 import { useConnection } from '@/context/connection';
+import { useStatusGroupFetch } from '@/hooks/useStatusGroupFetch';
 import { DeviceBTCard } from '@/cards/DeviceBTCard';
 
 function DevOptionsCard() {
@@ -86,6 +87,11 @@ function FactoryResetCard() {
 }
 
 export function SettingsSection() {
+  // MeshProvisioningCard reads mesh_net/mesh_nodes/mesh_role (MESHSTATUS|);
+  // OtaUpdateCard reads fw_ver/fw_env (MISC|) - both moved off the general
+  // status payload 2026-11-28, see memory: status protocol redesign.
+  useStatusGroupFetch('mesh');
+  useStatusGroupFetch('misc');
   return (
     <div className="space-y-4">
       <DeviceBTCard />

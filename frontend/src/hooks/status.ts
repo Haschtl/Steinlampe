@@ -74,10 +74,8 @@ export type DeviceStatus = {
   currentPattern?: number;
   brightness?: number;
   outputLevel?: number; // last applied normalized output (0..100), pre-gamma - what's actually being driven to the LED
-  outputSamples?: { t: number; v: number }[]; // rolling window for the live output graph
   firmwareVersion?: string;
   firmwareEnv?: string;
-  otaActive?: boolean;
   lampState?: string;
   switchState?: string;
   hasSwitch?: boolean;
@@ -117,13 +115,11 @@ export type DeviceStatus = {
   filterEnv?: boolean;
   filterEnvAttack?: number;
   filterEnvRelease?: number;
-  autoCycle?: boolean;
   patternSpeed?: number;
   patternFade?: number;
   patternInvert?: boolean;
   patternReactive?: boolean;
   outputMode?: "pwm" | "analog";
-  idleOffMin?: number;
   wakeActive?: boolean;
   sleepActive?: boolean;
   notifyActive?: boolean;
@@ -189,7 +185,6 @@ export type DeviceStatus = {
   lightAmbMult?: number;
   hasMusic?: boolean;
   musicEnabled?: boolean;
-  bleAvailable?: boolean;
   musicGain?: number;
   musicSmooth?: number;
   musicAuto?: boolean;
@@ -267,9 +262,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       potiVal: Number.isFinite(poti ?? NaN) ? poti : s.potiVal,
       potiRaw: Number.isFinite(potiRaw ?? NaN) ? potiRaw : s.potiRaw,
       outputLevel: Number.isFinite(outputLevel ?? NaN) ? outputLevel : s.outputLevel,
-      outputSamples: Number.isFinite(outputLevel ?? NaN)
-        ? [...(s.outputSamples ?? []).slice(-299), { t: Date.now(), v: outputLevel as number }]
-        : s.outputSamples,
       lastStatusAt: Date.now(),
     }));
     return true;
@@ -309,6 +301,16 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
       // or, for custom_len/step, already covered by CUSTOM|. Only the
       // ON/OFF/N/A glance for each feature stays here, for Home chips and
       // the Advanced tile list.
+      //
+      // 2026-11-28: a second pass, once this line had grown to 566+ bytes
+      // again (30+ small-MTU indicate chunks for one fetch) - mesh_net/
+      // mesh_nodes/mesh_role moved to MESHSTATUS| (see below), wake_active/
+      // sleep_active/notify_active/idle_min to TIMERS|, quick/gest/
+      // touch_dim_step/fw_ver/fw_env to MISC| - none of these are read by
+      // anything on the Home page, only by one specific Advanced card each.
+      // auto=/ota_active=/ble= were removed outright (confirmed zero
+      // frontend consumers); presence_ble_count= too (pure duplicate of
+      // what PRESENCE| already reports).
       const hasLight = kv.light ? isAvailable('light') : s.hasLight;
       const hasMusic = kv.music ? isAvailable('music') : s.hasMusic;
       const hasPoti = kv.poti ? isAvailable('poti') : s.hasPoti;
@@ -325,7 +327,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         currentPattern: asInt('pattern') ?? s.currentPattern,
         patternName: kv.pattern_name ?? s.patternName,
         patternElapsedMs: asInt('pat_ms') ?? s.patternElapsedMs,
-        autoCycle: kv.auto ? kv.auto === '1' : s.autoCycle,
         brightness: asNum('bri') ?? s.brightness,
         lampState: kv.lamp ?? s.lampState,
         switchState: kv.switch && kv.switch.toUpperCase() !== 'N/A' ? kv.switch : s.switchState,
@@ -339,7 +340,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
             ? 'TOUCHDIM'
             : 'OFF'
           : s.touchState,
-        touchDimStep: asNum('touch_dim_step') ?? s.touchDimStep,
         rampOnMs: asInt('ramp_on_ms') ?? s.rampOnMs,
         rampOffMs: asInt('ramp_off_ms') ?? s.rampOffMs,
         rampOnEase: kv.ramp_on_ease ?? s.rampOnEase,
@@ -347,11 +347,6 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         rampOnPow: asNum('ramp_on_pow') ?? s.rampOnPow,
         rampOffPow: asNum('ramp_off_pow') ?? s.rampOffPow,
         rampAmbient: asNum('ramp_amb') ?? s.rampAmbient,
-        idleOffMin: asInt('idle_min') ?? s.idleOffMin,
-        wakeActive: kv.wake_active ? kv.wake_active === '1' : s.wakeActive,
-        sleepActive: kv.sleep_active ? kv.sleep_active === '1' : s.sleepActive,
-        notifyActive: kv.notify_active ? kv.notify_active === '1' : s.notifyActive,
-        idleMinutes: asInt('idle_min') ?? s.idleMinutes,
         patternSpeed: asNum('pat_speed') ?? s.patternSpeed,
         patternFade: kv.pat_fade ? (kv.pat_fade === 'off' ? 0 : parseFloat(kv.pat_fade)) : s.patternFade,
         patternInvert: kv.pat_inv
@@ -364,23 +359,11 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         patternReactive: kv.pat_reactive ? kv.pat_reactive === '1' : s.patternReactive,
         patternMarginLow: asNum('pat_lo') ?? s.patternMarginLow,
         patternMarginHigh: asNum('pat_hi') ?? s.patternMarginHigh,
-        quickCsv: kv.quick ?? s.quickCsv,
-        gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
-        meshNet: Object.prototype.hasOwnProperty.call(kv, 'mesh_net') ? kv.mesh_net === '1' : s.meshNet,
-        meshNodeCount: asInt('mesh_nodes') ?? s.meshNodeCount,
-        meshRole:
-          kv.mesh_role === 'provisioner' || kv.mesh_role === 'node' || kv.mesh_role === 'none'
-            ? kv.mesh_role
-            : s.meshRole,
         presenceBle: kv.presence_ble ?? s.presenceBle,
         hasPresenceBle,
         presenceBleCount: asInt('presence_ble_count') ?? s.presenceBleCount,
         hasRadar,
         radarEnabled: kv.radar ? kv.radar.toUpperCase() === 'ON' : hasRadar === false ? false : s.radarEnabled,
-        firmwareVersion: kv.fw_ver ?? s.firmwareVersion,
-        firmwareEnv: kv.fw_env ?? s.firmwareEnv,
-        otaActive: kv.ota_active !== undefined ? kv.ota_active === '1' : s.otaActive,
-        bleAvailable: kv.ble ? kv.ble.toUpperCase() !== 'DOWN' : s.bleAvailable,
         hasLight,
         lightEnabled: kv.light ? kv.light.toUpperCase() === 'ON' : hasLight === false ? false : s.lightEnabled,
         hasMusic,
@@ -650,6 +633,48 @@ export function parseStatusLine(line: string, setStatus: Dispatch<SetStateAction
         notifyMin: asNum('notif_min') ?? s.notifyMin,
       };
     });
+    return true;
+  }
+  // The three on-demand groups added 2026-11-28 when printStatusCore() grew
+  // too large (566+ bytes) - see that parser's own comment above. Each only
+  // fetched by one specific Advanced card, same pattern as IO|/RADAR|/etc.
+  if (line.startsWith('MESHSTATUS|')) {
+    const kv = splitKv(line);
+    setStatus((s) => ({
+      ...s,
+      meshNet: Object.prototype.hasOwnProperty.call(kv, 'mesh_net') ? kv.mesh_net === '1' : s.meshNet,
+      meshNodeCount: kv.mesh_nodes !== undefined && kv.mesh_nodes !== 'N/A' ? parseInt(kv.mesh_nodes, 10) : s.meshNodeCount,
+      meshRole:
+        kv.mesh_role === 'provisioner' || kv.mesh_role === 'node' || kv.mesh_role === 'none'
+          ? kv.mesh_role
+          : s.meshRole,
+      lastStatusAt: Date.now(),
+    }));
+    return true;
+  }
+  if (line.startsWith('TIMERS|')) {
+    const kv = splitKv(line);
+    setStatus((s) => ({
+      ...s,
+      wakeActive: kv.wake_active ? kv.wake_active === '1' : s.wakeActive,
+      sleepActive: kv.sleep_active ? kv.sleep_active === '1' : s.sleepActive,
+      notifyActive: kv.notify_active ? kv.notify_active === '1' : s.notifyActive,
+      idleMinutes: kv.idle_min !== undefined ? parseInt(kv.idle_min, 10) : s.idleMinutes,
+      lastStatusAt: Date.now(),
+    }));
+    return true;
+  }
+  if (line.startsWith('MISC|')) {
+    const kv = splitKv(line);
+    setStatus((s) => ({
+      ...s,
+      quickCsv: kv.quick ?? s.quickCsv,
+      gestCsv: Object.prototype.hasOwnProperty.call(kv, 'gest') ? kv.gest : s.gestCsv,
+      touchDimStep: kv.touch_dim_step !== undefined && kv.touch_dim_step !== 'N/A' ? parseFloat(kv.touch_dim_step) : s.touchDimStep,
+      firmwareVersion: kv.fw_ver ?? s.firmwareVersion,
+      firmwareEnv: kv.fw_env ?? s.firmwareEnv,
+      lastStatusAt: Date.now(),
+    }));
     return true;
   }
   if (line.startsWith('[Touch] raw=')) {

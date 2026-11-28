@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Gauge, Hand, Lightbulb, Music, Radar, Sun, ToggleLeft, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,19 +6,22 @@ import { GestureMappingCard } from '@/cards/GestureMappingCard';
 import { QuickModesCard } from '@/cards/QuickModesCard';
 import { CustomPatternCard } from '@/cards/CustomPatternCard';
 import { useConnection } from '@/context/connection';
+import { useStatusGroupFetch } from '@/hooks/useStatusGroupFetch';
 import { Trans, useI18n } from '@/i18n';
 
 export function AdvancedOverview() {
-  const { status, refreshStatus } = useConnection();
+  const { status } = useConnection();
   const { t } = useI18n();
 
-  // Gesture mappings and quick modes live in the general status payload (gestCsv/
-  // quickCsv) - rather than a manual "Reload" button on each card, refresh once on
-  // arrival here so they're current without the user having to ask.
-  useEffect(() => {
-    if (status.connected && status.statusReady) refreshStatus().catch((e) => console.warn(e));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.connected, status.statusReady]);
+  // Gesture mappings/quick modes (MISC|), idle-off timer (TIMERS|), and
+  // GestureMappingCard's own mesh-node-count target list (MESHSTATUS|) all
+  // used to ride along on the general status payload, refreshed here via a
+  // full refreshStatus() (= "status raw") just to get them - replaced with
+  // their own targeted on-demand fetches once those fields moved off the
+  // core line (see memory: status protocol redesign's 2026-11-28 follow-up).
+  useStatusGroupFetch('misc');
+  useStatusGroupFetch('timers');
+  useStatusGroupFetch('mesh');
 
   const tiles = [
     { to: '/advanced/led' as const, icon: Lightbulb, labelKey: 'nav.led', labelFallback: 'LED', descKey: 'desc.tile.led', descFallback: 'Gamma curve, min/max brightness', show: true },

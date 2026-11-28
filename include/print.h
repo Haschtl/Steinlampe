@@ -57,6 +57,16 @@ void printPushStructured(const bool &force=false);
 void printPresenceStructured(const bool &force=false);
 void printFiltersStructured(const bool &force=false);
 void printIoStructured(const bool &force=false);
+// Added 2026-11-28, splitting printStatusCore() further - mesh_net/
+// mesh_nodes/mesh_role/wake_active/sleep_active/notify_active/idle_min/
+// quick/gest/touch_dim_step/fw_ver/fw_env had all accumulated in the core
+// line despite only ever being read by one specific Advanced page each,
+// growing it to 566+ bytes (30+ small-MTU indicate chunks for a single
+// status fetch) - see memory: status protocol redesign, and its own
+// follow-up note on this exact regrowth.
+void printMeshStatusStructured(const bool &force=false);
+void printTimersStructured(const bool &force=false);
+void printMiscStructured(const bool &force=false);
 
 /**
  * @brief Broadcasts everything: printStatusCore() plus every on-demand group
