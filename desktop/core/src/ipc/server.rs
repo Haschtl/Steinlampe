@@ -172,7 +172,8 @@ async fn handle_request(kind: RequestKind, state: &Arc<Mutex<DaemonState>>) -> I
                 pattern: None,
                 last_error: None,
             }));
-            IpcResponse::Lamps { lamps }
+            let bluetooth_powered = state.manager.bluetooth_powered();
+            IpcResponse::Lamps { lamps, bluetooth_powered }
         }
         RequestKind::Scan { seconds } => {
             let mut state = state.lock().await;

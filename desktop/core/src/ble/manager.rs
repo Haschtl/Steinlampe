@@ -4,13 +4,16 @@
 //! console.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, CentralEvent, CentralState, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::JoinHandle;
+
+use crate::ipc::server::DaemonState;
 
 use crate::ble::lamp_actor::{run_lamp_actor, LampCommand};
 use crate::ble::uuids;
@@ -52,6 +55,14 @@ pub struct LampManager {
     /// see its own doc comment) - this is purely about what the console
     /// *shows*, not what the daemon actively goes looking for.
     known: HashMap<String, String>,
+    /// Whether the OS's own Bluetooth adapter is currently powered on -
+    /// `None` until the first real answer comes in (see
+    /// `spawn_bluetooth_adapter_watch` below, which owns writing this).
+    /// Distinct from any per-lamp `ConnectionState`: this is "can BLE work
+    /// at all right now", not "is a specific lamp reachable" - the console
+    /// surfaces it as its own banner rather than folding it into every
+    /// lamp's own status.
+    bluetooth_powered: Option<bool>,
 }
 
 impl LampManager {
@@ -71,7 +82,25 @@ impl LampManager {
             .into_iter()
             .map(|k| (k.lamp_key, k.name))
             .collect();
-        Ok(Self { adapter, lamps: HashMap::new(), scanned: HashMap::new(), known })
+        Ok(Self { adapter, lamps: HashMap::new(), scanned: HashMap::new(), known, bluetooth_powered: None })
+    }
+
+    /// An owned, cloneable handle to the same real adapter this manager
+    /// scans/connects with - btleplug's `Adapter` is a thin `Clone`
+    /// wrapper, so this doesn't open a second adapter. Used only by
+    /// `spawn_bluetooth_adapter_watch` below to run its own `events()`
+    /// stream independently of whatever's holding `DaemonState`'s lock at
+    /// any given moment.
+    pub fn adapter_handle(&self) -> Adapter {
+        self.adapter.clone()
+    }
+
+    pub fn bluetooth_powered(&self) -> Option<bool> {
+        self.bluetooth_powered
+    }
+
+    pub fn set_bluetooth_powered(&mut self, powered: Option<bool>) {
+        self.bluetooth_powered = powered;
     }
 
     /// Records a lamp as known (if it isn't already, under this exact
@@ -166,4 +195,46 @@ impl LampManager {
             let _ = handle.join.await;
         }
     }
+}
+
+/// Keeps `DaemonState`'s `bluetooth_powered` in sync with the OS's own
+/// Bluetooth adapter power state. Lives here (not in `app`) because
+/// `btleplug` is only ever a dependency of this crate - `app` orchestrates
+/// but never touches `btleplug` types directly, same as everywhere else in
+/// this daemon. Cross-platform (unlike the D-Bus-based watches `app` runs
+/// alongside this one): `Central::adapter_state`/`events()` are part of
+/// `btleplug`'s common API, not a Linux-only backend detail.
+///
+/// Queries once immediately (so the console doesn't sit at "unknown" for a
+/// whole scan cycle on a fresh daemon), then follows `CentralEvent::
+/// StateUpdate` for as long as the daemon runs. If the adapter is pulled
+/// out mid-session (or the backend's event stream itself errors), this task
+/// just ends - `bluetooth_powered` keeps showing its last known value
+/// rather than silently flipping back to "on" by going unanswered forever.
+pub async fn spawn_bluetooth_adapter_watch(state: Arc<Mutex<DaemonState>>) {
+    let adapter = state.lock().await.manager.adapter_handle();
+
+    match adapter.adapter_state().await {
+        Ok(initial) => {
+            state.lock().await.manager.set_bluetooth_powered(Some(initial == CentralState::PoweredOn));
+        }
+        Err(e) => eprintln!("[bluetooth] could not read initial adapter state: {e}"),
+    }
+
+    tokio::spawn(async move {
+        use futures::StreamExt;
+
+        let mut events = match adapter.events().await {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[bluetooth] could not subscribe to adapter events, power-state banner won't update: {e}");
+                return;
+            }
+        };
+        while let Some(event) = events.next().await {
+            if let CentralEvent::StateUpdate(new_state) = event {
+                state.lock().await.manager.set_bluetooth_powered(Some(new_state == CentralState::PoweredOn));
+            }
+        }
+    });
 }

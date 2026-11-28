@@ -68,7 +68,7 @@ enum UiToCore {
 }
 
 enum CoreToUi {
-    Lamps(Vec<LampSummary>),
+    Lamps { lamps: Vec<LampSummary>, bluetooth_powered: Option<bool> },
     ScanResults(Vec<ScannedLamp>),
     Rules(Vec<Rule>),
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },
@@ -143,7 +143,7 @@ async fn run_core(
             tokio::select! {
                 _ = lamp_poll.tick() => {
                     match client.request(RequestKind::ListLamps).await {
-                        Ok(IpcResponse::Lamps { lamps }) => notify(CoreToUi::Lamps(lamps)),
+                        Ok(IpcResponse::Lamps { lamps, bluetooth_powered }) => notify(CoreToUi::Lamps { lamps, bluetooth_powered }),
                         Ok(IpcResponse::Error { message }) => notify(CoreToUi::Status(message)),
                         Ok(_) => {}
                         Err(e) => {
@@ -382,6 +382,12 @@ struct ConsoleApp {
     to_core: tokio_mpsc::UnboundedSender<UiToCore>,
     from_core: std_mpsc::Receiver<CoreToUi>,
     lamps: Vec<LampSummary>,
+    /// Whether the OS's own Bluetooth adapter is on - `None` until the
+    /// daemon's first answer arrives. `Some(false)` gets its own banner
+    /// (see `connections_ui`) distinct from any per-lamp status, since no
+    /// lamp can possibly be reachable while this is false regardless of
+    /// what their individual `ConnectionState`s say.
+    bluetooth_powered: Option<bool>,
     scan_results: Vec<ScannedLamp>,
     rules: Vec<Rule>,
     status: String,
@@ -674,6 +680,11 @@ impl ConsoleApp {
             });
         });
         ui.add_space(14.0);
+
+        if self.bluetooth_powered == Some(false) {
+            ui.colored_label(egui::Color32::from_rgb(0xF2, 0x55, 0x5A), t(lang, "lamps.bluetoothOff"));
+            ui.add_space(14.0);
+        }
 
         ui.horizontal_wrapped(|ui| {
             for lamp in &self.lamps {
@@ -1429,7 +1440,10 @@ impl eframe::App for ConsoleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.from_core.try_recv() {
             match msg {
-                CoreToUi::Lamps(lamps) => self.lamps = lamps,
+                CoreToUi::Lamps { lamps, bluetooth_powered } => {
+                    self.lamps = lamps;
+                    self.bluetooth_powered = bluetooth_powered;
+                }
                 CoreToUi::ScanResults(results) => self.scan_results = results,
                 CoreToUi::Rules(rules) => self.rules = rules,
                 CoreToUi::Visualizer { config, last_error } => {
@@ -1635,6 +1649,7 @@ fn main() -> eframe::Result<()> {
                 to_core,
                 from_core,
                 lamps: Vec::new(),
+                bluetooth_powered: None,
                 scan_results: Vec::new(),
                 rules: Vec::new(),
                 status: t(lang, "console.connectingToDaemon").to_string(),

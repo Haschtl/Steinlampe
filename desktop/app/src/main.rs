@@ -110,6 +110,7 @@ fn spawn_core_runtime() -> std::sync::mpsc::Receiver<Arc<Mutex<DaemonState>>> {
             }
             fire_rules_where_async(&state, |t| *t == Trigger::OnBoot).await;
             spawn_auto_reconnect_loop(Arc::clone(&state));
+            quarzlampe_core::ble::spawn_bluetooth_adapter_watch(Arc::clone(&state)).await;
             tokio::spawn(run_webhook_server(Arc::clone(&state)));
 
             if let Err(e) = IpcServer::bind_and_serve(state).await {

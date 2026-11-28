@@ -78,7 +78,13 @@ pub enum RequestKind {
 pub enum IpcResponse {
     Ok,
     Error { message: String },
-    Lamps { lamps: Vec<LampSummary> },
+    /// `bluetooth_powered`: whether the OS's own Bluetooth adapter is
+    /// currently on - `None` until the daemon's own watch loop has an
+    /// answer (see `LampManager::bluetooth_powered`'s doc comment).
+    /// Piggybacked onto this response rather than its own request/response
+    /// pair since the console already polls `ListLamps` continuously and
+    /// this changes rarely - no separate round trip needed.
+    Lamps { lamps: Vec<LampSummary>, bluetooth_powered: Option<bool> },
     ScanResults { lamps: Vec<ScannedLamp> },
     Rules { rules: Vec<Rule> },
     Visualizer { config: Option<VisualizerConfig>, last_error: Option<String> },

@@ -7,4 +7,4 @@ pub mod uuids;
 pub use handshake::{perform_handshake, send_line, HandshakeOutcome};
 pub use lamp_actor::LampCommand;
 pub use line_codec::LineCodec;
-pub use manager::{DiscoveredLamp, LampHandle, LampManager};
+pub use manager::{spawn_bluetooth_adapter_watch, DiscoveredLamp, LampHandle, LampManager};

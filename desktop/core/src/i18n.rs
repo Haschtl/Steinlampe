@@ -111,6 +111,9 @@ dict! {
         ["Pair within ~60s of boot, or it already has a saved token",
          "Innerhalb von ~60s nach dem Start koppeln, oder sie hat bereits ein gespeichertes Token"],
     "lamps.connectButton" => ["Connect", "Verbinden"],
+    "lamps.bluetoothOff" =>
+        ["Bluetooth is turned off on this computer - turn it on to find or control any lamp.",
+         "Bluetooth ist auf diesem Computer ausgeschaltet - bitte einschalten, um Lampen zu finden oder zu steuern."],
     "lampCard.reconnectButton" => ["Reconnect", "Erneut verbinden"],
     "lampCard.power" => ["Power", "Ein/Aus"],
     "lampCard.brightness" => ["Brightness", "Helligkeit"],
