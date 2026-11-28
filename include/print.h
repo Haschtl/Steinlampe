@@ -38,7 +38,7 @@ void printTouchDebug(const bool &force=false);
 void printSensorsStructured(const bool &force=false);
 
 /**
- * @brief Emit the slimmed, always-on core status line (STATUS|/STATUS_END|) -
+ * @brief Emit the slimmed, always-on core status line (STATUS|) -
  * lamp/pattern/ramp/switch/buttons and the per-feature ON/OFF glance each
  * Home chip and the Advanced tile list need to decide whether to show at
  * all. Formerly printStatusStructured(); STATUS1/STATUS2 are retired, their

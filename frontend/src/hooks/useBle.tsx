@@ -66,13 +66,13 @@ export function useBle(): BleApi {
   const lastLogRef = useRef<{ line: string; ms: number }>({ line: '', ms: 0 });
   const pendingLogRef = useRef<LogEntry[]>([]);
   const unsubRef = useRef<(() => void)[]>([]);
-  const statusEndWaiterRef = useRef<(() => void) | null>(null);
-  // The core snapshot is now just STATUS|/STATUS_END| (status protocol
-  // redesign retired STATUS1/STATUS2 - their fields are their own on-demand
-  // groups now), so completion only needs these two flags instead of the
-  // former 3-bit STATUS/STATUS1/STATUS2 bitmask.
-  const statusCoreSeenRef = useRef(false);
-  const statusEndSeenRef = useRef(false);
+  // Resolved the moment STATUS| arrives - that single line is the entire
+  // core snapshot now (status protocol redesign retired STATUS1/STATUS2 and,
+  // 2026-11-28, the separate STATUS_END| completion marker: it was a pure
+  // duplicate of fields STATUS| already carries, and could survive BLE
+  // notify-queue eviction while STATUS| itself got dropped, misreporting
+  // completion - see memory: status protocol redesign).
+  const statusCoreWaiterRef = useRef<(() => void) | null>(null);
   // Set when the firmware reports BLE_PAIR_PENDING| - it's deliberately
   // holding this connection open, waiting for a physical switch/poti gesture
   // to confirm a first-time pairing outside the trust grace window (see
@@ -216,17 +216,8 @@ export function useBle(): BleApi {
     const handled = parseStatus(line);
     if (!handled || !filterParsedRef.current) pushLog(line);
     if (handled) setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
-    if (line.startsWith('STATUS|')) statusCoreSeenRef.current = true;
-    if (line.startsWith('STATUS_END|')) statusEndSeenRef.current = true;
-    // Only resolve once both the core line and the END marker have been
-    // seen - this used to fire on the END marker alone, so if STATUS| (the
-    // page carrying ramp_on_ms/ramp_off_ms/ramp_on_ease/ramp_off_ease among
-    // other fields) was still in flight behind it or got dropped, the
-    // refresh was reported "complete" without that page ever having
-    // arrived. Checked on every line (not just STATUS_END) since the two
-    // conditions can become true in either order.
-    if (statusEndSeenRef.current && statusCoreSeenRef.current) {
-      statusEndWaiterRef.current?.();
+    if (line.startsWith('STATUS|')) {
+      statusCoreWaiterRef.current?.();
       // A completed status round-trip means the device is trusted (either
       // it already was, or the physical gesture the toast below asked for
       // just happened) - dismiss it rather than leaving it to sit there
@@ -302,8 +293,6 @@ export function useBle(): BleApi {
     const refresh = (async () => {
       try {
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          statusCoreSeenRef.current = false;
-          statusEndSeenRef.current = false;
           blePairPendingRef.current = false;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const completed = new Promise<boolean>((resolve) => {
@@ -317,15 +306,15 @@ export function useBle(): BleApi {
             const check = () => {
               const deadline = blePairPendingRef.current ? pendingDeadline : normalDeadline;
               if (Date.now() >= deadline) {
-                statusEndWaiterRef.current = null;
+                statusCoreWaiterRef.current = null;
                 resolve(false);
                 return;
               }
               timer = setTimeout(check, 200);
             };
-            statusEndWaiterRef.current = () => {
+            statusCoreWaiterRef.current = () => {
               if (timer) clearTimeout(timer);
-              statusEndWaiterRef.current = null;
+              statusCoreWaiterRef.current = null;
               resolve(true);
             };
             timer = setTimeout(check, 200);
@@ -334,9 +323,9 @@ export function useBle(): BleApi {
           await sendCmd('status raw');
           if (await completed) return;
 
-          // The firmware leaves STATUS_END (including core state) as the
-          // readable value. This recovers initial power state when notify
-          // setup failed and also distinguishes a complete snapshot.
+          // The firmware leaves STATUS| as the readable value. This recovers
+          // initial power state when notify setup failed and also
+          // distinguishes a complete snapshot.
           if (statusCharRef.current) {
             try {
               const lines = await readLines(statusCharRef.current);
@@ -347,9 +336,9 @@ export function useBle(): BleApi {
               // "STATUS|...fw_ver=1" prefix) rather than a complete line. Only trust
               // fragments that start with a recognized line prefix; anything else is
               // noise from that race, not real status data worth parsing or logging.
-              const knownPrefix = /^(STATUS\||STATUS_END\||SENSORS\|)/;
+              const knownPrefix = /^(STATUS\||SENSORS\|)/;
               lines.filter((line) => knownPrefix.test(line)).forEach(handleLine);
-              if (lines.some((line) => line.startsWith('STATUS_END|'))) return;
+              if (lines.some((line) => line.startsWith('STATUS|'))) return;
             } catch (readError) {
               pushLog('Status read fallback failed: ' + (readError instanceof Error ? readError.message : String(readError)));
             }
@@ -375,7 +364,7 @@ export function useBle(): BleApi {
         // separate retry mechanisms that'd each need their own cap.)
         cleanup();
       } finally {
-        statusEndWaiterRef.current = null;
+        statusCoreWaiterRef.current = null;
       }
     })();
 

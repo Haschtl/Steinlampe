@@ -87,7 +87,7 @@ export function ProfileSlotsCard({ profileSlot, setProfileSlot }: { profileSlot:
     // Gate on statusReady (set once refreshStatus() has completed), not the
     // raw connected flag - firing this any earlier races the initial status
     // snapshot for the shared BLE notify queue/characteristic and can starve
-    // STATUS_END past useBle's wait timeout (see memory: Incomplete status
+    // STATUS| past useBle's wait timeout (see memory: Incomplete status
     // snapshot).
     if (status.connected && status.statusReady) refreshPreviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps

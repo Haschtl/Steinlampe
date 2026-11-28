@@ -1689,8 +1689,9 @@ void updateBleStatus(const String &statusPayload)
   // real TLSF heap corruption on real hardware (see git history around this
   // comment) when combined with print.cpp's own status-string builders.
   // 750: must cover whichever line print.cpp passes to updateBleStatus() is
-  // longest, plus the appended '\n' - that's STATUS|/STATUS_END| (the core
-  // snapshot) or any of the per-page group lines (RADAR|/FILTERS|/etc, see
+  // longest, plus the appended '\n' - that's STATUS| (the core snapshot,
+  // STATUS_END| retired 2026-11-28) or any of the per-page group lines
+  // (RADAR|/FILTERS|/etc, see
   // memory: status protocol redesign), each reserve()'d 200-1260 in print.cpp
   // after discovering their OWN reserve() sizes had quietly fallen under the
   // real measured content for a while (420 vs. an actual 555 bytes, 450 vs.

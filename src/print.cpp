@@ -410,40 +410,17 @@ void printStatusCore(const bool &force)
     // export"), so they were pure duplication here. See memory: status
     // protocol redesign.
 
-    // Marks a complete structured snapshot. Keep the core state in the marker
-    // as well so a BLE client can recover it with a characteristic read when
-    // notifications were unavailable or a notification chunk was lost.
-    //
-    // This used to be guarded by `#if SEND_STATUS_END`, a macro that was never
-    // defined anywhere in the project - so this line was dead code in every
-    // build, and the frontend's refreshStatus() (which waits specifically for
-    // STATUS_END| to know the snapshot is complete) was guaranteed to time out
-    // on every single connect. Unconditional now; the frontend hard-depends on
-    // this marker, it was never meant to be optional.
-    static String lineEnd;
-    static bool lineEndReserved = false;
-    if (!lineEndReserved)
-    {
-        // Was reserve(60) - plenty for the ~38 bytes this line actually
-        // needs, but root-caused on real hardware (bisecting this exact
-        // function line by line under a repeatable crash) as the specific
-        // allocation whose small size collided with something the BT
-        // controller itself allocates at a similar size, corrupting shared
-        // TLSF heap state - not a true overflow. Bumped to match the other
-        // reserve()s in this function rather than trying to find the
-        // "safe" small size, since that would just move the collision
-        // instead of avoiding the size class deterministically.
-        lineEnd.reserve(700);
-        lineEndReserved = true;
-    }
-    lineEnd = F("STATUS_END|lamp=");
-    lineEnd += (lampEnabled && !lampOffPending) ? F("ON") : F("OFF");
-    lineEnd += F("|bri=");
-    lineEnd += fmtF(masterBrightness * 100.0f, 1);
-    lineEnd += F("|pattern=");
-    lineEnd += String(currentPattern + 1);
-    sendFeedback(lineEnd, force);
-    updateBleStatus(lineEnd);
+    // A trailing STATUS_END| completion marker used to be sent here too, for
+    // clients to know a (formerly multi-line) snapshot was fully received.
+    // Removed 2026-11-28: STATUS| is the entire snapshot now (one self-
+    // contained line, not a multi-line dump), its own arrival already is the
+    // completion signal, and STATUS_END|'s lamp=/bri=/pattern= fields were a
+    // pure duplicate of what STATUS| already carries above. Worse, under BLE
+    // notify-queue congestion (BLE_NOTIFY_QUEUE_MAX eviction in comms.cpp),
+    // STATUS_END| - queued right after STATUS| - could survive eviction while
+    // the actual STATUS| line got dropped, so a client would see "snapshot
+    // complete" even though the snapshot itself never arrived. See memory:
+    // status protocol redesign's STATUS_END removal follow-up.
 }
 
 /**

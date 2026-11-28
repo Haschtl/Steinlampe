@@ -62,11 +62,13 @@ export function useSerial(): SerialApi {
   const portRef = useRef<SerialPort | null>(null);
   const readerCancelRef = useRef<(() => void) | undefined>(undefined);
   const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
-  // Resolved when STATUS_END| arrives after a connect, so statusReady only
+  // Resolved when STATUS| arrives after a connect, so statusReady only
   // flips once a real snapshot has actually landed - this used to be set
   // true immediately alongside `connected`, unlike useBle.tsx, which could
   // race consumers that gate extra fetches on it expecting populated fields.
-  const statusEndWaiterRef = useRef<(() => void) | null>(null);
+  // Previously waited for a separate STATUS_END| completion marker, removed
+  // 2026-11-28 - see memory: status protocol redesign.
+  const statusCoreWaiterRef = useRef<(() => void) | null>(null);
 
   const pushLog = useCallback(
     (line: string) => {
@@ -185,7 +187,7 @@ export function useSerial(): SerialApi {
                 } else {
                   setStatus((s) => ({ ...s, lastStatusAt: Date.now() }));
                 }
-                if (trimmed.startsWith('STATUS_END|')) statusEndWaiterRef.current?.();
+                if (trimmed.startsWith('STATUS|')) statusCoreWaiterRef.current?.();
               });
             }
           }
@@ -194,7 +196,7 @@ export function useSerial(): SerialApi {
             const trimmed = buffer.trim();
             const handled = parseStatusLine(trimmed, setStatus);
             if (!handled || !filterParsedRef.current) pushLog(trimmed);
-            if (trimmed.startsWith('STATUS_END|')) statusEndWaiterRef.current?.();
+            if (trimmed.startsWith('STATUS|')) statusCoreWaiterRef.current?.();
             buffer = '';
           }
         } catch (err) {
@@ -223,12 +225,12 @@ export function useSerial(): SerialApi {
       localStorage.setItem('ql-last-device-name', label);
       const waitForCoreSnapshot = new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => {
-          statusEndWaiterRef.current = null;
+          statusCoreWaiterRef.current = null;
           resolve(false);
         }, 3000);
-        statusEndWaiterRef.current = () => {
+        statusCoreWaiterRef.current = () => {
           clearTimeout(timer);
-          statusEndWaiterRef.current = null;
+          statusCoreWaiterRef.current = null;
           resolve(true);
         };
       });

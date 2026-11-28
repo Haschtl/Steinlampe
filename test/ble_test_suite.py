@@ -84,10 +84,12 @@ def build_sequential_cases() -> List[TestCase]:
     """One command at a time, each awaited to a fixed timeout before the next fires."""
     return [
         # STATUS1/STATUS2 are retired (status protocol redesign) - the core
-        # snapshot is now just STATUS|/STATUS_END|; the former STATUS1/STATUS2
-        # fields live in their own on-demand groups, tested individually below.
+        # snapshot is now just STATUS|; the former STATUS1/STATUS2 fields live
+        # in their own on-demand groups, tested individually below. STATUS_END|
+        # (a pure-duplicate completion marker) was retired 2026-11-28 - see
+        # memory: status protocol redesign.
         TestCase("status raw - core snapshot", "status raw",
-                 [r"^STATUS\|", r"^STATUS_END\|"], timeout=30.0),
+                 [r"^STATUS\|"], timeout=30.0),
         # New per-page status groups (status protocol redesign, step 1: pure
         # additions alongside the still-intact STATUS/STATUS1/STATUS2 above).
         TestCase("status radar", "status radar", [r"^RADAR\|"], timeout=15.0),
