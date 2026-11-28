@@ -78,6 +78,24 @@ CONFIG_BLE_MESH_CRPL=20
 # store (forcing a re-pair) just because newer devices bonded since.
 CONFIG_BT_NIMBLE_MAX_BONDS=8
 CONFIG_BT_NIMBLE_MAX_CCCDS=8
+# Without this, NimBLE's own bond store (the LTK/IRK - distinct from
+# comms.cpp's own trustedBle/trustedBt list, which already does persist via
+# saveSettings()) lives in RAM only and is wiped on every reboot, even
+# though the device's MAC stays in trustedBle - the app-level trust check
+# then passes instantly (no 60s window/gesture needed, since it's already
+# "trusted"), but the actual encryption handshake fails anyway because the
+# lamp no longer has the key the phone remembers (confirmed on real
+# hardware 2026-11-28: NimBLE's own enc_change event, status=
+# BLE_HS_ETIMEOUT or BLE_HS_ENOTCONN depending on exactly how the stale
+# attempt unwinds) - forcing a manual forget+re-pair on the phone for
+# something that should have just worked. This does NOT replace
+# trustedBle/the 60s window/gesture-confirm - bonding on its own proves
+# nothing about *who* connected (this device has no display/keyboard, so
+# pairing is forced to "Just Works", which needs zero secret and zero
+# human confirmation by design) - it only makes an *already*-trusted
+# device's reconnect actually reliable across a plain reboot. Still lost on
+# a real reflash/NVS erase, same as trustedBle itself.
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
 
 # Arduino core itself requires this (CMakeLists.txt hard-checks it).
 CONFIG_FREERTOS_HZ=1000
