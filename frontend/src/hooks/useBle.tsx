@@ -561,9 +561,12 @@ export function useBle(): BleApi {
         pushLog('Connect error: ' + msg);
         setStatus((s) => ({ ...s, connecting: false }));
         cleanup();
-        // Chosen "Cancel" in the picker, or nothing matched the filters - not a real error, so
-        // offer the broader search as a one-click retry instead of a scary error message. The
-        // retry has to be its own button (not an automatic follow-up call) for the reason above.
+        // Chosen "Cancel" in the picker, or nothing matched the filters - an active, deliberate
+        // user decision either way, never a real error (the browser's own message for this is
+        // literally "User cancelled the requestDevice() chooser." - showing that as a scary red
+        // toast.error was the actual bug here, not the cancel itself). Offer the broader search
+        // as a one-click retry when there's a broader search left to offer; otherwise just leave
+        // it be - no toast at all, same as any other dismissed dialog.
         const noSelection = e instanceof DOMException && e.name === 'NotFoundError';
         if (noSelection && !unfiltered) {
           toast.info(
@@ -580,7 +583,7 @@ export function useBle(): BleApi {
             </span>,
             { autoClose: false },
           );
-        } else {
+        } else if (!noSelection) {
           toast.error('Connect error: ' + msg);
         }
       }

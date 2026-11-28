@@ -6,6 +6,32 @@
   background-color: theme('colors.bg');
   --accent-color: #5be6ff;
   --accent-rgb: 91, 230, 255;
+
+  /* react-toastify's own CSS variables (see node_modules/react-toastify/dist/ReactToastify.css) -
+     ToastContainer always renders with theme="dark" regardless of the app's own light/dark
+     setting (same as every toast call already assumes a dark surface to sit on), so only the
+     dark-variant tokens need overriding to actually match this app's palette instead of
+     toastify's generic grey/red/green/yellow defaults. */
+  --toastify-color-dark: theme('colors.panel');
+  --toastify-text-color-dark: theme('colors.text');
+  --toastify-icon-color-info: theme('colors.accent');
+  --toastify-icon-color-success: theme('colors.accent2');
+  --toastify-icon-color-warning: #fbbf24;
+  --toastify-icon-color-error: #f87171;
+  --toastify-color-progress-dark: theme('colors.accent');
+  --toastify-toast-bd-radius: 0.75rem;
+}
+
+.Toastify__toast-theme--dark {
+  border: 1px solid theme('colors.border');
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.Toastify__close-button--dark {
+  color: theme('colors.muted');
+  opacity: 0.7;
+}
+.Toastify__close-button--dark:hover {
+  opacity: 1;
 }
 
 body {
