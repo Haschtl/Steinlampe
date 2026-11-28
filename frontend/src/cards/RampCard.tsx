@@ -2,7 +2,6 @@ import { ReactNode, useMemo, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Palette, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LiveOutputGraph } from '@/components/LiveOutputGraph';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -194,7 +193,6 @@ export function RampCard() {
         <CardTitle><Trans k="title.ramps">Ramps</Trans></CardTitle>
       </CardHeader>
       <CardContent>
-        <LiveOutputGraph />
         <div className="grid gap-3 md:grid-cols-2">
           <RampTile
             title={<Trans k="label.rampOn">Ramp On</Trans>}
