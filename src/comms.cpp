@@ -688,7 +688,13 @@ String trustGetBleBondsCsv()
   {
     if (csv.length() > 0)
       csv += ",";
-    csv += bleAddrToString(peers[i]);
+    // bleAddrToString() formats with lowercase hex (%02x) - normalize to
+    // match trustGetBleCsv()/trustGetBtCsv()'s uppercase convention
+    // (normalizeAddr() upcases), so "trust" output doesn't show what looks
+    // like the same device twice under different-case addresses when it's
+    // really just this report's own raw address vs. the other two reports'
+    // already-normalized ones.
+    csv += normalizeAddr(bleAddrToString(peers[i]));
   }
   return csv;
 }
