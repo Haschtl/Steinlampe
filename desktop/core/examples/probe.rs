@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         }
         HandshakeOutcome::NotTrusted => {
             println!(
-                "[probe] no STATUS_END| within the timeout - the lamp is probably holding \
+                "[probe] no STATUS| within the timeout - the lamp is probably holding \
                  the connection pending trust (outside its ~60s boot window, and nobody \
                  confirmed a physical-gesture prompt in time either) and will disconnect \
                  shortly. Re-pair by rebooting the lamp and re-running this probe within 60s, \
