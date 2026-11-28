@@ -76,7 +76,7 @@ static String bleName = Settings::BLE_NAME_DEFAULT;
 static String btName = Settings::BT_NAME_DEFAULT;
 static uint32_t bootMsComm = 0;
 static uint32_t lastBtActivityMs = 0;
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
 static bool btPairPending = false;
 static uint32_t btPairStartMs = 0;
 static String btPendingAddr;
@@ -354,7 +354,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
           esp_spp_disconnect(param->srv_open.handle);
           return;
         }
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
         btPairPending = true;
         btPairStartMs = millis();
         btPendingAddr = lastSppAddr;
@@ -366,7 +366,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
       }
       else
       {
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
         btPairPending = false;
         btPendingAddr = "";
 #endif
@@ -405,7 +405,7 @@ void sppCallbackLocal(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
       if (feedbackAllowed())
         Serial.println(F("[BT] Client disconnected"));
     }
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
     btPairPending = false;
     btPendingAddr = "";
 #endif
@@ -793,7 +793,7 @@ static bool authorizeBleConn(uint16_t connHandle)
     return true;
   }
 
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
   if (!(blePairPending && blePendingConnId == connHandle))
   {
     blePairPending = true;
@@ -1106,7 +1106,7 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
       Serial.println(addr);
     }
     bleLastAddr = addr;
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
     // A device that disconnected (or was dropped - see the pairing-timeout
     // check in pollCommunications()) while waiting on the physical-gesture
     // confirmation never got to prove itself - forget it on both counts
@@ -1158,7 +1158,7 @@ static int bleGapEvent(struct ble_gap_event *event, void *arg)
     }
     // Not yet authorized: authorizeBleConn() already started (or kept
     // alive) the physical-gesture pending-confirm flow, or rejected and
-    // terminated the connection outright if ENABLE_BT_PAIRING is off -
+    // terminated the connection outright if ENABLE_PAIR_GESTURE_CONFIRM is off -
     // either way, nothing else to do here.
     break;
   }
@@ -1421,7 +1421,7 @@ bool trustRemoveBt(const String &addr, bool persist)
 void confirmPendingPairing(const char *reason)
 {
   (void)reason; // unused if neither sub-block below is compiled in
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
 #if ENABLE_BT_SERIAL
   if (btPairPending)
   {
@@ -1541,7 +1541,7 @@ void pollCommunications()
 
 #if ENABLE_BT_SERIAL
   maybeSleepBtSerial(millis());
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
   if (btPairPending && btPairStartMs > 0 && (millis() - btPairStartMs) > BT_PAIR_TIMEOUT_MS)
   {
     if (feedbackAllowed())
@@ -1561,7 +1561,7 @@ void pollCommunications()
 #if ENABLE_BT_MIDI
       processBtMidiByte((uint8_t)c);
 #endif
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
       if (btPairPending)
         continue; // commands are gated until pairing is confirmed
 #endif
@@ -1603,7 +1603,7 @@ void pollCommunications()
     }
   }
 #endif
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
   if (blePairPending && blePairStartMs > 0 && (millis() - blePairStartMs) > BLE_PAIR_TIMEOUT_MS)
   {
     if (feedbackAllowed())
@@ -1621,7 +1621,7 @@ void pollCommunications()
     String chunk = bleRxPending;
     bleRxPending = "";
     xSemaphoreGive(bleRxMutex);
-#if ENABLE_BT_PAIRING
+#if ENABLE_PAIR_GESTURE_CONFIRM
     if (blePairPending)
     {
       // Commands are gated until pairing is confirmed - matches
