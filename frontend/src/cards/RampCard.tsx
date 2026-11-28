@@ -145,6 +145,11 @@ export function RampCard() {
   });
   const onPow = rampOnPow ?? 2;
   const offPow = rampOffPow ?? 2;
+  // Ambient ramps only mean anything on a lamp with an actual light sensor -
+  // same "don't claim a feature before we actually know it's there, but
+  // hide it outright once the firmware says it isn't" pattern already used
+  // for poti/push/music elsewhere (see LampPowerCard).
+  const hasLight = status.hasLight !== false && status.lightEnabled !== undefined;
 
   useEffect(() => {
     if (typeof status.rampOnMs === 'number') setRampOn(status.rampOnMs);
@@ -312,23 +317,25 @@ export function RampCard() {
             </div>
           </DialogContent>
         </Dialog>
-        <Card className="p-3">
-          <CardTitle className="text-base text-text"><Trans k="label.rampAmbient">Ambient ramps</Trans></CardTitle>
-          <div className="space-y-3">
-            <SliderRow
-              label={<Trans k="label.rampAmbient">Ambient ramps</Trans>}
-              description={<Trans k="desc.rampAmbient">Dark rooms stretch ramps by this factor (0 disables)</Trans>}
-              valueLabel={`x${(1 + (rampAmbient ?? 0)).toFixed(2)} in dark`}
-              inputProps={{
-                min: 0,
-                max: 5,
-                step: 0.05,
-                value: rampAmbient ?? 0,
-              }}
-              onInputChange={handleRampAmbient}
-            />
-          </div>
-        </Card>
+        {hasLight && (
+          <Card className="p-3">
+            <CardTitle className="text-base text-text"><Trans k="label.rampAmbient">Ambient ramps</Trans></CardTitle>
+            <div className="space-y-3">
+              <SliderRow
+                label={<Trans k="label.rampAmbient">Ambient ramps</Trans>}
+                description={<Trans k="desc.rampAmbient">Dark rooms stretch ramps by this factor (0 disables)</Trans>}
+                valueLabel={`x${(1 + (rampAmbient ?? 0)).toFixed(2)} in dark`}
+                inputProps={{
+                  min: 0,
+                  max: 5,
+                  step: 0.05,
+                  value: rampAmbient ?? 0,
+                }}
+                onInputChange={handleRampAmbient}
+              />
+            </div>
+          </Card>
+        )}
       </CardContent>
     </Card>
   );
