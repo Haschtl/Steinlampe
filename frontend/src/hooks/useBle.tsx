@@ -23,6 +23,7 @@ type BleApi = {
   forgetDevice: (id: string) => void;
   renameDevice: (id: string, name: string) => void;
   connect: () => Promise<void>;
+  connectKnownDevice: (id: string) => Promise<void>;
   disconnect: () => void;
   refreshStatus: () => Promise<void>;
   sendCmd: (cmd: string) => Promise<void>;
@@ -91,6 +92,17 @@ export function useBle(): BleApi {
   const statusEverReadyRef = useRef<boolean>(false);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const autoReconnectRef = useRef<boolean>(autoReconnect);
+  // onDisc() below retries once, 800ms after an unexpected disconnect - but
+  // only once per real connect attempt. Without this, a persistently broken
+  // link (bad bond, flaky radio, a lamp stuck failing its own status
+  // handshake) retries forever: connect -> fails/drops -> onDisc() retries
+  // -> connects -> fails/drops again -> ad infinitum, with the loading
+  // overlay flashing the whole time and no way for the user to break out
+  // short of reloading the page. Set true the moment that one retry fires;
+  // cleared again only by a fresh, explicitly user/auto-initiated connect
+  // (tryReconnectLast(), runConnectAttempt(), connectKnownDevice() - never
+  // by the retry itself), so a *new* attempt still gets its own one retry.
+  const autoReconnectRetryDoneRef = useRef<boolean>(false);
   const lastDeviceIdRef = useRef<string | null>(localStorage.getItem('ql-last-device-id'));
   const knownDevicesRef = useRef<Record<string, string>>(JSON.parse(localStorage.getItem('ql-known-devices') || '{}'));
   const [knownDevices, setKnownDevices] = useState<Record<string, string>>(knownDevicesRef.current);
@@ -351,14 +363,17 @@ export function useBle(): BleApi {
           toast.error('Status error: ' + msg);
           lastToast.current = msg;
         }
+        // cleanup() below calls disconnectDevice(), which fires the
+        // browser's own 'gattserverdisconnected' event - attachListeners()'s
+        // onDisc() handler already does the single-retry-then-stop dance for
+        // that (see autoReconnectRetryDoneRef's own comment), so there's
+        // nothing left to schedule here. (A retry used to be scheduled right
+        // here too, unconditionally and with no cap - but cleanup() had
+        // already nulled deviceRef.current a line above by the time it
+        // checked it, so it could never actually fire; onDisc() was always
+        // the live path. Removed rather than fixed in place, to avoid two
+        // separate retry mechanisms that'd each need their own cap.)
         cleanup();
-        if (autoReconnectRef.current && deviceRef.current) {
-          setTimeout(() => {
-            if (deviceRef.current && !deviceRef.current.gatt?.connected) {
-              connectWithDevice(deviceRef.current, true).catch(() => undefined);
-            }
-          }, 800);
-        }
       } finally {
         statusEndWaiterRef.current = null;
       }
@@ -429,7 +444,8 @@ export function useBle(): BleApi {
             { autoClose: false },
           );
         }
-        if (autoReconnectRef.current) {
+        if (autoReconnectRef.current && !autoReconnectRetryDoneRef.current) {
+          autoReconnectRetryDoneRef.current = true;
           setTimeout(() => {
             if (dev.gatt && !dev.gatt.connected) {
               connectWithDevice(dev, true);
@@ -532,6 +548,7 @@ export function useBle(): BleApi {
   const runConnectAttempt = useCallback(
     async (unfiltered: boolean) => {
       setStatus((s) => ({ ...s, connecting: true }));
+      autoReconnectRetryDoneRef.current = false;
       try {
         const dev = await requestDevice({ unfiltered });
         if (dev?.id) {
@@ -604,6 +621,7 @@ export function useBle(): BleApi {
         setAutoReconnectDeviceName(friendly);
         setAutoReconnectState('connecting');
         setStatus((s) => ({ ...s, connecting: true }));
+        autoReconnectRetryDoneRef.current = false;
         await connectWithDevice(match, true);
         setAutoReconnectState('idle');
       }
@@ -614,6 +632,31 @@ export function useBle(): BleApi {
       setAutoReconnectState('failed');
     }
   }, [connectWithDevice, pushLog, setStatus]);
+
+  // Lets the connect overlay offer a specific remembered device as its own
+  // button, connecting directly without the native chooser - same
+  // getDevices()-by-id lookup tryReconnectLast() uses for its own match.
+  const connectKnownDevice = useCallback(
+    async (id: string) => {
+      if (!navigator.bluetooth?.getDevices) return;
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const dev = devices.find((d) => d.id === id);
+        if (!dev) {
+          toast.error('Gerät nicht mehr verfügbar - bitte über "BLE verbinden" neu koppeln.');
+          return;
+        }
+        setStatus((s) => ({ ...s, connecting: true }));
+        autoReconnectRetryDoneRef.current = false;
+        await connectWithDevice(dev);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        pushLog('Connect error: ' + msg);
+        setStatus((s) => ({ ...s, connecting: false }));
+      }
+    },
+    [connectWithDevice, pushLog, setStatus],
+  );
 
   useEffect(() => {
     return () => {
@@ -649,6 +692,7 @@ export function useBle(): BleApi {
       renameDevice,
       forgetDevice,
       connect,
+      connectKnownDevice,
       disconnect: cleanup,
       refreshStatus,
       sendCmd,
@@ -661,6 +705,7 @@ export function useBle(): BleApi {
       autoReconnectDeviceName,
       cleanup,
       connect,
+      connectKnownDevice,
       filterParsed,
       forgetDevice,
       knownDevices,

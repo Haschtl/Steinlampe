@@ -29,6 +29,8 @@ export function RootLayout() {
     connect,
     connectBle,
     connectSerial,
+    connectKnownBleDevice,
+    knownDevices,
     autoReconnectState,
     autoReconnectDeviceName,
     disconnect,
@@ -201,6 +203,24 @@ export function RootLayout() {
                       : t('status.autoReconnectFailed', 'Automatische Verbindung mit {name} fehlgeschlagen').replace('{name}', autoReconnectDeviceName)}
                   </p>
                 )}
+                {Object.keys(knownDevices || {}).length > 0 && (
+                  <div className="mb-5 flex flex-col gap-2">
+                    {Object.entries(knownDevices).map(([id, name]) => (
+                      <Button
+                        key={id}
+                        variant="secondary"
+                        className="h-12 justify-start text-base"
+                        onClick={() => {
+                          setShowConnectOverlay(false);
+                          connectKnownBleDevice(id);
+                        }}
+                      >
+                        <Bluetooth className="mr-2 h-5 w-5 shrink-0" />
+                        <span className="truncate">{name}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     size="md"
@@ -254,6 +274,16 @@ export function RootLayout() {
               >
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
                 <p className="text-sm text-muted">{t('status.loadingState', 'Loading lamp status…')}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    disconnect();
+                    setShowConnectOverlay(true);
+                  }}
+                >
+                  Skip
+                </Button>
               </motion.div>
             </motion.div>
           )}

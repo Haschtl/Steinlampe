@@ -30,6 +30,7 @@ type ConnectionContextValue = {
   connect: () => Promise<void>;
   connectBle: () => Promise<void>;
   connectSerial: () => Promise<void>;
+  connectKnownBleDevice: (id: string) => Promise<void>;
   disconnect: () => void;
   sendCmd: (cmd: string) => Promise<void>;
   sendCmdReliable: (cmd: string) => Promise<void>;
@@ -111,6 +112,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         await serial.connect();
         setTransport('serial');
         localStorage.setItem('ql-last-transport', 'serial');
+      },
+      connectKnownBleDevice: async (id: string) => {
+        await ble.connectKnownDevice(id);
+        setTransport('ble');
+        if (ble.status.deviceName) localStorage.setItem('ql-last-device-name', ble.status.deviceName);
+        localStorage.setItem('ql-last-transport', 'ble');
       },
       disconnect: () => {
         if (transport === 'serial') serial.disconnect();
