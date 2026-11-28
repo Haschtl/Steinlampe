@@ -1,14 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { Bookmark, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Collapsible } from '@/components/ui/collapsible';
+import { PatternPreviewGraph } from '@/components/PatternPreviewGraph';
 import { useConnection } from '@/context/connection';
 import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
+import { PROFILE_SLOTS } from '@/data/profiles';
 import { getPatternBrightness } from '@/lib/patternSim';
+import { useI18n } from '@/i18n';
 
 const UPDATE_INTERVAL = 50;
-export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+
+type PaletteOption = { idx: number; label: string; kind: 'pattern' | 'profile' };
+
+type Props = {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  /** Multi-select mode: tapping a tile toggles it instead of applying it and closing. */
+  multi?: boolean;
+  selected?: number[];
+  onToggle?: (idx: number) => void;
+  /** Appends PROFILE_SLOTS synthetic entries (idx continues past the real pattern count) as their own group. */
+  includeProfiles?: boolean;
+};
+
+export function PatternPalette({ open, setOpen, multi = false, selected = [], onToggle, includeProfiles = false }: Props) {
   const { sendCmd, status } = useConnection();
+  const { t } = useI18n();
   const [tick, setTick] = useState(0);
   const energyCache = useRef<Record<string, number>>({});
   const [patternAnchor, setPatternAnchor] = useState(0);
@@ -33,13 +52,31 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
     }
   }, [status.patternElapsedMs, status.currentPattern]);
 
-  const patternOptions = useMemo(() => {
-    const count = status.patternCount || patternLabels.length;
-    return Array.from({ length: count }, (_, i) => ({
+  const patternCount = status.patternCount || patternLabels.length;
+
+  const patternOptions: PaletteOption[] = useMemo(() => {
+    const base: PaletteOption[] = Array.from({ length: patternCount }, (_, i) => ({
       idx: i + 1,
       label: patternLabel(i + 1),
+      kind: 'pattern',
     }));
-  }, [status.patternCount]);
+    if (!includeProfiles) return base;
+    const profiles: PaletteOption[] = Array.from({ length: PROFILE_SLOTS }, (_, i) => ({
+      idx: patternCount + i + 1,
+      label: `${t('label.profile', 'Profile')} ${i + 1}`,
+      kind: 'profile',
+    }));
+    return [...base, ...profiles];
+  }, [patternCount, includeProfiles, t]);
+
+  const groupedOptions = useMemo(() => {
+    const groups = patternGroups
+      .map((g) => ({ title: g.title, items: patternOptions.filter((p) => p.kind === 'pattern' && g.indices.includes(p.idx)) }))
+      .filter((g) => g.items.length > 0);
+    const profileItems = patternOptions.filter((p) => p.kind === 'profile');
+    if (profileItems.length > 0) groups.push({ title: t('title.profiles', 'Profiles'), items: profileItems });
+    return groups;
+  }, [patternOptions, t]);
 
   const patternPreview = (idx: number) => {
     const baseColors = [
@@ -56,69 +93,95 @@ export function PatternPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
     return { base: palette[0], base2: palette[1], accent: palette[0] };
   };
 
+  const handleTileClick = (idx: number) => {
+    if (multi) {
+      onToggle?.(idx);
+      return;
+    }
+    sendCmd(`mode ${idx}`);
+    setOpen(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* <DialogTrigger asChild>
-        <Button variant="primary" size="sm" className="ml-auto flex items-center gap-2">
-          <Palette className="h-4 w-4" />
-          <span className="hidden sm:inline">Pattern Palette</span>
-        </Button>
-      </DialogTrigger> */}
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Pattern Palette</DialogTitle>
         </DialogHeader>
         <div className="max-h-[70vh] space-y-2 overflow-y-auto">
-          {patternGroups.map((group) => {
-            const items = patternOptions.filter((p) => group.indices.includes(p.idx));
-            if (items.length === 0) return null;
-            return (
-              <Collapsible key={group.title} title={group.title}>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {items.map((p) => {
-                    const bg = patternPreview(p.idx);
-                    const speed = status.patternSpeed ?? 1;
-                    const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
-                    const simMs = Math.max(0, tick - patternAnchor);
-                    const raw = getPatternBrightness(p.idx, simMs * speed);
-                    const key = `p${p.idx}`;
-                    const prev = energyCache.current[key] ?? raw;
-                    const alpha = fade ? Math.min(1, UPDATE_INTERVAL / (400 * fade)) : 1;
-                    const energy = prev + (raw - prev) * alpha;
-                    energyCache.current[key] = energy;
+          {groupedOptions.map((group) => (
+            <Collapsible key={group.title} title={group.title}>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {group.items.map((p) => {
+                  const isSelected = multi && selected.includes(p.idx);
+                  if (p.kind === 'profile') {
                     return (
                       <button
                         key={p.idx}
                         type="button"
-                        onClick={() => {
-                          sendCmd(`mode ${p.idx}`);
-                          setOpen(false);
-                        }}
-                        className="relative min-h-[84px] overflow-hidden rounded-xl border border-border/70 p-2.5 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
+                        onClick={() => handleTileClick(p.idx)}
+                        className={`relative flex min-h-[84px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border p-2.5 text-center shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent ${
+                          isSelected ? 'border-accent bg-accent/15' : 'border-border/70 bg-panel/70'
+                        }`}
                       >
-                        <motion.div
-                          className="absolute inset-0"
-                          style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
-                        />
-                        <motion.div
-                          className="absolute inset-0"
-                          style={{ background: `radial-gradient(circle at 30% 30%, ${bg.accent}44, transparent 50%)`, opacity: energy }}
-                        />
-                        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
-                        <div className="relative flex items-center justify-between">
-                          <div className="h-7 w-7 rounded-full bg-white/10 shadow-inner" />
-                        </div>
-                        <div className="absolute inset-x-0 bottom-0 bg-black/40 px-2 py-1.5 backdrop-blur-sm">
-                          <div className="text-[10px] uppercase tracking-wide text-muted">Mode {p.idx}</div>
-                          <div className="truncate text-sm font-semibold text-text drop-shadow-sm">{p.label}</div>
-                        </div>
+                        {isSelected && (
+                          <div className="absolute right-1.5 top-1.5 rounded-full bg-accent p-0.5 text-black">
+                            <Check className="h-3 w-3" />
+                          </div>
+                        )}
+                        <Bookmark className="h-5 w-5 text-muted" />
+                        <div className="truncate text-sm font-semibold text-text">{p.label}</div>
                       </button>
                     );
-                  })}
-                </div>
-              </Collapsible>
-            );
-          })}
+                  }
+                  const bg = patternPreview(p.idx);
+                  const speed = status.patternSpeed ?? 1;
+                  const fade = status.patternFade && status.patternFade > 0 ? status.patternFade : 0;
+                  const simMs = Math.max(0, tick - patternAnchor);
+                  const raw = getPatternBrightness(p.idx, simMs * speed);
+                  const key = `p${p.idx}`;
+                  const prev = energyCache.current[key] ?? raw;
+                  const alpha = fade ? Math.min(1, UPDATE_INTERVAL / (400 * fade)) : 1;
+                  const energy = prev + (raw - prev) * alpha;
+                  energyCache.current[key] = energy;
+                  return (
+                    <button
+                      key={p.idx}
+                      type="button"
+                      onClick={() => handleTileClick(p.idx)}
+                      className={`relative min-h-[96px] overflow-hidden rounded-xl border p-2.5 text-left shadow-lg transition-transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent ${
+                        isSelected ? 'border-accent' : 'border-border/70'
+                      }`}
+                    >
+                      <motion.div
+                        className="absolute inset-0"
+                        style={{ background: `linear-gradient(135deg, ${bg.base}, ${bg.base2})`, opacity: energy }}
+                      />
+                      <motion.div
+                        className="absolute inset-0"
+                        style={{ background: `radial-gradient(circle at 30% 30%, ${bg.accent}44, transparent 50%)`, opacity: energy }}
+                      />
+                      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+                      {/* One cycle of the raw pattern shape, independent of the live speed/margin/fade settings - this is about what the pattern itself looks like, not what it's currently configured to. */}
+                      <PatternPreviewGraph pattern={p.idx} speed={1} marginLow={0} marginHigh={1} invert={false} fade={0} className="absolute inset-0 h-full w-full opacity-60" />
+                      {isSelected && (
+                        <div className="absolute right-1.5 top-1.5 z-10 rounded-full bg-accent p-0.5 text-black">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      )}
+                      <div className="relative flex items-center justify-between">
+                        <div className="h-7 w-7 rounded-full bg-white/10 shadow-inner" />
+                      </div>
+                      <div className="absolute inset-x-0 bottom-0 bg-black/40 px-2 py-1.5 backdrop-blur-sm">
+                        <div className="text-[10px] uppercase tracking-wide text-muted">Mode {p.idx}</div>
+                        <div className="truncate text-sm font-semibold text-text drop-shadow-sm">{p.label}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Collapsible>
+          ))}
         </div>
       </DialogContent>
     </Dialog>

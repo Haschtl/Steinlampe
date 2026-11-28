@@ -2,17 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Collapsible } from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
+import { PatternPalette } from '@/components/PatternPalette';
 import { useConnection } from '@/context/connection';
-import { patternGroups, patternLabel, patternLabels } from '@/data/patterns';
+import { patternLabel, patternLabels } from '@/data/patterns';
 import { PROFILE_SLOTS } from '@/data/profiles';
 import { Trans, useI18n } from '@/i18n';
 
 export function QuickModesCard() {
   const { t } = useI18n();
   const { status, sendCmd } = useConnection();
-  const [quickSearch, setQuickSearch] = useState('');
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickSelection, setQuickSelection] = useState<number[]>([]);
 
   // No artificial 64-entry cap here anymore - that only existed because the
@@ -20,7 +19,8 @@ export function QuickModesCard() {
   // mask. Profile slots now have their own independent mask on the firmware
   // side (see memory: quick-mode-profile-mask-overflow), so they're never
   // out of range regardless of how many patterns exist.
-  const quickMax = useMemo(() => (status.patternCount || patternLabels.length) + PROFILE_SLOTS, [status.patternCount]);
+  const patternCount = status.patternCount || patternLabels.length;
+  const quickMax = useMemo(() => patternCount + PROFILE_SLOTS, [patternCount]);
 
   useEffect(() => {
     if (status.quickCsv) {
@@ -32,88 +32,54 @@ export function QuickModesCard() {
     }
   }, [status.quickCsv, quickMax]);
 
-  const patternOptions = useMemo(() => {
-    const count = status.patternCount || patternLabels.length;
-    const base = Array.from({ length: count }, (_, i) => ({
-      idx: i + 1,
-      label: `${i + 1} - ${patternLabel(i + 1)}`,
-    }));
-    const profileOpts = Array.from({ length: PROFILE_SLOTS }, (_, i) => ({
-      idx: count + i + 1,
-      label: `${t('label.profile', 'Profile')} ${i + 1}`,
-    }));
-    return [...base, ...profileOpts].filter((p) => p.idx <= quickMax);
-  }, [status.patternCount, t, quickMax]);
-
-  const searching = quickSearch.trim().length > 0;
-  const filteredFlat = useMemo(
-    () => patternOptions.filter((p) => p.label.toLowerCase().includes(quickSearch.toLowerCase())),
-    [patternOptions, quickSearch],
-  );
-  const groupedOptions = useMemo(() => {
-    const patternCount = status.patternCount || patternLabels.length;
-    const groups = patternGroups
-      .map((g) => ({ title: g.title, items: patternOptions.filter((p) => g.indices.includes(p.idx)) }))
-      .filter((g) => g.items.length > 0);
-    const profileItems = patternOptions.filter((p) => p.idx > patternCount);
-    if (profileItems.length > 0) groups.push({ title: t('title.profiles', 'Profiles'), items: profileItems });
-    return groups;
-  }, [patternOptions, status.patternCount, t]);
+  const optionLabel = (idx: number) =>
+    idx > patternCount ? `${t('label.profile', 'Profile')} ${idx - patternCount}` : patternLabel(idx);
 
   const toggleQuickSelection = (idx: number) => {
     setQuickSelection((prev) => (prev.includes(idx) ? prev.filter((n) => n !== idx) : [...prev, idx].sort((a, b) => a - b)));
   };
 
-  const saveQuickSelection = () => {
-    if (quickSelection.length === 0) return;
-    const filtered = quickSelection.filter((n) => n <= quickMax);
+  const saveQuickSelection = (selection: number[]) => {
+    if (selection.length === 0) return;
+    const filtered = selection.filter((n) => n <= quickMax);
     if (filtered.length === 0) {
       toast.error('Quick list contains only invalid entries');
       return;
     }
-    if (filtered.length !== quickSelection.length) {
-      toast.warn('Some quick entries were removed (out of range)');
-      setQuickSelection(filtered);
-    }
     sendCmd(`quick ${filtered.join(',')}`).catch((e) => console.warn(e));
+  };
+
+  const handlePaletteOpenChange = (next: boolean) => {
+    setPaletteOpen(next);
+    if (!next) saveQuickSelection(quickSelection);
   };
 
   return (
     <Card>
-      <CardHeader className="items-start">
+      <CardHeader>
         <CardTitle><Trans k="title.quick">Quick Tap Modes</Trans></CardTitle>
-        <Input placeholder={t('search.pattern', 'Search pattern')} value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} className="w-40" />
       </CardHeader>
       <CardContent className="space-y-3">
-        {searching ? (
-          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
-            {filteredFlat.map((p) => (
-              <label key={p.idx} className="pill cursor-pointer whitespace-nowrap">
-                <input type="checkbox" className="accent-accent" checked={quickSelection.includes(p.idx)} onChange={() => toggleQuickSelection(p.idx)} /> {p.label}
-              </label>
-            ))}
-          </div>
+        {quickSelection.length === 0 ? (
+          <p className="text-sm text-muted"><Trans k="desc.noQuickSelection">No quick modes selected yet.</Trans></p>
         ) : (
-          <div className="max-h-64 space-y-2 overflow-y-auto">
-            {groupedOptions.map((g) => (
-              <Collapsible key={g.title} title={g.title}>
-                <div className="flex flex-wrap gap-2">
-                  {g.items.map((p) => (
-                    <label key={p.idx} className="pill cursor-pointer whitespace-nowrap">
-                      <input type="checkbox" className="accent-accent" checked={quickSelection.includes(p.idx)} onChange={() => toggleQuickSelection(p.idx)} /> {p.label}
-                    </label>
-                  ))}
-                </div>
-              </Collapsible>
+          <div className="flex flex-wrap gap-2">
+            {quickSelection.map((idx) => (
+              <span key={idx} className="pill whitespace-nowrap">{optionLabel(idx)}</span>
             ))}
           </div>
         )}
-        <div className="text-sm text-muted">Current: {status.quickCsv || '—'}</div>
-        <div className="flex gap-2">
-          <Button onClick={saveQuickSelection}><Trans k="btn.saveQuick">Save quick list</Trans></Button>
-        </div>
+        <Button onClick={() => setPaletteOpen(true)}><Trans k="btn.editQuick">Select quick modes</Trans></Button>
         <p className="text-sm text-muted"><Trans k="desc.tapSwitch">Tap the physical switch to cycle through selected quick modes.</Trans></p>
       </CardContent>
+      <PatternPalette
+        open={paletteOpen}
+        setOpen={handlePaletteOpenChange}
+        multi
+        includeProfiles
+        selected={quickSelection}
+        onToggle={toggleQuickSelection}
+      />
     </Card>
   );
 }
