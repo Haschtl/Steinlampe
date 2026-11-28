@@ -1529,13 +1529,28 @@ void pollCommunications()
   // re-arms in bleGapEvent() by reclaiming the slot within one poll of
   // Mesh's brief use of the radio actually ending, instead of relying on
   // an ADV_COMPLETE callback that may never fire.
+  //
+  // Found on real hardware 2026-11-28: skip this entirely while any
+  // connection exists (bleConnHandles non-empty), not just when Mesh is
+  // mid-beacon. Without that guard, this kept calling startBleAdvertising()
+  // (ble_gap_adv_set_fields()+ble_gap_adv_start()) every 250ms even while a
+  // just-connected real phone was still mid-SMP-pairing on that same
+  // connection - queuing GAP housekeeping onto the same single NimBLE host
+  // task that also has to process that pairing exchange's own rx/tx
+  // callbacks, starving it badly enough that a real phone's pairing ran the
+  // full 30s SM procedure timeout (BLE_SM_TIMEOUT_MS in ble_sm.c) and
+  // failed with BLE_HS_ETIMEOUT. The existing event-driven call sites in
+  // bleGapEvent() already only re-arm once pairing has actually finished
+  // (or failed) on a given connection - this backstop's own job is just to
+  // recover from Mesh's idle-time theft when nothing is connected at all,
+  // so skipping it whenever a connection is in flight costs nothing.
   {
     static uint32_t lastClassicAdvCheckMs = 0;
     uint32_t nowMs = millis();
     if (nowMs - lastClassicAdvCheckMs >= 250)
     {
       lastClassicAdvCheckMs = nowMs;
-      if (bleShouldAdvertiseClassic())
+      if (bleShouldAdvertiseClassic() && bleConnHandles.empty())
         startBleAdvertising();
     }
   }
