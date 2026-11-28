@@ -963,36 +963,84 @@ static void startBleAdvertising()
   if (ble_gap_adv_active())
     return;
 
+  // Our 128-bit SERVICE UUID now goes in the *primary* ADV payload, not
+  // just the scan response - found 2026-11-28, hardware-confirmed: Web
+  // Bluetooth's filtered requestDevice() (what the frontend's "BLE
+  // verbinden" button uses) never found a never-before-paired lamp,
+  // because at least one real OS Bluetooth stack (BlueZ/Linux) never
+  // surfaces a scan-response-only UUID for filter matching at all - a
+  // 25s/229-sighting live scan of a freshly-unbonded lamp never showed the
+  // UUID once. An already-bonded lamp "worked" regardless, since the OS
+  // matches its cached GATT service list instead of anything live - which
+  // is exactly why nobody noticed this for a long time: every lamp anyone
+  // actually used had already been bonded before this placement existed
+  // (git blame: it predates Mesh entirely, going back to the
+  // NimBLE-Arduino -> native ESP-IDF NimBLE migration).
+  //
+  // The real constraint this runs into: the legacy ADV payload is capped
+  // at 31 bytes total, and a 128-bit UUID AD structure alone is 18 of
+  // them. flags(3) + UUID(18) leaves only 10 bytes - room for an 8-char
+  // name at most. So the name here gets shortened (BLE_HS_ADV_TYPE_INCOMP_NAME)
+  // rather than omitted when it doesn't fit; the scan response below still
+  // carries the *complete* name whenever there's room for it, for any
+  // client that does solicit it. appearance/preferred-connection-interval
+  // (cosmetic hints, unused anywhere in this project's own app) are
+  // dropped entirely rather than fought over - the byte budget doesn't
+  // allow for much more than UUID + name twice over.
+  static constexpr size_t kLegacyAdvMaxBytes = 31;
+  static constexpr size_t kAdHeaderBytes = 2; // every AD structure's own length+type bytes
+  static constexpr size_t kFlagsAdBytes = kAdHeaderBytes + 1;
+  static constexpr size_t kUuid128AdBytes = kAdHeaderBytes + 16;
+
   struct ble_hs_adv_fields fields = {};
   fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-  fields.tx_pwr_lvl_is_present = 1;
-  fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+  fields.uuids128 = &bleServiceUuid;
+  fields.num_uuids128 = 1;
+  fields.uuids128_is_complete = 1;
   fields.name = (const uint8_t *)bleName.c_str();
-  fields.name_len = bleName.length();
-  fields.name_is_complete = 1;
-  fields.appearance = 0;
-  fields.appearance_is_present = 1;
-  static const uint8_t slaveItvlRange[4] = {0x06, 0x00, 0x12, 0x00}; // matches the old setPreferredParams(0x06, 0x12)
-  fields.slave_itvl_range = slaveItvlRange;
+  const size_t primaryNameBudget = kLegacyAdvMaxBytes - kFlagsAdBytes - kUuid128AdBytes;
+  const size_t primaryNameMaxChars = primaryNameBudget > kAdHeaderBytes ? primaryNameBudget - kAdHeaderBytes : 0;
+  if (bleName.length() <= primaryNameMaxChars)
+  {
+    fields.name_len = bleName.length();
+    fields.name_is_complete = 1;
+  }
+  else
+  {
+    fields.name_len = primaryNameMaxChars;
+    fields.name_is_complete = 0;
+  }
   ble_gap_adv_set_fields(&fields);
 
-  // Service UUIDs go in the scan response, not the main ADV payload - a
-  // 128-bit UUID is 18 bytes with its header, and the device name above
-  // already uses a good chunk of the 31-byte legacy ADV payload. Matches
-  // NimBLEAdvertising's own enableScanResponse(true) behavior, which split
-  // overflow into the scan response the same way.
-  static ble_uuid128_t scanRspUuids[2];
-  scanRspUuids[0] = bleServiceUuid;
-  uint8_t numUuids = 1;
+  // Scan response: this project's own MIDI service UUID (if enabled - a
+  // second 128-bit UUID, matching this project's custom MIDI-over-BLE
+  // feature, not used for any requestDevice() filter so it never needed to
+  // move into the primary payload) plus the complete name, whenever both
+  // actually fit in the same 31-byte budget - computed the same
+  // budget-first way as the primary payload above, rather than assumed, so
+  // a long name with MIDI enabled just quietly loses the complete-name
+  // copy here instead of silently failing the whole scan response (that
+  // failure mode is real and was never checked for before - see
+  // ble_hs_adv.c's own BLE_HS_EMSGSIZE return on overflow).
+  struct ble_hs_adv_fields rspFields = {};
+  static ble_uuid128_t midiRspUuid;
+  size_t rspUsedBytes = 0;
 #if ENABLE_BLE_MIDI
   extern ble_uuid128_t midiServiceUuid; // defined in midi_ble.cpp
-  scanRspUuids[1] = midiServiceUuid;
-  numUuids = 2;
-#endif
-  struct ble_hs_adv_fields rspFields = {};
-  rspFields.uuids128 = scanRspUuids;
-  rspFields.num_uuids128 = numUuids;
+  midiRspUuid = midiServiceUuid;
+  rspFields.uuids128 = &midiRspUuid;
+  rspFields.num_uuids128 = 1;
   rspFields.uuids128_is_complete = 1;
+  rspUsedBytes += kUuid128AdBytes;
+#endif
+  const size_t rspNameBudget = rspUsedBytes < kLegacyAdvMaxBytes ? kLegacyAdvMaxBytes - rspUsedBytes : 0;
+  const size_t rspNameMaxChars = rspNameBudget > kAdHeaderBytes ? rspNameBudget - kAdHeaderBytes : 0;
+  if (bleName.length() <= rspNameMaxChars)
+  {
+    rspFields.name = (const uint8_t *)bleName.c_str();
+    rspFields.name_len = bleName.length();
+    rspFields.name_is_complete = 1;
+  }
   ble_gap_adv_rsp_set_fields(&rspFields);
 
   struct ble_gap_adv_params advParams = {};

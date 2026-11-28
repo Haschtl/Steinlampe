@@ -16,8 +16,8 @@ namespace Settings
 constexpr const char *BLE_NAME_DEFAULT = "Quarzlampe";
 constexpr const char *BT_NAME_DEFAULT = "Quarzlampe-SPP";
 #elif SCHREIBTISCHLAMPE
-constexpr const char *BLE_NAME_DEFAULT = "Schreibtischlampe";
-constexpr const char *BT_NAME_DEFAULT = "Schreibtischlampe-SPP";
+constexpr const char *BLE_NAME_DEFAULT = "Erleuchtung";
+constexpr const char *BT_NAME_DEFAULT = "Erleuchtung-SPP";
 #elif ON_AIR
 constexpr const char *BLE_NAME_DEFAULT = "ON-AIR Lampe";
 constexpr const char *BT_NAME_DEFAULT = "ON-AIR Lampe-SPP";
